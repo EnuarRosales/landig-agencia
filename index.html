@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>agencIA — Automatiza atención, agendamiento y ventas con IA por WhatsApp</title>
+<meta name="description" content="agencIA automatiza la atención al cliente, el agendamiento de citas y las ventas de tu empresa con Inteligencia Artificial por WhatsApp. Para clínicas, salones, consultorías, agencias, servicios y e-commerce. Datos en Colombia." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#05070f;
+  --bg2:#0a0e1c;
+  --card:rgba(255,255,255,.045);
+  --card2:rgba(255,255,255,.03);
+  --stroke:rgba(255,255,255,.09);
+  --stroke2:rgba(255,255,255,.06);
+  --txt:#eaf0ff;
+  --muted:#9aa6c4;
+  --wa:#25D366;
+  --wa2:#128C7E;
+  --a1:#2f6bff;
+  --a2:#22d3ee;
+  --a3:#4aa3ff;
+  --hot:#ff6b57;
+  --warm:#ffb63d;
+  --cold:#5aa9ff;
+  --done:#2fd483;
+  --glow:0 0 60px rgba(47,107,255,.4);
+  --radius:22px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--txt);overflow-x:hidden;line-height:1.6}
+h1,h2,h3,.brand,.mono{font-family:'Sora',sans-serif;letter-spacing:-.02em}
+
+/* ===== Fondo ===== */
+.mesh{position:fixed;inset:0;z-index:-2;overflow:hidden}
+.blob{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5;animation:float 18s ease-in-out infinite}
+.b1{width:520px;height:520px;background:var(--a1);top:-120px;left:-80px}
+.b2{width:480px;height:480px;background:var(--a2);bottom:-140px;right:-60px;animation-delay:-6s}
+.b3{width:420px;height:420px;background:var(--a3);top:40%;left:55%;animation-delay:-12s;opacity:.35}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(60px,-40px) scale(1.1)}66%{transform:translate(-40px,50px) scale(.95)}}
+.grid-overlay{position:fixed;inset:0;z-index:-1;background-image:linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px);background-size:64px 64px;mask-image:radial-gradient(ellipse at 50% 0%,#000 20%,transparent 78%)}
+.cursor-glow{position:fixed;width:400px;height:400px;border-radius:50%;pointer-events:none;z-index:0;background:radial-gradient(circle,rgba(47,107,255,.12),transparent 65%);transform:translate(-50%,-50%);transition:opacity .3s;mix-blend-mode:screen}
+
+/* ===== Nav ===== */
+nav{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:14px clamp(18px,5vw,60px);backdrop-filter:blur(14px);background:rgba(5,7,15,.5);border-bottom:1px solid transparent;transition:.3s}
+nav.scrolled{border-bottom:1px solid var(--stroke);background:rgba(5,7,15,.82)}
+.brand{display:flex;align-items:center;gap:10px}
+.logo-chip{background:#fff;border-radius:12px;padding:7px 12px;display:flex;align-items:center;box-shadow:0 6px 20px rgba(47,107,255,.22)}
+.logo-chip img{height:26px;display:block}
+.nav-links{display:flex;gap:26px;align-items:center}
+.nav-links a{color:var(--muted);text-decoration:none;font-size:15px;font-weight:500;transition:.2s}
+.nav-links a:hover{color:var(--txt)}
+.btn{cursor:pointer;border:0;border-radius:999px;padding:12px 24px;font-weight:600;font-size:15px;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:transform .2s,box-shadow .3s}
+.btn svg{width:18px;height:18px}
+.btn-primary{background:linear-gradient(135deg,var(--a1),var(--a2));color:#fff;box-shadow:0 8px 30px rgba(47,107,255,.4)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(47,107,255,.6)}
+.btn-wa{background:var(--wa);color:#04231a}
+.btn-wa:hover{transform:translateY(-2px);box-shadow:0 10px 34px rgba(37,211,102,.5)}
+.btn-ghost{background:var(--card);color:var(--txt);border:1px solid var(--stroke)}
+.btn-ghost:hover{border-color:var(--a2);color:#fff}
+@media(max-width:860px){.nav-links{display:none}}
+
+/* ===== Hero ===== */
+header{min-height:100vh;display:flex;align-items:center;padding:120px clamp(18px,5vw,60px) 60px;gap:50px;flex-wrap:wrap;position:relative}
+.hero-copy{flex:1;min-width:340px;max-width:660px}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:7px 16px;border:1px solid var(--stroke);border-radius:999px;background:var(--card);font-size:13px;color:var(--muted);margin-bottom:24px}
+.pill .dot{width:8px;height:8px;border-radius:50%;background:var(--wa);box-shadow:0 0 10px var(--wa);animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.4}}
+h1{font-size:clamp(38px,6vw,66px);line-height:1.06;font-weight:800;margin-bottom:22px}
+h1 .grad{background:linear-gradient(100deg,var(--a2),var(--a1) 55%,var(--a3));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero-copy p.lead{font-size:clamp(17px,2vw,20px);color:var(--muted);margin-bottom:34px;max-width:580px}
+.hero-cta{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:34px}
+.trust{display:flex;gap:22px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:13px}
+.trust span{display:inline-flex;align-items:center;gap:7px}
+.trust b{color:var(--txt)}
+.trust svg{width:16px;height:16px;color:var(--a2)}
+
+/* ===== Phone / chat demo ===== */
+.hero-visual{flex:1;min-width:320px;display:flex;justify-content:center;position:relative}
+.phone{width:330px;max-width:88vw;background:linear-gradient(160deg,#0d1324,#080b16);border:1px solid var(--stroke);border-radius:38px;padding:14px;box-shadow:0 40px 90px rgba(0,0,0,.6),var(--glow);position:relative}
+.phone::before{content:"";position:absolute;top:16px;left:50%;transform:translateX(-50%);width:120px;height:22px;background:#05070f;border-radius:999px}
+.wa-head{display:flex;align-items:center;gap:12px;background:var(--wa2);border-radius:26px 26px 0 0;padding:26px 16px 14px;margin-top:6px}
+.wa-avatar{width:42px;height:42px;border-radius:50%;background:#fff;display:grid;place-items:center;overflow:hidden}
+.wa-avatar img{width:34px}
+.wa-head .info b{font-size:15px}.wa-head .info span{font-size:12px;color:#c8f5e0}
+.wa-body{background:#0b141a;padding:18px 14px;min-height:360px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:82%;padding:9px 13px;border-radius:14px;font-size:14px;line-height:1.4;opacity:0;transform:translateY(10px);animation:pop .5s forwards}
+.msg.in{background:#1f2c34;align-self:flex-start;border-top-left-radius:4px}
+.msg.out{background:#005c4b;align-self:flex-end;border-top-right-radius:4px}
+.msg .t{display:block;font-size:10px;color:#8aa;text-align:right;margin-top:3px}
+.msg.d1{animation-delay:.4s}.msg.d2{animation-delay:1.3s}.msg.d3{animation-delay:2.2s}.msg.d4{animation-delay:3.4s}.msg.d5{animation-delay:4.4s}
+.typing{align-self:flex-start;background:#1f2c34;padding:12px 16px;border-radius:14px;display:flex;gap:4px;opacity:0;animation:pop .4s forwards;animation-delay:2.9s}
+.typing span{width:7px;height:7px;border-radius:50%;background:#8aa;animation:blink 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.2s}.typing span:nth-child(3){animation-delay:.4s}
+@keyframes blink{50%{opacity:.3}}
+@keyframes pop{to{opacity:1;transform:translateY(0)}}
+.float-badge{position:absolute;background:var(--card);backdrop-filter:blur(12px);border:1px solid var(--stroke);border-radius:16px;padding:12px 16px;font-size:13px;box-shadow:0 12px 40px rgba(0,0,0,.4);animation:float 6s ease-in-out infinite;display:flex;align-items:center;gap:10px}
+.fb1{top:20px;left:-30px}.fb2{bottom:60px;right:-24px;animation-delay:-3s}
+.float-badge .fi{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(47,107,255,.3),rgba(34,211,238,.2))}
+.float-badge .fi svg{width:18px;height:18px;color:#fff}
+.float-badge b{display:block;font-size:16px;background:linear-gradient(90deg,var(--a2),var(--a1));-webkit-background-clip:text;background-clip:text;color:transparent}
+.float-badge small{color:var(--muted);font-size:11px}
+@media(max-width:520px){.float-badge{display:none}}
+
+/* ===== Sections ===== */
+section{padding:clamp(70px,10vw,120px) clamp(18px,5vw,60px);position:relative}
+.eyebrow{text-align:center;color:var(--a2);font-weight:600;font-size:14px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px}
+.sec-title{text-align:center;font-size:clamp(28px,4.5vw,46px);font-weight:800;max-width:860px;margin:0 auto 18px;line-height:1.1}
+.sec-sub{text-align:center;color:var(--muted);max-width:660px;margin:0 auto 60px;font-size:17px}
+
+/* ===== FEATURES (rediseñado + protagonista) ===== */
+.features-wrap{max-width:1200px;margin:0 auto}
+.feat-hero{display:grid;grid-template-columns:1.1fr 1fr;gap:22px;margin-bottom:22px}
+.feat-card{position:relative;overflow:hidden;border:1px solid var(--stroke);border-radius:26px;background:var(--card);backdrop-filter:blur(10px);padding:38px;transition:transform .35s,border-color .35s}
+.feat-card:hover{transform:translateY(-6px);border-color:rgba(47,107,255,.5)}
+.feat-card::after{content:"";position:absolute;inset:0;background:radial-gradient(500px at var(--mx,50%) var(--my,0%),rgba(47,107,255,.14),transparent 60%);opacity:0;transition:.35s;pointer-events:none}
+.feat-card:hover::after{opacity:1}
+.feat-card.hero-feat{background:linear-gradient(155deg,rgba(47,107,255,.14),rgba(34,211,238,.06)),var(--card)}
+.ic-badge{width:60px;height:60px;border-radius:16px;display:grid;place-items:center;margin-bottom:22px;background:linear-gradient(145deg,rgba(47,107,255,.25),rgba(34,211,238,.12));border:1px solid var(--stroke);position:relative}
+.ic-badge svg{width:30px;height:30px;color:#dff0ff}
+.ic-badge::before{content:"";position:absolute;inset:0;border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.15)}
+.feat-card h3{font-size:clamp(20px,2.4vw,26px);margin-bottom:10px}
+.feat-card p{color:var(--muted);font-size:15.5px}
+.feat-card .tag{display:inline-flex;align-items:center;gap:6px;margin-top:16px;font-size:12px;font-weight:600;color:var(--a2);background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.25);padding:5px 12px;border-radius:999px}
+.feat-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+@media(max-width:900px){.feat-hero,.feat-grid3{grid-template-columns:1fr}}
+
+/* ===== SECTORS (rediseñado) ===== */
+.sectors{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;max-width:1120px;margin:0 auto}
+.scard{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--stroke);border-radius:18px;padding:26px 18px;text-align:center;transition:transform .3s,border-color .3s,background .3s}
+.scard:hover{transform:translateY(-6px);border-color:var(--a1);background:linear-gradient(160deg,rgba(47,107,255,.12),transparent)}
+.scard .si{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;margin:0 auto 14px;background:linear-gradient(145deg,rgba(47,107,255,.22),rgba(34,211,238,.1));border:1px solid var(--stroke)}
+.scard .si svg{width:26px;height:26px;color:#dff0ff}
+.scard span{font-size:14px;font-weight:500;color:var(--txt)}
+@media(max-width:900px){.sectors{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:560px){.sectors{grid-template-columns:repeat(2,1fr)}}
+
+/* ===== STEPS (interactivo) ===== */
+.steps-inter{max-width:1080px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
+.steps-nav{display:flex;flex-direction:column;gap:14px}
+.stepbtn{display:flex;gap:18px;align-items:flex-start;padding:22px 24px;border:1px solid var(--stroke);border-radius:18px;background:var(--card2);cursor:pointer;transition:.35s;position:relative;overflow:hidden}
+.stepbtn:hover{border-color:rgba(47,107,255,.4)}
+.stepbtn.active{background:linear-gradient(120deg,rgba(47,107,255,.16),rgba(34,211,238,.05));border-color:var(--a1);box-shadow:0 10px 40px rgba(47,107,255,.15)}
+.stepbtn .n{flex-shrink:0;width:46px;height:46px;border-radius:12px;display:grid;place-items:center;font-family:'Sora';font-weight:800;font-size:20px;background:linear-gradient(135deg,var(--a1),var(--a2));color:#fff;transition:.35s}
+.stepbtn.active .n{box-shadow:var(--glow);transform:scale(1.05)}
+.stepbtn h3{font-size:18px;margin-bottom:4px}
+.stepbtn p{color:var(--muted);font-size:14.5px;max-height:0;opacity:0;overflow:hidden;transition:.4s}
+.stepbtn.active p{max-height:80px;opacity:1;margin-top:4px}
+.stepbtn .bar{position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(var(--a1),var(--a2));transform:scaleY(0);transform-origin:top;transition:transform .35s}
+.stepbtn.active .bar{transform:scaleY(1)}
+.steps-visual{position:relative;background:var(--card);border:1px solid var(--stroke);border-radius:24px;padding:30px;min-height:340px;backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center}
+.svisual{position:absolute;inset:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;opacity:0;transform:translateY(14px) scale(.98);transition:.45s;pointer-events:none}
+.svisual.show{opacity:1;transform:none;pointer-events:auto}
+.svisual .big-ic{width:96px;height:96px;border-radius:26px;display:grid;place-items:center;margin-bottom:22px;background:linear-gradient(145deg,rgba(47,107,255,.3),rgba(34,211,238,.14));border:1px solid var(--stroke);animation:bob 3s ease-in-out infinite}
+.svisual .big-ic svg{width:46px;height:46px;color:#fff}
+@keyframes bob{50%{transform:translateY(-8px)}}
+.svisual h4{font-size:22px;margin-bottom:8px}
+.svisual p{color:var(--muted);max-width:320px;font-size:15px}
+.dots{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:8px}
+.dots i{width:8px;height:8px;border-radius:50%;background:var(--stroke);transition:.3s}
+.dots i.on{background:var(--a1);width:22px;border-radius:6px}
+@media(max-width:860px){.steps-inter{grid-template-columns:1fr}.steps-visual{min-height:300px}}
+
+/* ===== LIVE DEMO (inbox + pipeline) ===== */
+.demo-wrap{max-width:1180px;margin:0 auto}
+.pipeline{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:34px}
+.pstage{flex:1;min-width:150px;background:var(--card);border:1px solid var(--stroke);border-radius:16px;padding:16px 18px;position:relative;transition:transform .3s,border-color .3s}
+.pstage:hover{transform:translateY(-4px)}
+.pstage .ph{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:10px}
+.pstage .ph .d{width:9px;height:9px;border-radius:50%}
+.pstage .cnt{font-family:'Sora';font-weight:800;font-size:26px}
+.pstage .cnt small{font-size:13px;font-weight:500;color:var(--muted);margin-left:4px}
+.pstage .flow{position:absolute;right:-13px;top:50%;transform:translateY(-50%);z-index:2;color:var(--muted)}
+.pstage:last-child .flow{display:none}
+.st-cold{border-color:rgba(90,169,255,.35)}.st-cold .d{background:var(--cold)}.st-cold .cnt{color:var(--cold)}
+.st-warm{border-color:rgba(255,182,61,.35)}.st-warm .d{background:var(--warm)}.st-warm .cnt{color:var(--warm)}
+.st-hot{border-color:rgba(255,107,87,.4)}.st-hot .d{background:var(--hot)}.st-hot .cnt{color:var(--hot)}
+.st-order{border-color:rgba(47,107,255,.4)}.st-order .d{background:var(--a1)}.st-order .cnt{color:var(--a3)}
+.st-done{border-color:rgba(47,212,131,.4)}.st-done .d{background:var(--done)}.st-done .cnt{color:var(--done)}
+
+.inbox{display:grid;grid-template-columns:290px 1fr 240px;background:#0b1020;border:1px solid var(--stroke);border-radius:22px;overflow:hidden;box-shadow:0 40px 90px rgba(0,0,0,.5)}
+.ib-col{border-right:1px solid var(--stroke2)}
+.ib-head{padding:16px 18px;border-bottom:1px solid var(--stroke2);display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.02)}
+.ib-head b{font-size:14px}
+.ib-head .chips{display:flex;gap:8px;font-size:11px;color:var(--muted)}
+.ib-head .chips i{font-style:normal;background:rgba(255,255,255,.06);padding:3px 8px;border-radius:8px}
+.ib-head .chips i.act{background:rgba(47,107,255,.2);color:#cfe0ff}
+.conv{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--stroke2);cursor:pointer;transition:background .2s}
+.conv:hover,.conv.sel{background:rgba(47,107,255,.08)}
+.conv .av{width:38px;height:38px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:13px;font-weight:700;color:#fff}
+.conv .cbody{flex:1;min-width:0}
+.conv .cbody .top{display:flex;justify-content:space-between;align-items:center}
+.conv .cbody .nm{font-size:14px;font-weight:600}
+.conv .cbody .tm{font-size:11px;color:var(--muted)}
+.conv .cbody .pv{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0 6px}
+.lbl{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 9px;border-radius:7px}
+.lbl .d{width:7px;height:7px;border-radius:50%}
+.lbl-hot{background:rgba(255,107,87,.14);color:#ff9686}.lbl-hot .d{background:var(--hot)}
+.lbl-warm{background:rgba(255,182,61,.14);color:#ffcd73}.lbl-warm .d{background:var(--warm)}
+.lbl-order{background:rgba(47,107,255,.14);color:#9cc0ff}.lbl-order .d{background:var(--a1)}
+.lbl-done{background:rgba(47,212,131,.14);color:#77e6b0}.lbl-done .d{background:var(--done)}
+
+/* chat center */
+.ib-chat{display:flex;flex-direction:column;background:#0a0f1e}
+.chat-top{padding:14px 18px;border-bottom:1px solid var(--stroke2);display:flex;align-items:center;gap:12px}
+.chat-top .av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;color:#fff}
+.chat-top .nm{font-size:14px;font-weight:600}
+.chat-top .st{font-size:11px;color:var(--wa)}
+.chat-top .resolve{margin-left:auto;font-size:11px;color:var(--done);border:1px solid rgba(47,212,131,.3);padding:5px 12px;border-radius:8px}
+.chat-body{padding:18px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:260px}
+.cmsg{max-width:78%;padding:9px 13px;border-radius:14px;font-size:13.5px;line-height:1.4}
+.cmsg.in{background:#1a2436;align-self:flex-start;border-top-left-radius:4px}
+.cmsg.out{background:linear-gradient(135deg,rgba(47,107,255,.9),rgba(34,211,238,.75));color:#04121f;align-self:flex-end;border-top-right-radius:4px;font-weight:500}
+.cmsg .t{display:block;font-size:10px;opacity:.65;text-align:right;margin-top:3px}
+.sys{align-self:center;font-size:11px;color:var(--muted);background:rgba(255,255,255,.04);padding:4px 12px;border-radius:8px}
+.chat-input{margin:0 18px 18px;background:rgba(255,255,255,.04);border:1px solid var(--stroke2);border-radius:12px;padding:11px 14px;font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.ai-tag{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:#04121f;background:linear-gradient(135deg,var(--a2),var(--a1));padding:4px 10px;border-radius:999px}
+
+/* right context panel */
+.ib-ctx{padding:18px;background:rgba(255,255,255,.015)}
+.ctx-h{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:0 0 10px}
+.ctx-block{margin-bottom:20px}
+.ctx-row{background:rgba(255,255,255,.04);border:1px solid var(--stroke2);border-radius:10px;padding:10px 12px;font-size:13px;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ctx-row .val{color:var(--txt);font-weight:600}
+.prio{display:inline-flex;align-items:center;gap:6px;color:var(--hot);font-weight:600;font-size:13px}
+.tagline{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:960px){.inbox{grid-template-columns:1fr}.ib-col.list,.ib-ctx{display:none}}
+
+/* ===== TESTIMONIAL / CTA / FAQ / FOOTER ===== */
+.quote{max-width:840px;margin:0 auto;text-align:center;background:var(--card);border:1px solid var(--stroke);border-radius:var(--radius);padding:50px 40px;backdrop-filter:blur(10px)}
+.quote .big-q{font-family:'Sora';font-size:clamp(20px,3vw,30px);font-weight:600;line-height:1.4;margin-bottom:24px}
+.quote .who{color:var(--muted);font-size:15px}.quote .who b{color:var(--txt)}
+.quote .stars{color:#ffd166;font-size:22px;margin-bottom:20px;letter-spacing:3px}
+.cta-final{max-width:1000px;margin:0 auto;background:linear-gradient(135deg,rgba(47,107,255,.2),rgba(34,211,238,.1));border:1px solid var(--stroke);border-radius:32px;padding:clamp(40px,7vw,70px);text-align:center;position:relative;overflow:hidden}
+.cta-final::before{content:"";position:absolute;width:300px;height:300px;background:var(--a1);filter:blur(90px);opacity:.35;top:-100px;right:-60px}
+.cta-final h2{font-size:clamp(28px,4.5vw,44px);margin-bottom:16px;position:relative}
+.cta-final p{color:var(--muted);max-width:540px;margin:0 auto 32px;font-size:18px;position:relative}
+.cta-final .hero-cta{justify-content:center;position:relative}
+.faq{max-width:760px;margin:0 auto}
+.acc{background:var(--card);border:1px solid var(--stroke);border-radius:16px;margin-bottom:12px;overflow:hidden}
+.acc summary{padding:20px 24px;cursor:pointer;font-weight:600;font-size:17px;list-style:none;display:flex;justify-content:space-between;align-items:center}
+.acc summary::-webkit-details-marker{display:none}
+.acc summary::after{content:"+";font-size:24px;color:var(--a2);transition:.3s}
+.acc[open] summary::after{transform:rotate(45deg)}
+.acc p{padding:0 24px 22px;color:var(--muted)}
+footer{border-top:1px solid var(--stroke);padding:60px clamp(18px,5vw,60px) 40px;background:var(--bg2)}
+.foot-grid{display:flex;justify-content:space-between;flex-wrap:wrap;gap:30px;max-width:1180px;margin:0 auto 30px}
+.foot-col h4{font-size:14px;margin-bottom:14px;color:var(--txt)}
+.foot-col a{display:block;color:var(--muted);text-decoration:none;font-size:14px;margin-bottom:9px}
+.foot-col a:hover{color:var(--a2)}
+.foot-bottom{text-align:center;color:var(--muted);font-size:13px;border-top:1px solid var(--stroke);padding-top:24px;max-width:1180px;margin:0 auto}
+
+.reveal{opacity:0;transform:translateY(30px);transition:opacity .7s,transform .7s}
+.reveal.show{opacity:1;transform:none}
+.wa-fab{position:fixed;bottom:24px;right:24px;z-index:60;width:60px;height:60px;border-radius:50%;background:var(--wa);display:grid;place-items:center;box-shadow:0 10px 30px rgba(37,211,102,.5);text-decoration:none;animation:pulse 2s infinite}
+.wa-fab svg{width:30px;height:30px;color:#04231a}
+</style>
+</head>
+<body>
+
+<div class="mesh"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+<div class="grid-overlay"></div>
+<div class="cursor-glow" id="glow"></div>
+
+<!-- ===== SVG sprite (íconos premium) ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 2.5v4M16 2.5v4"/><path d="M9 14.5l2 2 4-4"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V3.5M9 3.5h6"/><circle cx="9" cy="13" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="13" r="1.2" fill="currentColor" stroke="none"/><path d="M1.5 12v3M22.5 12v3"/></symbol>
+    <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3h2l2.4 12.5a1.5 1.5 0 0 0 1.5 1.2h8.7a1.5 1.5 0 0 0 1.5-1.2L21.5 7H6"/><circle cx="9.5" cy="20" r="1.4"/><circle cx="17.5" cy="20" r="1.4"/></symbol>
+    <symbol id="i-media" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M4 17l4.5-4.5 3 3L16 11l4 4.5"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l7.5 3v6c0 4.6-3.2 8.4-7.5 10-4.3-1.6-7.5-5.4-7.5-10v-6z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2.5L4.5 13.5H11l-.5 8L19 10.5H12.5z"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6"/><path d="M10.5 6.5l1.8-1.8a4 4 0 0 1 5.7 5.7l-2 2"/><path d="M13.5 17.5l-1.8 1.8a4 4 0 0 1-5.7-5.7l2-2"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M5 12H1M23 12h-4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M17.7 6.3l-2.5 2.5M8.8 15.2l-2.5 2.5"/></symbol>
+    <symbol id="i-rocket" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 15c-1.5 1-2 4-2 4s3-.5 4-2c.8-.8.9-2 .2-2.8s-1.6-.6-2.2-.2z"/><path d="M9 13.5c5-5 8-6 11-6 0 3-1 6-6 11l-3-1z"/><path d="M14 8.5a1.5 1.5 0 1 0 3 0 1.5 1.5 0 0 0-3 0z"/></symbol>
+    <symbol id="i-whatsapp" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91S17.5 2 12.04 2zm5.8 14.16c-.24.68-1.4 1.3-1.94 1.38-.5.07-1.13.1-1.82-.11-.42-.13-.96-.31-1.65-.61-2.9-1.25-4.8-4.17-4.94-4.36-.15-.19-1.18-1.57-1.18-3 0-1.42.75-2.12 1.01-2.41.27-.29.58-.36.78-.36l.56.01c.18 0 .42-.07.65.5.24.58.82 2 .89 2.15.07.14.12.31.02.5-.09.19-.14.31-.28.48-.14.17-.29.37-.42.5-.14.14-.28.29-.12.57.16.29.71 1.17 1.53 1.9 1.05.94 1.94 1.23 2.22 1.37.28.14.44.12.6-.07.16-.19.69-.8.87-1.08.18-.28.36-.23.61-.14.25.09 1.6.75 1.87.89.28.14.46.21.53.33.07.12.07.68-.17 1.36z"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 7l8 6 8-6"/></symbol>
+    <symbol id="i-heart-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.5-7-9.5A4 4 0 0 1 12 7a4 4 0 0 1 7 3.5c0 .8-.2 1.6-.5 2.3"/><path d="M8 12h2l1.5-3 2 5 1.2-2H19"/></symbol>
+    <symbol id="i-scissors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2.5"/><circle cx="6" cy="17" r="2.5"/><path d="M8.2 8.5L20 17M8.2 15.5L20 7"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M7 21h10M5 7h14M5 7l-2.5 5a3 3 0 0 0 5 0zM19 7l-2.5 5a3 3 0 0 0 5 0z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-6 8 6M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/></symbol>
+    <symbol id="i-cap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5L12 4l9.5 4.5L12 13z"/><path d="M6 10.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-5.5"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6.5a4.5 4.5 0 0 0-5.9 5.7L3 18.3 5.7 21l6.1-6.1a4.5 4.5 0 0 0 5.7-5.9l-2.7 2.7-2.8-2.8z"/></symbol>
+    <symbol id="i-bag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 12H6z"/><path d="M8.5 8V6.5a3.5 3.5 0 0 1 7 0V8"/></symbol>
+    <symbol id="i-plate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/></symbol>
+    <symbol id="i-dumbbell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4M5 4h10l-1.5 3L15 10H5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></symbol>
+  </defs>
+</svg>
+
+<!-- NAV -->
+<nav id="nav">
+  <div class="brand"><span class="logo-chip"><img src="assets/agencia-logo.png" alt="agencIA" /></span></div>
+  <div class="nav-links">
+    <a href="#features">Funciones</a>
+    <a href="#sectors">Sectores</a>
+    <a href="#how">Cómo funciona</a>
+    <a href="#demo">En vivo</a>
+    <a href="#cta" class="btn btn-primary">Solicitar demo</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header>
+  <div class="hero-copy">
+    <span class="pill"><span class="dot"></span>IA que trabaja por tu empresa · 24/7 · Datos en Colombia</span>
+    <h1>Automatiza la <span class="grad">atención, el agendamiento</span> y las ventas de tu empresa con IA</h1>
+    <p class="lead">agencIA responde a tus clientes, <b>agenda citas automáticamente</b>, gestiona pedidos y clasifica cada contacto, todo por WhatsApp y desde tu propio número. Para cualquier negocio que quiera dejar de perder tiempo y oportunidades.</p>
+    <div class="hero-cta">
+      <a href="#cta" class="btn btn-wa"><svg><use href="#i-whatsapp"/></svg>Solicitar demo gratis</a>
+      <a href="#how" class="btn btn-ghost">Ver cómo funciona</a>
+    </div>
+    <div class="trust">
+      <span><svg><use href="#i-calendar"/></svg>Agenda con <b>Google Calendar & Meet</b></span>
+      <span><svg><use href="#i-shield"/></svg>Datos <b>100% en Colombia</b></span>
+      <span><svg><use href="#i-bolt"/></svg><b>Sin costo</b> por conversación</span>
+    </div>
+  </div>
+
+  <div class="hero-visual">
+    <div class="float-badge fb1"><span class="fi"><svg><use href="#i-calendar"/></svg></span><span><b>Citas 24/7</b><small>agendadas solas</small></span></div>
+    <div class="float-badge fb2"><span class="fi"><svg><use href="#i-bolt"/></svg></span><span><b>&lt; 3 seg</b><small>en responder</small></span></div>
+    <div class="phone">
+      <div class="wa-head">
+        <div class="wa-avatar"><img src="assets/agencia-logo.png" alt="agencIA" style="width:36px"/></div>
+        <div class="info"><b>agencIA · Asistente</b><br><span>en línea</span></div>
+      </div>
+      <div class="wa-body">
+        <div class="msg out d1">Hola, quisiera agendar una cita 🙌<span class="t">10:02 ✓✓</span></div>
+        <div class="msg in d2">¡Hola! Con gusto. Tengo disponible mañana 9:00 a.m. o 3:00 p.m. ¿Cuál te queda mejor?<span class="t">10:02</span></div>
+        <div class="msg out d3">Mañana 9 a.m. porfa<span class="t">10:02 ✓✓</span></div>
+        <div class="typing"><span></span><span></span><span></span></div>
+        <div class="msg in d4">✅ ¡Listo! Cita confirmada para mañana 9:00 a.m. Te envié la invitación con el enlace de Google Meet.<span class="t">10:03</span></div>
+        <div class="msg in d5">Te recordaré un día antes. ¿Algo más en que te ayude?<span class="t">10:03</span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="eyebrow reveal">Todo en un solo lugar</div>
+  <h2 class="sec-title reveal">Una plataforma. Todo tu negocio en automático.</h2>
+  <p class="sec-sub reveal">Módulos inteligentes que atienden, agendan, venden y organizan, para que tú te enfoques en hacer crecer tu empresa.</p>
+  <div class="features-wrap">
+    <div class="feat-hero">
+      <div class="feat-card hero-feat reveal">
+        <div class="ic-badge"><svg><use href="#i-calendar"/></svg></div>
+        <h3>Agendamiento inteligente</h3>
+        <p>Tus clientes reservan, reagendan o cancelan citas directamente desde el chat. Integración nativa con <b>Google Calendar y Google Meet</b>, con confirmaciones y recordatorios automáticos. Se acabaron las llamadas y los cruces de horario.</p>
+        <span class="tag"><svg style="width:14px;height:14px"><use href="#i-check"/></svg>Sincronización bidireccional en tiempo real</span>
+      </div>
+      <div class="feat-card reveal">
+        <div class="ic-badge"><svg><use href="#i-bot"/></svg></div>
+        <h3>Atención al cliente 24/7</h3>
+        <p>Resuelve preguntas frecuentes, guía al cliente y mantiene el tono de tu marca, en español natural, a cualquier hora del día o de la noche, sin descanso ni festivos.</p>
+        <span class="tag"><svg style="width:14px;height:14px"><use href="#i-check"/></svg>Respuesta en menos de 3 segundos</span>
+      </div>
+    </div>
+    <div class="feat-grid3">
+      <div class="feat-card reveal">
+        <div class="ic-badge"><svg><use href="#i-cart"/></svg></div>
+        <h3>Pedidos y cotizaciones</h3>
+        <p>Captura los datos, calcula totales y registra la orden automáticamente, sin intervención manual.</p>
+      </div>
+      <div class="feat-card reveal">
+        <div class="ic-badge"><svg><use href="#i-media"/></svg></div>
+        <h3>Envío de multimedia</h3>
+        <p>Comparte fotos, videos, catálogos y PDFs de forma automática durante la conversación.</p>
+      </div>
+      <div class="feat-card reveal">
+        <div class="ic-badge"><svg><use href="#i-target"/></svg></div>
+        <h3>Clasificación de contactos</h3>
+        <p>Cada conversación se etiqueta sola según su interés para que priorices lo importante.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SECTORS -->
+<section id="sectors">
+  <div class="eyebrow reveal">Para cualquier industria</div>
+  <h2 class="sec-title reveal">Si atiendes clientes por WhatsApp, agencIA es para ti</h2>
+  <p class="sec-sub reveal">No importa tu sector: si agendas citas, respondes consultas o vendes, la IA lo automatiza por ti.</p>
+  <div class="sectors">
+    <div class="scard reveal"><div class="si"><svg><use href="#i-heart-pulse"/></svg></div><span>Clínicas y consultorios</span></div>
+    <div class="scard reveal"><div class="si"><svg><use href="#i-scissors"/></svg></div><span>Salones y spas</span></div>
+    <div class="scard reveal"><div class="si"><svg><use href="#i-scale"/></svg></div><span>Consultorías y estudios</span></div>
+    <div class="scard reveal"><div class="si"><svg><use href="#i-home"/></svg></div><span>Inmobiliarias</span></div>
+    <div class="scard reveal"><div class="si"><svg><use href="#i-cap"/></svg></div><span>Academias y educación</span></div>
+    <div class="scard reveal"><div class="si"><svg><use href="#i-wrench"/></svg></div><span>Servicios técnicos</span></div>
+    <div class="scard reveal"><div class="si"><svg><use href="#i-bag"/></svg></div><span>E-commerce y retail</span></div>
+    <div class="scard reveal"><div class="si"><svg><use href="#i-rocket"/></svg></div><span>Agencias y startups</span></div>
+    <div class="scard reveal"><div class="si"><svg><use href="#i-plate"/></svg></div><span>Restaurantes y reservas</span></div>
+    <div class="scard reveal"><div class="si"><svg><use href="#i-dumbbell"/></svg></div><span>Gimnasios y bienestar</span></div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS (interactivo) -->
+<section id="how">
+  <div class="eyebrow reveal">Simple de verdad</div>
+  <h2 class="sec-title reveal">Tu asistente IA, listo en 3 pasos</h2>
+  <p class="sec-sub reveal">Sin apps que instalar. Tus clientes siguen escribiéndote al mismo WhatsApp de siempre.</p>
+  <div class="steps-inter reveal">
+    <div class="steps-nav">
+      <div class="stepbtn active" data-step="0"><span class="bar"></span><span class="n">1</span><div><h3>Conectamos tu WhatsApp</h3><p>Vinculamos tu número de negocio con la API oficial de WhatsApp y tu agenda de Google en minutos.</p></div></div>
+      <div class="stepbtn" data-step="1"><span class="bar"></span><span class="n">2</span><div><h3>Entrenamos tu IA</h3><p>Cargamos tus servicios, horarios, precios y tono de marca. La IA aprende exactamente cómo trabaja tu empresa.</p></div></div>
+      <div class="stepbtn" data-step="2"><span class="bar"></span><span class="n">3</span><div><h3>Empieza a automatizar</h3><p>La IA atiende, agenda y organiza. Tú ves todo en tu panel con métricas en tiempo real.</p></div></div>
+    </div>
+    <div class="steps-visual">
+      <div class="svisual show" data-vis="0"><div class="big-ic"><svg><use href="#i-link"/></svg></div><h4>Conexión en minutos</h4><p>Tu número de siempre, ahora potenciado con IA y conectado a tu calendario.</p></div>
+      <div class="svisual" data-vis="1"><div class="big-ic"><svg><use href="#i-spark"/></svg></div><h4>IA con tu personalidad</h4><p>Habla como tu marca: cercana, formal o profesional, tú decides el tono.</p></div>
+      <div class="svisual" data-vis="2"><div class="big-ic"><svg><use href="#i-rocket"/></svg></div><h4>Todo en automático</h4><p>Citas, respuestas y pedidos funcionando solos, 24 horas al día.</p></div>
+      <div class="dots"><i class="on"></i><i></i><i></i></div>
+    </div>
+  </div>
+</section>
+
+<!-- LIVE DEMO: pipeline + inbox -->
+<section id="demo">
+  <div class="eyebrow reveal">Míralo en acción</div>
+  <h2 class="sec-title reveal">Cada contacto, organizado y avanzando solo</h2>
+  <p class="sec-sub reveal">agencIA clasifica automáticamente cada conversación y la mueve por tu embudo: de un simple saludo a una venta cerrada, sin que muevas un dedo.</p>
+  <div class="demo-wrap reveal">
+    <!-- Pipeline -->
+    <div class="pipeline">
+      <div class="pstage st-cold"><div class="ph"><span class="d"></span>Lead frío</div><div class="cnt" data-count="128">0</div><span class="flow"><svg style="width:22px;height:22px"><use href="#i-arrow"/></svg></span></div>
+      <div class="pstage st-warm"><div class="ph"><span class="d"></span>Lead tibio</div><div class="cnt" data-count="74">0</div><span class="flow"><svg style="width:22px;height:22px"><use href="#i-arrow"/></svg></span></div>
+      <div class="pstage st-hot"><div class="ph"><span class="d"></span>Lead caliente</div><div class="cnt" data-count="46">0</div><span class="flow"><svg style="width:22px;height:22px"><use href="#i-arrow"/></svg></span></div>
+      <div class="pstage st-order"><div class="ph"><span class="d"></span>Pedido</div><div class="cnt" data-count="31">0</div><span class="flow"><svg style="width:22px;height:22px"><use href="#i-arrow"/></svg></span></div>
+      <div class="pstage st-done"><div class="ph"><span class="d"></span>Entregado</div><div class="cnt" data-count="27">0</div></div>
+    </div>
+
+    <!-- Inbox mockup -->
+    <div class="inbox">
+      <!-- list -->
+      <div class="ib-col list">
+        <div class="ib-head"><b>Conversaciones</b><div class="chips"><i class="act">Todas</i><i>Sin asignar</i></div></div>
+        <div class="conv sel">
+          <div class="av" style="background:linear-gradient(135deg,#ff6b57,#ff9686)">C1</div>
+          <div class="cbody"><div class="top"><span class="nm">Cliente #1048</span><span class="tm">2 min</span></div><div class="pv">¡Perfecto! Para completar tu pedido, envíame…</div><span class="lbl lbl-hot"><span class="d"></span>caliente</span></div>
+        </div>
+        <div class="conv">
+          <div class="av" style="background:linear-gradient(135deg,#2f6bff,#4aa3ff)">C2</div>
+          <div class="cbody"><div class="top"><span class="nm">Cliente #1047</span><span class="tm">6 min</span></div><div class="pv">Cita confirmada para mañana 9:00 a.m. ✅</div><span class="lbl lbl-order"><span class="d"></span>pedido</span></div>
+        </div>
+        <div class="conv">
+          <div class="av" style="background:linear-gradient(135deg,#ffb63d,#ffcd73)">C3</div>
+          <div class="cbody"><div class="top"><span class="nm">Cliente #1046</span><span class="tm">12 min</span></div><div class="pv">Claro, te comparto el catálogo y precios 📎</div><span class="lbl lbl-warm"><span class="d"></span>tibio</span></div>
+        </div>
+        <div class="conv">
+          <div class="av" style="background:linear-gradient(135deg,#2fd483,#77e6b0)">C4</div>
+          <div class="cbody"><div class="top"><span class="nm">Cliente #1045</span><span class="tm">28 min</span></div><div class="pv">¡Gracias por tu compra! Tu pedido va en camino 🚚</div><span class="lbl lbl-done"><span class="d"></span>entregado</span></div>
+        </div>
+      </div>
+      <!-- chat -->
+      <div class="ib-chat">
+        <div class="chat-top">
+          <div class="av" style="background:linear-gradient(135deg,#ff6b57,#ff9686)">C1</div>
+          <div><div class="nm">Cliente #1048</div><div class="st">● en línea</div></div>
+          <span class="resolve">Resolver</span>
+        </div>
+        <div class="chat-body">
+          <div class="cmsg in">Hola, vi su anuncio 👀 ¿tienen disponible?<span class="t">2:04 p.m.</span></div>
+          <div class="cmsg out">¡Hola! Claro que sí 😊 Te muestro el producto:<span class="t">2:04 p.m.</span></div>
+          <div class="cmsg out">📷 Foto · 🎥 Video demo enviados<span class="t">2:04 p.m.</span></div>
+          <div class="sys">La IA etiquetó la conversación como «caliente»</div>
+          <div class="cmsg in">Me interesa, ¿cómo hago el pedido?<span class="t">2:05 p.m.</span></div>
+          <div class="cmsg out">¡Perfecto! Para completar tu pedido, envíame en un solo mensaje: nombre, ciudad y cantidad 📝<span class="t">2:05 p.m.</span></div>
+        </div>
+        <div class="chat-input">Escribe un mensaje…<span class="ai-tag"><svg style="width:13px;height:13px"><use href="#i-spark"/></svg>Respondido por IA</span></div>
+      </div>
+      <!-- context -->
+      <div class="ib-ctx">
+        <div class="ctx-block">
+          <p class="ctx-h">Estado del contacto</p>
+          <div class="ctx-row"><span>Etapa</span><span class="val" style="color:#ff9686">Lead caliente</span></div>
+          <div class="ctx-row"><span>Prioridad</span><span class="prio"><svg style="width:14px;height:14px"><use href="#i-bolt"/></svg>Urgente</span></div>
+        </div>
+        <div class="ctx-block">
+          <p class="ctx-h">Etiquetas automáticas</p>
+          <div class="tagline">
+            <span class="lbl lbl-hot"><span class="d"></span>caliente</span>
+            <span class="lbl lbl-order"><span class="d"></span>pedido</span>
+          </div>
+        </div>
+        <div class="ctx-block">
+          <p class="ctx-h">Gestionado por</p>
+          <div class="ctx-row"><span>Asistente</span><span class="val" style="color:#9cc0ff">agencIA · IA</span></div>
+          <div class="ctx-row"><span>Seguimiento</span><span class="val" style="color:#77e6b0">Activo</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIAL -->
+<section>
+  <div class="quote reveal">
+    <div class="stars">★★★★★</div>
+    <p class="big-q">"Pasamos de responder tarde y perder citas, a tener un asistente que <span style="color:var(--a2)">no duerme</span>. La agenda se llena sola y nuestro equipo por fin se dedica a atender bien, no a chatear todo el día."</p>
+    <p class="who"><b>Empresas que ya automatizan con agencIA</b> · Servicios, salud, educación y comercio</p>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="cta">
+  <div class="cta-final reveal">
+    <h2>¿Listo para que la IA trabaje por tu empresa?</h2>
+    <p>Agenda una demo gratuita y mira a tu asistente IA en acción, con tus propios servicios y horarios, en menos de 24 horas.</p>
+    <div class="hero-cta">
+      <a href="https://wa.me/573000000000?text=Hola%20agencIA%2C%20quiero%20una%20demo" target="_blank" class="btn btn-wa"><svg><use href="#i-whatsapp"/></svg>Solicitar demo por WhatsApp</a>
+      <a href="mailto:info@identechnology.co" class="btn btn-ghost"><svg><use href="#i-mail"/></svg>Escríbenos</a>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq">
+  <div class="eyebrow reveal">Preguntas frecuentes</div>
+  <h2 class="sec-title reveal">Todo lo que necesitas saber</h2>
+  <div class="faq" style="margin-top:40px">
+    <details class="acc reveal"><summary>¿Sirve para mi tipo de negocio?</summary><p>Sí. agencIA se adapta a cualquier empresa que atienda clientes por WhatsApp: clínicas, salones, consultorías, inmobiliarias, academias, servicios técnicos, comercios, restaurantes y más. Configuramos la IA según tu sector.</p></details>
+    <details class="acc reveal"><summary>¿Cómo funciona el agendamiento?</summary><p>La IA consulta tu disponibilidad en Google Calendar, ofrece los horarios libres, confirma la cita, crea el enlace de Google Meet (si aplica) y envía recordatorios automáticos. Todo desde el chat.</p></details>
+    <details class="acc reveal"><summary>¿Mis clientes tienen que descargar algo?</summary><p>No. Siguen escribiéndote al mismo WhatsApp de siempre. La IA responde por detrás sin que ellos noten cambio alguno.</p></details>
+    <details class="acc reveal"><summary>¿La IA suena como robot?</summary><p>Para nada. Definimos el tono y personalidad de tu marca (cercano, formal, con emojis, etc.) para que hable exactamente como tú quieres.</p></details>
+    <details class="acc reveal"><summary>¿Dónde quedan mis datos?</summary><p>100% en servidores en Colombia. Tú eres siempre el dueño de tu información y cumplimos con la protección de datos local.</p></details>
+    <details class="acc reveal"><summary>¿Puedo tomar el control de un chat manualmente?</summary><p>Sí. Cuando quieras, un humano de tu equipo puede intervenir la conversación desde la bandeja unificada.</p></details>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="foot-grid">
+    <div class="foot-col" style="max-width:300px">
+      <span class="logo-chip"><img src="assets/agencia-logo.png" alt="agencIA" /></span>
+      <p style="color:var(--muted);font-size:14px;margin-top:14px">Automatización con Inteligencia Artificial por WhatsApp para empresas. Atención, agendamiento y ventas, sin fricción. Hecho con orgullo en Colombia por IdenTechnology.</p>
+    </div>
+    <div class="foot-col"><h4>Producto</h4><a href="#features">Funciones</a><a href="#sectors">Sectores</a><a href="#how">Cómo funciona</a><a href="#demo">En vivo</a><a href="#cta">Solicitar demo</a></div>
+    <div class="foot-col"><h4>Recursos</h4><a href="#faq">Preguntas frecuentes</a><a href="#">Casos de éxito</a><a href="#">Blog</a></div>
+    <div class="foot-col"><h4>Contacto</h4><a href="mailto:info@identechnology.co">info@identechnology.co</a><a href="https://wa.me/573000000000" target="_blank">WhatsApp</a><a href="#">Colombia</a></div>
+  </div>
+  <div class="foot-bottom">© 2026 agencIA · IdenTechnology · Todos los derechos reservados · Hecho en Colombia</div>
+</footer>
+
+<a class="wa-fab" href="https://wa.me/573000000000?text=Hola%20agencIA" target="_blank" title="Escríbenos por WhatsApp"><svg><use href="#i-whatsapp"/></svg></a>
+
+<script>
+const nav=document.getElementById('nav');
+addEventListener('scroll',()=>nav.classList.toggle('scrolled',scrollY>30));
+const glow=document.getElementById('glow');
+addEventListener('mousemove',e=>{glow.style.left=e.clientX+'px';glow.style.top=e.clientY+'px'});
+document.querySelectorAll('.feat-card').forEach(t=>{
+  t.addEventListener('mousemove',e=>{const r=t.getBoundingClientRect();t.style.setProperty('--mx',(e.clientX-r.left)+'px');t.style.setProperty('--my',(e.clientY-r.top)+'px')});
+});
+// reveal
+const io=new IntersectionObserver((es)=>es.forEach(en=>{if(en.isIntersecting){en.target.classList.add('show');io.unobserve(en.target)}}),{threshold:.14});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+// counters
+const cio=new IntersectionObserver((es)=>es.forEach(en=>{
+  if(!en.isIntersecting)return;const el=en.target;const end=parseFloat(el.dataset.count);let s=0;const step=end/45;
+  const tick=()=>{s+=step;if(s>=end){el.textContent=Math.round(end);return}el.textContent=Math.round(s);requestAnimationFrame(tick)};
+  tick();cio.unobserve(el);
+}),{threshold:.5});
+document.querySelectorAll('[data-count]').forEach(el=>cio.observe(el));
+// interactive steps
+const stepbtns=document.querySelectorAll('.stepbtn');
+const svis=document.querySelectorAll('.svisual');
+const dots=document.querySelectorAll('.dots i');
+let cur=0,timer;
+function setStep(i){
+  cur=i;
+  stepbtns.forEach((b,x)=>b.classList.toggle('active',x===i));
+  svis.forEach((v,x)=>v.classList.toggle('show',x===i));
+  dots.forEach((d,x)=>d.classList.toggle('on',x===i));
+}
+stepbtns.forEach((b,i)=>b.addEventListener('click',()=>{setStep(i);restart()}));
+function auto(){timer=setInterval(()=>setStep((cur+1)%3),3200)}
+function restart(){clearInterval(timer);auto()}
+auto();
+</script>
+</body>
+</html>
