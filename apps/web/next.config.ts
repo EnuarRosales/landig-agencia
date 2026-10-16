@@ -1,9 +1,13 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  output: "standalone",
 };
 
-export default nextConfig;
+/** Loads `i18n/request.ts` (default path when there is no `src/` directory). */
+const withNextIntl = createNextIntlPlugin();
+
+export default withNextIntl(nextConfig);

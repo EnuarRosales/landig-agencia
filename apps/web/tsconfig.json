@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@mocter/domain": ["../packages/domain/src/index.ts"]
     }
   },
   "include": [
