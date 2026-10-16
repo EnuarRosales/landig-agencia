@@ -47,7 +47,7 @@
 | T6 | S3, S4 | inline | done | d205753 | Implementar componente y Server Action del formulario "Solicitar demo" con validación Zod y guardado en BD. |
 | T7 | S1 | inline | done | 69233b0 | Configurar soporte PWA en `apps/web` (manifest nativo `manifest.ts` e instalación/Service Worker). |
 | T8 | — | inline | pending | — | Configurar suite de pruebas: Vitest para `packages/domain` y Server Actions + Playwright para E2E de la landing. |
-| T9 | S8 | inline | pending | — | Crear Dockerfile multi-stage, docker-compose (`dev` con Postgres 18+, `test`, `prod`) y manifiestos K8s en `k8s/` (`deployment.yaml`, `service.yaml`, `ingress.yaml`). |
+| T9 | S8 | inline | done | 36843cc | Crear Dockerfile multi-stage, docker-compose (`dev` con Postgres 18+, `test`, `prod`) y manifiestos K8s en `k8s/` (`deployment.yaml`, `service.yaml`, `ingress.yaml`). |
 | T10 | S8, S9 | inline | pending | — | Configurar workflows de GitHub Actions para CI (lint/tests) y CD (build y push a `ghcr.io` con ramas `develop`, `main` y tags `v*.*.*`). |
 
 ---
@@ -82,7 +82,18 @@
 - Soporte: `3f6dc76` chore(deps): sync pnpm-lock; `36843cc` feat(infra): Docker, compose env vars, k8s (Risk: item 5 — also covers T9 code)
 - T6 review nativo bloqueado: schema `gentle-ai.review-intended-untracked-selection/v1` desconocido; no se pudo completar collect de intended_untracked_selection.
 
-**L6** (16 Oct 2026): Regla de IaC establecida y aplicada: datos sensibles (POSTGRES_USER/PASSWORD/DB, DATABASE_URL) solo via variables de entorno con valor por defecto `${VAR:default}` en docker-compose.dev.yml, docker-compose.test.yml, docker-compose.prod.yml, .env.example. k8s ya usaba secretKeyRef / placeholder vacío. Dockerfile sin sensibles hardcodeados.
+**L6** (16 Oct 2026): Regla de IaC establecida y aplicada: datos sensibles (POSTGRES_USER/PASSWORD/DB, DATABASE_URL) solo via variables de entorno con valor por defecto en docker-compose.dev.yml, docker-compose.test.yml, docker-compose.prod.yml, .env.example. k8s ya usaba secretKeyRef / placeholder vacío. Dockerfile sin sensibles hardcodeados.
+
+**L7** (16 Oct 2026): Estabilización para build y despliegue Docker dev (commit 870f019):
+- Bug corregido: `apps/web/package.json` faltaba `@mocter/domain` como dependencia declarada (`workspace:*`). El `paths` de tsconfig solo ayuda a TypeScript; sin la dependencia en package.json, pnpm no crea el symlink y Node/Turbopack no resuelve el paquete en runtime.
+- Bug corregido: `packages/domain/src/{index,db}.ts` importaban entre sí con extensión `.js` sobre archivos `.ts`; Node/Turbopack no resuelve `.js` a `.ts`. Cambiado a `.ts`.
+- Bug corregido: `apps/web/components/sections/live-demo.tsx` importaba `../../count-up|reveal|icons` desde `components/sections/` (resuelve a `apps/web/`); corregido a `../`.
+- Bug corregido: Docker Compose no soporta `${VAR:default}`; cambiado a `${VAR:-default}` en los 3 compose files y .env.example.
+- Entorno dev verificado: `docker compose -f docker-compose.dev.yml up --build -d` levanta postgres:18-alpine (healthy) + next dev (puerto 3000). `/es` y `/en` responden HTTP 200 con contenido completo (i18n ES/EN funcionando).
+
+---
+
+*Documento de trazabilidad ODD actualizado y alineado con la entrevista técnica. T3–T7 implementados y commiteados. T9 verificado en Docker dev. T8 (tests), T10 (CI/CD workflows) permanecen pendientes.*
 
 ---
 
