@@ -40,12 +40,12 @@
 | ID | Linked S# | Route | Status | Commit identity | Descripción |
 |----|-----------|-------|--------|-----------------|-------------|
 | T1 | S1, S3 | inline | done | feat: monorepo pnpm + turborepo con cascaron next 16 (apps/web) | Configurar monorepo pnpm workspaces + Turborepo (`apps/web`, `packages/domain`, configs compartidas). |
-| T2 | S3 | inline | pending | — | Implementar `packages/domain`: esquemas Drizzle ORM (`leads`), validación Zod y cliente PostgreSQL 18+. |
-| T3 | S1, S2, S6 | inline | pending | — | Configurar `apps/web` con Next.js 16, Tailwind CSS v4, Radix UI, `next-themes` y logotipo SVG Mocter. |
-| T4 | S1, S5 | inline | pending | — | Implementar i18n con `next-intl` (rutas `/[locale]`, diccionarios ES/EN) y metadatos SEO/AIO/GEO/LLMO (`robots.ts`, `sitemap.ts`, `llms.txt`). |
-| T5 | S4, S7 | inline | pending | — | Portar secciones de la landing a componentes modulares React (Hero, WhatsApp demo, Features, Sectors, Pipeline, Testimonials, FAQ, Footer). |
-| T6 | S3, S4 | inline | pending | — | Implementar componente y Server Action del formulario "Solicitar demo" con validación Zod y guardado en BD. |
-| T7 | S1 | inline | pending | — | Configurar soporte PWA en `apps/web` (manifest nativo `manifest.ts` e instalación/Service Worker). |
+| T2 | S3 | inline | done | 22bf5cb | Implementar `packages/domain`: esquemas Drizzle ORM (`leads`), validación Zod y cliente PostgreSQL 18+. |
+| T3 | S1, S2, S6 | inline | done | 6e434bb | Configurar `apps/web` con Next.js 16, Tailwind CSS v4, Radix UI, `next-themes` y logotipo SVG Mocter. |
+| T4 | S1, S5 | inline | done | cb6adb7 | Implementar i18n con `next-intl` (rutas `/[locale]`, diccionarios ES/EN) y metadatos SEO/AIO/GEO/LLMO (`robots.ts`, `sitemap.ts`, `llms.txt`). |
+| T5 | S4, S7 | inline | done | 3604e1d | Portar secciones de la landing a componentes modulares React (Hero, WhatsApp demo, Features, Sectors, Pipeline, Testimonials, FAQ, Footer). |
+| T6 | S3, S4 | inline | done | d205753 | Implementar componente y Server Action del formulario "Solicitar demo" con validación Zod y guardado en BD. |
+| T7 | S1 | inline | done | 69233b0 | Configurar soporte PWA en `apps/web` (manifest nativo `manifest.ts` e instalación/Service Worker). |
 | T8 | — | inline | pending | — | Configurar suite de pruebas: Vitest para `packages/domain` y Server Actions + Playwright para E2E de la landing. |
 | T9 | S8 | inline | pending | — | Crear Dockerfile multi-stage, docker-compose (`dev` con Postgres 18+, `test`, `prod`) y manifiestos K8s en `k8s/` (`deployment.yaml`, `service.yaml`, `ingress.yaml`). |
 | T10 | S8, S9 | inline | pending | — | Configurar workflows de GitHub Actions para CI (lint/tests) y CD (build y push a `ghcr.io` con ramas `develop`, `main` y tags `v*.*.*`). |
@@ -72,6 +72,18 @@
 
 **L4** (16 Oct 2026): Aclaración de versión de persistencia: la versión admisible de base de datos se establece explícitamente como PostgreSQL 18+ (en compose, conexión de dominio y despliegue).
 
+**L5** (16 Oct 2026): Work-unit commits T2–T7 en `feature/mocter-nextjs-migration` (T3–T7 alcance solicitado por el usuario; T2 incluído por ser dependencia de persistencia de T6):
+- T2 `22bf5cb` feat(domain): Drizzle schemas, Zod validation, PostgreSQL client (Risk: item 1)
+- T3 `6e434bb` feat(web): Next.js 16, Tailwind v4, Radix, next-themes, Mocter logo (Risk: none)
+- T4 `cb6adb7` feat(i18n-seo): /[locale] routes, ES/EN dictionaries, SEO/AIO/GEO/LLMO (Risk: none)
+- T5 `3604e1d` feat(ui): landing modular sections (Risk: none)
+- T6 `d205753` feat(forms): Solicitar demo form + Server Action + BD persistence (Risk: item 1)
+- T7 `69233b0` feat(pwa): native manifest + Service Worker (Risk: none)
+- Soporte: `3f6dc76` chore(deps): sync pnpm-lock; `36843cc` feat(infra): Docker, compose env vars, k8s (Risk: item 5 — also covers T9 code)
+- T6 review nativo bloqueado: schema `gentle-ai.review-intended-untracked-selection/v1` desconocido; no se pudo completar collect de intended_untracked_selection.
+
+**L6** (16 Oct 2026): Regla de IaC establecida y aplicada: datos sensibles (POSTGRES_USER/PASSWORD/DB, DATABASE_URL) solo via variables de entorno con valor por defecto `${VAR:default}` en docker-compose.dev.yml, docker-compose.test.yml, docker-compose.prod.yml, .env.example. k8s ya usaba secretKeyRef / placeholder vacío. Dockerfile sin sensibles hardcodeados.
+
 ---
 
-*Documento de trazabilidad ODD actualizado y alineado con la entrevista técnica. Listo para confirmación de inicio de implementación.*
+*Documento de trazabilidad ODD actualizado y alineado con la entrevista técnica. T3–T7 implementados y commiteados. T8 (tests), T10 (CI/CD workflows) permanecen pendientes.*
