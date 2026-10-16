@@ -12,9 +12,9 @@ services:
   postgres:
     image: postgres:18-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:mocter}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:mocter}
-      POSTGRES_DB: ${POSTGRES_DB:mocter}
+      POSTGRES_USER: ${POSTGRES_USER:-mocter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mocter}
+      POSTGRES_DB: ${POSTGRES_DB:-mocter}
     ports:
       - "5432:5432"
     volumes:
@@ -31,7 +31,7 @@ services:
     working_dir: /app
     command: sh -c "corepack enable && corepack pnpm install && corepack pnpm dev"
     environment:
-      DATABASE_URL: ${DATABASE_URL:postgres://mocter:mocter@postgres:5432/mocter}
+      DATABASE_URL: ${DATABASE_URL:-postgres://mocter:mocter@postgres:5432/mocter}
       # File watching over a Windows bind mount requires polling.
       WATCHPACK_POLLING: "true"
     ports:

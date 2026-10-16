@@ -13,9 +13,9 @@ services:
   postgres:
     image: postgres:18-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:mocter}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:mocter}
-      POSTGRES_DB: ${POSTGRES_DB:mocter}
+      POSTGRES_USER: ${POSTGRES_USER:-mocter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mocter}
+      POSTGRES_DB: ${POSTGRES_DB:-mocter}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mocter -d mocter"]
       interval: 5s
@@ -32,7 +32,7 @@ services:
         - ghcr.io/enuarrosales/mocter-web:test
     command: sh -c "corepack pnpm lint && corepack pnpm test && corepack pnpm build"
     environment:
-      DATABASE_URL: ${DATABASE_URL:postgres://mocter:mocter@postgres:5432/mocter}
+      DATABASE_URL: ${DATABASE_URL:-postgres://mocter:mocter@postgres:5432/mocter}
       NEXT_TELEMETRY_DISABLED: "1"
     depends_on:
       postgres:

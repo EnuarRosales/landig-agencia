@@ -1,7 +1,7 @@
 import { useTranslations } from "next-intl";
-import { CountUp } from "../../count-up";
-import { Reveal } from "../../reveal";
-import { IconArrow, IconBolt, IconSpark } from "../../icons";
+import { CountUp } from "../count-up";
+import { Reveal } from "../reveal";
+import { IconArrow, IconBolt, IconSpark } from "../icons";
 
 type StageColor =
   | { dot: "bg-cold"; text: "text-cold"; border: "border-[rgba(90,169,255,.35)]" }
