@@ -1,0 +1,27 @@
+{
+  "name": "mocter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mocter — AI-driven WhatsApp automation platform (landing public app)",
+  "packageManager": "pnpm@12.14.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "unrs-resolver"
+    ]
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "e2e": "turbo run e2e",
+    "db:generate": "pnpm --filter @mocter/domain db:generate",
+    "db:migrate": "pnpm --filter @mocter/domain db:migrate"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0"
+  }
+}
