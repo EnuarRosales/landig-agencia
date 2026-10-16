@@ -46,9 +46,9 @@
 | T5 | S4, S7 | inline | done | 3604e1d | Portar secciones de la landing a componentes modulares React (Hero, WhatsApp demo, Features, Sectors, Pipeline, Testimonials, FAQ, Footer). |
 | T6 | S3, S4 | inline | done | d205753 | Implementar componente y Server Action del formulario "Solicitar demo" con validación Zod y guardado en BD. |
 | T7 | S1 | inline | done | 69233b0 | Configurar soporte PWA en `apps/web` (manifest nativo `manifest.ts` e instalación/Service Worker). |
-| T8 | — | inline | pending | — | Configurar suite de pruebas: Vitest para `packages/domain` y Server Actions + Playwright para E2E de la landing. |
+| T8 | — | inline | done | ce8826e | Configurar suite de pruebas: Vitest para `packages/domain` y Server Actions + Playwright para E2E de la landing. |
 | T9 | S8 | inline | done | 36843cc | Crear Dockerfile multi-stage, docker-compose (`dev` con Postgres 18+, `test`, `prod`) y manifiestos K8s en `k8s/` (`deployment.yaml`, `service.yaml`, `ingress.yaml`). |
-| T10 | S8, S9 | inline | pending | — | Configurar workflows de GitHub Actions para CI (lint/tests) y CD (build y push a `ghcr.io` con ramas `develop`, `main` y tags `v*.*.*`). |
+| T10 | S8, S9 | inline | done | ce8826e | Configurar workflows de GitHub Actions para CI (lint/tests) y CD (build y push a `ghcr.io` con ramas `develop`, `main` y tags `v*.*.*`). |
 
 ---
 
@@ -91,10 +91,10 @@
 - Bug corregido: Docker Compose no soporta `${VAR:default}`; cambiado a `${VAR:-default}` en los 3 compose files y .env.example.
 - Entorno dev verificado: `docker compose -f docker-compose.dev.yml up --build -d` levanta postgres:18-alpine (healthy) + next dev (puerto 3000). `/es` y `/en` responden HTTP 200 con contenido completo (i18n ES/EN funcionando).
 
+**L8** (16 Oct 2026): Suite de pruebas y CI/CD (commit ce8826e):
+- T8 `ce8826e` feat(tests-ci): Vitest para packages/domain (11 tests leadSchema) + Server Actions (4 tests demo-request) + Playwright E2E (5 tests landing: i18n ES/EN, cambio de locale, formulario, theme toggle). Config: vite.config.ts (domain), vitest.config.ts + playwright.config.ts (web).
+- T10 `ce8826e` feat(tests-ci): .github/workflows/ci.yml (lint+test+e2e en push develop/main y PR) y .github/workflows/cd.yml (build y push a ghcr.io: tags v*.*.*, main=latest, develop=dev-*).
+
 ---
 
-*Documento de trazabilidad ODD actualizado y alineado con la entrevista técnica. T3–T7 implementados y commiteados. T9 verificado en Docker dev. T8 (tests), T10 (CI/CD workflows) permanecen pendientes.*
-
----
-
-*Documento de trazabilidad ODD actualizado y alineado con la entrevista técnica. T3–T7 implementados y commiteados. T8 (tests), T10 (CI/CD workflows) permanecen pendientes.*
+*Documento de trazabilidad ODD actualizado y alineado con la entrevista técnica. Todas las tareas T2–T10 implementadas y commiteadas. Entorno Docker dev verificado y estable.*
