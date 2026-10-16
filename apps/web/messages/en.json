@@ -1,0 +1,258 @@
+{
+  "metadata": {
+    "title": "Mocter — Automate customer support, scheduling and sales with AI on WhatsApp",
+    "description": "Mocter automates customer support, appointment scheduling and sales for your business with AI over WhatsApp. For clinics, salons, consultancies, agencies, services and e-commerce. Data kept in Colombia.",
+    "ogTitle": "Mocter — Your AI assistant on WhatsApp | Support, scheduling and sales on autopilot",
+    "ogDescription": "Mocter answers your customers, books appointments automatically, manages orders and classifies every contact — all over WhatsApp, from your own number. 100% of data hosted in Colombia."
+  },
+  "jsonld": {
+    "description": "AI-powered automation platform over WhatsApp for customer support, appointment scheduling and sales. Data hosted in Colombia by IdenTechnology.",
+    "softwareDescription": "Mocter is an AI automation platform over WhatsApp: it supports customers 24/7, books appointments with Google Calendar and Meet, manages orders and automatically classifies contacts."
+  },
+  "nav": {
+    "features": "Features",
+    "sectors": "Sectors",
+    "how": "How it works",
+    "demo": "Live demo",
+    "cta": "Book a demo",
+    "logoAria": "Mocter — home",
+    "themeToggle": "Toggle theme"
+  },
+  "hero": {
+    "pill": "AI that works for your business · 24/7 · Data in Colombia",
+    "titleStart": "Automate the ",
+    "titleAccent": "support, scheduling",
+    "titleEnd": " and sales of your business with AI",
+    "lead": "Mocter answers your customers, <b>books appointments automatically</b>, manages orders and classifies every contact, all over WhatsApp from your own number. For any business that wants to stop losing time and opportunities.",
+    "ctaPrimary": "Book a free demo",
+    "ctaSecondary": "See how it works",
+    "trust1a": "Scheduling with ",
+    "trust1b": "Google Calendar & Meet",
+    "trust2a": "Data ",
+    "trust2b": "100% in Colombia",
+    "trust3b": "No cost",
+    "trust3c": " per conversation",
+    "badges": {
+      "b1title": "Appointments 24/7",
+      "b1sub": "booked on their own",
+      "b2title": "< 3 sec",
+      "b2sub": "to reply"
+    },
+    "assistant": {
+      "name": "Mocter · Assistant",
+      "status": "online"
+    },
+    "chat": {
+      "out1": "Hi, I'd like to book an appointment 🙌",
+      "out1Time": "10:02 ✓✓",
+      "in1": "Hi! Sure thing. I have tomorrow 9:00 a.m. or 3:00 p.m. available. Which works better for you?",
+      "in1Time": "10:02",
+      "out2": "Tomorrow 9 a.m. please",
+      "out2Time": "10:02 ✓✓",
+      "in2": "✅ Done! Appointment confirmed for tomorrow 9:00 a.m. I sent you the invite with the Google Meet link.",
+      "in2Time": "10:03",
+      "in3": "I'll remind you a day before. Anything else I can help with?",
+      "in3Time": "10:03"
+    }
+  },
+  "features": {
+    "eyebrow": "Everything in one place",
+    "title": "One platform. Your whole business on autopilot.",
+    "sub": "Smart modules that answer, schedule, sell and organize, so you can focus on growing your company.",
+    "cards": {
+      "c1title": "Smart scheduling",
+      "c1text": "Your customers book, reschedule or cancel appointments right from the chat. Native integration with <b>Google Calendar and Google Meet</b>, with automatic confirmations and reminders. No more phone calls and schedule clashes.",
+      "c1tag": "Real-time two-way sync",
+      "c2title": "24/7 customer support",
+      "c2text": "It answers frequent questions, guides the customer and keeps your brand's tone, in natural language, at any hour of the day or night, without breaks or holidays.",
+      "c2tag": "Reply in under 3 seconds",
+      "c3title": "Orders and quotes",
+      "c3text": "It captures the details, totals them up and registers the order automatically, with no manual work.",
+      "c4title": "Multimedia delivery",
+      "c4text": "Share photos, videos, catalogs and PDFs automatically during the conversation.",
+      "c5title": "Contact classification",
+      "c5text": "Every conversation tags itself according to its intent, so you can prioritize what matters."
+    }
+  },
+  "sectors": {
+    "eyebrow": "For any industry",
+    "title": "If you serve customers over WhatsApp, Mocter is for you",
+    "sub": "Whatever your sector: if you book appointments, answer questions or sell, the AI automates it for you.",
+    "items": {
+      "s1": "Clinics and medical practices",
+      "s2": "Salons and spas",
+      "s3": "Consultancies and studios",
+      "s4": "Real estate",
+      "s5": "Schools and education",
+      "s6": "Technical services",
+      "s7": "E-commerce and retail",
+      "s8": "Agencies and startups",
+      "s9": "Restaurants and reservations",
+      "s10": "Gyms and wellness"
+    }
+  },
+  "how": {
+    "eyebrow": "Truly simple",
+    "title": "Your AI assistant, ready in 3 steps",
+    "sub": "No app to install. Your customers keep messaging your same WhatsApp as always.",
+    "steps": {
+      "s1title": "We connect your WhatsApp",
+      "s1text": "We link your business number with the official WhatsApp API and your Google Calendar in minutes.",
+      "s2title": "We train your AI",
+      "s2text": "We load your services, hours, prices and brand tone. The AI learns exactly how your company works.",
+      "s3title": "Start automating",
+      "s3text": "The AI answers, schedules and organizes. You see everything in your dashboard with real-time metrics."
+    },
+    "visual": {
+      "v1title": "Connected in minutes",
+      "v1text": "Your usual number, now supercharged with AI and connected to your calendar.",
+      "v2title": "AI with your personality",
+      "v2text": "It talks like your brand: friendly, formal or professional, you set the tone.",
+      "v3title": "All on autopilot",
+      "v3text": "Appointments, replies and orders running by themselves, 24 hours a day."
+    }
+  },
+  "demo": {
+    "eyebrow": "See it in action",
+    "title": "Every contact, organized and moving on its own",
+    "sub": "Mocter automatically classifies every conversation and moves it through your funnel: from a simple hello to a closed sale, without lifting a finger.",
+    "pipeline": {
+      "cold": "Cold lead",
+      "warm": "Warm lead",
+      "hot": "Hot lead",
+      "order": "Order",
+      "done": "Delivered"
+    },
+    "inbox": {
+      "head": "Conversations",
+      "chipAll": "All",
+      "chipUnassigned": "Unassigned",
+      "conversations": {
+        "c1name": "Customer #1048",
+        "c1time": "2 min",
+        "c1preview": "Perfect! To complete your order, send me…",
+        "c2name": "Customer #1047",
+        "c2time": "6 min",
+        "c2preview": "Appointment confirmed for tomorrow 9:00 a.m. ✅",
+        "c3name": "Customer #1046",
+        "c3time": "12 min",
+        "c3preview": "Sure, I'll share the catalog and prices 📎",
+        "c4name": "Customer #1045",
+        "c4time": "28 min",
+        "c4preview": "Thanks for your purchase! Your order is on its way 🚚"
+      },
+      "labels": {
+        "hot": "hot",
+        "warm": "warm",
+        "order": "order",
+        "done": "delivered"
+      },
+      "chatTop": {
+        "name": "Customer #1048",
+        "status": "● online",
+        "resolve": "Resolve"
+      },
+      "chat": {
+        "m1": "Hi, I saw your ad 👀 Do you have it available?",
+        "m1Time": "2:04 p.m.",
+        "m2": "Hi! Of course 😊 Let me show you the product:",
+        "m2Time": "2:04 p.m.",
+        "m3": "📷 Photo · 🎥 Demo video sent",
+        "m3Time": "2:04 p.m.",
+        "sys": "The AI tagged the conversation as «hot»",
+        "m4": "I'm interested, how do I place the order?",
+        "m4Time": "2:05 p.m.",
+        "m5": "Perfect! To complete your order, send me in a single message: name, city and quantity 📝",
+        "m5Time": "2:05 p.m."
+      },
+      "input": "Write a message…",
+      "aiTag": "Answered by AI",
+      "ctx": {
+        "contactState": "Contact state",
+        "stageLabel": "Stage",
+        "stageValue": "Hot lead",
+        "priorityLabel": "Priority",
+        "priorityValue": "Urgent",
+        "tagsHeading": "Automatic tags",
+        "managedHeading": "Managed by",
+        "assistantLabel": "Assistant",
+        "assistantValue": "Mocter · AI",
+        "followupLabel": "Follow-up",
+        "followupValue": "Active"
+      }
+    }
+  },
+  "testimonial": {
+    "q1": "“We went from replying late and losing appointments, to having an assistant that ",
+    "qHi": "never sleeps",
+    "q2": ". Our calendar fills up on its own and our team finally gets to serve people well, not chat all day.”",
+    "whoA": "Companies already automating with Mocter",
+    "whoB": " · Services, health, education and commerce"
+  },
+  "cta": {
+    "title": "Ready to let AI work for your business?",
+    "sub": "Book a free demo and watch your AI assistant in action, with your own services and hours, in less than 24 hours.",
+    "waButton": "Request a demo on WhatsApp",
+    "mailButton": "Write to us",
+    "formTitle": "Book your free demo",
+    "formSub": "Leave us your details and we'll reach out within 24 hours.",
+    "fabAria": "Message us on WhatsApp"
+  },
+  "form": {
+    "name": "Name",
+    "namePlaceholder": "Your name",
+    "email": "Email",
+    "emailPlaceholder": "you@company.com",
+    "phone": "Phone (WhatsApp)",
+    "phonePlaceholder": "+57 300 0000000",
+    "message": "Message",
+    "messagePlaceholder": "Tell us about your business (optional)",
+    "submit": "Send request",
+    "sending": "Sending…",
+    "successTitle": "Request received! 🎉",
+    "successText": "Thanks for reaching out. We'll contact you via WhatsApp or email within 24 hours.",
+    "successAgain": "Send another request",
+    "errRequired": "This field is required",
+    "errEmail": "Enter a valid email",
+    "errPhone": "Enter a valid phone number",
+    "errDb": "We couldn't save your request due to a temporary server problem. Please try again in a few minutes using this form or WhatsApp.",
+    "errUnknown": "There was a problem submitting your request. Please try again."
+  },
+  "faq": {
+    "eyebrow": "Frequently asked questions",
+    "title": "Everything you need to know",
+    "items": {
+      "q1": "Does it work for my type of business?",
+      "a1": "Yes. Mocter adapts to any company that serves customers over WhatsApp: clinics, salons, consultancies, real estate, schools, technical services, retail, restaurants and more. We configure the AI for your sector.",
+      "q2": "How does scheduling work?",
+      "a2": "The AI checks your availability on Google Calendar, offers the open time slots, confirms the appointment, creates the Google Meet link (if applicable) and sends automatic reminders. All from the chat.",
+      "q3": "Do my customers have to download anything?",
+      "a3": "No. They keep texting your same WhatsApp as always. The AI replies behind the scenes without them noticing any change.",
+      "q4": "Does the AI sound like a robot?",
+      "a4": "Not at all. We define your brand's tone and personality (friendly, formal, with emojis, etc.) so it speaks exactly how you want.",
+      "q5": "Where is my data stored?",
+      "a5": "100% on servers in Colombia. You always keep ownership of your information and we comply with local data protection.",
+      "q6": "Can I take over a chat manually?",
+      "a6": "Yes. Whenever you want, a human on your team can step into the conversation from the unified inbox."
+    }
+  },
+  "footer": {
+    "tagline": "AI-powered automation over WhatsApp for businesses. Support, scheduling and sales, friction-free. Proudly made in Colombia by IdenTechnology.",
+    "product": "Product",
+    "productLinks": {
+      "features": "Features",
+      "sectors": "Sectors",
+      "how": "How it works",
+      "demo": "Live demo",
+      "cta": "Book a demo"
+    },
+    "resources": "Resources",
+    "resourcesLinks": {
+      "faq": "FAQ",
+      "cases": "Case studies",
+      "blog": "Blog"
+    },
+    "contact": "Contact",
+    "legal": "© 2026 Mocter · IdenTechnology · All rights reserved · Made in Colombia"
+  }
+}

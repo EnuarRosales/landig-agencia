@@ -1,0 +1,258 @@
+{
+  "metadata": {
+    "title": "Mocter — Automatiza atención, agendamiento y ventas con IA por WhatsApp",
+    "description": "Mocter automatiza la atención al cliente, el agendamiento de citas y las ventas de tu empresa con Inteligencia Artificial por WhatsApp. Para clínicas, salones, consultorías, agencias, servicios y e-commerce. Datos en Colombia.",
+    "ogTitle": "Mocter — Tu asistente de IA por WhatsApp | Atención, agendamiento y ventas en automático",
+    "ogDescription": "Mocter responde a tus clientes, agenda citas automáticamente, gestiona pedidos y clasifica cada contacto, todo por WhatsApp y desde tu propio número. Datos 100% en Colombia."
+  },
+  "jsonld": {
+    "description": "Plataforma de automatización con Inteligencia Artificial por WhatsApp para atención al cliente, agendamiento de citas y ventas. Datos alojados en Colombia por IdenTechnology.",
+    "softwareDescription": "Mocter es una plataforma de automatización con IA por WhatsApp: atiende clientes 24/7, agenda citas con Google Calendar y Meet, gestiona pedidos y clasifica contactos automáticamente."
+  },
+  "nav": {
+    "features": "Funciones",
+    "sectors": "Sectores",
+    "how": "Cómo funciona",
+    "demo": "En vivo",
+    "cta": "Solicitar demo",
+    "logoAria": "Mocter — inicio",
+    "themeToggle": "Cambiar tema"
+  },
+  "hero": {
+    "pill": "IA que trabaja por tu empresa · 24/7 · Datos en Colombia",
+    "titleStart": "Automatiza la ",
+    "titleAccent": "atención, el agendamiento",
+    "titleEnd": " y las ventas de tu empresa con IA",
+    "lead": "Mocter responde a tus clientes, <b>agenda citas automáticamente</b>, gestiona pedidos y clasifica cada contacto, todo por WhatsApp y desde tu propio número. Para cualquier negocio que quiera dejar de perder tiempo y oportunidades.",
+    "ctaPrimary": "Solicitar demo gratis",
+    "ctaSecondary": "Ver cómo funciona",
+    "trust1a": "Agenda con ",
+    "trust1b": "Google Calendar & Meet",
+    "trust2a": "Datos ",
+    "trust2b": "100% en Colombia",
+    "trust3b": "Sin costo",
+    "trust3c": " por conversación",
+    "badges": {
+      "b1title": "Citas 24/7",
+      "b1sub": "agendadas solas",
+      "b2title": "< 3 seg",
+      "b2sub": "en responder"
+    },
+    "assistant": {
+      "name": "Mocter · Asistente",
+      "status": "en línea"
+    },
+    "chat": {
+      "out1": "Hola, quisiera agendar una cita 🙌",
+      "out1Time": "10:02 ✓✓",
+      "in1": "¡Hola! Con gusto. Tengo disponible mañana 9:00 a.m. o 3:00 p.m. ¿Cuál te queda mejor?",
+      "in1Time": "10:02",
+      "out2": "Mañana 9 a.m. porfa",
+      "out2Time": "10:02 ✓✓",
+      "in2": "✅ ¡Listo! Cita confirmada para mañana 9:00 a.m. Te envié la invitación con el enlace de Google Meet.",
+      "in2Time": "10:03",
+      "in3": "Te recordaré un día antes. ¿Algo más en que te ayude?",
+      "in3Time": "10:03"
+    }
+  },
+  "features": {
+    "eyebrow": "Todo en un solo lugar",
+    "title": "Una plataforma. Todo tu negocio en automático.",
+    "sub": "Módulos inteligentes que atienden, agendan, venden y organizan, para que tú te enfoques en hacer crecer tu empresa.",
+    "cards": {
+      "c1title": "Agendamiento inteligente",
+      "c1text": "Tus clientes reservan, reagendan o cancelan citas directamente desde el chat. Integración nativa con <b>Google Calendar y Google Meet</b>, con confirmaciones y recordatorios automáticos. Se acabaron las llamadas y los cruces de horario.",
+      "c1tag": "Sincronización bidireccional en tiempo real",
+      "c2title": "Atención al cliente 24/7",
+      "c2text": "Resuelve preguntas frecuentes, guía al cliente y mantiene el tono de tu marca, en español natural, a cualquier hora del día o de la noche, sin descanso ni festivos.",
+      "c2tag": "Respuesta en menos de 3 segundos",
+      "c3title": "Pedidos y cotizaciones",
+      "c3text": "Captura los datos, calcula totales y registra la orden automáticamente, sin intervención manual.",
+      "c4title": "Envío de multimedia",
+      "c4text": "Comparte fotos, videos, catálogos y PDFs de forma automática durante la conversación.",
+      "c5title": "Clasificación de contactos",
+      "c5text": "Cada conversación se etiqueta sola según su interés para que priorices lo importante."
+    }
+  },
+  "sectors": {
+    "eyebrow": "Para cualquier industria",
+    "title": "Si atiendes clientes por WhatsApp, Mocter es para ti",
+    "sub": "No importa tu sector: si agendas citas, respondes consultas o vendes, la IA lo automatiza por ti.",
+    "items": {
+      "s1": "Clínicas y consultorios",
+      "s2": "Salones y spas",
+      "s3": "Consultorías y estudios",
+      "s4": "Inmobiliarias",
+      "s5": "Academias y educación",
+      "s6": "Servicios técnicos",
+      "s7": "E-commerce y retail",
+      "s8": "Agencias y startups",
+      "s9": "Restaurantes y reservas",
+      "s10": "Gimnasios y bienestar"
+    }
+  },
+  "how": {
+    "eyebrow": "Simple de verdad",
+    "title": "Tu asistente IA, listo en 3 pasos",
+    "sub": "Sin apps que instalar. Tus clientes siguen escribiéndote al mismo WhatsApp de siempre.",
+    "steps": {
+      "s1title": "Conectamos tu WhatsApp",
+      "s1text": "Vinculamos tu número de negocio con la API oficial de WhatsApp y tu agenda de Google en minutos.",
+      "s2title": "Entrenamos tu IA",
+      "s2text": "Cargamos tus servicios, horarios, precios y tono de marca. La IA aprende exactamente cómo trabaja tu empresa.",
+      "s3title": "Empieza a automatizar",
+      "s3text": "La IA atiende, agenda y organiza. Tú ves todo en tu panel con métricas en tiempo real."
+    },
+    "visual": {
+      "v1title": "Conexión en minutos",
+      "v1text": "Tu número de siempre, ahora potenciado con IA y conectado a tu calendario.",
+      "v2title": "IA con tu personalidad",
+      "v2text": "Habla como tu marca: cercana, formal o profesional, tú decides el tono.",
+      "v3title": "Todo en automático",
+      "v3text": "Citas, respuestas y pedidos funcionando solos, 24 horas al día."
+    }
+  },
+  "demo": {
+    "eyebrow": "Míralo en acción",
+    "title": "Cada contacto, organizado y avanzando solo",
+    "sub": "Mocter clasifica automáticamente cada conversación y la mueve por tu embudo: de un simple saludo a una venta cerrada, sin que muevas un dedo.",
+    "pipeline": {
+      "cold": "Lead frío",
+      "warm": "Lead tibio",
+      "hot": "Lead caliente",
+      "order": "Pedido",
+      "done": "Entregado"
+    },
+    "inbox": {
+      "head": "Conversaciones",
+      "chipAll": "Todas",
+      "chipUnassigned": "Sin asignar",
+      "conversations": {
+        "c1name": "Cliente #1048",
+        "c1time": "2 min",
+        "c1preview": "¡Perfecto! Para completar tu pedido, envíame…",
+        "c2name": "Cliente #1047",
+        "c2time": "6 min",
+        "c2preview": "Cita confirmada para mañana 9:00 a.m. ✅",
+        "c3name": "Cliente #1046",
+        "c3time": "12 min",
+        "c3preview": "Claro, te comparto el catálogo y precios 📎",
+        "c4name": "Cliente #1045",
+        "c4time": "28 min",
+        "c4preview": "¡Gracias por tu compra! Tu pedido va en camino 🚚"
+      },
+      "labels": {
+        "hot": "caliente",
+        "warm": "tibio",
+        "order": "pedido",
+        "done": "entregado"
+      },
+      "chatTop": {
+        "name": "Cliente #1048",
+        "status": "● en línea",
+        "resolve": "Resolver"
+      },
+      "chat": {
+        "m1": "Hola, vi su anuncio 👀 ¿tienen disponible?",
+        "m1Time": "2:04 p.m.",
+        "m2": "¡Hola! Claro que sí 😊 Te muestro el producto:",
+        "m2Time": "2:04 p.m.",
+        "m3": "📷 Foto · 🎥 Video demo enviados",
+        "m3Time": "2:04 p.m.",
+        "sys": "La IA etiquetó la conversación como «caliente»",
+        "m4": "Me interesa, ¿cómo hago el pedido?",
+        "m4Time": "2:05 p.m.",
+        "m5": "¡Perfecto! Para completar tu pedido, envíame en un solo mensaje: nombre, ciudad y cantidad 📝",
+        "m5Time": "2:05 p.m."
+      },
+      "input": "Escribe un mensaje…",
+      "aiTag": "Respondido por IA",
+      "ctx": {
+        "contactState": "Estado del contacto",
+        "stageLabel": "Etapa",
+        "stageValue": "Lead caliente",
+        "priorityLabel": "Prioridad",
+        "priorityValue": "Urgente",
+        "tagsHeading": "Etiquetas automáticas",
+        "managedHeading": "Gestionado por",
+        "assistantLabel": "Asistente",
+        "assistantValue": "Mocter · IA",
+        "followupLabel": "Seguimiento",
+        "followupValue": "Activo"
+      }
+    }
+  },
+  "testimonial": {
+    "q1": "«Pasamos de responder tarde y perder citas, a tener un asistente que ",
+    "qHi": "no duerme",
+    "q2": ". La agenda se llena sola y nuestro equipo por fin se dedica a atender bien, no a chatear todo el día.»",
+    "whoA": "Empresas que ya automatizan con Mocter",
+    "whoB": " · Servicios, salud, educación y comercio"
+  },
+  "cta": {
+    "title": "¿Listo para que la IA trabaje por tu empresa?",
+    "sub": "Agenda una demo gratuita y mira a tu asistente IA en acción, con tus propios servicios y horarios, en menos de 24 horas.",
+    "waButton": "Solicitar demo por WhatsApp",
+    "mailButton": "Escríbenos",
+    "formTitle": "Solicita tu demo gratuita",
+    "formSub": "Déjanos tus datos y te contactamos en menos de 24 horas.",
+    "fabAria": "Escríbenos por WhatsApp"
+  },
+  "form": {
+    "name": "Nombre",
+    "namePlaceholder": "Tu nombre",
+    "email": "Email",
+    "emailPlaceholder": "tu@empresa.com",
+    "phone": "Teléfono (WhatsApp)",
+    "phonePlaceholder": "+57 300 000 0000",
+    "message": "Mensaje",
+    "messagePlaceholder": "Cuéntanos de tu negocio (opcional)",
+    "submit": "Enviar solicitud",
+    "sending": "Enviando…",
+    "successTitle": "¡Solicitud recibida! 🎉",
+    "successText": "Gracias por escribir. Te contactamos por WhatsApp o email en menos de 24 horas.",
+    "successAgain": "Enviar otra solicitud",
+    "errRequired": "Este campo es obligatorio",
+    "errEmail": "Ingresa un email válido",
+    "errPhone": "Ingresa un teléfono válido",
+    "errDb": "No pudimos guardar tu solicitud por un problema temporal en nuestro servidor. Intenta de nuevo en unos minutos por este formulario o por WhatsApp.",
+    "errUnknown": "Hubo un problema al enviar tu solicitud. Inténtalo de nuevo."
+  },
+  "faq": {
+    "eyebrow": "Preguntas frecuentes",
+    "title": "Todo lo que necesitas saber",
+    "items": {
+      "q1": "¿Sirve para mi tipo de negocio?",
+      "a1": "Sí. Mocter se adapta a cualquier empresa que atienda clientes por WhatsApp: clínicas, salones, consultorías, inmobiliarias, academias, servicios técnicos, comercios, restaurantes y más. Configuramos la IA según tu sector.",
+      "q2": "¿Cómo funciona el agendamiento?",
+      "a2": "La IA consulta tu disponibilidad en Google Calendar, ofrece los horarios libres, confirma la cita, crea el enlace de Google Meet (si aplica) y envía recordatorios automáticos. Todo desde el chat.",
+      "q3": "¿Mis clientes tienen que descargar algo?",
+      "a3": "No. Siguen escribiéndote al mismo WhatsApp de siempre. La IA responde por detrás sin que ellos noten cambio alguno.",
+      "q4": "¿La IA suena como robot?",
+      "a4": "Para nada. Definimos el tono y personalidad de tu marca (cercano, formal, con emojis, etc.) para que hable exactamente como tú quieres.",
+      "q5": "¿Dónde quedan mis datos?",
+      "a5": "100% en servidores en Colombia. Tú eres siempre el dueño de tu información y cumplimos con la protección de datos local.",
+      "q6": "¿Puedo tomar el control de un chat manualmente?",
+      "a6": "Sí. Cuando quieras, un humano de tu equipo puede intervenir la conversación desde la bandeja unificada."
+    }
+  },
+  "footer": {
+    "tagline": "Automatización con Inteligencia Artificial por WhatsApp para empresas. Atención, agendamiento y ventas, sin fricción. Hecho con orgullo en Colombia por IdenTechnology.",
+    "product": "Producto",
+    "productLinks": {
+      "features": "Funciones",
+      "sectors": "Sectores",
+      "how": "Cómo funciona",
+      "demo": "En vivo",
+      "cta": "Solicitar demo"
+    },
+    "resources": "Recursos",
+    "resourcesLinks": {
+      "faq": "Preguntas frecuentes",
+      "cases": "Casos de éxito",
+      "blog": "Blog"
+    },
+    "contact": "Contacto",
+    "legal": "© 2026 Mocter · IdenTechnology · Todos los derechos reservados · Hecho en Colombia"
+  }
+}
