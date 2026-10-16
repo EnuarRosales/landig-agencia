@@ -1,0 +1,23 @@
+# k8s/ service — projection for the future Kubernetes deployment.
+#
+# Usage order:
+#   1. namespace.yaml
+#   2. secrets.example.yaml (real secret)
+#   3. deployment.yaml
+#   4. THIS FILE
+#   5. ingress.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mocter-web
+  namespace: mocter
+  labels:
+    app.kubernetes.io/name: mocter-web
+spec:
+  type: ClusterIP
+  selector:
+    app: mocter-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000

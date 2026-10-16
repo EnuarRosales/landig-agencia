@@ -1,0 +1,39 @@
+# CI-ish stack: builds the workspace image and runs lint + test + build inside a
+# container with a disposable PostgreSQL instance.
+# Usage (exit code propagation):
+#   docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from web
+# The `web` service builds the Dockerfile `build` target (toolchain + source) and
+# runs the full quality gate; the compose `image:` tag mirrors the CI test tag.
+# Any failed step makes `web` exit non-zero; --abort-on-container-exit stops the
+# whole stack so the failing exit code reaches the caller.
+
+name: mocter-portal-test
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:mocter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:mocter}
+      POSTGRES_DB: ${POSTGRES_DB:mocter}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mocter -d mocter"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    image: ghcr.io/enuarrosales/mocter-web:test
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: build
+      tags:
+        - ghcr.io/enuarrosales/mocter-web:test
+    command: sh -c "corepack pnpm lint && corepack pnpm test && corepack pnpm build"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:postgres://mocter:mocter@postgres:5432/mocter}
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy

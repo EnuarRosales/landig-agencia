@@ -1,0 +1,48 @@
+# Production stack: prebuilt runner image from ghcr.io + persistent PostgreSQL.
+# Usage: DATABASE_URL=... POSTGRES_PASSWORD=... POSTGRES_VERSION=18 TAG=latest \
+#        docker compose -f docker-compose.prod.yml up -d
+#
+# Requires TAG-pinned image (ghcr.io/enuarrosales/mocter-web:${TAG}) published by
+# the CD pipeline (develop -> dev-*, main -> latest, v*.*.* -> <version>).
+# DATABASE_URL and POSTGRES_PASSWORD are injected via compose variables with a
+# visible placeholder default (e.g. ${DATABASE_URL:postgres://mocter:changeme@...});
+# override them in production. No credentials are hardcoded.
+# No bind mounts anywhere; Postgres data lives in the pgdata-prod volume.
+
+name: mocter-portal-prod
+
+services:
+  web:
+    image: ghcr.io/enuarrosales/mocter-web:${TAG:-latest}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:postgres://mocter:changeme@postgres:5432/mocter}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:mocter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:changeme}
+      POSTGRES_DB: ${POSTGRES_DB:mocter}
+    volumes:
+      - pgdata-prod:/var/lib/postgresql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mocter -d mocter"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata-prod:

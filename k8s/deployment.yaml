@@ -1,0 +1,74 @@
+# k8s/ deployment — projection for the future Kubernetes deployment.
+#
+# Usage order:
+#   1. namespace.yaml
+#   2. secrets.example.yaml (real secret)
+#   3. THIS FILE
+#   4. service.yaml
+#   5. ingress.yaml
+#
+# Image tag: set to the version published by the CD pipeline (develop -> dev-*,
+# main -> latest, tags v*.*.* -> <version>).
+# Probes hit GET / on port 3000: no /api/health route exists in the app yet;
+# switch both probe paths once a health endpoint is added.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mocter-web
+  namespace: mocter
+  labels:
+    app.kubernetes.io/name: mocter-web
+    app.kubernetes.io/part-of: mocter
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mocter-web
+  template:
+    metadata:
+      labels:
+        app: mocter-web
+    spec:
+      containers:
+        - name: mocter-web
+          image: ghcr.io/enuarrosales/mocter-web:0.1.0 # pin to a released CD tag
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mocter-web-secrets
+                  key: DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

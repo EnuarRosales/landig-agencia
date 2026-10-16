@@ -1,0 +1,12 @@
+# k8s/ namespace — projection for the future Kubernetes deployment (not applied now).
+#
+# Usage order:
+#   1. kubectl apply -f k8s/namespace.yaml
+#   2. kubectl apply -f k8s/secrets.example.yaml   (copy -> secrets.yaml, fill values, NEVER commit)
+#   3. kubectl apply -f k8s/deployment.yaml
+#   4. kubectl apply -f k8s/service.yaml
+#   5. kubectl apply -f k8s/ingress.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mocter

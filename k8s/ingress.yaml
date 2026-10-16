@@ -1,0 +1,36 @@
+# k8s/ ingress — projection for the future Kubernetes deployment (nginx ingress).
+#
+# Usage order:
+#   1. namespace.yaml
+#   2. secrets.example.yaml (real secret)
+#   3. deployment.yaml
+#   4. service.yaml
+#   5. THIS FILE
+#
+# TLS is a placeholder: create a Secret holding the certificate for mocter.co and
+# uncomment the `tls` block (or use cert-manager annotations) when deploying.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mocter-web
+  namespace: mocter
+  annotations:
+    # Redirect www.mocter.co -> mocter.co handled by the nginx controller.
+    nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+spec:
+  ingressClassName: nginx
+  # tls:
+  #   - hosts:
+  #       - mocter.co
+  #     secretName: mocter-tls
+  rules:
+    - host: mocter.co
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mocter-web
+                port:
+                  number: 80

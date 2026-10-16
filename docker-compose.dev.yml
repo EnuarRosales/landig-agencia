@@ -1,0 +1,54 @@
+# Local development stack: PostgreSQL 18+ + hot-reloading Next.js dev server.
+# Usage: docker compose -f docker-compose.dev.yml up --build
+#
+# The web service runs on the official node:24-alpine image with the workspace
+# bind-mounted; dependencies are installed inside the container into named
+# volumes so the host's node_modules never leaks into the image.
+# Postgres data persists in the pgdata-dev named volume.
+
+name: mocter-portal-dev
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:mocter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:mocter}
+      POSTGRES_DB: ${POSTGRES_DB:mocter}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata-dev:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mocter -d mocter"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    image: node:24-alpine
+    working_dir: /app
+    command: sh -c "corepack enable && corepack pnpm install && corepack pnpm dev"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:postgres://mocter:mocter@postgres:5432/mocter}
+      # File watching over a Windows bind mount requires polling.
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      # Named volumes keep container-installed node_modules out of the host.
+      - root-node-modules:/app/node_modules
+      - web-node-modules:/app/apps/web/node_modules
+      - domain-node-modules:/app/packages/domain/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata-dev:
+  root-node-modules:
+  web-node-modules:
+  domain-node-modules:
