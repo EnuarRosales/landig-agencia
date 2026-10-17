@@ -54,7 +54,11 @@ export async function submitDemoRequest(
 
   try {
     await insertLead(parsed.data);
-  } catch {
+  } catch (err) {
+    const errorDetails = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[Server Action demo-request] Error al persistir lead en PostgreSQL: ${errorDetails}`,
+    );
     // Graceful degradation: keep the user's input, never pretend it was saved.
     return { status: "idle", fieldErrors: {}, reason: "db" };
   }

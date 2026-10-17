@@ -4,30 +4,104 @@ import postgres from "postgres";
 import { leads, type Lead } from "./schema";
 import type { LeadInput } from "./validation";
 
+let clientInstance: ReturnType<typeof postgres> | null = null;
+let dbInstance: ReturnType<typeof drizzle> | null = null;
+
 /**
- * PostgreSQL connection string. Falls back to a local development URL so
- * tooling (e.g. `db:generate`) and imports work without a live database;
- * production must always set `DATABASE_URL`.
+ * Resolves the database connection string strictly from process.env.DATABASE_URL.
+ * Warns immediately and throws if the variable is missing to prevent silent fallback misconfigurations.
  */
-const connectionString = process.env.DATABASE_URL ?? "postgres://localhost:5432/mocter";
+export function getDatabaseUrl(): string {
+  const url = process.env.DATABASE_URL;
+  console.log(`[Database URL] ${url}`);
+  if (!url) {
+    const errorMsg =
+      "[Database Config Error] La variable de entorno DATABASE_URL no está definida. La conexión a la base de datos no puede inicializarse.";
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+  return url;
+}
 
-/** postgres-js client (lazy: the connection opens on first query, not at import). */
-const client = postgres(connectionString);
+/**
+ * Lazy postgres client instance.
+ */
+export function getClient(): ReturnType<typeof postgres> {
+  if (!clientInstance) {
+    const url = getDatabaseUrl();
+    clientInstance = postgres(url, {
+      max: 10,
+      idle_timeout: 20,
+      connect_timeout: 10,
+      onnotice: () => { },
+    });
+  }
+  return clientInstance;
+}
 
-/** Shared Drizzle instance over the postgres-js client. */
-export const db = drizzle(client);
+/**
+ * Lazy Drizzle ORM instance.
+ */
+export function getDb(): ReturnType<typeof drizzle> {
+  if (!dbInstance) {
+    dbInstance = drizzle(getClient());
+  }
+  return dbInstance;
+}
+
+/**
+ * Dynamic proxy for `db` ensuring backward compatibility while keeping
+ * lazy initialization without hardcoded credentials.
+ */
+export const db = new Proxy({} as ReturnType<typeof drizzle>, {
+  get(_target, prop) {
+    const instance = getDb();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const val = (instance as any)[prop];
+    return typeof val === "function" ? val.bind(instance) : val;
+  },
+});
+
+/**
+ * Verifies effective database connectivity and warns immediately in the log if unreachable.
+ */
+export async function checkDatabaseConnection(): Promise<{
+  ok: boolean;
+  error?: string;
+}> {
+  try {
+    const client = getClient();
+    await client`SELECT 1`;
+    return { ok: true };
+  } catch (err) {
+    const details = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[Database Healthcheck Failed] Error de conexión efectiva con PostgreSQL: ${details}`,
+    );
+    return { ok: false, error: details };
+  }
+}
 
 /**
  * Inserts a lead row as-is. Performs NO validation: callers must validate
  * with `leadSchema` first.
  */
 export async function insertLead(input: LeadInput): Promise<Lead> {
-  const rows = await db.insert(leads).values(input).returning();
-  const row = rows[0];
+  try {
+    const database = getDb();
+    const rows = await database.insert(leads).values(input).returning();
+    const row = rows[0];
 
-  if (!row) {
-    throw new Error("insertLead: insert into `leads` returned no rows");
+    if (!row) {
+      throw new Error("insertLead: insert into `leads` returned no rows");
+    }
+
+    return row;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[Database Insert Error] Falló la inserción del lead en PostgreSQL: ${msg}`,
+    );
+    throw error;
   }
-
-  return row;
 }

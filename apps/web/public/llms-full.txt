@@ -3,8 +3,7 @@
 ## What is Mocter?
 
 Mocter is an AI automation platform for small and medium businesses that serve customers over WhatsApp. It connects to a business's existing WhatsApp number through the official WhatsApp Business API and takes over routine conversations: answering questions, booking appointments, taking orders and classifying leads — 24 hours a day, in natural language and with the brand's own tone.
-
-Mocter is built by IdenTechnology, a Colombian company. The product website is https://mocter.co (Spanish by default, English available at /en).
+The product website is https://mocter.co (Spanish by default, English available at /en).
 
 ## Main capabilities
 
@@ -30,5 +29,5 @@ Clinics and medical practices, salons and spas, consultancies and studios, real 
 - Landing page: https://mocter.co (Spanish: /es, English: /en)
 - Demo request form: https://mocter.co/es#demo-form
 - WhatsApp: https://wa.me/573222752524
-- Email: info@identechnology.co
-- Company: IdenTechnology, Colombia
+- Email: info@mocter.co
+- Company: Mocter, Colombia

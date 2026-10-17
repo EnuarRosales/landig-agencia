@@ -6,7 +6,7 @@
     "ogDescription": "Mocter responde a tus clientes, agenda citas automáticamente, gestiona pedidos y clasifica cada contacto, todo por WhatsApp y desde tu propio número. Datos 100% en Colombia."
   },
   "jsonld": {
-    "description": "Plataforma de automatización con Inteligencia Artificial por WhatsApp para atención al cliente, agendamiento de citas y ventas. Datos alojados en Colombia por IdenTechnology.",
+    "description": "Plataforma de automatización con Inteligencia Artificial por WhatsApp para atención al cliente, agendamiento de citas y ventas. Datos alojados en Colombia.",
     "softwareDescription": "Mocter es una plataforma de automatización con IA por WhatsApp: atiende clientes 24/7, agenda citas con Google Calendar y Meet, gestiona pedidos y clasifica contactos automáticamente."
   },
   "nav": {
@@ -237,7 +237,7 @@
     }
   },
   "footer": {
-    "tagline": "Automatización con Inteligencia Artificial por WhatsApp para empresas. Atención, agendamiento y ventas, sin fricción. Hecho con orgullo en Colombia por IdenTechnology.",
+    "tagline": "Automatización con Inteligencia Artificial por WhatsApp para empresas. Atención, agendamiento y ventas, sin fricción. Hecho con orgullo en Colombia.",
     "product": "Producto",
     "productLinks": {
       "features": "Funciones",
@@ -253,6 +253,6 @@
       "blog": "Blog"
     },
     "contact": "Contacto",
-    "legal": "© 2026 Mocter · IdenTechnology · Todos los derechos reservados · Hecho en Colombia"
+    "legal": "© 2026 Mocter · Todos los derechos reservados · Hecho en Colombia"
   }
 }

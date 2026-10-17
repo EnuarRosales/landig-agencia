@@ -6,7 +6,7 @@
     "ogDescription": "Mocter answers your customers, books appointments automatically, manages orders and classifies every contact — all over WhatsApp, from your own number. 100% of data hosted in Colombia."
   },
   "jsonld": {
-    "description": "AI-powered automation platform over WhatsApp for customer support, appointment scheduling and sales. Data hosted in Colombia by IdenTechnology.",
+    "description": "AI-powered automation platform over WhatsApp for customer support, appointment scheduling and sales. Data hosted in Colombia.",
     "softwareDescription": "Mocter is an AI automation platform over WhatsApp: it supports customers 24/7, books appointments with Google Calendar and Meet, manages orders and automatically classifies contacts."
   },
   "nav": {
@@ -237,7 +237,7 @@
     }
   },
   "footer": {
-    "tagline": "AI-powered automation over WhatsApp for businesses. Support, scheduling and sales, friction-free. Proudly made in Colombia by IdenTechnology.",
+    "tagline": "AI-powered automation over WhatsApp for businesses. Support, scheduling and sales, friction-free. Proudly made in Colombia.",
     "product": "Product",
     "productLinks": {
       "features": "Features",
@@ -253,6 +253,6 @@
       "blog": "Blog"
     },
     "contact": "Contact",
-    "legal": "© 2026 Mocter · IdenTechnology · All rights reserved · Made in Colombia"
+    "legal": "© 2026 Mocter · All rights reserved · Made in Colombia"
   }
 }

@@ -6,7 +6,7 @@ import { IconMail, IconWhatsappFilled } from "../icons";
 /*
  * Contact links kept exactly as in the live site:
  * - pre-filled WhatsApp deep link for demo requests
- * - IdenTechnology contact email
+ * - Mocter contact email
  */
 const WA_LINK =
   "https://wa.me/573222752524?text=Hola%2C%20estuve%20viendo%20su%20p%C3%A1gina%20web%20y%20me%20interesa%20automatizar%20mi%20negocio%20con%20IA.%20%C2%BFMe%20pueden%20dar%20m%C3%A1s%20informaci%C3%B3n%3F";
@@ -41,7 +41,7 @@ export function CtaSection() {
             {t("waButton")}
           </a>
           <a
-            href="mailto:info@identechnology.co"
+            href="mailto:info@mocter.co"
             className="inline-flex items-center gap-2 rounded-full border border-stroke bg-surface px-6 py-3 font-semibold text-[15px] text-txt transition-all hover:-translate-y-0.5 hover:border-a2"
           >
             <IconMail className="h-[18px] w-[18px]" />

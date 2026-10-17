@@ -27,8 +27,8 @@ export function Nav() {
     <nav
       className={`fixed inset-x-0 top-0 z-50 flex items-center justify-between px-[clamp(18px,5vw,60px)] py-3.5 backdrop-blur-[14px] transition-colors duration-300 ${
         scrolled
-          ? "border-b border-stroke bg-[rgba(5,7,15,0.82)] light:bg-[rgba(245,248,255,0.85)]"
-          : "border-b border-transparent bg-[rgba(5,7,15,0.5)] light:bg-[rgba(245,248,255,0.6)]"
+          ? "border-b border-stroke bg-[var(--nav-bg-scrolled)]"
+          : "border-b border-transparent bg-[var(--nav-bg)]"
       }`}
     >
       <a href="#" className="flex items-center" aria-label={t("logoAria")}>

@@ -137,16 +137,16 @@ export function LiveDemo() {
 
         {/* Inbox mockup */}
         <Reveal>
-          <div className="overflow-hidden rounded-[22px] border border-stroke bg-[#0b1020] shadow-[0_40px_90px_rgba(0,0,0,0.5)] lg:grid lg:grid-cols-[290px_1fr_240px]">
+          <div className="overflow-hidden rounded-[22px] border border-stroke bg-[var(--inbox-bg)] shadow-[0_40px_90px_rgba(0,0,0,0.5)] lg:grid lg:grid-cols-[290px_1fr_240px]">
             {/* List column */}
             <div className="hidden border-r border-stroke2 lg:block">
-              <div className="flex items-center justify-between border-b border-stroke2 bg-[rgba(255,255,255,0.02)] px-[18px] py-4">
-                <b className="text-[14px] text-[#eaf0ff]">{t("inbox.head")}</b>
-                <div className="flex gap-2 text-[11px] text-[#9aa6c4]">
+              <div className="flex items-center justify-between border-b border-stroke2 bg-surface2 px-[18px] py-4">
+                <b className="text-[14px] text-txt">{t("inbox.head")}</b>
+                <div className="flex gap-2 text-[11px] text-muted">
                   <i className="rounded-lg bg-[rgba(47,107,255,0.2)] px-2 py-[3px] not-italic text-[#cfe0ff]">
                     {t("inbox.chipAll")}
                   </i>
-                  <i className="rounded-lg bg-[rgba(255,255,255,0.06)] px-2 py-[3px] not-italic">
+                  <i className="rounded-lg bg-surface2 px-2 py-[3px] not-italic text-muted">
                     {t("inbox.chipUnassigned")}
                   </i>
                 </div>
@@ -166,12 +166,12 @@ export function LiveDemo() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-[14px] font-semibold text-[#eaf0ff]">
+                      <span className="text-[14px] font-semibold text-txt">
                         {conv.name}
                       </span>
-                      <span className="text-[11px] text-[#9aa6c4]">{conv.time}</span>
+                      <span className="text-[11px] text-muted">{conv.time}</span>
                     </div>
-                    <p className="mb-1.5 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px] text-[#9aa6c4]">
+                    <p className="mb-1.5 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px] text-muted">
                       {conv.preview}
                     </p>
                     {labelBadge(conv.label)}
@@ -181,7 +181,7 @@ export function LiveDemo() {
             </div>
 
             {/* Chat column */}
-            <div className="flex min-h-[260px] flex-col bg-[#0a0f1e]">
+            <div className="flex min-h-[260px] flex-col bg-[var(--inbox-chat)]">
               <div className="flex items-center gap-3 border-b border-stroke2 px-[18px] py-3.5">
                 <span
                   className="grid h-9 w-9 place-items-center rounded-full text-[13px] font-bold text-white"
@@ -190,7 +190,7 @@ export function LiveDemo() {
                   C1
                 </span>
                 <div>
-                  <div className="text-[14px] font-semibold text-[#eaf0ff]">{top("name")}</div>
+                  <div className="text-[14px] font-semibold text-txt">{top("name")}</div>
                   <div className="text-[11px] text-wa">{top("status")}</div>
                 </div>
                 <span className="ml-auto rounded-lg border border-[rgba(47,212,131,0.3)] px-3 py-[5px] text-[11px] text-done">
@@ -208,7 +208,7 @@ export function LiveDemo() {
                     key={msg.key}
                     className={`max-w-[78%] rounded-[14px] px-3.5 py-2 text-[13.5px] leading-snug ${
                       msg.kind === "in"
-                        ? "self-start rounded-tl-[4px] bg-[#1a2436] text-[#eaf0ff]"
+                        ? "self-start rounded-tl-[4px] bg-[var(--inbox-msg-in)] text-txt"
                         : "self-end rounded-tr-[4px] bg-[linear-gradient(135deg,rgba(47,107,255,.9),rgba(34,211,238,.75))] font-medium text-[#04121f]"
                     }`}
                   >
@@ -219,7 +219,7 @@ export function LiveDemo() {
                   </div>
                 ))}
 
-                <div className="self-center rounded-lg bg-[rgba(255,255,255,0.04)] px-3 py-1 text-[11px] text-[#9aa6c4]">
+                <div className="self-center rounded-lg bg-surface px-3 py-1 text-[11px] text-muted">
                   {chat("sys")}
                 </div>
 
@@ -231,7 +231,7 @@ export function LiveDemo() {
                     key={msg.key}
                     className={`max-w-[78%] rounded-[14px] px-3.5 py-2 text-[13.5px] leading-snug ${
                       msg.kind === "in"
-                        ? "self-start rounded-tl-[4px] bg-[#1a2436] text-[#eaf0ff]"
+                        ? "self-start rounded-tl-[4px] bg-[var(--inbox-msg-in)] text-txt"
                         : "self-end rounded-tr-[4px] bg-[linear-gradient(135deg,rgba(47,107,255,.9),rgba(34,211,238,.75))] font-medium text-[#04121f]"
                     }`}
                   >
@@ -241,7 +241,7 @@ export function LiveDemo() {
                 ))}
               </div>
 
-              <div className="mx-[18px] mb-[18px] flex items-center gap-2 rounded-xl border border-stroke2 bg-[rgba(255,255,255,0.04)] px-3.5 py-2.5 text-[12.5px] text-[#9aa6c4]">
+              <div className="mx-[18px] mb-[18px] flex items-center gap-2 rounded-xl border border-stroke2 bg-surface px-3.5 py-2.5 text-[12.5px] text-muted">
                 {t("inbox.input")}
                 <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-[linear-gradient(135deg,var(--color-a2),var(--color-a1))] px-2.5 py-1 text-[11px] font-semibold text-[#04121f]">
                   <IconSpark className="h-[13px] w-[13px]" />
@@ -251,16 +251,16 @@ export function LiveDemo() {
             </div>
 
             {/* Context column */}
-            <div className="hidden bg-[rgba(255,255,255,0.015)] px-[18px] py-[18px] lg:block">
+            <div className="hidden bg-surface2 px-[18px] py-[18px] lg:block">
               <div className="mb-5">
-                <p className="mb-2.5 text-[12px] uppercase tracking-[0.08em] text-[#9aa6c4]">
+                <p className="mb-2.5 text-[12px] uppercase tracking-[0.08em] text-muted">
                   {ctx("contactState")}
                 </p>
-                <div className="mb-2 flex items-center justify-between rounded-[10px] border border-stroke2 bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-[13px] text-[#9aa6c4]">
+                <div className="mb-2 flex items-center justify-between rounded-[10px] border border-stroke2 bg-surface px-3 py-2.5 text-[13px] text-muted">
                   <span>{ctx("stageLabel")}</span>
                   <span className="font-semibold text-[#ff9686]">{ctx("stageValue")}</span>
                 </div>
-                <div className="flex items-center justify-between rounded-[10px] border border-stroke2 bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-[13px] text-[#9aa6c4]">
+                <div className="flex items-center justify-between rounded-[10px] border border-stroke2 bg-surface px-3 py-2.5 text-[13px] text-muted">
                   <span>{ctx("priorityLabel")}</span>
                   <span className="inline-flex items-center gap-1.5 font-semibold text-hot">
                     <IconBolt className="h-3.5 w-3.5" />
@@ -270,7 +270,7 @@ export function LiveDemo() {
               </div>
 
               <div className="mb-5">
-                <p className="mb-2.5 text-[12px] uppercase tracking-[0.08em] text-[#9aa6c4]">
+                <p className="mb-2.5 text-[12px] uppercase tracking-[0.08em] text-muted">
                   {ctx("tagsHeading")}
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -280,16 +280,16 @@ export function LiveDemo() {
               </div>
 
               <div className="mb-5">
-                <p className="mb-2.5 text-[12px] uppercase tracking-[0.08em] text-[#9aa6c4]">
+                <p className="mb-2.5 text-[12px] uppercase tracking-[0.08em] text-muted">
                   {ctx("managedHeading")}
                 </p>
-                <div className="mb-2 flex items-center justify-between rounded-[10px] border border-stroke2 bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-[13px] text-[#9aa6c4]">
+                <div className="mb-2 flex items-center justify-between rounded-[10px] border border-stroke2 bg-surface px-3 py-2.5 text-[13px] text-muted">
                   <span>{ctx("assistantLabel")}</span>
-                  <span className="font-semibold text-[#9cc0ff]">{ctx("assistantValue")}</span>
+                  <span className="font-semibold text-a3">{ctx("assistantValue")}</span>
                 </div>
-                <div className="flex items-center justify-between rounded-[10px] border border-stroke2 bg-[rgba(255,255,255,0.04)] px-3 py-2.5 text-[13px] text-[#9aa6c4]">
+                <div className="flex items-center justify-between rounded-[10px] border border-stroke2 bg-surface px-3 py-2.5 text-[13px] text-muted">
                   <span>{ctx("followupLabel")}</span>
-                  <span className="font-semibold text-[#77e6b0]">{ctx("followupValue")}</span>
+                  <span className="font-semibold text-done">{ctx("followupValue")}</span>
                 </div>
               </div>
             </div>

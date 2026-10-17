@@ -2,7 +2,7 @@ import { useTranslations } from "next-intl";
 import { Logo } from "../logo";
 
 /*
- * Contact points are production values on purpose (IdenTechnology email,
+ * Contact points are production values on purpose (Mocter email,
  * WhatsApp line). Inert "#" links match the original page's placeholders.
  */
 export function Footer() {
@@ -59,10 +59,10 @@ export function Footer() {
         <div>
           <h4 className="mb-3.5 text-[14px] font-semibold">{t("contact")}</h4>
           <a
-            href="mailto:info@identechnology.co"
+            href="mailto:info@mocter.co"
             className="mb-2 block text-[14px] text-muted transition-colors hover:text-a2"
           >
-            info@identechnology.co
+            info@mocter.co
           </a>
           <a
             href="https://wa.me/573222752524"

@@ -49,12 +49,12 @@ export function ThemeToggle() {
       type="button"
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
       aria-label={t("themeToggle")}
-      className="grid h-10 w-10 place-items-center rounded-full border border-stroke bg-surface text-muted transition-colors hover:border-a2 hover:text-txt"
+      className="grid h-10 w-10 cursor-pointer place-items-center rounded-full border border-stroke bg-surface text-muted transition-colors hover:border-a2 hover:text-txt"
     >
-      <span className="hidden dark:block">
+      <span className="hidden [.dark_&]:block dark:block">
         <IconSun />
       </span>
-      <span className="block dark:hidden">
+      <span className="block [.dark_&]:hidden dark:hidden">
         <IconMoon />
       </span>
     </button>

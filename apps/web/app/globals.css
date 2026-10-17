@@ -1,11 +1,42 @@
 @import "tailwindcss";
 
-/* next-themes toggles the `dark` class on <html> (default theme: dark). */
-@custom-variant dark (&:where(.dark, .dark *));
-@custom-variant light (&:where(:root:not(.dark) *));
+/* Tailwind CSS v4 class-based dark variant */
+@variant dark (&:where(.dark, :where(.dark *)));
 
-:root:not(.dark) {
+:root,
+.dark {
+  color-scheme: dark;
+  --bg: #05070f;
+  --bg2: #0a0e1c;
+  --card: rgba(255, 255, 255, 0.045);
+  --card2: rgba(255, 255, 255, 0.03);
+  --stroke: rgba(255, 255, 255, 0.09);
+  --stroke2: rgba(255, 255, 255, 0.06);
+  --txt: #eaf0ff;
+  --muted: #9aa6c4;
+  --nav-bg: rgba(5, 7, 15, 0.5);
+  --nav-bg-scrolled: rgba(5, 7, 15, 0.82);
+  --inbox-bg: #0b1020;
+  --inbox-chat: #0a0f1e;
+  --inbox-msg-in: #1a2436;
+}
+
+.light,
+html:not(.dark) {
   color-scheme: light;
+  --bg: #f5f8ff;
+  --bg2: #ffffff;
+  --card: #ffffff;
+  --card2: #f0f4fc;
+  --stroke: rgba(13, 22, 44, 0.12);
+  --stroke2: rgba(13, 22, 44, 0.07);
+  --txt: #0a0f1d;
+  --muted: #536280;
+  --nav-bg: rgba(245, 248, 255, 0.6);
+  --nav-bg-scrolled: rgba(245, 248, 255, 0.88);
+  --inbox-bg: #ffffff;
+  --inbox-chat: #f8faff;
+  --inbox-msg-in: #eef2f9;
 }
 
 @theme {
@@ -13,27 +44,27 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
 
-  /* Mocter surface palette (dark design tokens by default). */
-  --color-bg: #05070f;
-  --color-bg2: #0a0e1c;
-  --color-surface: rgba(255, 255, 255, 0.045);
-  --color-surface2: rgba(255, 255, 255, 0.03);
-  --color-stroke: rgba(255, 255, 255, 0.09);
-  --color-stroke2: rgba(255, 255, 255, 0.06);
-  --color-txt: #eaf0ff;
-  --color-muted: #9aa6c4;
+  /* Mocter surface palette linked to dynamic tokens */
+  --color-bg: var(--bg);
+  --color-bg2: var(--bg2);
+  --color-surface: var(--card);
+  --color-surface2: var(--card2);
+  --color-stroke: var(--stroke);
+  --color-stroke2: var(--stroke2);
+  --color-txt: var(--txt);
+  --color-muted: var(--muted);
 
-  /* Brand accents. */
+  /* Brand accents */
   --color-a1: #2f6bff;
   --color-a2: #22d3ee;
   --color-a3: #4aa3ff;
 
-  /* WhatsApp. */
+  /* WhatsApp */
   --color-wa: #25d366;
   --color-wa2: #128c7e;
   --color-wa-ink: #04231a;
 
-  /* Lead pipeline. */
+  /* Lead pipeline */
   --color-cold: #5aa9ff;
   --color-warm: #ffb63d;
   --color-hot: #ff6b57;
@@ -42,29 +73,17 @@
   --radius-card: 22px;
 }
 
-/* Light-mode friendly overrides of the surface tokens only: the accent,
-   WhatsApp and pipeline colors keep the same identity across both themes. */
-:root:not(.dark) {
-  --color-bg: #f5f8ff;
-  --color-bg2: #ffffff;
-  --color-surface: rgba(13, 22, 44, 0.05);
-  --color-surface2: rgba(13, 22, 44, 0.03);
-  --color-stroke: rgba(13, 22, 44, 0.11);
-  --color-stroke2: rgba(13, 22, 44, 0.06);
-  --color-txt: #0d1424;
-  --color-muted: #5a6784;
-}
-
 html {
   scroll-behavior: smooth;
 }
 
 body {
-  background: var(--color-bg);
-  color: var(--color-txt);
+  background: var(--bg);
+  color: var(--txt);
   font-family: var(--font-sans);
   line-height: 1.6;
   overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 ::selection {

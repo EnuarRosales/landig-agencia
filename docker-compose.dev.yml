@@ -1,42 +1,46 @@
-# Local development stack: PostgreSQL 18+ + hot-reloading Next.js dev server.
-# Usage: docker compose -f docker-compose.dev.yml up --build
+# Entorno de desarrollo local: Servidor de desarrollo Next.js 16 con recarga en caliente (HMR) + PostgreSQL 18+.
+# Uso: docker compose -f docker-compose.dev.yml up --build
 #
-# The web service runs on the official node:24-alpine image with the workspace
-# bind-mounted; dependencies are installed inside the container into named
-# volumes so the host's node_modules never leaks into the image.
-# Postgres data persists in the pgdata-dev named volume.
+# Requisitos:
+# - Archivo .env configurado con: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_PORT, DATABASE_URL.
+#
+# Servicios:
+# - pg-portal: Motor PostgreSQL 18+ persistente en el volumen con nombre 'pgdata-portal' e inicialización Drizzle.
+# - web-portal: Contenedor Node 24 con montaje bind del espacio de trabajo (.:/app). Las dependencias
+#   (node_modules) y la compilación (.next) se aíslan en volúmenes Docker para proteger el host.
 
-name: mocter-portal-dev
+name: mocter-admin
 
 services:
-  postgres:
-    image: postgres:18-alpine
+  pg-portal:
+    image: pgvector/pgvector:pg18
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-mocter}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mocter}
-      POSTGRES_DB: ${POSTGRES_DB:-mocter}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PORT: ${POSTGRES_PORT}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT}:5432"
     volumes:
-      - pgdata-dev:/var/lib/postgresql
+      - pgdata-portal:/var/lib/postgresql
       - ./packages/domain/drizzle:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mocter -d mocter"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 3s
       retries: 10
     restart: unless-stopped
 
-  web:
+  web-portal:
     image: node:24-alpine
     working_dir: /app
     command: sh -c "corepack enable && corepack pnpm install && corepack pnpm dev"
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgres://mocter:mocter@postgres:5432/mocter}
+      DATABASE_URL: ${DATABASE_URL}
       # File watching over a Windows bind mount requires polling.
       WATCHPACK_POLLING: "true"
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
       - .:/app
       # Named volumes keep container-installed node_modules and .next out of the host.
@@ -45,12 +49,12 @@ services:
       - web-next:/app/apps/web/.next
       - domain-node-modules:/app/packages/domain/node_modules
     depends_on:
-      postgres:
+      pg-portal:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
-  pgdata-dev:
+  pgdata-portal:
   root-node-modules:
   web-node-modules:
   web-next:

@@ -52,7 +52,7 @@ export function DemoForm() {
       className="mx-auto rounded-3xl border border-stroke bg-surface p-8 backdrop-blur-[10px]"
     >
       <form action={formAction} className="flex flex-col gap-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
             <label htmlFor="lead-name" className="mb-1 block text-[14px] font-medium">
               {t("name")}
@@ -126,19 +126,20 @@ export function DemoForm() {
               }
             />
           </div>
-          <div className="sm:col-span-2 lg:col-span-4">
-            <label htmlFor="lead-message" className="mb-1 block text-[14px] font-medium">
-              {t("message")}
-            </label>
-            <textarea
-              id="lead-message"
-              name="message"
-              rows={3}
-              placeholder={t("messagePlaceholder")}
-              className={fieldClasses}
-            />
-            <FieldError message={messageError ? t("errUnknown") : undefined} />
-          </div>
+        </div>
+
+        <div>
+          <label htmlFor="lead-message" className="mb-1 block text-[14px] font-medium">
+            {t("message")}
+          </label>
+          <textarea
+            id="lead-message"
+            name="message"
+            rows={3}
+            placeholder={t("messagePlaceholder")}
+            className={fieldClasses}
+          />
+          <FieldError message={messageError ? t("errUnknown") : undefined} />
         </div>
 
         {state?.reason ? (

@@ -1,10 +1,43 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+
+export function CursorGlow() {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onMove = (e: MouseEvent) => {
+      el.style.left = `${e.clientX}px`;
+      el.style.top = `${e.clientY}px`;
+    };
+    window.addEventListener("mousemove", onMove, { passive: true });
+    return () => window.removeEventListener("mousemove", onMove);
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      id="glow"
+      aria-hidden
+      className="pointer-events-none fixed z-0 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-60 mix-blend-screen transition-opacity duration-300"
+      style={{
+        background:
+          "radial-gradient(circle, rgba(47,107,255,0.14), transparent 65%)",
+      }}
+    />
+  );
+}
+
 /**
  * Fixed decorative background: three drifting mesh blobs plus a faded grid
- * overlay (ports the original `.mesh` / `.grid-overlay` styles).
+ * overlay (ports the original `.mesh` / `.grid-overlay` styles) and the cursor glow.
  */
 export function FloatingBackground() {
   return (
     <>
+      <CursorGlow />
       <div className="fixed inset-0 -z-10 overflow-hidden" aria-hidden>
         <div
           className="mesh-blob opacity-50"
