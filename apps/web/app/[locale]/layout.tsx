@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Sora } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
-import { getTranslations, setRequestLocale } from "next-intl/server";
+import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
 import { ThemeProvider } from "next-themes";
 import "../globals.css";
 
@@ -68,7 +68,10 @@ export default async function LocaleLayout({ children, params }: Props) {
   const { locale } = await params;
   setRequestLocale(locale);
 
-  const t = await getTranslations({ locale, namespace: "jsonld" });
+  const [t, messages] = await Promise.all([
+    getTranslations({ locale, namespace: "jsonld" }),
+    getMessages(),
+  ]);
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -125,7 +128,7 @@ export default async function LocaleLayout({ children, params }: Props) {
           storageKey="mocter-theme"
           disableTransitionOnChange
         >
-          <NextIntlClientProvider>{children}</NextIntlClientProvider>
+          <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
         </ThemeProvider>
         <script
           type="application/ld+json"

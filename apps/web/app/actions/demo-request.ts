@@ -1,28 +1,9 @@
 "use server";
 
 import { leadSchema, insertLead } from "@mocter/domain";
+import type { DemoFormState } from "./types";
 
-/**
- * Serializable state for the "Solicitar demo" form (used with useActionState).
- * Field errors are translation-safe codes; the client maps them to the
- * active locale via its messages.
- */
-export type DemoFormState = {
-  status: "idle" | "success";
-  fieldErrors: {
-    name?: "required";
-    email?: "required" | "email";
-    phone?: "required" | "phone";
-    message?: "max";
-  };
-  /** Present when persistence failed gracefully (no data was lost silently). */
-  reason?: "db" | "unknown";
-};
-
-export const demoRequestInitialState: DemoFormState = {
-  status: "idle",
-  fieldErrors: {},
-};
+export type { DemoFormState };
 
 /** Kind of Zod issue → stable form code (validated input shape from `@mocter/domain`). */
 function codeForIssue(code: string): string {

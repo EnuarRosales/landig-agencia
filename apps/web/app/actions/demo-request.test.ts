@@ -10,7 +10,8 @@ vi.mock("@mocter/domain", () => ({
   insertLead: mockInsertLead,
 }));
 
-import { submitDemoRequest, demoRequestInitialState } from "./demo-request";
+import { submitDemoRequest } from "./demo-request";
+import { demoRequestInitialState } from "./types";
 
 describe("submitDemoRequest (Server Action)", () => {
   beforeEach(() => {

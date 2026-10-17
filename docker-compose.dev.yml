@@ -19,6 +19,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata-dev:/var/lib/postgresql
+      - ./packages/domain/drizzle:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mocter -d mocter"]
       interval: 5s
@@ -38,9 +39,10 @@ services:
       - "3000:3000"
     volumes:
       - .:/app
-      # Named volumes keep container-installed node_modules out of the host.
+      # Named volumes keep container-installed node_modules and .next out of the host.
       - root-node-modules:/app/node_modules
       - web-node-modules:/app/apps/web/node_modules
+      - web-next:/app/apps/web/.next
       - domain-node-modules:/app/packages/domain/node_modules
     depends_on:
       postgres:
@@ -51,4 +53,5 @@ volumes:
   pgdata-dev:
   root-node-modules:
   web-node-modules:
+  web-next:
   domain-node-modules:

@@ -1,8 +1,8 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import { leads, type Lead } from "./schema.ts";
-import type { LeadInput } from "./validation.ts";
+import { leads, type Lead } from "./schema";
+import type { LeadInput } from "./validation";
 
 /**
  * PostgreSQL connection string. Falls back to a local development URL so

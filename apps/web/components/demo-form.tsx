@@ -2,10 +2,8 @@
 
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
-import {
-  demoRequestInitialState,
-  submitDemoRequest,
-} from "@/app/actions/demo-request";
+import { submitDemoRequest } from "@/app/actions/demo-request";
+import { demoRequestInitialState } from "@/app/actions/types";
 
 const fieldClasses =
   "w-full rounded-xl border border-stroke bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[15px] text-txt placeholder:text-muted focus:border-a2 focus:outline-none";
@@ -21,7 +19,9 @@ export function DemoForm() {
     demoRequestInitialState,
   );
 
-  if (state.status === "success") {
+  const fieldErrors = state?.fieldErrors ?? {};
+
+  if (state?.status === "success") {
     return (
       <div
         id="demo-form"
@@ -44,7 +44,7 @@ export function DemoForm() {
     );
   }
 
-  const messageError = state.fieldErrors.message;
+  const messageError = fieldErrors.message;
 
   return (
     <div
@@ -64,13 +64,13 @@ export function DemoForm() {
               required
               autoComplete="name"
               placeholder={t("namePlaceholder")}
-              aria-invalid={Boolean(state.fieldErrors.name)}
+              aria-invalid={Boolean(fieldErrors.name)}
               className={
                 fieldClasses +
-                (state.fieldErrors.name ? " border-hot" : "")
+                (fieldErrors.name ? " border-hot" : "")
               }
             />
-            <FieldError message={state.fieldErrors.name ? t("errRequired") : undefined} />
+            <FieldError message={fieldErrors.name ? t("errRequired") : undefined} />
           </div>
           <div>
             <label htmlFor="lead-email" className="mb-1 block text-[14px] font-medium">
@@ -83,16 +83,16 @@ export function DemoForm() {
               required
               autoComplete="email"
               placeholder={t("emailPlaceholder")}
-              aria-invalid={Boolean(state.fieldErrors.email)}
+              aria-invalid={Boolean(fieldErrors.email)}
               className={
                 fieldClasses +
-                (state.fieldErrors.email ? " border-hot" : "")
+                (fieldErrors.email ? " border-hot" : "")
               }
             />
             <FieldError
               message={
-                state.fieldErrors.email
-                  ? state.fieldErrors.email === "required"
+                fieldErrors.email
+                  ? fieldErrors.email === "required"
                     ? t("errRequired")
                     : t("errEmail")
                   : undefined
@@ -110,16 +110,16 @@ export function DemoForm() {
               required
               autoComplete="tel"
               placeholder={t("phonePlaceholder")}
-              aria-invalid={Boolean(state.fieldErrors.phone)}
+              aria-invalid={Boolean(fieldErrors.phone)}
               className={
                 fieldClasses +
-                (state.fieldErrors.phone ? " border-hot" : "")
+                (fieldErrors.phone ? " border-hot" : "")
               }
             />
             <FieldError
               message={
-                state.fieldErrors.phone
-                  ? state.fieldErrors.phone === "required"
+                fieldErrors.phone
+                  ? fieldErrors.phone === "required"
                     ? t("errRequired")
                     : t("errPhone")
                   : undefined
@@ -141,7 +141,7 @@ export function DemoForm() {
           </div>
         </div>
 
-        {state.reason ? (
+        {state?.reason ? (
           <p role="alert" className="text-[14px] text-hot">
             {state.reason === "db" ? t("errDb") : t("errUnknown")}
           </p>

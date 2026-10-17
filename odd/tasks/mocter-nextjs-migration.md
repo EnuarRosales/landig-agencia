@@ -95,6 +95,18 @@
 - T8 `ce8826e` feat(tests-ci): Vitest para packages/domain (11 tests leadSchema) + Server Actions (4 tests demo-request) + Playwright E2E (5 tests landing: i18n ES/EN, cambio de locale, formulario, theme toggle). Config: vite.config.ts (domain), vitest.config.ts + playwright.config.ts (web).
 - T10 `ce8826e` feat(tests-ci): .github/workflows/ci.yml (lint+test+e2e en push develop/main y PR) y .github/workflows/cd.yml (build y push a ghcr.io: tags v*.*.*, main=latest, develop=dev-*).
 
+**L9** (16 Oct 2026): Verificación total y resolución de errores bloqueantes de build, runtime y base de datos:
+- Bug corregido (500 Internal Server Error en `/es`): `apps/web/app/[locale]/layout.tsx` no pasaba la prop `messages` a `NextIntlClientProvider`. Al no tener mensajes, los componentes cliente con `useTranslations()` fallaban en SSR. Corregido cargando `getMessages()` y pasando `messages={messages}`.
+- Bug corregido (SSR crash en `demo-form.tsx`): `apps/web/app/actions/demo-request.ts` es un módulo `"use server"`, el cual solo puede exportar funciones asíncronas; exportar `demoRequestInitialState` causaba que en el cliente fuera `undefined`. Se extrajo a `apps/web/app/actions/types.ts` y se aplicó safe fallback en `fieldErrors`.
+- Bug corregido (TypeScript build errors):
+  * `apps/web/app/robots.ts`: agregado `import type { MetadataRoute } from "next";`.
+  * `apps/web/app/manifest.ts`: tipado de `purpose` corregido a valores admisibles por `MetadataRoute.Manifest`.
+  * `packages/domain/src/{index,db}.ts`: eliminación de extensiones `.ts` en imports y actualización de `tsconfig.json` a `moduleResolution: "bundler"`.
+  * `packages/domain/package.json`: script `lint` actualizado a `tsc --noEmit`.
+- Bug corregido (Bucle infinito ENOENT en Docker dev): En `docker-compose.dev.yml` el directorio `.next` sobre DrvFs/9p en Windows causaba fallos en `mkdir /app/apps/web/.next/dev/logs`. Se aisló `.next` en volumen con nombre `web-next:/app/apps/web/.next`.
+- Bug corregido (Schema ausente en PostgreSQL): Se montó `./packages/domain/drizzle:/docker-entrypoint-initdb.d:ro` en `docker-compose.dev.yml` y `docker-compose.prod.yml`, y se ejecutó la migración SQL creando la tabla `leads`.
+- Verificación completa: `turbo run build`, `turbo run lint`, `turbo run test` exitosos (3/3 tareas, 15 tests pasando). Servidor web respondiendo HTTP 200 en `/es`, `/en`, `/manifest.webmanifest`, `/robots.txt` y `/sitemap.xml`.
+
 ---
 
-*Documento de trazabilidad ODD actualizado y alineado con la entrevista técnica. Todas las tareas T2–T10 implementadas y commiteadas. Entorno Docker dev verificado y estable.*
+*Documento de trazabilidad ODD actualizado y alineado con la entrevista técnica. Todas las tareas T1–T10 implementadas, verificadas y estables en Docker dev y producción.*
