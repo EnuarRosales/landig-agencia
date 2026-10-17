@@ -48,8 +48,8 @@ export function Sectors() {
         {SECTORS.map(({ icon: Icon, key }) => (
           <Reveal key={key}>
             <div className="group h-full rounded-[18px] border border-stroke bg-surface px-[18px] py-6 text-center transition-all duration-300 hover:-translate-y-1.5 hover:border-a1 hover:bg-[linear-gradient(160deg,rgba(47,107,255,.12),transparent)]">
-              <div className="mx-auto mb-3.5 grid h-12 w-12 place-items-center rounded-[14px] border border-stroke bg-[linear-gradient(145deg,rgba(47,107,255,.22),rgba(34,211,238,.1))]">
-                <span className="text-[#dff0ff]">
+              <div className="mx-auto mb-3.5 grid h-12 w-12 place-items-center rounded-[14px] border border-stroke bg-[linear-gradient(145deg,rgba(47,107,255,.15),rgba(34,211,238,.08))] dark:bg-[linear-gradient(145deg,rgba(47,107,255,.22),rgba(34,211,238,.1))]">
+                <span className="text-a1 dark:text-[#dff0ff] transition-colors group-hover:text-a2">
                   <Icon className="h-[26px] w-[26px]" />
                 </span>
               </div>

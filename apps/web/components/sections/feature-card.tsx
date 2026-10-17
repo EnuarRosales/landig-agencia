@@ -56,8 +56,8 @@ export function FeatureCard({
           : ""
       }`}
     >
-      <div className="relative mb-[22px] grid h-[60px] w-[60px] place-items-center rounded-2xl border border-stroke bg-[linear-gradient(145deg,rgba(47,107,255,.25),rgba(34,211,238,.12))] shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]">
-        <span className="text-[#dff0ff]">{icon}</span>
+      <div className="relative mb-[22px] grid h-[60px] w-[60px] place-items-center rounded-2xl border border-stroke bg-[linear-gradient(145deg,rgba(47,107,255,.15),rgba(34,211,238,.08))] dark:bg-[linear-gradient(145deg,rgba(47,107,255,.25),rgba(34,211,238,.12))] shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]">
+        <span className="text-a1 dark:text-[#dff0ff]">{icon}</span>
       </div>
       <h3 className="mb-2.5 font-display text-[clamp(20px,2.4vw,26px)] tracking-tight">
         {title}

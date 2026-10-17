@@ -120,7 +120,7 @@ export function HowItWorks() {
                   : "pointer-events-none translate-y-3.5 scale-[0.98] opacity-0"
               }`}
             >
-              <div className="anim-bob mb-[22px] grid h-[96px] w-[96px] place-items-center rounded-[26px] border border-stroke bg-[linear-gradient(145deg,rgba(47,107,255,.3),rgba(34,211,238,.14))] text-white">
+              <div className="anim-bob mb-[22px] grid h-[96px] w-[96px] place-items-center rounded-[26px] border border-stroke bg-[linear-gradient(145deg,rgba(47,107,255,.15),rgba(34,211,238,.08))] dark:bg-[linear-gradient(145deg,rgba(47,107,255,.3),rgba(34,211,238,.14))] text-a1 dark:text-[#dff0ff]">
                 {visual.icon}
               </div>
               <h4 className="mb-2 font-display text-[22px] tracking-tight">

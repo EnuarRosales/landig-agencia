@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Sora } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
-import { ThemeProvider } from "next-themes";
+import { ThemeProvider } from "@/components/theme-provider";
+import { ChatwootWidget } from "@/components/chatwoot-widget";
 import "../globals.css";
 
 const sora = Sora({
@@ -36,6 +37,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       template: "%s · Mocter",
     },
     description: t("description"),
+    icons: {
+      icon: [
+        { url: "/icon.svg", type: "image/svg+xml" },
+        { url: "/favicon.ico", sizes: "any" },
+      ],
+      apple: "/icon.svg",
+    },
     alternates: {
       canonical: `${SITE_URL}/${locale}`,
       languages: {
@@ -118,9 +126,10 @@ export default async function LocaleLayout({ children, params }: Props) {
     <html
       lang={locale}
       className={`${sora.variable} ${inter.variable}`}
+      data-scroll-behavior="smooth"
       suppressHydrationWarning
     >
-      <body className="font-sans">
+      <body className="font-sans" suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
@@ -130,6 +139,7 @@ export default async function LocaleLayout({ children, params }: Props) {
         >
           <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
         </ThemeProvider>
+        <ChatwootWidget />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{

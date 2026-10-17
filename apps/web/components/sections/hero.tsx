@@ -48,7 +48,7 @@ function FloatingBadge({
       className={`absolute z-10 hidden min-[560px]:flex ${position} items-center gap-2.5 rounded-2xl border border-stroke bg-surface px-4 py-3 text-[13px] shadow-[0_12px_40px_rgba(0,0,0,0.4)] backdrop-blur-[12px] float-badge`}
       style={{ animationDelay: delay }}
     >
-      <span className="grid h-[34px] w-[34px] place-items-center rounded-[9px] bg-[linear-gradient(135deg,rgba(47,107,255,.3),rgba(34,211,238,.2))] text-white">
+      <span className="grid h-[34px] w-[34px] place-items-center rounded-[9px] bg-[linear-gradient(135deg,rgba(47,107,255,.18),rgba(34,211,238,.12))] dark:bg-[linear-gradient(135deg,rgba(47,107,255,.3),rgba(34,211,238,.2))] text-a1 dark:text-white">
         {icon}
       </span>
       <span>

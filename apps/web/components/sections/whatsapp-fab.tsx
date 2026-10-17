@@ -14,10 +14,10 @@ export function WhatsappFab() {
       rel="noopener noreferrer"
       aria-label={t("fabAria")}
       title={t("fabAria")}
-      className="fixed bottom-6 right-6 z-[60] grid h-[60px] w-[60px] place-items-center rounded-full bg-wa text-wa-ink shadow-[0_10px_30px_rgba(37,211,102,0.5)]"
+      className="fixed left-4 top-1/2 -translate-y-1/2 z-[60] grid h-[56px] w-[56px] place-items-center rounded-full bg-wa text-wa-ink shadow-[0_10px_30px_rgba(37,211,102,0.4)] transition-transform hover:scale-110"
       style={{ animation: "pulse-dot 2s infinite" }}
     >
-      <IconWhatsappFilled className="h-[30px] w-[30px]" />
+      <IconWhatsappFilled className="h-[28px] w-[28px]" />
     </a>
   );
 }

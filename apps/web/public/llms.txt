@@ -5,8 +5,12 @@
 Mocter automatically answers customer conversations on WhatsApp in natural language, books appointments with Google Calendar and Google Meet confirmations, manages orders and quotes, delivers multimedia such as catalogs and PDFs, and classifies every contact into a sales pipeline (cold, warm, hot lead, order, delivered). A unified inbox shows each conversation with AI-generated labels, priority and context, and a human can take over any chat at any time.
 
 - Public site: https://mocter.co/es (Spanish, default) and https://mocter.co/en (English)
+- Privacy Policy (Habeas Data Ley 1581/2012): https://mocter.co/es/privacidad
+- Terms and Conditions: https://mocter.co/es/terminos
+- Cookie & Privacy Settings: https://mocter.co/es/cookies
+- Live Support: integrated Chatwoot widget and WhatsApp line
 - Sectors served: clinics, salons and spas, consultancies, real estate, education, technical services, e-commerce, agencies, restaurants, gyms
 - Data residency: all customer data is hosted on servers in Colombia
-- Contact: info@mocter.co / WhatsApp +57 322 275 2524
+- Contact: info@mocter.co / privacidad@mocter.co / WhatsApp +57 322 275 2524
 
 This page is a public landing page; no authentication is required. Full details: llms-full.txt

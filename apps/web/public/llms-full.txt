@@ -24,10 +24,18 @@ Clinics and medical practices, salons and spas, consultancies and studios, real 
 - **Setup:** three steps — connect the WhatsApp number, train the AI with the business's services, hours, prices and tone, then start automating. Customers of the business don't need to install anything; they keep texting the same WhatsApp number.
 - **Pricing:** demo requests are free and handled within 24 hours; pricing is quoted per business. There is no cost per conversation claim on the landing page.
 
+## Legal compliance and data protection
+- **Habeas Data Colombia:** Mocter complies strictly with Colombian Statutory Law 1581 of 2012, Regulatory Decree 1377 of 2013, and SIC regulations.
+- **Privacy Policy:** https://mocter.co/es/privacidad (available in English at /en/privacidad)
+- **Terms and Conditions:** https://mocter.co/es/terminos (available in English at /en/terminos)
+- **Cookie and Privacy Preferences:** https://mocter.co/es/cookies (available in English at /en/cookies)
+- **Live Customer Support:** Integrated Chatwoot widget (online assistance) and direct WhatsApp line.
+
 ## Contact
 
 - Landing page: https://mocter.co (Spanish: /es, English: /en)
 - Demo request form: https://mocter.co/es#demo-form
 - WhatsApp: https://wa.me/573222752524
-- Email: info@mocter.co
+- Support & Business email: info@mocter.co
+- Privacy & Data Protection email: privacidad@mocter.co
 - Company: Mocter, Colombia

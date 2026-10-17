@@ -41,20 +41,21 @@ export function ThemeToggle() {
   const t = useTranslations("nav");
   const { resolvedTheme, setTheme } = useTheme();
 
-  // The icons are switched through the `.dark` class that next-themes writes
-  // on <html> (via its blocking pre-hydration script), so the button is
-  // correct on first paint and there is never a hydration mismatch.
   return (
     <button
       type="button"
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
       aria-label={t("themeToggle")}
-      className="grid h-10 w-10 cursor-pointer place-items-center rounded-full border border-stroke bg-surface text-muted transition-colors hover:border-a2 hover:text-txt"
+      title={t("themeToggle")}
+      className="group relative grid h-10 w-10 cursor-pointer place-items-center rounded-full border border-stroke bg-surface/90 shadow-sm transition-all duration-300 hover:scale-105 hover:border-a1 hover:shadow-[0_0_16px_rgba(47,107,255,0.3)] active:scale-95"
     >
-      <span className="hidden [.dark_&]:block dark:block">
+      {/* Sol para modo oscuro (cambiar a claro) con brillo ámbar y rotación */}
+      <span className="hidden [.dark_&]:block dark:block text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.55)] transition-transform duration-300 group-hover:rotate-45">
         <IconSun />
       </span>
-      <span className="block [.dark_&]:hidden dark:hidden">
+
+      {/* Luna para modo claro (cambiar a oscuro) con azul índigo vibrante y rotación */}
+      <span className="block [.dark_&]:hidden dark:hidden text-[#2f6bff] drop-shadow-[0_0_8px_rgba(47,107,255,0.4)] transition-transform duration-300 group-hover:-rotate-12">
         <IconMoon />
       </span>
     </button>
