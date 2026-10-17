@@ -287,17 +287,21 @@ Provee alta disponibilidad, auto-escalabilidad horizontal y gestión declarativa
 kubectl apply -f k8s/namespace.yaml
 
 # 2. Configurar los secretos de producción a partir de la plantilla
-# (Copiar secrets.example.yaml, ajustar valores base64 y aplicar)
+# (Copiar secrets.example.yaml a secrets.yaml, ajustar valores y aplicar)
 kubectl apply -f k8s/secrets.yaml
 
-# 3. Desplegar los componentes de la aplicación
+# 3. (Opcional) Desplegar PostgreSQL con pgvector dentro del cluster:
+# (Omitir si se utiliza una base de datos gestionada externa en la nube)
+kubectl apply -f k8s/pg-portal.yaml
+
+# 4. Desplegar los componentes de la aplicación web:
 kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
 kubectl apply -f k8s/ingress.yaml
 
-# 4. Comprobar el estado y salud de los pods
-kubectl get pods -n mocter-prod -l app=mocter-web
-kubectl describe ingress mocter-web-ingress -n mocter-prod
+# 5. Comprobar el estado y salud de los pods
+kubectl get pods -n mocter -l app=web-portal
+kubectl describe ingress web-portal-ingress -n mocter
 ```
 
 ---

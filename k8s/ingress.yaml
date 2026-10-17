@@ -1,28 +1,36 @@
-# k8s/ ingress — projection for the future Kubernetes deployment (nginx ingress).
+# Manifiesto de Ingress — Enrutamiento HTTP/HTTPS perimetral para Mocter
 #
-# Usage order:
-#   1. namespace.yaml
-#   2. secrets.example.yaml (real secret)
-#   3. deployment.yaml
-#   4. service.yaml
-#   5. THIS FILE
-#
-# TLS is a placeholder: create a Secret holding the certificate for mocter.co and
-# uncomment the `tls` block (or use cert-manager annotations) when deploying.
+# Controlador admitido: ingress-nginx (estándar de la industria).
+# Gestiona la redirección canónica www -> non-www, terminación TLS y enrutamiento hacia el Service 'web-portal'.
+
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: mocter-web
+  name: web-portal-ingress
   namespace: mocter
+  labels:
+    app.kubernetes.io/name: web-portal
+    app.kubernetes.io/part-of: mocter-admin
   annotations:
-    # Redirect www.mocter.co -> mocter.co handled by the nginx controller.
+    kubernetes.io/ingress.class: nginx
+    # Redirección automática de tráfico HTTP a HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Redirección de www.mocter.co a mocter.co
     nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+    # Límite de carga para formularios o archivos
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # Tiempos de espera adecuados para Server Actions y peticiones asíncronas
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    # Descomentar si se utiliza cert-manager para emisión automática de certificados Let's Encrypt:
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
-  ingressClassName: nginx
+  # Descomentar el bloque TLS una vez creado el Secret o configurado cert-manager:
   # tls:
   #   - hosts:
   #       - mocter.co
-  #     secretName: mocter-tls
+  #       - www.mocter.co
+  #     secretName: mocter-tls-cert
   rules:
     - host: mocter.co
       http:
@@ -31,6 +39,16 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: mocter-web
+                name: web-portal
+                port:
+                  number: 80
+    - host: www.mocter.co
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-portal
                 port:
                   number: 80

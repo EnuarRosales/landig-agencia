@@ -1,22 +1,20 @@
-# k8s/ service — projection for the future Kubernetes deployment.
+# Manifiesto de Servicio (Service) — Exposición interna de la aplicación web
 #
-# Usage order:
-#   1. namespace.yaml
-#   2. secrets.example.yaml (real secret)
-#   3. deployment.yaml
-#   4. THIS FILE
-#   5. ingress.yaml
+# Tipo: ClusterIP (comunicación interna entre pods y punto de entrada para Ingress).
+# Expone el puerto HTTP estándar 80 en el cluster y lo redirige al targetPort 3000 del contenedor.
+
 apiVersion: v1
 kind: Service
 metadata:
-  name: mocter-web
+  name: web-portal
   namespace: mocter
   labels:
-    app.kubernetes.io/name: mocter-web
+    app.kubernetes.io/name: web-portal
+    app.kubernetes.io/part-of: mocter-admin
 spec:
   type: ClusterIP
   selector:
-    app: mocter-web
+    app: web-portal
   ports:
     - name: http
       port: 80

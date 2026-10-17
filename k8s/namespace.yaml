@@ -1,12 +1,16 @@
-# k8s/ namespace — projection for the future Kubernetes deployment (not applied now).
+# Manifiesto de Namespace para Kubernetes — Plataforma Mocter
 #
-# Usage order:
+# Orden recomendado de aplicación:
 #   1. kubectl apply -f k8s/namespace.yaml
-#   2. kubectl apply -f k8s/secrets.example.yaml   (copy -> secrets.yaml, fill values, NEVER commit)
-#   3. kubectl apply -f k8s/deployment.yaml
-#   4. kubectl apply -f k8s/service.yaml
-#   5. kubectl apply -f k8s/ingress.yaml
+#   2. kubectl apply -f k8s/secrets.example.yaml   (copiar a secrets.yaml, completar y NUNCA commitear)
+#   3. kubectl apply -f k8s/pg-portal.yaml         (opcional si se usa PostgreSQL dentro del cluster)
+#   4. kubectl apply -f k8s/deployment.yaml
+#   5. kubectl apply -f k8s/service.yaml
+#   6. kubectl apply -f k8s/ingress.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: mocter
+  labels:
+    app.kubernetes.io/part-of: mocter-admin
+
