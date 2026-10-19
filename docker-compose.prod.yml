@@ -1,16 +1,20 @@
-# Entorno de producción: Imagen standalone optimizada de Next.js desde GHCR + PostgreSQL 18+ persistente.
-# Uso: docker compose -f docker-compose.prod.yml up -d
+# Entorno de producción: imagen única de Mocter desde GHCR + PostgreSQL 18 (pgvector).
 #
-# Requisitos:
-# - Archivo .env configurado con: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_PORT, DATABASE_URL, TAG.
-# - Imagen productiva publicada en GHCR (ghcr.io/enuarrosales/mocter-web:${TAG:-latest}).
+# - Expuesto únicamente a través de Traefik v2.11 (red externa traefik_network,
+#   entrypoint websecure, certresolver mytlschallenge). Ningún servicio publica puertos.
+# - La redirección HTTP -> HTTPS la hace globalmente el entrypoint "web" de Traefik.
+# - www.mocter.co redirige (301) a mocter.co.
+# - Migraciones: servicio "migrate" (perfil "migrate") con la MISMA imagen que web-portal.
+#   deploy.sh lo ejecuta antes de levantar web-portal. Aplica solo las migraciones
+#   pendientes y las registra en drizzle.__drizzle_migrations.
 #
-# Servicios:
-# - pg-portal: Motor PostgreSQL 18+ con persistencia en el volumen 'pgdata-portal' e inicialización Drizzle.
-# - web-portal: Contenedor productivo standalone de Next.js en el puerto interno 3000 (mapeado al 3001 del host).
+# En el servidor este archivo se descarga como /opt/mocter-admin/compose.yml.
+# Operación manual:
+#   cd /opt/mocter-admin && docker compose -f compose.yml --env-file .env ps
+#
+# .env requerido: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DATABASE_URL, TAG
 
-
-name: mocter-admin
+name: mocter-admin-prod
 
 services:
   pg-portal:
@@ -19,35 +23,64 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-    ports:
-      - "${POSTGRES_PORT}:5432"
     volumes:
       - pgdata-portal:/var/lib/postgresql
-      - ./packages/domain/drizzle:/docker-entrypoint-initdb.d:ro
+    networks: [ backend ]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 10s
       timeout: 3s
       retries: 10
-  
+
+  migrate:
+    image: ghcr.io/enuarrosales/mocter-web:${TAG:-temp}
+    profiles: [ "migrate" ]
+    command: [ "node", "migrator/scripts/migrate.mjs" ]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    networks: [ backend ]
+    restart: "no"
+    healthcheck:
+      disable: true
+    depends_on:
+      pg-portal:
+        condition: service_healthy
+
   web-portal:
     image: ghcr.io/enuarrosales/mocter-web:${TAG:-latest}
     environment:
       DATABASE_URL: ${DATABASE_URL}
-    ports:
-      - "3001:3000"
+    networks: [ backend, traefik_network ]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_network"
+      - "traefik.http.routers.mocter-prod.entrypoints=websecure"
+      - "traefik.http.routers.mocter-prod.rule=Host(`mocter.co`) || Host(`www.mocter.co`)"
+      - "traefik.http.routers.mocter-prod.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.mocter-prod.middlewares=mocter-prod-www"
+      - "traefik.http.routers.mocter-prod.service=mocter-prod"
+      - "traefik.http.middlewares.mocter-prod-www.redirectregex.regex=^https://www\\.mocter\\.co/(.*)"
+      - "traefik.http.middlewares.mocter-prod-www.redirectregex.replacement=https://mocter.co/$${1}"
+      - "traefik.http.middlewares.mocter-prod-www.redirectregex.permanent=true"
+      - "traefik.http.services.mocter-prod.loadbalancer.server.port=3000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/" ]
       interval: 30s
       timeout: 3s
       retries: 3
-      start_period: 10s
+      start_period: 20s
+      start_interval: 2s
     depends_on:
       pg-portal:
         condition: service_healthy
+
+networks:
+  backend:
+    internal: true
+  traefik_network:
+    external: true
 
 volumes:
   pgdata-portal:

@@ -1,11 +1,12 @@
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
+import * as schema from "./schema";
 import { leads, type Lead } from "./schema";
-import type { LeadInput } from "./validation";
+import type { LeadInput } from "../validation";
 
 let clientInstance: ReturnType<typeof postgres> | null = null;
-let dbInstance: ReturnType<typeof drizzle> | null = null;
+let dbInstance: PostgresJsDatabase<typeof schema> | null = null;
 
 /**
  * Resolves the database connection string strictly from process.env.DATABASE_URL.
@@ -40,11 +41,11 @@ export function getClient(): ReturnType<typeof postgres> {
 }
 
 /**
- * Lazy Drizzle ORM instance.
+ * Lazy Drizzle ORM instance with full schema typing (enables db.query relational API).
  */
-export function getDb(): ReturnType<typeof drizzle> {
+export function getDb(): PostgresJsDatabase<typeof schema> {
   if (!dbInstance) {
-    dbInstance = drizzle(getClient());
+    dbInstance = drizzle(getClient(), { schema });
   }
   return dbInstance;
 }
@@ -53,7 +54,7 @@ export function getDb(): ReturnType<typeof drizzle> {
  * Dynamic proxy for `db` ensuring backward compatibility while keeping
  * lazy initialization without hardcoded credentials.
  */
-export const db = new Proxy({} as ReturnType<typeof drizzle>, {
+export const db = new Proxy({} as PostgresJsDatabase<typeof schema>, {
   get(_target, prop) {
     const instance = getDb();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

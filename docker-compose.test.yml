@@ -1,15 +1,16 @@
-# Entorno de pruebas / staging: Contenedor con imagen de desarrollo precompilada + PostgreSQL 18+.
-# Uso: docker compose -f docker-compose.test.yml up -d
+# Entorno de pruebas / staging (PROYECTADO): misma imagen que producción, etiqueta sha-<commit> de develop.
 #
-# Requisitos:
-# - Archivo .env configurado con: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_PORT, DATABASE_URL.
-# - Imagen publicada en GHCR (ghcr.io/enuarrosales/mocter-web:develop).
+# - Servidor objetivo: VPS Hostinger KVM 4 idéntico a producción (amd64, Traefik v2.11,
+#   red traefik_network, entrypoints web/websecure, certresolver mytlschallenge).
+# - Sin dominio propio: APP_DOMAIN = <ip-con-guiones>.sslip.io (ej. 1-2-3-4.sslip.io).
+# - Migraciones: servicio "migrate" con la MISMA imagen (ver docker-compose.prod.yml).
+# - El despliegue automático está desactivado mientras la variable de repositorio
+#   STAGING_ENABLED != 'true'.
 #
-# Servicios:
-# - pg-portal: Motor PostgreSQL 18+ persistente en volumen 'pgdata-portal' e inicialización Drizzle.
-# - web-portal: Aplicación web montada sobre la imagen develop, exponiendo el puerto 3000 mapeado al 3001.
+# En el servidor este archivo se descarga como /opt/mocter-admin/compose.yml.
+# .env requerido: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DATABASE_URL, APP_DOMAIN, TAG
 
-name: mocter-admin
+name: mocter-admin-test
 
 services:
   pg-portal:
@@ -18,35 +19,60 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_PORT: ${POSTGRES_PORT}
-    ports:
-      - "${POSTGRES_PORT}:5432"
     volumes:
       - pgdata-portal:/var/lib/postgresql
-      - ./packages/domain/drizzle:/docker-entrypoint-initdb.d:ro
+    networks: [ backend ]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  web-portal:
-    image: ghcr.io/enuarrosales/mocter-web:develop
+  migrate:
+    image: ghcr.io/enuarrosales/mocter-web:${TAG:-temp}
+    profiles: [ "migrate" ]
+    command: [ "node", "migrator/scripts/migrate.mjs" ]
     environment:
       DATABASE_URL: ${DATABASE_URL}
-    ports:
-      - "3001:3000"
-    restart: unless-stopped
+    networks: [ backend ]
+    restart: "no"
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
+      disable: true
     depends_on:
       pg-portal:
         condition: service_healthy
+
+  web-portal:
+    image: ghcr.io/enuarrosales/mocter-web:${TAG:-latest}
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    networks: [ backend, traefik_network ]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_network"
+      - "traefik.http.routers.mocter-test.entrypoints=websecure"
+      - "traefik.http.routers.mocter-test.rule=Host(`${APP_DOMAIN:-203-0-113-10.sslip.io}`)"
+      - "traefik.http.routers.mocter-test.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.mocter-test.service=mocter-test"
+      - "traefik.http.services.mocter-test.loadbalancer.server.port=3000"
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/" ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+      start_interval: 2s
+    depends_on:
+      pg-portal:
+        condition: service_healthy
+
+networks:
+  backend:
+    internal: true
+  traefik_network:
+    external: true
 
 volumes:
   pgdata-portal:

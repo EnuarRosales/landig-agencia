@@ -1,22 +1,17 @@
-# Keep: pnpm-lock.yaml + pnpm-workspace.yaml + all package.json manifests + sources (apps/web, packages/domain).
-# Exclude: local state, build outputs, docs, secrets — keeps context small and images reproducible.
-node_modules/
-**/node_modules/
-.next/
-**/.next/
-dist/
-**/dist/
-.turbo/
-**/.turbo/
-coverage/
-**/coverage/
-playwright-report/
-test-results/
-.git/
-.vscode/
-.atl/
+# Si ya existe un .dockerignore, fusionar sin eliminar entradas existentes.
+# NO excluir packages/domain/drizzle ni packages/domain/scripts (los usa el migrador).
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/coverage
+**/playwright-report
+**/test-results
+.git
+.github
 .env
 .env.*
-#.env.example is intentionally excluded too: no env file is baked into the image.
-*.md
+!.env.example
 *.log
+deploy/
+docker-compose*.yml

@@ -19,7 +19,9 @@
     "test": "turbo run test",
     "e2e": "turbo run e2e",
     "db:generate": "pnpm --filter @mocter/domain db:generate",
-    "db:migrate": "pnpm --filter @mocter/domain db:migrate"
+    "db:migrate": "pnpm --filter @mocter/domain db:migrate",
+    "db:check": "pnpm --filter @mocter/domain db:check",
+    "db:push": "pnpm --filter @mocter/domain db:push"
   },
   "devDependencies": {
     "turbo": "^2.5.0"

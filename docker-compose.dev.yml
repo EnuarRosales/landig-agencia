@@ -9,7 +9,7 @@
 # - web-portal: Contenedor Node 24 con montaje bind del espacio de trabajo (.:/app). Las dependencias
 #   (node_modules) y la compilación (.next) se aíslan en volúmenes Docker para proteger el host.
 
-name: mocter-admin
+name: mocter-core
 
 services:
   pg-portal:
@@ -23,9 +23,8 @@ services:
       - "${POSTGRES_PORT}:5432"
     volumes:
       - pgdata-portal:/var/lib/postgresql
-      - ./packages/domain/drizzle:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -34,7 +33,7 @@ services:
   web-portal:
     image: node:24-alpine
     working_dir: /app
-    command: sh -c "corepack enable && corepack pnpm install && corepack pnpm dev"
+    command: sh -c "corepack enable && corepack pnpm install && node packages/domain/scripts/migrate.mjs && corepack pnpm dev"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       # File watching over a Windows bind mount requires polling.

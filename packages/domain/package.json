@@ -6,16 +6,18 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/schema.ts",
+    "./schema": "./src/db/schema.ts",
     "./validation": "./src/validation.ts",
-    "./db": "./src/db.ts"
+    "./db": "./src/db/index.ts"
   },
   "scripts": {
     "build": "tsc",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:check": "drizzle-kit check",
+    "db:push": "drizzle-kit push"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.0",

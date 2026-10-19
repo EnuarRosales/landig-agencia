@@ -1,26 +1,41 @@
+# CI: calidad de código y consistencia de migraciones.
+# - Se ejecuta en PR hacia develop/main y en push a main.
+# - Es reutilizable (workflow_call): cd.yml lo invoca antes de construir la imagen
+#   en push a develop y en tags vX.Y.Z.
+#
+# Jobs:
+#   lint, test, e2e  -> calidad
+#   migrations       -> garantiza el estándar Drizzle "generate + migrate":
+#                       el esquema TypeScript y las migraciones SQL versionadas
+#                       (packages/domain/drizzle) deben estar sincronizados.
+
 name: CI
 
 on:
-  push:
-    branches: [develop, main]
   pull_request:
     branches: [develop, main]
+  push:
+    branches: [main]
+  workflow_call:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   lint:
+    name: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
+      - name: Setup pnpm (versión tomada de "packageManager" en package.json)
         uses: pnpm/action-setup@v4
-        with:
-          version: 12
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -28,22 +43,22 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
 
-      - name: Run lint
-        run: corepack pnpm lint
+      - name: Lint
+        run: pnpm lint
 
   test:
+    name: test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 12
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -51,23 +66,59 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
 
-      - name: Run tests
-        run: corepack pnpm test
+      - name: Pruebas
+        run: pnpm test
+
+  migrations:
+    name: migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Validar consistencia de migraciones (drizzle-kit check)
+        run: pnpm --filter @mocter/domain exec drizzle-kit check
+
+      - name: Verificar que no hay cambios de esquema sin migración generada
+        run: |
+          # generate compara el esquema TypeScript con el último snapshot versionado.
+          # No requiere base de datos. Si produce archivos nuevos, falta ejecutar
+          # "drizzle-kit generate" localmente y versionar el resultado.
+          pnpm --filter @mocter/domain exec drizzle-kit generate
+          if [[ -n "$(git status --porcelain -- packages/domain/drizzle)" ]]; then
+            echo "::error::El esquema cambió sin migración versionada. Ejecute 'drizzle-kit generate' y haga commit de packages/domain/drizzle."
+            git status --porcelain -- packages/domain/drizzle
+            exit 1
+          fi
+          echo "Esquema y migraciones sincronizados"
 
   e2e:
-    needs: [lint, test]
+    name: e2e
+    needs: [lint, test, migrations]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 12
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -75,13 +126,13 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: Install dependencies
-        run: corepack pnpm install --frozen-lockfile
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browsers
-        run: corepack pnpm exec playwright install --with-deps chromium
+      - name: Instalar navegadores Playwright
+        run: pnpm exec playwright install --with-deps chromium
 
-      - name: Run E2E tests
-        run: corepack pnpm e2e
+      - name: Pruebas E2E
+        run: pnpm e2e
         env:
           CI: true

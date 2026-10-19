@@ -1,4 +1,11 @@
-# Mocter — Migración a Next.js 16 (Interfaz Pública + Despliegue)
+# MIG-001 · Tareas y Trazabilidad · Migración a Next.js 16
+
+| Atributo | Valor |
+|---|---|
+| ID | MIG-001 |
+| Versión | 1.0 |
+| Estado | Implementada · Estable |
+| Documentos | `requirements.md` · `tasks.md` (este) |
 
 **Objetivo:** Migrar la landing page actual (`index.html`) a una app Next.js 16 (App Router) en monorepo (`apps/web` + `packages/domain`) con Tailwind CSS v4, Radix UI, Light/Dark Mode, i18n (`next-intl`, rutas `/[locale]`, ES predeterminado, EN secundario), persistencia de leads en PostgreSQL (versión admisible 18+) con Drizzle ORM + Zod en Server Actions, PWA nativa, optimización SEO/AIO/GEO/LLMO y rebranding integral a "Mocter". Solo interfaz pública en esta iteración; la interfaz administrativa se integrará en una iteración posterior.
 
@@ -12,8 +19,6 @@
 - `develop`: Disparador de pruebas automáticas y despliegue a entorno de pruebas.
 - `main`: Rama de producción / versión `latest` (se mantiene `main` y se crea `develop` a partir de ella).
 - Producción: Tags de versión SemVer estándar `vMAJOR.MINOR.PATCH` (ej. `v1.0.0`).
-
-**Estrategia de entrega:** `ask-on-risk` (forecast ≈ 400+ authored changed lines; se consultará antes de encadenar PRs si se excede el presupuesto).
 
 **Test runner:** Vitest para pruebas unitarias e integración (`packages/domain`, esquemas Zod, server actions) + Playwright para pruebas E2E en navegador (interactividad, formulario, cambio de idioma y tema).
 
@@ -106,7 +111,3 @@
 - Bug corregido (Bucle infinito ENOENT en Docker dev): En `docker-compose.dev.yml` el directorio `.next` sobre DrvFs/9p en Windows causaba fallos en `mkdir /app/apps/web/.next/dev/logs`. Se aisló `.next` en volumen con nombre `web-next:/app/apps/web/.next`.
 - Bug corregido (Schema ausente en PostgreSQL): Se montó `./packages/domain/drizzle:/docker-entrypoint-initdb.d:ro` en `docker-compose.dev.yml` y `docker-compose.prod.yml`, y se ejecutó la migración SQL creando la tabla `leads`.
 - Verificación completa: `turbo run build`, `turbo run lint`, `turbo run test` exitosos (3/3 tareas, 15 tests pasando). Servidor web respondiendo HTTP 200 en `/es`, `/en`, `/manifest.webmanifest`, `/robots.txt` y `/sitemap.xml`.
-
----
-
-*Documento de trazabilidad ODD actualizado y alineado con la entrevista técnica. Todas las tareas T1–T10 implementadas, verificadas y estables en Docker dev y producción.*
