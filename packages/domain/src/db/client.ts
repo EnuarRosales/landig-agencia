@@ -7,8 +7,10 @@ import { appLogger } from "../utils/logger";
 let clientInstance: ReturnType<typeof postgres> | null = null;
 let dbInstance: PostgresJsDatabase<typeof schema> | null = null;
 
+import { getValidatedEnv } from "../utils/env";
+
 /**
- * Resuelve la cadena de conexión a PostgreSQL estrictamente desde `process.env.DATABASE_URL`.
+ * Resuelve y valida la cadena de conexión a PostgreSQL utilizando el esquema Zod {@link getValidatedEnv}.
  *
  * Emite un error estructurado y lanza una excepción si la variable no está definida,
  * previniendo conexiones accidentales con configuraciones por defecto o silenciosas.
@@ -17,14 +19,8 @@ let dbInstance: PostgresJsDatabase<typeof schema> | null = null;
  * @throws {Error} Si `DATABASE_URL` no está configurada en las variables de entorno.
  */
 export function getDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    const errorMsg =
-      "[Database Config Error] La variable de entorno DATABASE_URL no está definida. La conexión a la base de datos no puede inicializarse.";
-    appLogger.error(errorMsg);
-    throw new Error(errorMsg);
-  }
-  return url;
+  const env = getValidatedEnv();
+  return env.DATABASE_URL;
 }
 
 /**
