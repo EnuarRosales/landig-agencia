@@ -9,6 +9,9 @@
     "POSTGRES_PORT",
     "POSTGRES_DB"
   ],
+  "globalPassThroughEnv": [
+    "SWC_NATIVE_BINDING_CACHE"
+  ],
   "remoteCache": {
     "signature": true
   },
