@@ -117,7 +117,7 @@ export default async function TerminosPage({ params }: Props) {
           <section id="aceptacion" className="scroll-mt-28">
             <h2 className="mb-4 text-xl font-bold text-txt">1. Aceptación de los Términos</h2>
             <p>
-              Al registrarse, acceder o utilizar el sitio web <code className="rounded bg-surface px-1 py-0.5 text-xs text-a2">https://mocter.co</code>, solicitar una demostración o contratar los servicios de automatización con IA de Mocter, usted (el "Cliente" o "Usuario") manifiesta que ha leído, comprendido y aceptado en su totalidad estos Términos y Condiciones, así como nuestra{" "}
+              Al registrarse, acceder o utilizar el sitio web <code className="rounded bg-surface px-1 py-0.5 text-xs text-a2">https://mocter.co</code>, solicitar una demostración o contratar los servicios de automatización con IA de Mocter, usted (el &quot;Cliente&quot; o &quot;Usuario&quot;) manifiesta que ha leído, comprendido y aceptado en su totalidad estos Términos y Condiciones, así como nuestra{" "}
               <a href={`/${locale}/privacidad`} className="text-a2 underline">
                 Política de Privacidad
               </a>. Si no está de acuerdo con alguna disposición, deberá abstenerse de usar nuestros servicios.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLocale } from "next-intl";
 
 interface CookieCategory {
@@ -11,28 +11,44 @@ interface CookieCategory {
   cookies: string[];
 }
 
+/**
+ * Estado de consentimiento gestionado por el panel de configuración de cookies.
+ */
+interface CookiePreferencesState {
+  essential: boolean;
+  support: boolean;
+  analytics: boolean;
+}
+
+/**
+ * Preferencias por defecto; las cookies esenciales permanecen siempre activas.
+ */
+const DEFAULT_COOKIE_PREFERENCES: CookiePreferencesState = {
+  essential: true,
+  support: true,
+  analytics: true,
+};
+
 export function CookiePreferences() {
   const locale = useLocale();
   const isEs = locale === "es";
 
-  const [preferences, setPreferences] = useState({
-    essential: true,
-    support: true,
-    analytics: true,
-  });
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
+  const [preferences, setPreferences] = useState<CookiePreferencesState>(() => {
+    if (typeof window === "undefined") {
+      return DEFAULT_COOKIE_PREFERENCES;
+    }
     try {
-      const stored = localStorage.getItem("mocter_cookie_preferences");
+      const stored = window.localStorage.getItem("mocter_cookie_preferences");
       if (stored) {
-        const parsed = JSON.parse(stored);
-        setPreferences((prev) => ({ ...prev, ...parsed, essential: true }));
+        const parsed = JSON.parse(stored) as Partial<CookiePreferencesState>;
+        return { ...DEFAULT_COOKIE_PREFERENCES, ...parsed, essential: true };
       }
     } catch {
       // Fallback a valores por defecto
     }
-  }, []);
+    return DEFAULT_COOKIE_PREFERENCES;
+  });
+  const [saved, setSaved] = useState(false);
 
   const handleToggle = (key: "support" | "analytics") => {
     setPreferences((prev) => ({
