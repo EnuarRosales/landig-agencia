@@ -1,6 +1,8 @@
 "use server";
 
+import { headers } from "next/headers";
 import { leadService } from "@mocter/domain";
+import { checkRateLimit } from "../../lib/rate-limit";
 import type { DemoFormState } from "./types";
 
 export type { DemoFormState };
@@ -45,6 +47,23 @@ export async function submitDemoRequest(
   _prevState: DemoFormState,
   formData: FormData,
 ): Promise<DemoFormState> {
+  // 1. Verificación de tasa por dirección IP (RF-04.2)
+  try {
+    const reqHeaders = await headers();
+    const forwarded = reqHeaders.get("x-forwarded-for");
+    const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
+    const rateLimit = checkRateLimit(ip);
+    if (!rateLimit.allowed) {
+      return {
+        status: "idle",
+        fieldErrors: {},
+        reason: "rate_limit",
+      };
+    }
+  } catch {
+    // Si se ejecuta fuera de contexto HTTP (por ejemplo en tests sin headers mockeados), continúa.
+  }
+
   const rawMessage = String(formData.get("message") ?? "").trim();
 
   const rawPayload = {

@@ -8,6 +8,10 @@ vi.mock("@mocter/domain", () => ({
   },
 }));
 
+vi.mock("next/headers", () => ({
+  headers: vi.fn().mockResolvedValue(new Headers({ "x-forwarded-for": "192.168.1.100" })),
+}));
+
 import { submitDemoRequest } from "./demo-request";
 import { demoRequestInitialState } from "./types";
 
@@ -82,5 +86,22 @@ describe("submitDemoRequest (Server Action)", () => {
 
     expect(result.status).toBe("idle");
     expect(result.reason).toBe("db");
+  });
+
+  it("returns rate_limit reason when IP exceeds threshold", async () => {
+    const rateLimitModule = await import("../../lib/rate-limit");
+    vi.spyOn(rateLimitModule, "checkRateLimit").mockReturnValue({
+      allowed: false,
+      remaining: 0,
+      resetAt: Date.now() + 60000,
+    });
+
+    const result = await submitDemoRequest(
+      demoRequestInitialState,
+      new FormData(),
+    );
+
+    expect(result.status).toBe("idle");
+    expect(result.reason).toBe("rate_limit");
   });
 });
