@@ -200,11 +200,12 @@ flowchart TD
 ## 5. Pila Tecnológica Implementada
 
 ### 5.1 Frontend (`apps/web`)
-- **Next.js 16.4.2:** Motor de renderizado híbrido con App Router, Turbopack y React 19.
+- **Next.js 16.4.2 (App Router Exclusivo):** Motor de renderizado híbrido estructurado bajo la convención moderna `apps/web/app/` (React Server Components, Route Handlers y Server Actions). Prohibido el uso de Pages Router (`pages/`) o métodos legados (`getServerSideProps`, `getStaticProps`). Compilación acelerada con Turbopack y React 19.
 - **Tailwind CSS v4:** Motor CSS basado en variables dinámicas para alternancia instantánea entre tema claro y oscuro sin recarga.
 - **`next-intl`:** Internacionalización nativa con diccionarios estructurados y soporte de cambio dinámico mediante `LocaleSwitcher`.
 - **Chatwoot SDK:** Integración asíncrona no bloqueante de atención en línea (`chatwoot-widget.tsx`).
 - **PWA & Accesibilidad:** Manifiesto web nativo (`manifest.webmanifest`), `sw.js`, contraste auditado (`text-a1 dark:text-[#dff0ff]`) y componentes accesibles (Radix UI primitives).
+- **Documentación OpenAPI 3.1 & Swagger/Scalar:** Especificación autogenerada desde esquemas Zod con `@asteasolutions/zod-to-openapi` servida en `/api/openapi.json` y visualizador interactivo moderno montado en `/api-docs` con `@scalar/api-reference-react`.
 - **Control de Scroll:** Atributo `data-scroll-behavior="smooth"` en `<html>` para compatibilidad completa con transiciones de ruta en Next.js 16.
 
 ### 5.2 Capa de Dominio y Persistencia (`@mocter/domain`)

@@ -10,8 +10,9 @@
 |---|---|
 | Repositorio | `EnuarRosales/landig-agencia` (público) |
 | Tipo | Monorepo pnpm + Turborepo |
-| Aplicación | `apps/web` (`@mocter/web`) · Next.js 16 en modo `standalone` |
+| Aplicación | `apps/web` (`@mocter/web`) · Next.js 16 (**App Router exclusivo**, React 19) en modo `standalone` |
 | Dominio / datos | `packages/domain` (`@mocter/domain`) · Drizzle ORM |
+| Enrutamiento | Next.js App Router (`apps/web/app/`). Prohibido el uso de Pages Router (`pages/`). |
 | Base de datos | PostgreSQL 18 con pgvector (`pgvector/pgvector:pg18`) |
 | Runtime | Node.js 24 (alpine en contenedor) |
 | Imagen | `ghcr.io/enuarrosales/mocter-web` (única: aplicación + migrador) |
@@ -83,6 +84,10 @@ bash -n deploy/server/deploy.sh
 TAG=test docker compose -f docker-compose.prod.yml config -q
 ```
 
+### 4.4 Documentación de código (TSDoc)
+
+Toda función, clase, interfaz, método y endpoint exportado o con lógica no trivial debe documentarse usando **TSDoc** en **idioma español** neutral y técnico. Consulte la directiva completa en [rules/rules-for-tsdoc-proyect.md](rules/rules-for-tsdoc-proyect.md).
+
 ## 5. Formato del reporte del agente
 
 Al terminar una especificación, entrega:
@@ -99,4 +104,7 @@ Al terminar una especificación, entrega:
 |---|---|---|
 | MIG-001 | [Migración Next.js 16](docs/specs/mig-001-nextjs-migration/requirements.md) | Implementada · Estable |
 | CD-001 | [Despliegue continuo](docs/specs/cd-001-despliegue-continuo/requirements.md) | Implementada · Pendiente de primer release |
+| CORE-002 | [Optimización del cascarón](docs/specs/core-002-optimizacion-cascaron/requirements.md) | Implementada · Estable |
+| API-001 | [Documentación OpenAPI (Swagger)](docs/specs/api-001-openapi-swagger/requirements.md) | Implementada · Estable |
+
 

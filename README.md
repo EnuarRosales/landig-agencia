@@ -150,7 +150,7 @@ landig-agencia/
 │       ├── mig-001-nextjs-migration/ # Especificación técnica de migración a Next.js 16
 │       └── cd-001-despliegue-continuo/ # Especificación técnica de CI/CD y despliegue
 ├── k8s/                              # Manifiestos de Kubernetes para producción enterprise
-├── docker-compose.dev.yml            # Orquestación de desarrollo con HMR y volúmenes aislados
+├── docker-compose.yml                # Orquestación de desarrollo con HMR y volúmenes aislados
 ├── docker-compose.test.yml           # Orquestación de pruebas aisladas y validación de calidad
 ├── docker-compose.prod.yml           # Orquestación de producción con Traefik v2.11 y servicio migrate
 ├── Dockerfile                        # Multi-stage build optimizado (Node 24 Alpine, standalone + migrator)
@@ -165,11 +165,13 @@ landig-agencia/
 
 ### 4.1 Frontend & Aplicación Web (`apps/web`)
 - **Framework Principal:** [Next.js 16](https://nextjs.org/) con React 19 y compilador Turbopack.
+- **Paradigma de Enrutamiento (App Router Exclusivo):** Implementado 100% bajo **Next.js App Router** (`apps/web/app/`). Queda expresamente **prohibido el uso de Pages Router** (`pages/`), así como métodos legados (`getServerSideProps`, `getStaticProps`). La arquitectura aprovecha React Server Components (RSC), Route Handlers nativos (`app/api/`) y Server Actions para mutaciones de datos.
 - **Sistema de Estilos:** [Tailwind CSS v4](https://tailwindcss.com/) configurado con variables CSS dinámicas para cambio de tema instantáneo.
 - **Tipografía:** Sora (Display) & Inter (Sans) optimizadas con precarga nativa `next/font`.
 - **Internacionalización:** [next-intl](https://next-intl-docs.vercel.app/) con detección y resolución limpia de rutas (`/es` y `/en`).
 - **Soporte PWA:** Manifiesto web progresivo (`manifest.webmanifest`), `sw.js` y metadatos para instalación en dispositivos móviles y de escritorio.
 - **SEO & Descubrimiento:** Metadatos OpenGraph, Twitter Cards, Canonical URLs, Schema.org JSON-LD estructurado y archivos `llms.txt` / `llms-full.txt` para motores de búsqueda de IA.
+- **Documentación de APIs (OpenAPI / Swagger):** Documentación OpenAPI 3.1 tipada y autogenerada desde esquemas Zod con `@asteasolutions/zod-to-openapi`. Expuesta vía endpoint JSON canónico (`/api/openapi.json`) y visor interactivo moderno en tiempo real con Scalar (`/api-docs`).
 
 ### 4.2 Capa de Datos & Persistencia (`packages/domain`)
 - **Motor de Base de Datos:** [PostgreSQL 18+](https://www.postgresql.org/) con extensión `pgvector` para soporte de búsquedas semánticas.
@@ -273,19 +275,19 @@ pnpm --filter @mocter/domain db:migrate
 └─────────────────┘       └─────────────────┘       └─────────────────┘       └─────────────────┘
 ```
 
-### Ambiente 1: Desarrollo Local (`docker-compose.dev.yml`)
+### Ambiente 1: Desarrollo Local (`docker-compose.yml`)
 Diseñado para velocidad con **Hot Module Reloading (HMR)** mediante Turbopack. Aísla `node_modules` en volúmenes Docker y ejecuta las migraciones pendientes automáticamente al iniciar:
 
 ```bash
 # 1. Levantar el stack de desarrollo (Next.js 16 + PostgreSQL 18)
-docker compose -f docker-compose.dev.yml up
+docker compose up
 
 # 2. Puntos de acceso:
 #    - Aplicación Web: http://localhost:3001/es
 #    - PostgreSQL: localhost:54321 (Usuario: mocter | BD: db-portal)
 
 # 3. Detener los servicios:
-docker compose -f docker-compose.dev.yml down
+docker compose down
 ```
 
 ### Ambiente 2: Pruebas y Validación CI (`docker-compose.test.yml`)
