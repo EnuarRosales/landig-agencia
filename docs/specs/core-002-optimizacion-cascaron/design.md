@@ -112,11 +112,7 @@ export interface RegisterLeadResult {
 - **Response 201 Created:**
   ```json
   {
-    "ok": true,
-    "lead": {
-      "id": "uuid-generado",
-      "createdAt": "2026-10-19T10:00:00.000Z"
-    }
+    "ok": true
   }
   ```
 - **Response 400 Bad Request:**

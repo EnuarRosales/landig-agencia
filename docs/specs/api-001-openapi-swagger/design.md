@@ -76,7 +76,7 @@ matcher: ["/((?!api|api-docs|_next|_vercel|.*\\..*).*)"]
    - **Resumen**: Registro y validación de una nueva solicitud de demostración / contacto.
    - **Cuerpo**: `LeadInput` (nombre, email, teléfono, mensaje opcional).
    - **Respuestas**:
-     - `201`: Prospecto registrado exitosamente (`{ ok: true, data: { id, name, ... } }`).
+     - `201`: Prospecto registrado exitosamente (`{ ok: true }`).
      - `400`: Error de validación en los campos del cuerpo (`{ ok: false, error, issues }`).
      - `429`: Límite de tasa de solicitudes excedido (`{ ok: false, error: "Demasiadas solicitudes..." }`).
      - `500`: Error interno del servidor al procesar la solicitud.

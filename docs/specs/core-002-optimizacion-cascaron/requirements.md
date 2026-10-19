@@ -58,7 +58,7 @@ Consolidar y desacoplar los cimientos arquitectónicos del proyecto Mocter para 
 |---|---|
 | RF-02.1 | La aplicación web debe exponer una ruta REST `POST /api/leads`. |
 | RF-02.2 | `POST /api/leads` debe validar el payload usando el mismo `LeadService` de `@mocter/domain`. |
-| RF-02.3 | Ante un payload válido, debe retornar status HTTP `201 Created` con JSON `{ ok: true, data: { id, createdAt } }`. |
+| RF-02.3 | Ante un payload válido, debe retornar status HTTP `201 Created` con JSON `{ ok: true }` confirmando la persistencia exitosa. |
 | RF-02.4 | Ante un payload inválido o error de validación, debe retornar status HTTP `400 Bad Request` con el detalle de los errores. |
 | RF-02.5 | La Server Action existente `submitDemoRequest` debe ser refactorizada para delegar en `LeadService`, garantizando paridad total entre la acción de formulario y el endpoint REST. |
 

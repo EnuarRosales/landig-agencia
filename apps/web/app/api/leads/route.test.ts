@@ -58,8 +58,7 @@ describe("POST /api/leads", () => {
     const data = await res.json();
 
     expect(res.status).toBe(201);
-    expect(data.ok).toBe(true);
-    expect(data.lead.id).toBe("lead-abc-123");
+    expect(data).toEqual({ ok: true });
   });
 
   it("returns 400 Bad Request when validation fails", async () => {

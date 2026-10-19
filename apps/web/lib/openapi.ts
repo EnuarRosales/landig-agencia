@@ -62,26 +62,27 @@ export const LeadInputSchema = z
   .openapi("LeadInput");
 
 /**
- * Esquema de la entidad Lead persistida.
+ * Esquema de la entidad Lead devuelta tras su persistencia.
  */
 export const LeadEntitySchema = z
   .object({
-    id: z.number().int().openapi({ example: 101, description: "Identificador único secuencial" }),
+    id: z.string().uuid().openapi({
+      example: "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+      description: "Identificador único universal (UUID v4) del prospecto",
+    }),
     name: z.string().openapi({ example: "Carlos Restrepo" }),
     email: z.string().openapi({ example: "carlos@empresa.com" }),
-    phone: z.string().openapi({ example: "+573001234567" }),
-    message: z.string().nullable().openapi({ example: "Solicito información sobre la automatización de citas con IA." }),
-    createdAt: z.string().openapi({ example: "2026-10-19T18:00:00.000Z" }),
+    createdAt: z.string().datetime().openapi({ example: "2026-10-19T18:00:00.000Z" }),
   })
   .openapi("LeadEntity");
 
 /**
  * Esquema de respuesta exitosa de creación de prospecto.
+ * Retorna confirmación booleana de persistencia exitosa.
  */
 const LeadSuccessResponseSchema = z
   .object({
-    ok: z.literal(true),
-    data: LeadEntitySchema,
+    ok: z.literal(true).openapi({ example: true, description: "Confirmación de persistencia exitosa del prospecto" }),
   })
   .openapi("LeadSuccessResponse");
 

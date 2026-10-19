@@ -14,7 +14,7 @@ import { checkRateLimit } from "../../../lib/rate-limit";
  * - **Ruta:** `/api/leads`
  * - **Cabeceras:** `Content-Type: application/json`
  * - **Respuestas:**
- *   - `201 Created`: Lead registrado satisfactoriamente. Devuelve el identificador y datos básicos.
+ *   - `201 Created`: Lead registrado satisfactoriamente (`{ ok: true }`). Confirmación de persistencia.
  *   - `400 Bad Request`: JSON malformado o error de validación en campos obligatorios (nombre, correo, teléfono).
  *   - `429 Too Many Requests`: La IP excedió la tasa permitida (10 req/min). Incluye cabecera `Retry-After`.
  *   - `500 Internal Server Error`: Fallo interno de base de datos o conectividad.
@@ -77,12 +77,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   return NextResponse.json(
     {
       ok: true,
-      lead: {
-        id: result.data.id,
-        name: result.data.name,
-        email: result.data.email,
-        createdAt: result.data.createdAt,
-      },
     },
     { status: 201 },
   );
