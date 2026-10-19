@@ -2,14 +2,22 @@ import createMiddleware from "next-intl/middleware";
 import { routing } from "./i18n/routing";
 
 /**
- * Locale negotiation + rewrite of `/` to `/es` (localePrefix "always").
- * Skips Next internals and static files (anything containing a dot), so
- * `robots.txt`, `sitemap.xml`, `manifest.webmanifest`, `sw.js` and `llms.txt`
- * are served as-is.
+ * Middleware de Next.js para la negociación de idioma y redirección de rutas (`next-intl`).
+ *
+ * Funcionalidades:
+ * - Redirige la raíz `/` hacia `/es` de forma predeterminada (`localePrefix: "always"`).
+ * - Detecta el idioma del navegador o la cookie `NEXT_LOCALE`.
+ * - Excluye archivos estáticos (iconos, robots, sitemap, manifest, sw.js, llms.txt) y rutas `/api/*`
+ *   para garantizar que los endpoints REST y assets se sirvan directamente sin reescrituras de prefijo.
  */
 export default createMiddleware(routing);
 
+/**
+ * Configuración del comparador de rutas (matcher) para el middleware.
+ *
+ * Omite deliberadamente rutas internas de Next (`_next`, `_vercel`), llamadas a la API (`api`)
+ * y cualquier archivo con extensión para maximizar el rendimiento.
+ */
 export const config = {
-  // Skip `_next`, hot-reload, API and static assets (files with an extension).
-  matcher: ["/((?!api|_next|_vercel|.*\\..*).*)"],
+  matcher: ["/((?!api|api-docs|_next|_vercel|.*\\..*).*)"],
 };
