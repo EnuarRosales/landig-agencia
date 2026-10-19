@@ -1,5 +1,4 @@
-# Entorno de desarrollo local: Servidor de desarrollo Next.js 16 con recarga en caliente (HMR) + PostgreSQL 18+.
-# Uso: docker compose -f docker-compose.dev.yml up --build
+# Uso: docker compose up --build
 #
 # Requisitos:
 # - Archivo .env configurado con: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_PORT, DATABASE_URL.
