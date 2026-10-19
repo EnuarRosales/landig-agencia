@@ -1,10 +1,12 @@
 import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 /**
- * `leads` table: public "Solicitar demo" form submissions.
+ * Tabla `leads`: Almacena las solicitudes públicas recibidas mediante el formulario de demostración y la API REST.
  *
- * PostgreSQL 18+; identifiers map to snake_case columns while keeping
- * camelCase properties for typed selects/inserts.
+ * Diseñada para PostgreSQL 18 con pgvector. Los identificadores de columnas en la base de datos
+ * utilizan `snake_case`, mientras que las propiedades TypeScript mapeadas utilizan `camelCase`.
+ *
+ * @remarks Esta tabla es la fuente de persistencia principal para la prospección comercial inicial de Mocter.
  */
 export const leads = pgTable("leads", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -15,8 +17,12 @@ export const leads = pgTable("leads", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** Row shape returned by selects/inserts over `leads`. */
+/**
+ * Representa un registro de lead completo tal como se recupera o inserta en la tabla {@link leads}.
+ */
 export type Lead = typeof leads.$inferSelect;
 
-/** Row shape accepted by inserts into `leads`. */
+/**
+ * Representa los datos requeridos para realizar una nueva inserción en la tabla {@link leads}.
+ */
 export type NewLead = typeof leads.$inferInsert;
