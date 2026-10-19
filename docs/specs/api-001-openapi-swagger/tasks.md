@@ -4,7 +4,7 @@
 |---|---|
 | ID | API-001 |
 | Versión | 1.0 |
-| Estado | En progreso |
+| Estado | Implementada |
 | Fecha | 2026-10-19 |
 | Documentos | [`requirements.md`](requirements.md) · [`design.md`](design.md) · `tasks.md` (este) |
 

@@ -41,7 +41,7 @@ Adicionalmente, el sistema incorpora:
 | **Persistencia de Datos** | Inexistente (sin backend ni base de datos) | **PostgreSQL 18 (`pgvector`)** con Drizzle ORM canónico (`src/db/`) y pool resiliente |
 | **Migraciones de BD** | Inexistente / scripts acoplados a `initdb.d` | **Drizzle Migrator aislado (`migrate.mjs`)** con registro seguro en schema `drizzle` y sin colisiones |
 | **Captura de Leads** | Formularios simulados / enlaces estáticos | **Server Action real** con validación Zod y guardado transaccional |
-| **Testing y Calidad** | Inexistente (0 pruebas, sin linters) | **15 pruebas automatizadas** pasando (Vitest), compilación limpia con 19 rutas prerenderizadas |
+| **Testing y Calidad** | Inexistente (0 pruebas, sin linters) | **39 pruebas automatizadas** pasando (Vitest), compilación limpia con 23 páginas generadas |
 | **CI/CD y Registro** | Inexistente | **GitHub Actions** (`ci.yml`, `cd.yml`, `deploy.yml`) + **GHCR** (`ghcr.io/enuarrosales/mocter-web`) |
 | **Despliegue Producción** | Inexistente | **VPS Hostinger con Traefik v2.11**, TLS automático, cero puertos expuestos y script `deploy.sh` con rollback |
 | **Identidad de Marca** | Placeholder "agencIA / IdenTechnology" | **Mocter** estandarizado con favicon claro en SVG, legalidad colombiana y canales oficiales |
@@ -131,7 +131,7 @@ landig-agencia/
 │   ├── deployment.yaml               # Deployment de Next.js (web-portal) con startupProbe
 │   ├── service.yaml                  # Service ClusterIP interno
 │   └── ingress.yaml                  # Enrutamiento Nginx Ingress con TLS
-├── docker-compose.dev.yml            # Entorno de desarrollo local con HMR y volúmenes aislados
+├── docker-compose.yml                # Entorno de desarrollo local con HMR y volúmenes aislados
 ├── docker-compose.test.yml           # Entorno de pruebas y staging contenerizado
 ├── docker-compose.prod.yml           # Entorno de producción standalone con Traefik v2.11 y servicio migrate
 ├── Dockerfile                        # Multi-stage build optimizado (Node 24 Alpine, Next.js standalone + migrator)
@@ -224,7 +224,7 @@ flowchart TD
 - **pnpm Workspaces & Turborepo v2.11:** Grafo de dependencias optimizado con tareas paralelizadas y filtrado por workspaces.
 - **Imagen Dual-Purpose Única:** `Dockerfile` multi-stage basado en Node 24 Alpine que empaqueta la aplicación Next.js standalone y el migrador (`/app/migrator`), reduciendo el almacenamiento a una sola imagen en GHCR.
 - **Docker Compose v2:** Stacks dedicados:
-  - `docker-compose.dev.yml`: Desarrollo local con HMR, volúmenes de `node_modules` aislados y migración automática en el arranque.
+  - `docker-compose.yml`: Desarrollo local con HMR, volúmenes de `node_modules` aislados y migración automática en el arranque.
   - `docker-compose.test.yml`: Entorno de pruebas y staging aislado.
   - `docker-compose.prod.yml`: Producción standalone con integración Traefik v2.11, red interna `backend`, red perimetral `traefik_network` y servicio de pre-despliegue `migrate`.
 - **Despliegue Continuo Automatizado:**
@@ -268,12 +268,12 @@ El monorepo cuenta con compuertas de calidad automatizadas tanto en host como en
 ```bash
 # 1. Ejecución de pruebas unitarias
 pnpm test
-# Resultado: 15/15 pruebas unitarias pasando (11 en @mocter/domain, 4 en @mocter/web) (Vitest)
+# Resultado: 39/39 pruebas unitarias pasando (23 en @mocter/domain, 16 en @mocter/web) (Vitest)
 
-# 2. Verificación de tipado estático
+# 2. Verificación de tipado estático y linting
 pnpm --filter @mocter/domain lint
 pnpm --filter @mocter/web lint
-# Resultado: tsc --noEmit finalizado con 0 errores de tipado
+# Resultado: tsc --noEmit sin errores en @mocter/domain y eslint sin errores en @mocter/web
 
 # 3. Verificación de migraciones y esquema Drizzle
 pnpm --filter @mocter/domain exec drizzle-kit check
@@ -282,11 +282,12 @@ pnpm --filter @mocter/domain exec drizzle-kit check
 # 4. Compilación de producción
 pnpm build
 # Resultado: Compilación standalone exitosa en Next.js 16 con Turbopack
-# 19 páginas estáticas generadas exitosamente:
+# 23 páginas generadas exitosamente:
 # - /[locale] (/es, /en)
 # - /[locale]/privacidad (/es/privacidad, /en/privacidad)
 # - /[locale]/terminos (/es/terminos, /en/terminos)
 # - /[locale]/cookies (/es/cookies, /en/cookies)
+# - /api-docs (visor Scalar), /api/openapi.json (especificación OpenAPI 3.1)
 # - /sitemap.xml, /robots.txt, /icon.svg, /manifest.webmanifest
 ```
 

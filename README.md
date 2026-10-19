@@ -245,7 +245,7 @@ pnpm --filter @mocter/web build
 
 ### 7.3 Ejecución de Pruebas y Control de Calidad
 ```bash
-# Ejecutar todas las pruebas unitarias y de integración (15 pruebas pasando)
+# Ejecutar todas las pruebas unitarias y de integración (39 pruebas pasando)
 pnpm test
 
 # Verificación estricta de linting y reglas de tipos TypeScript
