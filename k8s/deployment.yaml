@@ -1,0 +1,86 @@
+# Manifiesto de Despliegue (Deployment) — Aplicación Web Mocter
+#
+# Orden recomendado de aplicación:
+#   1. namespace.yaml
+#   2. secrets.yaml
+#   3. pg-portal.yaml (si se usa base de datos interna)
+#   4. ESTE ARCHIVO (deployment.yaml)
+#   5. service.yaml
+#   6. ingress.yaml
+#
+# Imagen: Proviene del pipeline CI/CD en GitHub Container Registry (GHCR).
+# Se recomienda fijar la etiqueta con la versión publicada (v1.0.0, latest o sha).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-portal
+  namespace: mocter
+  labels:
+    app.kubernetes.io/name: web-portal
+    app.kubernetes.io/part-of: mocter-admin
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-portal
+  template:
+    metadata:
+      labels:
+        app: web-portal
+        app.kubernetes.io/name: web-portal
+        app.kubernetes.io/part-of: mocter-admin
+    spec:
+      containers:
+        - name: web-portal
+          image: ghcr.io/enuarrosales/mocter-web:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3000"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mocter-web-secrets
+                  key: DATABASE_URL
+          # Startup probe para permitir que Next.js inicialice en frío sin que livenessProbe lo reinicie
+          startupProbe:
+            httpGet:
+              path: /manifest.webmanifest
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 3
+            failureThreshold: 20
+          readinessProbe:
+            httpGet:
+              path: /manifest.webmanifest
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /manifest.webmanifest
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

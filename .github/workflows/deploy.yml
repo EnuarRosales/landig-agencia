@@ -1,0 +1,134 @@
+# Deploy (reutilizable): despliega una etiqueta de imagen en un environment vía SSH.
+# Lo invoca cd.yml. No se ejecuta de forma independiente.
+#
+# Secretos requeridos en el environment (staging | production):
+#   SSH_HOST, SSH_USER, SSH_KEY, SSH_KNOWN_HOSTS
+# Variables requeridas en el environment:
+#   APP_URL  (URL pública para la prueba de humo)
+#
+# En el servidor, la llave SSH está restringida (authorized_keys con restrict,command=)
+# a /opt/mocter-admin/bin/deploy.sh. El comando enviado llega como SSH_ORIGINAL_COMMAND.
+
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "Environment de GitHub: staging | production"
+        type: string
+        required: true
+      image_tag:
+        description: "Etiqueta de imagen. Vacío = sha-<7 primeros de git_ref>"
+        type: string
+        required: false
+        default: ""
+      git_ref:
+        description: "Ref de git (tag o SHA de 40 caracteres) de donde se descarga el compose"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    name: deploy (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    timeout-minutes: 20
+    env:
+      IMAGE: ghcr.io/enuarrosales/mocter-web
+    steps:
+      - name: Resolver etiqueta de imagen
+        id: tag
+        env:
+          IN_TAG: ${{ inputs.image_tag }}
+          GIT_REF: ${{ inputs.git_ref }}
+        run: |
+          if [[ -n "$IN_TAG" ]]; then t="$IN_TAG"; else t="sha-${GIT_REF:0:7}"; fi
+          echo "image_tag=$t" >> "$GITHUB_OUTPUT"
+          echo "Etiqueta a desplegar: $t"
+
+      - name: Validar configuración del environment
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          missing=0
+          for v in SSH_HOST SSH_USER SSH_KEY SSH_KNOWN_HOSTS APP_URL; do
+            if [[ -z "${!v}" ]]; then echo "::error::Falta $v en el environment ${{ inputs.environment }}"; missing=1; fi
+          done
+          exit $missing
+
+      - name: Login a GHCR (lectura)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verificar que la imagen existe en GHCR
+        env:
+          TAG: ${{ steps.tag.outputs.image_tag }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE:$TAG" > /dev/null
+          echo "Imagen $IMAGE:$TAG disponible"
+
+      - name: Configurar SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Desplegar en el servidor
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          TAG: ${{ steps.tag.outputs.image_tag }}
+          GIT_REF: ${{ inputs.git_ref }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=15 \
+              -o ServerAliveInterval=15 \
+              "$SSH_USER@$SSH_HOST" "deploy $TAG $GIT_REF"
+
+      - name: Prueba de humo
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -L \
+                 --retry 10 --retry-delay 5 --retry-all-errors --max-time 15 "$APP_URL")
+          echo "HTTP $code en $APP_URL"
+          [[ "$code" =~ ^(2|3)[0-9][0-9]$ ]] || { echo "::error::Prueba de humo fallida (HTTP $code)"; exit 1; }
+
+      - name: Limpiar llave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+      - name: Resumen
+        if: success()
+        env:
+          TAG: ${{ steps.tag.outputs.image_tag }}
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          {
+            echo "### Despliegue ${{ inputs.environment }} exitoso"
+            echo "- Imagen: \`$IMAGE:$TAG\`"
+            echo "- Ref: \`${{ inputs.git_ref }}\`"
+            echo "- URL: $APP_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
