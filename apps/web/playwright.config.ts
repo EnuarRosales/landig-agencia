@@ -17,13 +17,11 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: process.env.CI
-    ? undefined
-    : {
-        command: "corepack pnpm dev",
-        cwd: ".",
-        port: 3000,
-        timeout: 120 * 1000,
-        reuseExistingServer: !process.env.CI,
-      },
+  webServer: {
+    command: "corepack pnpm dev",
+    cwd: ".",
+    port: 3000,
+    timeout: 120 * 1000,
+    reuseExistingServer: !process.env.CI,
+  },
 });
