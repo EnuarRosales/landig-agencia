@@ -4,20 +4,21 @@ test.describe("Landing page (i18n + theme)", () => {
   test("renders Spanish homepage with Mocter branding", async ({ page }) => {
     await page.goto("/es");
 
-    await expect(page.locator("h1, h2, h3, h4, .eyebrow").first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /Mocter/i })).toBeVisible();
-    await expect(
-      page.getByText("Automatiza la atención, el agendamiento y las ventas"),
-    ).toBeVisible();
+    // El logo es el único link con este nombre accesible exacto.
+    // Un regex /Mocter/i también matchea el mailto info@mocter.co de la sección de contacto.
+    await expect(page.getByRole("link", { name: "Mocter — inicio" })).toBeVisible();
+    await expect(page.locator("h1").first()).toContainText(
+      "Automatiza la atención, el agendamiento y las ventas de tu empresa con IA",
+    );
   });
 
   test("renders English homepage with Mocter branding", async ({ page }) => {
     await page.goto("/en");
 
-    await expect(page.locator("h1, h2, h3, h4, .eyebrow").first()).toBeVisible();
-    await expect(
-      page.getByText("Automate customer support, scheduling and sales"),
-    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Mocter — home" })).toBeVisible();
+    await expect(page.locator("h1").first()).toContainText(
+      "Automate the support, scheduling and sales of your business with AI",
+    );
   });
 
   test("switches locale from /es to /en", async ({ page }) => {
@@ -26,13 +27,10 @@ test.describe("Landing page (i18n + theme)", () => {
       page.getByText("Solicitar demo gratis", { exact: true }),
     ).toBeVisible();
 
-    const enLink = page.getByRole("link", { name: /en/i });
-    if ((await enLink.count()) > 0) {
-      await enLink.first().click();
-    } else {
-      await page.goto("/en");
-    }
+    // El selector de idioma es un group de botones (ES / EN), no links.
+    await page.getByRole("button", { name: "EN", exact: true }).click();
 
+    await expect(page).toHaveURL(/\/en(\/|$)/);
     await expect(
       page.getByText("Book a free demo", { exact: true }),
     ).toBeVisible();
