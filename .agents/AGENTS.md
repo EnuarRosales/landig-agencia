@@ -88,6 +88,10 @@ TAG=test docker compose -f docker-compose.prod.yml config -q
 
 Toda función, clase, interfaz, método y endpoint exportado o con lógica no trivial debe documentarse usando **TSDoc** en **idioma español** neutral y técnico. Consulte la directiva completa en [rules/rules-for-tsdoc-proyect.md](rules/rules-for-tsdoc-proyect.md).
 
+### 4.5 Base de datos (PostgreSQL + Drizzle)
+
+Toda base de datos propia de Mocter cumple las buenas prácticas de PostgreSQL y Drizzle ORM: nomenclatura en minúscula con separador `_`, comentarios de tabla y columna obligatorios, integridad referencial donde la lógica de negocio la exija, índices por camino de acceso conocido, y modelo lógico normalizado antes de cualquier particionado. **No aplica a la base de datos de Chatwoot.** Consulte la directiva completa en [rules/rules-for-database-postgres-drizzle.md](rules/rules-for-database-postgres-drizzle.md).
+
 ## 5. Formato del reporte del agente
 
 Al terminar una especificación, entrega:

@@ -1,0 +1,168 @@
+%% Chatwoot · commit 042b438fe31d2a2ef00c396379b7064ab6d0034f · release 4.19.0
+%%
+%% ADVERTENCIA: este ERD es LOGICO, no fisico.
+%% db/schema.rb declara solo 17 claves foraneas para 104 tablas.
+%% Las relaciones dibujadas existen en el codigo, no como restricciones en la base.
+%%
+%% Grafo A: lo que mocter-admin necesita conocer para aprovisionar.
+%% Grafo B: el dominio operativo que Chatwoot posee y mocter-admin no replica.
+
+%% ============================================================
+%% GRAFO A · ADMINISTRATIVO
+%% ============================================================
+erDiagram
+    ACCOUNTS ||--o{ ACCOUNT_USERS : "membresia"
+    USERS ||--o{ ACCOUNT_USERS : "pertenece"
+    USERS ||--o{ ACCESS_TOKENS : "posee"
+    USERS ||--o{ USER_SESSIONS : "abre"
+    ACCOUNTS ||--o{ ACCOUNT_SAML_SETTINGS : "configura"
+    ACCOUNTS ||--o{ CUSTOM_ROLES : "define"
+    ACCOUNTS ||--o{ AGENT_BOTS : "registra"
+    AGENT_BOTS ||--o{ AGENT_BOT_INBOXES : "opera"
+    PLATFORM_APPS ||--o{ PLATFORM_APP_PERMISSIBLES : "autoriza"
+    PLATFORM_APP_PERMISSIBLES }o--|| ACCOUNTS : "apunta a"
+
+    ACCOUNTS {
+        serial id PK
+        string name
+        integer locale
+        string domain
+        string support_email
+        bigint feature_flags
+        bigint feature_flags_ext_1
+        jsonb limits
+        jsonb settings
+        jsonb internal_attributes
+        jsonb custom_attributes
+        integer status
+    }
+
+    USERS {
+        serial id PK
+        string provider
+        string uid
+        string encrypted_password
+        string email
+        string name
+        string type
+        string otp_secret
+        boolean otp_required_for_login
+        integer device_trust_version
+    }
+
+    ACCOUNT_USERS {
+        bigint account_id FK
+        bigint user_id FK
+        integer role
+        integer availability
+        boolean auto_offline
+        bigint custom_role_id
+        bigint agent_capacity_policy_id
+        datetime active_at
+    }
+
+    ACCESS_TOKENS {
+        string owner_type
+        bigint owner_id
+        string token
+    }
+
+    PLATFORM_APPS {
+        bigint id PK
+        string name
+    }
+
+    PLATFORM_APP_PERMISSIBLES {
+        bigint platform_app_id FK
+        string permissible_type
+        bigint permissible_id
+    }
+
+%% ============================================================
+%% GRAFO B · OPERATIVO
+%% ============================================================
+erDiagram
+    ACCOUNTS ||--o{ INBOXES : "posee"
+    ACCOUNTS ||--o{ CONTACTS : "posee"
+    ACCOUNTS ||--o{ CONVERSATIONS : "posee"
+    ACCOUNTS ||--o{ TEAMS : "organiza"
+    ACCOUNTS ||--o{ LABELS : "define"
+    ACCOUNTS ||--o{ WEBHOOKS : "notifica"
+
+    INBOXES ||--o{ CONTACT_INBOXES : "recibe"
+    CONTACTS ||--o{ CONTACT_INBOXES : "entra por"
+    CONTACTS ||--o{ CONVERSATIONS : "abre"
+    INBOXES ||--o{ CONVERSATIONS : "canaliza"
+    CONVERSATIONS ||--o{ MESSAGES : "contiene"
+    CONVERSATIONS ||--o{ CONVERSATION_PARTICIPANTS : "involucra"
+    CONVERSATIONS }o--|| TEAMS : "asignada a"
+    CONVERSATIONS }o--o| USERS : "asignada a"
+
+    INBOXES }o--|| CHANNEL_WHATSAPP : "se materializa"
+    INBOXES }o--|| CHANNEL_API : "se materializa"
+    INBOXES }o--|| CHANNEL_EMAIL : "se materializa"
+    INBOXES }o--|| CHANNEL_WEB_WIDGETS : "se materializa"
+
+    TEAMS ||--o{ TEAM_MEMBERS : "agrupa"
+    USERS ||--o{ TEAM_MEMBERS : "integra"
+    INBOXES ||--o{ INBOX_MEMBERS : "habilita"
+    USERS ||--o{ INBOX_MEMBERS : "atiende"
+
+    LABELS ||--o{ TAGGINGS : "marca"
+    CONVERSATIONS ||--o{ TAGGINGS : "etiquetada"
+
+    CONTACTS {
+        serial id PK
+        integer account_id FK
+        string name
+        string email
+        string phone_number
+        string identifier
+        jsonb custom_attributes
+        boolean blocked
+        bigint company_id
+    }
+
+    CONVERSATIONS {
+        serial id PK
+        integer account_id FK
+        integer inbox_id FK
+        bigint contact_id FK
+        integer display_id
+        uuid uuid
+        integer status
+        integer priority
+        bigint assignee_id
+        bigint team_id
+        bigint sla_policy_id
+        datetime waiting_since
+        datetime last_activity_at
+    }
+
+    MESSAGES {
+        serial id PK
+        integer account_id FK
+        integer inbox_id FK
+        integer conversation_id FK
+        integer message_type
+        integer content_type
+        string sender_type
+        bigint sender_id
+        boolean private
+        text content
+    }
+
+    INBOXES {
+        serial id PK
+        integer account_id FK
+        string name
+        string channel_type
+        bigint channel_id
+    }
+
+    CHANNEL_WHATSAPP {
+        bigint id PK
+        integer account_id FK
+        string phone_number
+        string provider
+    }
