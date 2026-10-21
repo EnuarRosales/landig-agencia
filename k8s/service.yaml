@@ -1,0 +1,21 @@
+# Manifiesto de Servicio (Service) — Exposición interna de la aplicación web
+#
+# Tipo: ClusterIP (comunicación interna entre pods y punto de entrada para Ingress).
+# Expone el puerto HTTP estándar 80 en el cluster y lo redirige al targetPort 3000 del contenedor.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-portal
+  namespace: mocter
+  labels:
+    app.kubernetes.io/name: web-portal
+    app.kubernetes.io/part-of: mocter-admin
+spec:
+  type: ClusterIP
+  selector:
+    app: web-portal
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000

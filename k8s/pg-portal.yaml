@@ -1,0 +1,106 @@
+# Manifiesto de Base de Datos para Kubernetes — Plataforma Mocter
+# Despliega PostgreSQL 18 con extensión pgvector mediante StatefulSet y Service ClusterIP.
+#
+# Nota: Si en producción utilizas una base de datos administrada externamente
+# (ej. AWS RDS, Google Cloud SQL o Azure Flexible Server), no apliques este manifiesto
+# y apunta DATABASE_URL en 'secrets.yaml' directamente al endpoint externo.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: pg-portal
+  namespace: mocter
+  labels:
+    app.kubernetes.io/name: pg-portal
+    app.kubernetes.io/part-of: mocter-admin
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  selector:
+    app: pg-portal
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pg-portal
+  namespace: mocter
+  labels:
+    app.kubernetes.io/name: pg-portal
+    app.kubernetes.io/part-of: mocter-admin
+spec:
+  serviceName: pg-portal
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pg-portal
+  template:
+    metadata:
+      labels:
+        app: pg-portal
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg18
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mocter-web-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mocter-web-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: mocter-web-secrets
+                  key: POSTGRES_DB
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          volumeMounts:
+            - name: pgdata-portal
+              mountPath: /var/lib/postgresql/data
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata-portal
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi

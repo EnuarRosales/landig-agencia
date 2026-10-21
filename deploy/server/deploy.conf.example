@@ -1,0 +1,23 @@
+# ==============================================================================
+# Mocter · Plantilla de configuración del servidor (/opt/mocter-admin/deploy.conf)
+# Copiar este archivo a /opt/mocter-admin/deploy.conf y ajustar según el entorno.
+# Permisos recomendados: deploy:deploy 600
+# ==============================================================================
+
+# Entorno de ejecución: "production" o "staging"
+ENVIRONMENT="production"
+
+# Directorio base del proyecto en el VPS
+APP_DIR="/opt/mocter-admin"
+
+# Cantidad máxima de respaldos .dump a conservar en /opt/mocter-admin/backups
+BACKUP_RETENTION=10
+
+# Imagen canónica de GHCR
+IMAGE="ghcr.io/enuarrosales/mocter-web"
+
+# Autenticación opcional hacia GHCR:
+# Si el paquete mocter-web es público, deja estas variables vacías.
+# Si el paquete es privado, ingresa un Personal Access Token (PAT) de GitHub con permiso "read:packages".
+GHCR_USER=""
+GHCR_READ_TOKEN=""

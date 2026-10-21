@@ -1,0 +1,188 @@
+# CD: construcción, publicación en GHCR y despliegue.
+#
+# Una sola imagen: ghcr.io/enuarrosales/mocter-web
+#   - Comando por defecto: servidor Next.js standalone.
+#   - Comando alterno: node migrator/scripts/migrate.mjs (aplica migraciones Drizzle pendientes).
+#
+# Disparadores y comportamiento:
+#   push a develop          -> CI -> build (develop, sha-xxxxxxx) -> deploy staging (solo si vars.STAGING_ENABLED == 'true')
+#   push de tag vX.Y.Z      -> CI -> verify-tag (commit en main) -> build (vX.Y.Z, latest, sha-xxxxxxx)
+#                              -> deploy production (requiere aprobación del environment)
+#   push de tag vX.Y.Z-rc.N -> CI -> verify-tag -> build (vX.Y.Z-rc.N, sha-xxxxxxx). NO despliega ni publica latest.
+#   workflow_dispatch       -> Redespliegue / rollback SIN reconstruir:
+#                              - "Use workflow from" = tag vX.Y.Z -> despliega esa versión en producción
+#                              - "Use workflow from" = develop    -> redespliega el commit actual en staging
+#   push a main             -> no ejecuta CD (solo ci.yml). latest se publica únicamente con tags.
+
+name: CD
+
+on:
+  push:
+    branches: [develop]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/enuarrosales/mocter-web
+
+jobs:
+  # 1. Calidad (reutiliza ci.yml). No aplica en redespliegues manuales.
+  ci:
+    name: ci
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/ci.yml
+
+  # 2. Para tags: formato válido y commit contenido en main.
+  verify-tag:
+    name: verify-tag
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (historial completo)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validar formato del tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::El tag '$TAG' no cumple el formato vX.Y.Z o vX.Y.Z-prerelease"
+            exit 1
+          fi
+
+      - name: Validar que el tag apunta a un commit de main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::El tag $GITHUB_REF_NAME ($GITHUB_SHA) no pertenece a la rama main"
+            exit 1
+          fi
+
+  # 3. Construir y publicar la imagen en GHCR.
+  build-and-push:
+    name: build-and-push
+    needs: [ci, verify-tag]
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      needs.ci.result == 'success' &&
+      (needs.verify-tag.result == 'success' || needs.verify-tag.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Calcular etiqueta inmutable por commit
+        id: vars
+        run: echo "sha_tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login a GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Metadatos de imagen
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=semver,pattern=v{{version}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
+            type=raw,value=${{ steps.vars.outputs.sha_tag }}
+
+      - name: Build y push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: runner
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=mocter
+          cache-to: type=gha,scope=mocter,mode=max
+
+      - name: Verificar que la imagen incluye el migrador
+        env:
+          REF: ${{ env.IMAGE }}:${{ steps.vars.outputs.sha_tag }}
+        run: |
+          docker run --rm --entrypoint sh "$REF" -c '
+            test -f migrator/scripts/migrate.mjs &&
+            test -f migrator/drizzle/meta/_journal.json &&
+            cd migrator && node -e "import(\"drizzle-orm\").then(()=>console.log(\"migrador OK\"))"
+          '
+
+      - name: Resumen
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "### Imagen publicada"
+            echo '```'
+            echo "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # 4a. Despliegue a pruebas (proyectado). Desactivado mientras vars.STAGING_ENABLED != 'true'.
+  deploy-staging:
+    name: deploy-staging
+    needs: [build-and-push]
+    if: >-
+      always() &&
+      vars.STAGING_ENABLED == 'true' &&
+      github.ref == 'refs/heads/develop' &&
+      (needs.build-and-push.result == 'success' ||
+       (github.event_name == 'workflow_dispatch' && needs.build-and-push.result == 'skipped'))
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      image_tag: ""
+      git_ref: ${{ github.sha }}
+    secrets: inherit
+
+  # 4b. Despliegue a producción. Solo tags estables (sin "-"), commit en main y aprobación manual.
+  deploy-production:
+    name: deploy-production
+    needs: [verify-tag, build-and-push]
+    if: >-
+      always() &&
+      github.ref_type == 'tag' &&
+      !contains(github.ref_name, '-') &&
+      needs.verify-tag.result == 'success' &&
+      (needs.build-and-push.result == 'success' ||
+       (github.event_name == 'workflow_dispatch' && needs.build-and-push.result == 'skipped'))
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      image_tag: ${{ github.ref_name }}
+      git_ref: ${{ github.ref_name }}
+    secrets: inherit

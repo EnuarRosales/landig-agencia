@@ -1,0 +1,41 @@
+# Mocter — full information for LLMs and AI assistants
+
+## What is Mocter?
+
+Mocter is an AI automation platform for small and medium businesses that serve customers over WhatsApp. It connects to a business's existing WhatsApp number through the official WhatsApp Business API and takes over routine conversations: answering questions, booking appointments, taking orders and classifying leads — 24 hours a day, in natural language and with the brand's own tone.
+The product website is https://mocter.co (Spanish by default, English available at /en).
+
+## Main capabilities
+
+- **24/7 customer support over WhatsApp.** The assistant answers frequent questions, guides customers and keeps a configurable brand tone (friendly, formal, with or without emojis) in natural language.
+- **Smart appointment scheduling.** Integrates with Google Calendar and Google Meet. The assistant offers available time slots, confirms the appointment, creates the Meet link when applicable and sends automatic reminders.
+- **Orders and quotes.** Captures customer details, totals and registers orders automatically from the conversation.
+- **Automatic contact classification.** Every conversation is tagged by intent and moved through a pipeline: cold lead → warm lead → hot lead → order → delivered.
+- **Unified inbox.** A web dashboard shows all conversations with AI tags, priority (e.g. urgent), contact state and which assistant handled each chat. A human can take over any conversation manually at any time.
+- **Multimedia delivery.** Photos, videos, catalogs and PDFs are shared automatically during conversations.
+
+## Sectors served
+
+Clinics and medical practices, salons and spas, consultancies and studios, real estate, schools and education, technical services, e-commerce and retail, agencies and startups, restaurants and reservations, gyms and wellness.
+
+## Key facts
+
+- **Data residency:** customer data is hosted on servers in Colombia, in compliance with local data protection rules. Customers keep ownership of their data.
+- **Setup:** three steps — connect the WhatsApp number, train the AI with the business's services, hours, prices and tone, then start automating. Customers of the business don't need to install anything; they keep texting the same WhatsApp number.
+- **Pricing:** demo requests are free and handled within 24 hours; pricing is quoted per business. There is no cost per conversation claim on the landing page.
+
+## Legal compliance and data protection
+- **Habeas Data Colombia:** Mocter complies strictly with Colombian Statutory Law 1581 of 2012, Regulatory Decree 1377 of 2013, and SIC regulations.
+- **Privacy Policy:** https://mocter.co/es/privacidad (available in English at /en/privacidad)
+- **Terms and Conditions:** https://mocter.co/es/terminos (available in English at /en/terminos)
+- **Cookie and Privacy Preferences:** https://mocter.co/es/cookies (available in English at /en/cookies)
+- **Live Customer Support:** Integrated Chatwoot widget (online assistance) and direct WhatsApp line.
+
+## Contact
+
+- Landing page: https://mocter.co (Spanish: /es, English: /en)
+- Demo request form: https://mocter.co/es#demo-form
+- WhatsApp: https://wa.me/573222752524
+- Support & Business email: info@mocter.co
+- Privacy & Data Protection email: privacidad@mocter.co
+- Company: Mocter, Colombia

@@ -1,0 +1,17 @@
+# Si ya existe un .dockerignore, fusionar sin eliminar entradas existentes.
+# NO excluir packages/domain/drizzle ni packages/domain/scripts (los usa el migrador).
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/coverage
+**/playwright-report
+**/test-results
+.git
+.github
+.env
+.env.*
+!.env.example
+*.log
+deploy/
+docker-compose*.yml
