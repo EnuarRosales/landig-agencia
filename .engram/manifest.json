@@ -24,6 +24,14 @@
       "sessions": 5,
       "memories": 13,
       "prompts": 12
+    },
+    {
+      "id": "e1b0c27c",
+      "created_by": "Alejo",
+      "created_at": "2026-10-21T05:25:08.2126102Z",
+      "sessions": 2,
+      "memories": 8,
+      "prompts": 5
     }
   ]
 }
