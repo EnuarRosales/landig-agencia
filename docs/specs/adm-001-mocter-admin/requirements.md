@@ -7,7 +7,7 @@
 | Estado | Borrador |
 | Fecha | 2026-10-20 |
 | Documentos | `requirements.md` (este) · `design.md` (pendiente) · `tasks.md` (pendiente) |
-| Depende de | CHW-001 (inventario técnico de Chatwoot) |
+| Depende de | CHW-001 (inventario técnico de Chatwoot) · DAT-001 (arquitectura de datos) · AUTH-001 (autenticación) |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` |
 
 ## 1. Propósito
@@ -57,7 +57,7 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 
 | ID | Requisito |
 |---|---|
-| RF-01.1 | Cada inquilino tiene un `client_id` (UUIDv7) como clave de tenencia, propagada por todo el sistema. |
+| RF-01.1 | Cada inquilino tiene un `client_id` (UUIDv7) como clave de tenencia, originado en `clients.id` y copiado en las tablas hijas; no se genera un `client_id` nuevo por tabla. |
 | RF-01.2 | El inquilino tiene ciclo de vida explícito con estados de alta, activo, suspendido y baja. |
 | RF-01.3 | El alta por gestor de ventas y el alta por autogestión producen el mismo resultado. |
 | RF-01.4 | Chatwoot mantiene su propia instancia PostgreSQL y `mocter-admin` la suya. La correlación entre ambos se limita a identificadores y no hay clave foránea entre bases. La distribución interna de `mocter-admin` se define en RF-10. |
@@ -85,9 +85,11 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 
 | ID | Requisito |
 |---|---|
-| RF-04.1 | El plan define límites de: cantidad de productos, cantidad de usuarios por cuenta, cantidad de imágenes por producto, cantidad de audios, cantidad de videos y cantidad de archivos PDF. |
+| RF-04.1 | El plan define límites de: cantidad de productos, cantidad de usuarios por cuenta, cantidad de imágenes por producto, cantidad de audios, cantidad de videos, cantidad de archivos PDF, retención de chats en días y almacenamiento en bytes. |
 | RF-04.2 | Los límites se validan en `mocter-admin` antes de persistir o replicar. Chatwoot no los hace cumplir sin código enterprise. |
 | RF-04.3 | Un consumo que supera un límite se rechaza, no se persiste y se informa con un mensaje explícito. |
+| RF-04.4 | El almacenamiento facturado es la suma de tamaños de archivos distintos referenciados por el inquilino. El almacenamiento físico es el de objetos distintos en SeaweedFS. La diferencia es margen del proveedor. |
+| RF-04.5 | La retención de chats puede tener un piso legal mínimo; un override no puede reducirlo. |
 
 ### RF-05 · Productos
 
@@ -122,6 +124,8 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | RF-07.6 | El vínculo entre un producto y un archivo vive en la celda del producto. |
 | RF-07.7 | La verificación de referencias previa a un borrado consulta todas las celdas que puedan referenciar el archivo. Ninguna celda decide sola el borrado de un archivo compartido. |
 | RF-07.8 | El borrado no es inmediato: se ejecuta solo cuando la verificación global confirma que no queda ninguna referencia. |
+| RF-07.9 | Existen dos dominios de archivos: multimedia de producto, propiedad de Mocter, con catálogo global, SeaweedFS, deduplicación por hash, cuota y borrado por ausencia de referencias; y adjuntos de conversación, propiedad de Chatwoot ActiveStorage, sin deduplicación, sin cuota de producto y con política propia. |
+| RF-07.10 | Los adjuntos de Chatwoot no se cuentan en la cuota de producto y no se eliminan desde el GC de producto. |
 
 ### RF-08 · Comunidades y organizaciones
 
@@ -155,6 +159,12 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | RF-10.8 | Las referencias entre planos se limitan a identificadores. No hay clave foránea entre el Router Global y una celda, ni entre celdas. |
 | RF-10.9 | Todas las celdas comparten el mismo esquema, versionado por una única línea de migraciones. |
 | RF-10.10 | El Router Global y las celdas tienen líneas de migración separadas: una por base, no una por aplicación. |
+| RF-10.11 | Cada celda usa RLS habilitado y forzado (`FORCE ROW LEVEL SECURITY`) con `SET LOCAL app.current_client_id`; el rol de aplicación no tiene DDL ni `BYPASSRLS`. |
+| RF-10.12 | `products` y `product_embeddings` se particionan por `client_id` con `PARTITION BY LIST`; el resto de las tablas de inquilino no se particiona y usa RLS. |
+| RF-10.13 | La identidad global vive en el Router Global y no usa RLS por `client_id`; las tablas de tenencia y la proyección `users` de cada celda sí. El rol de autenticación es dedicado. |
+| RF-10.14 | El Router Global tiene un Redis 7+ dedicado para caché de enrutamiento, Pub/Sub, rate limiting y revocación de sesión; no comparte instancia con Chatwoot. |
+| RF-10.15 | La capacidad nominal de una celda es 100 inquilinos; la efectiva es el primer disparador de DAT-001 (inquilinos, relaciones, HNSW o CPU). |
+| RF-10.16 | La separación de `pg-control-plane` es una decisión diferida; mientras tanto, la landing y `mocter-admin` usan esquemas y roles separados en el Router Global. |
 
 ### RF-11 · Internacionalización
 
@@ -211,16 +221,17 @@ Primera ley para el desarrollo de componentes visuales.
 1. Ninguna operación de `mocter-admin` escribe en la base de datos de Chatwoot ni altera su esquema.
 2. Existe la tabla de correlación con estado, idempotencia y marca de sincronización.
 3. Un archivo compartido por varios productos, incluso de celdas distintas, se elimina del almacenamiento solo después de desvincularse del último.
-4. Los seis límites de plan se validan antes de persistir y su exceso se rechaza.
-5. `products` está particionada por `client_id` y toda tabla de inquilino tiene `client_id` no nulo.
+4. Los límites de plan definidos en RF-04.1 se validan antes de persistir y su exceso se rechaza.
+5. `products` y `product_embeddings` están particionadas por `client_id`; el resto de las tablas de inquilino no se particiona y usa RLS; toda tabla de inquilino tiene `client_id` no nulo.
 6. Toda tabla y toda columna no evidente tienen comentario en la base.
 7. Un clon sin referencia sobrevive a la baja del origen.
 8. La clonación puede realizarse con y sin archivos multimedia.
 9. Ninguna consulta de datos de inquilino se ejecuta sin haber resuelto antes su celda en el Router Global.
-10. Una celda con 100 inquilinos no recibe altas nuevas: la siguiente alta se enruta a una celda nueva o a una celda dedicada.
+10. Una celda con 100 inquilinos no recibe altas nuevas: la siguiente alta se enruta a una celda nueva o a una celda dedicada; también se abre una celda si se cumple antes otro disparador de DAT-001 (relaciones, HNSW o CPU).
 11. Ningún componente visual se aprueba con un solo tema ni con texto literal incrustado.
 12. El onboarding se completa en menos de 5 minutos y puede retomarse tras interrumpirse.
 13. La personalización de marca blanca se rechaza íntegra cuando el plan no la habilita.
+14. Los adjuntos de Chatwoot no se cuentan en la cuota de producto ni se eliminan desde el GC de Mocter.
 
 ## 6. Decisiones
 
@@ -243,7 +254,14 @@ Rigen las decisiones D-01 a D-09: doble autoridad de tenencia, correlación en t
 |---|---|---|
 | O-04 | ¿El líder lee los datos de Chatwoot de sus inquilinos subordinados, o solo métricas agregadas en `mocter-admin`? | Si lee, requiere membresía `AccountUser` en cada cuenta y verá toda la cuenta. Con celdas, además cruza planos. |
 | O-05 | ¿`mocter-core` es la capa de dominio de `mocter-admin` o un servicio aparte con su propia persistencia? | Define dónde vive el maestro de contactos y si existe una tercera instancia. |
-| O-07 | ¿El consumo de archivos se cuenta por referencia lógica o por bytes almacenados? | El catálogo global (D-13) no atribuye el archivo a un inquilino. Una cuota por bytes tendría que calcularse desde los vínculos de cada celda, y no deduplicaría: dos inquilinos que comparten los mismos bytes contarían cada uno el total. |
 | O-08 | ¿La sincronización desde el origen alcanza también a los archivos multimedia, o solo a los atributos? | Define si el vínculo de medios necesita seguimiento entre productos. |
 | O-11 | ¿Con qué rol de base de datos se conecta la landing pública al Router Global? | **Verificado el 2026-10-20 sobre el repositorio:** existe un único rol, el propietario (`POSTGRES_USER=mocter`), y la misma `DATABASE_URL` sirve a la aplicación y a `drizzle-kit migrate`. No aparece ningún `CREATE ROLE`, `GRANT` ni privilegio por tabla. Con D-12, eso deja a la aplicación pública y anónima con permiso de escritura y DDL sobre las tablas de credenciales y secretos TOTP. Recomendación: separar el rol de migración del rol de ejecución y dar a la landing solo `INSERT` sobre la tabla de solicitudes de contacto. |
 | O-12 | ¿El registro crea un usuario sin inquilino, o exige invitación a un inquilino existente? | El documento de AUTH-001 describe el registro pero nunca la pertenencia al inquilino (ver AUTH-001, 2.4). |
+| O-13 | ¿La retención de chats se aplica en Chatwoot o en Mocter mediante API, y qué pasa con los mensajes vencidos (borrado, archivo o anonimización)? | Chatwoot no la hace cumplir sin enterprise; define costo de almacenamiento y obligación legal. |
+| O-14 | ¿Los adjuntos de Chatwoot tienen retención propia y consumen almacenamiento del plan? | ActiveStorage no deduplica; define costo y política de borrado. |
+| O-15 | ¿Cómo se resuelve la ubicación de la identidad antes de autenticar cuando un inquilino tiene celda dedicada? | AUTH-D-01; el Router Global conserva el puntero de enrutamiento sin credenciales. |
+| O-16 | ¿Cómo se sincronizan los atributos de un producto clonado cuando el origen y el clon están en celdas distintas? | No hay FK entre celdas; define API, consistencia y frecuencia. |
+
+## 8. Trazabilidad
+
+- 2026-10-20: alineación con DAT-001 (T-12): RF-04, RF-07 y RF-10 actualizados; O-07 cerrada con la fórmula de almacenamiento facturado; O-13 a O-16 abiertas.

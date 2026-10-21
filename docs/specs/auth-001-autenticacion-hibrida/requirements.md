@@ -7,6 +7,7 @@
 | Estado | Aprobado (documento de origen) · Pendiente de `design.md` y `tasks.md` |
 | Fecha | 2026-10-20 |
 | Documento de origen | Especificación de Requerimientos Técnicos v3.0 · Octubre 2026 · Estado: Aprobado |
+| Depende de | DAT-001 (arquitectura de datos multi-inquilino) |
 | Alcance | Módulo de accesos de `mocter-admin` |
 | Relacionado | ADM-001 (núcleo administrativo) · CHW-001 (inventario de Chatwoot) |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` |
@@ -115,9 +116,19 @@ Se registran porque cambian el diseño. No contradicen el documento.
 | 4 | **Limitación de tasa entre réplicas.** El contador de intentos no puede vivir en memoria del proceso cuando el servicio corre en más de una réplica. | RNF-03 |
 | 5 | **Revocación de sesión.** RNF-02 admite "JWT o cookies de sesión". Un JWT sin estado no se revoca antes de su expiración; si se elige, hay que fijar su vigencia y aceptar el compromiso. | RNF-02 |
 
+El almacén compartido de A-03 se resuelve en AUTH-D-02. La elección entre JWT y cookie de sesión (A-05) sigue abierta; AUTH-D-02 sirve para ambas.
+
 ### 2.4 Vacío detectado
 
 El documento define cómo un usuario se registra y cómo se vinculan sus identidades, pero **no define cómo un usuario pasa a pertenecer a un inquilino**. El alta por autogestión (ADM-001, RF-01.3) implica que quien la realiza queda como administrador del inquilino creado, pero la incorporación de usuarios adicionales, la invitación y el rol resultante no están especificados.
+
+### 2.5 Identidad global y RLS
+
+La identidad de plataforma es global: un usuario puede pertenecer a varias organizaciones o inquilinos. Por eso, en el Router Global, `users`, `identities` y `sessions` no tienen un `client_id` único y no usan RLS por `client_id`; se protegen con un rol de autenticación dedicado y filtros de aplicación. Las tablas de membresía y tenencia (`organization_members`, `client_users`) sí llevan `client_id` y usan RLS.
+
+La tabla `users` de cada celda es distinta: es la proyección de los usuarios que pertenecen al inquilino, lleva `client_id` y usa RLS. No es la tabla de identidad global. En una celda dedicada por aislamiento normativo, la identidad se aloja en la celda (AUTH-D-01) y puede usar RLS por `client_id`; el Router Global conserva solo el puntero de enrutamiento, sin credenciales.
+
+Ver DAT-001 RF-05.5 y `design.md` §5.4.
 
 ## 3. Decisiones
 
@@ -126,12 +137,17 @@ El documento define cómo un usuario se registra y cómo se vinculan sus identid
 | ID | Decisión | Consecuencia de diseño |
 |---|---|---|
 | AUTH-D-01 | El almacén de identidad —credenciales, secreto TOTP e identidades federadas— vive en el Router Global. Un inquilino con requisito normativo de aislamiento recibe una celda dedicada que además contiene su identidad; en ese caso el Router Global conserva solo el puntero de enrutamiento, sin credenciales ni secretos. | El correo único global y la vinculación de cuentas de RF-04 se resuelven en un único lugar. La ubicación de la identidad se resuelve **antes** de autenticar, consultando la tabla de enrutamiento (ADM-001, RF-10.3). El módulo de identidad debe soportar ambas ubicaciones desde el diseño, no como excepción posterior. Corresponde a D-12 de ADM-001. |
+| AUTH-D-02 | El almacén compartido para rate limiting y revocación de sesión es el Redis 7+ dedicado del plano de control (DAT-001, O-01). No comparte instancia con el Redis de Chatwoot. Las claves de auth usan prefijos propios y TTL; se comparte con la caché de enrutamiento sin mezclar espacios de nombres. | El rate limiting funciona entre réplicas y la revocación no depende del Redis de Chatwoot. La disponibilidad de auth queda acoplada al Redis del plano de control, no al plano de soporte. |
+| AUTH-D-03 | En el Router Global, las tablas de identidad y sesión (`users`, `identities`, `sessions`) son globales: un usuario puede pertenecer a varias organizaciones o inquilinos y no tiene un `client_id` único. No usan RLS por `client_id`; se protegen con un rol de autenticación dedicado y filtros de aplicación. Las tablas de membresía/tenencia (`organization_members`, `client_users`) y la proyección `users` de cada celda usan RLS. En una celda dedicada por aislamiento normativo, la identidad vive en la celda (AUTH-D-01) y puede usar RLS por `client_id`; el Router Global conserva solo el puntero de enrutamiento. | Ver DAT-001 RF-05.5 y `design.md` §5.4. El login por email no queda bloqueado por una política de tenant; la separación es por rol y filtro, no por RLS de `client_id`. |
 
 ### Abiertas
 
 | ID | Pregunta | Impacto |
 |---|---|---|
 | A-02 | ¿Dónde vive la clave de cifrado de los secretos TOTP y cuál es su plan de rotación? | Sin esto, RNF-01 no se puede cumplir. |
-| A-03 | ¿Qué almacén compartido sostiene la limitación de tasa y la revocación de sesión? | Requisito para operar con más de una réplica. |
 | A-04 | ¿Cómo se incorpora un usuario a un inquilino y con qué rol? | Vacío del documento de origen (ver 2.4). |
 | A-05 | ¿Sesión con JWT sin estado o cookie con sesión en servidor? | Define si la revocación inmediata es posible. |
+
+## 4. Trazabilidad
+
+- 2026-10-20: alineación con DAT-001 (T-13): A-03 resuelta con el Redis dedicado del plano de control (O-01); identidad global sin RLS por `client_id` y RLS solo en tenencia (O-03); A-02, A-04 y A-05 siguen abiertas.
