@@ -68,21 +68,26 @@
   - Declarar pin, alcance, estructura y procedimiento de regeneración.
   - Verificación: el commit declarado coincide con el checkout.
 
-- [ ] **T-13 · Revisión de impacto sobre `ADM-001`**
+- [x] **T-13 · Revisión de impacto sobre `ADM-001`**
   - Identificar qué decisiones de `ADM-001` quedan habilitadas o bloqueadas.
+  - Consumir `DAT-001`: PostgreSQL 18 + pgvector, Redis 7+ y Sidekiq en el plano de soporte; el esquema de Chatwoot no se particiona ni usa RLS.
   - Verificación: las decisiones abiertas O-04 y O-05 figuran con impacto explícito.
+  - Evidencia: `design.md` §10.1 con O-04 y O-05 como bloqueantes y el resto de las decisiones clasificado.
 
-- [ ] **T-16 · Documentar el modelo multi-cuenta**
+- [x] **T-16 · Documentar el modelo multi-cuenta**
   - Describir `account_users`, la ausencia de lectura cross-account y las opciones de acceso para líderes de comunidad.
   - Verificación: se cita el índice único `(account_id, user_id)` y la consecuencia de O-04.
+  - Evidencia: `design.md` §6.1; la unicidad por par cuenta–usuario se cita en `auth.md` §6 con `db/schema.rb:55`.
 
-- [ ] **[HUMANO] T-14 · Aprobar la especificación**
+- [x] **[HUMANO] T-14 · Aprobar la especificación**
   - Cambiar el estado de `requirements.md` de `Borrador` a `Aprobada`.
   - Responsable: dueño del producto.
+  - Evidencia: aprobación humana del 2026-10-21.
 
-- [ ] **[HUMANO] T-15 · Registrar CHW-001 en el índice**
+- [x] **[HUMANO] T-15 · Registrar CHW-001 en el índice**
   - Agregar la fila en `.agents/AGENTS.md` §6.
   - Responsable: mantenedor del repositorio.
+  - Evidencia: fila registrada en `.agents/AGENTS.md` §6 (DAT-001 T-15).
 
 ## Reporte de cierre
 

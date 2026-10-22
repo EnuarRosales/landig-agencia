@@ -88,7 +88,7 @@
   - Identidad en el Router Global con rol dedicado y filtros; RLS solo en tablas de tenencia (O-03 resuelta).
   - Verificación: `AUTH-001` cita `DAT-001` y resuelve A-03 y O-03.
 
-- [ ] **T-14 · Alinear CHW-001**
+- [x] **T-14 · Alinear CHW-001**
   - Redis 7+, Sidekiq y PostgreSQL 18 validado en laboratorio en el plano de soporte.
   - T-13 de CHW-001 consume `DAT-001`.
   - Verificación: `CHW-001` cita `DAT-001` y no contradice la decisión de PostgreSQL 18 validada en laboratorio.

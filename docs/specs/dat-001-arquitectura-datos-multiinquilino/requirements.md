@@ -108,7 +108,7 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 | RF-05.2 | La aplicación fija `app.current_client_id` con `SET LOCAL` dentro de la transacción. Si el valor falta, la política falla cerrada y no devuelve filas. |
 | RF-05.3 | Existen roles separados: un rol de migración o propietario con DDL y un rol de aplicación con DML, sin DDL y sin `BYPASSRLS`. |
 | RF-05.4 | RLS es defensa en profundidad. Las consultas siguen filtrando por `client_id`; RLS no reemplaza el filtro explícito. |
-| RF-05.5 | Las tablas de identidad y sesión del Router Global (`users`, `identities`, `sessions`) son globales: un usuario puede pertenecer a varias organizaciones o inquilinos y no tiene un `client_id` único. No usan RLS por `client_id`; se protegen con un rol de autenticación dedicado y filtros de aplicación. Las tablas de membresía y tenencia (`organization_members`, `client_users`) sí usan RLS. La tabla `users` de cada celda es una proyección de usuarios del inquilino, lleva `client_id` y usa RLS. |
+| RF-05.5 | Las tablas de identidad y sesión del Router Global (`users`, `identities`, `sessions`) son globales: un usuario puede pertenecer a varias organizaciones o inquilinos y no tiene un `client_id` único. No usan RLS por `client_id`; se protegen con un rol de autenticación dedicado y filtros de aplicación. Las tablas de membresía y tenencia (`organization_members`, `client_users`; el objeto de negocio es `tenant_users`, nombre a alinear) sí usan RLS. La tabla `users` de cada celda es una proyección de usuarios del inquilino, lleva `client_id` y usa RLS. |
 | RF-05.6 | `mocter-admin` no accede directamente a la base de Chatwoot. La integración es exclusivamente por sus APIs. |
 
 ### RF-06 · Particionado

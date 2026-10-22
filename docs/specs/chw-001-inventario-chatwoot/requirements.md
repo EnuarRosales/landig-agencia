@@ -4,10 +4,11 @@
 |---|---|
 | ID | CHW-001 |
 | Versión | 1.0 |
-| Estado | Borrador |
+| Estado | Aprobada |
 | Fecha | 2026-10-20 |
 | Documentos | `requirements.md` (este) · [`design.md`](design.md) · [`tasks.md`](tasks.md) |
 | Fuente fijada | `chatwoot/chatwoot` · commit `042b438fe31d2a2ef00c396379b7064ab6d0034f` · release `4.19.0` (2026-10-20) |
+| Depende de | [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) (arquitectura de datos multi-inquilino) |
 
 ## 1. Propósito
 
@@ -17,7 +18,7 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 
 ### Incluye
 
-1. **Arquitectura**: modelo de multi-tenencia por `Account`, límites de dominio, dependencia de Redis y separación `app/` vs `enterprise/`.
+1. **Arquitectura**: modelo de multi-tenencia por `Account`, límites de dominio, dependencias de ejecución (PostgreSQL 18 + pgvector, Redis 7+, Sidekiq) y separación `app/` vs `enterprise/`.
 2. **Autenticación y autorización**: las tres superficies de API, el token polimórfico, SSO, Pundit y `platform_app_permissibles`.
 3. **Superficie de API**: inventario de los 96 paths de la especificación incluida en el repositorio y de los cinco controladores de Platform API, con método, path, autenticación, controlador#acción y payloads.
 4. **Modelo de datos**: las 104 tablas de `db/schema.rb`, clasificadas por tenencia y autoridad de escritura, más un ERD Mermaid.
@@ -49,8 +50,10 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 | ID | Requisito |
 |---|---|
 | RF-01.1 | Documentar el límite de tenencia: `Account` como raíz del grafo operativo, con evidencia en `app/models/account.rb`. |
-| RF-01.2 | Documentar las dependencias de ejecución verificadas (Rails 7.2.3.1, PostgreSQL, Redis) y su impacto en el despliegue del fork. |
+| RF-01.2 | Documentar las dependencias de ejecución verificadas (Rails 7.2.3.1, PostgreSQL, Redis, Sidekiq) y su impacto en el despliegue del fork. La instancia de Chatwoot corre en el plano de soporte de DAT-001, con PostgreSQL 18 + pgvector (`pgvector/pgvector:pg18`) y Redis 7+. |
 | RF-01.3 | Documentar la separación `app/` vs `enterprise/` y el mecanismo `prepend_mod_with` / `ChatwootApp.enterprise?`. |
+| RF-01.4 | El esquema de Chatwoot es propiedad de Chatwoot y se sincroniza con upstream: no se le aplica la directiva de base de datos de Mocter, ni el particionado por `client_id`, ni RLS. |
+| RF-01.5 | La ejecución de Chatwoot 4.19.0 sobre PostgreSQL 18 + pgvector está validada en laboratorio. El rollback a PostgreSQL 16 se documenta como precaución operativa en DAT-001 §9.7 y no contradice la decisión de versión. |
 
 ### RF-02 · Autenticación y autorización
 
@@ -115,6 +118,7 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 6. Cada capacidad premium está asignada a su archivo de origen.
 7. Ningún documento propone escribir en la base de datos de Chatwoot.
 8. La referencia declara el commit `042b438` y la versión `4.19.0`.
+9. Chatwoot 4.19.0 corre sobre PostgreSQL 18 + pgvector, con Redis 7+ y Sidekiq en el plano de soporte de DAT-001, y su esquema permanece intacto y sincronizado con upstream.
 
 ## 6. Decisiones y supuestos
 
@@ -129,10 +133,16 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 | D-07 | Token de servicio por inquilino. | O-02 resuelta: blast radius acotado a una cuenta. |
 | D-08 | Cada aplicación mantiene su propia instancia PostgreSQL. | No hay FK cruzada ni acceso directo a la base del otro sistema. |
 | D-09 | La lógica de comunidades, propuestas y clonación vive exclusivamente en `mocter-admin`. | Hacia Chatwoot solo se materializan cuentas y usuarios; Chatwoot no conoce organizaciones ni propuestas. |
+| D-10 | Chatwoot 4.19.0 se ejecuta sobre PostgreSQL 18 + pgvector, con Redis 7+ y Sidekiq, en el plano de soporte de DAT-001. Su instancia PostgreSQL y su Redis son propios: no se comparten con el plano de control ni se les aplica particionado por `client_id` ni RLS. | DAT-001 RF-11 fija PostgreSQL 18 para toda la plataforma, incluida Chatwoot; RF-01.7 separa el Redis de Chatwoot del dedicado del plano de control. La ejecución está validada en laboratorio y el rollback se documenta en DAT-001 §9.7. |
 
 ## 7. Decisiones abiertas
 
 | ID | Pregunta | Impacto |
 |---|---|---|
-| O-04 | ¿El líder de comunidad lee los datos de Chatwoot de sus inquilinos subordinados, o solo métricas agregadas en `mocter-admin`? | Si lee, hay que crearle `AccountUser` en cada cuenta subordinada y verá toda la cuenta; si no, `mocter-admin` agrega con los tokens de servicio. |
+| O-04 | ¿El líder de comunidad lee los datos de Chatwoot de sus inquilinos subordinados, o solo métricas agregadas en `mocter-admin`? | Resuelta el 2026-10-21: agregación en `mocter-admin` con tokens de servicio por inquilino; sin `AccountUser` en cuentas subordinadas (ADM-001 D-19). |
 | O-05 | ¿`mocter-core` es la capa de dominio de `mocter-admin` o un servicio aparte con su propia persistencia? | Define dónde vive el maestro de contactos y si existe una tercera instancia. |
+
+## 8. Trazabilidad
+
+- 2026-10-20: alineación con DAT-001 (T-14): PostgreSQL 18 + pgvector, Redis 7+ y Sidekiq en el plano de soporte; esquema de Chatwoot fuera de la directiva de base de datos y del particionado de Mocter; D-10 agregada; criterio de aceptación 9 agregado.
+- 2026-10-21: O-04 cerrada por ADM-001 D-19: el liderazgo no recibe `AccountUser` en cuentas subordinadas; la lectura se agrega en `mocter-admin` y se limita a métricas y datos compartidos por el inquilino.

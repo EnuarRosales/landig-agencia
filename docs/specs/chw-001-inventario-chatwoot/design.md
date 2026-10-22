@@ -5,7 +5,7 @@
 | ID | CHW-001 |
 | Versión | 1.0 |
 | Fecha | 2026-10-20 |
-| Depende de | [`requirements.md`](requirements.md) |
+| Depende de | [`requirements.md`](requirements.md) · [`DAT-001`](../dat-001-arquitectura-datos-multiinquilino/requirements.md) |
 | Fuente fijada | `chatwoot/chatwoot` · commit `042b438fe31d2a2ef00c396379b7064ab6d0034f` · release `4.19.0` |
 
 ## 1. Principio rector
@@ -41,6 +41,19 @@ Reglas:
 - No existe foreign key entre bases.
 - Cada aplicación corre su **propia instancia PostgreSQL**; no hay acceso directo a la base del otro sistema.
 - `custom_attributes.client_id` es opcional y **no** otorga autoridad (D-03).
+
+### 1.1 Entorno de ejecución
+
+Chatwoot es el sistema del plano de soporte en DAT-001. Corre sobre una instancia PostgreSQL propia y un Redis propio; no participa de las celdas, del particionado por `client_id` ni de RLS.
+
+| Componente | Versión | Verificación |
+|---|---|---|
+| PostgreSQL | 18 + pgvector (`pgvector/pgvector:pg18`) | Validado en laboratorio con Chatwoot 4.19.0; rollback a PostgreSQL 16 en DAT-001 §9.7 |
+| Redis | 7+ | Propio de Chatwoot (SSO, caché y cola); no se comparte con el Redis dedicado del plano de control (DAT-001 RF-01.7, AUTH-001 A-03) |
+| Sidekiq | Incluido en la imagen de Chatwoot | Procesamiento en segundo plano; se documenta en `architecture.md` |
+| Rails | 7.2.3.1 | Fijado por el pin del commit |
+
+El esquema de Chatwoot se sincroniza con upstream. La directiva de base de datos de Mocter (`.agents/AGENTS.md` §4.5) y el particionado de DAT-001 **no** se aplican a ese esquema: esta referencia describe lo que existe, no lo modifica.
 
 ## 2. Entregables documentales
 
@@ -117,6 +130,17 @@ Columnas mínimas:
 | Automatizaciones, macros, SLA, campañas | tablas propias | `/api/v1/accounts/{id}/...` | No | `chatwoot` |
 | Webhooks e integraciones | `integrations_hooks` | `/api/v1/accounts/{id}/integrations` | Opcional | Por definir |
 
+### 6.1 Modelo multi-cuenta (`account_users`)
+
+`users` es global; la pertenencia a una cuenta vive en `account_users`, con el rol en `account_users.role` (`db/schema.rb:43-60`) y unicidad por par cuenta–usuario (`db/schema.rb:55`). El rol es un entero (`db/schema.rb:46`), sin catálogo de roles en el esquema comunitario.
+
+Consecuencias:
+
+- Un `User` accede solo a las cuentas donde tiene `AccountUser`; la autorización es por cuenta y no existe lectura cross-account (`auth.md` §6).
+- `mocter-admin` provisiona identidad y membresía por API: `users` y `account_users` de la cuenta (`api-surface.md`, Platform API).
+- La lectura del liderazgo quedó resuelta con el cierre de O-04 (2026-10-21): no se crea `AccountUser` en cuentas subordinadas. `mocter-admin` agrega métricas con los tokens de servicio por inquilino (D-07) y expone solo los datos que cada inquilino decide compartir. Chatwoot no conoce la relación de liderazgo y no se cruza ningún límite de cuenta.
+- La membresía en cada cuenta subordinada se descarta: daría lectura total de la conversación y de la cartera de clientes, y cruzaría celdas. Contradice D-09 y el aislamiento de DAT-001.
+
 ## 7. ERD
 
 Dos diagramas en `erd.mmd`, porque mezclan escalas distintas:
@@ -145,12 +169,29 @@ No se dibuja un único ERD de 104 tablas: es ilegible y no aporta a la decisión
 | Doble escritor de contactos | Decisión O-01 antes de implementar `ADM-001` |
 | Token de servicio con blast radius amplio | Decisión O-02; cifrado en reposo y rotación |
 | Deriva entre el fork y la referencia | Comparar commit del fork contra el pin en cada release |
+| Chatwoot 4.19.0 no está soportado oficialmente sobre PostgreSQL 18 | Ejecución y migraciones validadas en laboratorio; rollback operativo documentado en DAT-001 §9.7 |
 
 ## 10. Insumos para `ADM-001` (fuera de alcance de CHW-001)
 
 El negocio prevé comunidades u organizaciones de dropshipping, con intercambio de productos y lectura de los inquilinos bajo liderazgo. Tres consecuencias deben resolverse en `ADM-001` antes de crear el esquema, porque condicionan la integración con Chatwoot:
 
-1. **Lectura cross-tenant.** Chatwoot no tiene lectura entre cuentas: un `User` ve solo las cuentas donde tiene `AccountUser`. Si un líder debe leer los inquilinos bajo su liderazgo, hay que crearle membresía en cada cuenta subordinada —y verá toda la cuenta, no un subconjunto de lectura— o agregar métricas en `mocter-admin` con los tokens de servicio por inquilino (O-04). La segunda opción es la coherente con D-09, y queda como inclinación pendiente de confirmación.
+1. **Lectura cross-tenant.** Chatwoot no tiene lectura entre cuentas: un `User` ve solo las cuentas donde tiene `AccountUser`. Por eso el liderazgo no se resuelve con membresías: `mocter-admin` agrega métricas con los tokens de servicio por inquilino (O-04 cerrada, ADM-001 D-19) y expone solo los datos que el inquilino comparte. La membresía cruzada daría lectura total de la cuenta y cruzaría celdas, contra D-09 y el aislamiento de DAT-001.
 2. **Clonación de producto, no migración.** Un inquilino clona un producto propuesto por el líder de su comunidad: la fila se inserta en su propia partición con identificador nuevo, así que la PK `(client_id, id)` se mantiene estable y no hace falta un `product_uid` global. Lo que sí conviene registrar, porque no se deduce del clon, es el **evento de adopción** (`proposal_id`, `client_id`, `product_id`, `adopted_at`): sin él no se puede responder cuántos inquilinos adoptaron una propuesta, que es el KPI del programa. Si además se quisiera propagar cambios de la propuesta hacia los clones ya creados, ahí sí hace falta guardar el linaje; mientras no se quiera, no.
 3. **Fan-out de particiones.** Consultar una organización con N inquilinos toca N particiones. Si la lectura agregada es frecuente, conviene una proyección por organización.
+
+### 10.1 Revisión de impacto sobre `ADM-001`
+
+Qué decisiones de `ADM-001` habilita o bloquea este inventario. Las heredadas D-01 a D-09 se originan en CHW-001 y no cambian; la revisión cubre las propias y las abiertas.
+
+| Decisión de `ADM-001` | Efecto | Estado |
+|---|---|---|
+| D-10 · `mocter-admin` en el monorepo | No depende de Chatwoot: el inventario es insumo documental | Habilitada |
+| D-11 · Esquema por base, no por aplicación | Compatible: Chatwoot conserva su base en el plano de soporte (D-08 de CHW-001, DAT-001 RF-01) | Habilitada |
+| D-12 · Identidad en el Router Global | No toca Chatwoot: sus usuarios siguen siendo cuentas locales por `account_users` | Habilitada |
+| D-13 · Catálogo global de archivos | Habilitada; depende de no replicar ActiveStorage (`data-model.md` §5.6) | Habilitada |
+| O-04 · Lectura del líder sobre inquilinos subordinados | **Bloqueante** para el panel del líder. Membresía en cada cuenta → lectura total y cruce de celdas; métricas agregadas con tokens de servicio → coherente con D-09 | Resuelta el 2026-10-21: agregación en `mocter-admin`, sin `AccountUser` en cuentas ajenas (ADM-001 D-19) |
+| O-05 · `mocter-core` como capa o servicio | **Bloqueante** para el maestro de contactos: define si la proyección de contactos (D-06) sale de `mocter-admin` o de un tercer servicio con persistencia propia | Bloqueada hasta resolver O-05 |
+| O-13 · Retención de chats | Chatwoot no la hace cumplir sin enterprise: `mocter-admin` debe operarla por API o asumir el costo | Insumo, no bloquea el inventario |
+| O-14 · Retención y cuota de adjuntos | ActiveStorage no deduplica ni se cuenta en la cuota; la política es de `ADM-001` | Insumo, no bloquea el inventario |
+| O-08, O-11, O-12, O-15, O-16 | Sin impacto en la integración con Chatwoot: pertenecen a archivos, roles, registro, identidad y clonación | Fuera del alcance de CHW-001 |
 

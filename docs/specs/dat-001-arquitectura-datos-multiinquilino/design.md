@@ -407,7 +407,7 @@ En el Router Global, la misma política se aplica a las tablas hijas con `client
 
 ### 5.4 Identidad global y usuarios de celda
 
-La identidad de la plataforma (`users`, `identities`, `sessions` en el Router Global) es global: un usuario puede pertenecer a varias organizaciones o inquilinos y no tiene un `client_id` único. Por eso no usa RLS por `client_id`; se protege con un rol de autenticación dedicado y filtros de aplicación. Las tablas de membresía y tenencia (`organization_members`, `client_users`) sí llevan `client_id` y usan RLS.
+La identidad de la plataforma (`users`, `identities`, `sessions` en el Router Global) es global: un usuario puede pertenecer a varias organizaciones o inquilinos y no tiene un `client_id` único. Por eso no usa RLS por `client_id`; se protege con un rol de autenticación dedicado y filtros de aplicación. Las tablas de membresía y tenencia (`organization_members`, `client_users`; el objeto de negocio es `tenant_users`, nombre a alinear) sí llevan `client_id` y usan RLS.
 
 La tabla `users` de cada celda (sección 6.1) es distinta: es la proyección de los usuarios que pertenecen al inquilino, lleva `client_id` y usa RLS. No es la tabla de identidad global.
 
@@ -902,8 +902,8 @@ La única frontera es la API de Mocter. Si N8N produce archivos, lo hace por el 
 | Spec | Cambio necesario | Estado |
 |---|---|---|
 | ADM-001 | RF-04, RF-07 y RF-10 alineados; O-07 cerrada con la fórmula de almacenamiento facturado; O-13 a O-16 abiertas | Alineado (T-12) |
-| AUTH-001 | A-03 resuelta con el Redis dedicado del plano de control; identidad global con rol dedicado y filtros; RLS solo en tablas de tenencia (O-03); A-02, A-04 y A-05 siguen abiertas | Alineado (T-13) |
-| CHW-001 | Redis 7+, Sidekiq y PostgreSQL 18 validado en laboratorio; T-13 consume DAT-001 | Pendiente (T-14) |
+| AUTH-001 | A-03 resuelta con el Redis dedicado del plano de control; identidad global con rol dedicado y filtros; RLS solo en tablas de tenencia (O-03); A-04 cerrada con `tenant_users` (nombre a alinear); A-05 sigue abierta | Alineado (T-13); alineación de nombre pendiente |
+| CHW-001 | Redis 7+, Sidekiq y PostgreSQL 18 validado en laboratorio; T-13 consume DAT-001 | Alineado (T-14) |
 | Directiva de base de datos | `clients.id` como PK y `client_id` como FK; `products` y `product_embeddings` particionadas; el resto con RLS | Alineado en este documento |
 
 ## 12. Riesgos y mitigaciones
