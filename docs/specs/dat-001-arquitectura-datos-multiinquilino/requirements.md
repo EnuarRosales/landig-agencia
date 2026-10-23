@@ -5,7 +5,7 @@
 | ID | DAT-001 |
 | Versión | 1.0 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 |
+| Fecha | 2026-10-20 · actualizado 2026-10-22 |
 | Documentos | `requirements.md` (este) · `design.md` · `tasks.md` |
 | Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` |
@@ -95,7 +95,7 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 |---|---|
 | RF-04.1 | Toda petición de datos de inquilino resuelve primero su celda antes de abrir una conexión. |
 | RF-04.2 | La resolución sigue una jerarquía: caché local, caché compartida y Router Global como fallback. |
-| RF-04.3 | La sesión o el JWT transporta `client_id` y `routing_version`, no un `cell_id` permanente. |
+| RF-04.3 | La sesión de servidor o el JWT de API resuelven `client_id` y `routing_version`; la cookie opaca solo transporta el `sid`. Ninguno contiene un `cell_id` permanente. |
 | RF-04.4 | Un cambio de `routing_version` obliga a re-resolver la celda. La invalidación se propaga a las cachés locales; el TTL por sí solo no es suficiente durante una migración. |
 | RF-04.5 | Un inquilino suspendido, dado de baja o en migración se rechaza antes de abrir la conexión, salvo la ventana controlada de cutover. |
 | RF-04.6 | Cada celda expone un pool de conexiones propio; PgBouncer multiplexa en modo transacción. |
@@ -108,7 +108,7 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 | RF-05.2 | La aplicación fija `app.current_client_id` con `SET LOCAL` dentro de la transacción. Si el valor falta, la política falla cerrada y no devuelve filas. |
 | RF-05.3 | Existen roles separados: un rol de migración o propietario con DDL y un rol de aplicación con DML, sin DDL y sin `BYPASSRLS`. |
 | RF-05.4 | RLS es defensa en profundidad. Las consultas siguen filtrando por `client_id`; RLS no reemplaza el filtro explícito. |
-| RF-05.5 | Las tablas de identidad y sesión del Router Global (`users`, `identities`, `sessions`) son globales: un usuario puede pertenecer a varias organizaciones o inquilinos y no tiene un `client_id` único. No usan RLS por `client_id`; se protegen con un rol de autenticación dedicado y filtros de aplicación. Las tablas de membresía y tenencia (`organization_members`, `client_users`; el objeto de negocio es `tenant_users`, nombre a alinear) sí usan RLS. La tabla `users` de cada celda es una proyección de usuarios del inquilino, lleva `client_id` y usa RLS. |
+| RF-05.5 | Las tablas de identidad y sesión del Router Global (`users`, `identities`, `sessions`) son globales y no usan RLS por `client_id`. `users` no tiene `client_id`; lleva `active_client_id` nullable como puntero de membresía única. `identities` no tiene tenencia; `sessions` puede registrar el `client_id` activo, pero no es una tabla de tenencia. La membresía y su historial viven en `tenant_users`, que lleva `client_id` y usa RLS. Un usuario tiene como máximo una membresía activa. La tabla `users` de cada celda es una proyección de usuarios del inquilino, lleva `client_id` y usa RLS. |
 | RF-05.6 | `mocter-admin` no accede directamente a la base de Chatwoot. La integración es exclusivamente por sus APIs. |
 
 ### RF-06 · Particionado
@@ -161,7 +161,7 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 
 | ID | Requisito |
 |---|---|
-| RF-10.1 | Cada instancia tiene backup y restore probado. El destino, la retención y la frecuencia de prueba se fijan en CD-001; DAT-001 exige que el backup sea S3 compatible, offsite, cifrado, versionado y con restore probado. |
+| RF-10.1 | Cada instancia tiene backup y restore probado. El destino, la retención y la frecuencia de prueba se fijan en OPS-001; DAT-001 exige que el backup sea S3 compatible, offsite, cifrado, versionado y con restore probado. |
 | RF-10.2 | La observabilidad expone métricas de conexiones, uso de pool, tamaño de índices HNSW, cantidad de particiones, hit rate de caché, errores de enrutamiento y lag de migración. |
 | RF-10.3 | Los disparadores de apertura de celda son: 100 inquilinos, 8.000 relaciones en `pg_class`, índices HNSW que superan el 65% de la RAM, o CPU P95 sostenida por encima del 70%. |
 | RF-10.8 | La capacidad nominal de una celda es 100 inquilinos; la capacidad efectiva es la primera condición de RF-10.3 que se cumpla. HNSW puede reducirla; se mide con el modelo y la dimensión reales. |
@@ -188,7 +188,7 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 4. Existen `cells`, `clients`, `client_routing` y `client_migrations` en el Router Global.
 5. El alta de un inquilino es una saga con compensación y respeta la capacidad de la celda.
 6. Ninguna petición de datos de inquilino abre una conexión sin resolver antes su celda.
-7. La sesión o el JWT no contiene un `cell_id` permanente; contiene `client_id` y `routing_version`.
+7. La sesión de servidor o el JWT de API resuelven `client_id` y `routing_version`; la cookie opaca solo transporta el `sid`. Ninguno contiene un `cell_id` permanente.
 8. RLS está habilitado y forzado; una consulta sin `app.current_client_id` no devuelve filas.
 9. El rol de aplicación no tiene DDL ni `BYPASSRLS`; el rol de migración está separado.
 10. El total de particiones físicas por instancia es menor o igual a 10.000.
@@ -203,11 +203,11 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 19. Redis 7+ y Sidekiq están documentados para Chatwoot; el plano de control tiene un Redis 7+ dedicado y separado.
 20. El laboratorio de Chatwoot sobre PostgreSQL 18 está registrado como validado (migraciones exitosas); el procedimiento de rollback está documentado en `design.md` §9.7.
 21. El Router Global se mantiene como plano de control; la separación de `pg-control-plane` tiene disparadores documentados y no se implementa en esta especificación.
-22. Las tablas de identidad y sesión globales no usan RLS por `client_id`; las tablas de membresía y la proyección `users` de cada celda sí.
+22. Las tablas de identidad y sesión globales no usan RLS por `client_id`; la membresía (`tenant_users`) y la proyección `users` de cada celda sí. `users.active_client_id` es un puntero nullable, no una política RLS.
 23. Las tablas particionadas usan `LIST` por `client_id`; al llegar a 100 inquilinos se abre una celda nueva y `HASH` queda diferido con trigger.
 24. La representación vectorial por defecto es `vector(d)`; `halfvec(d)` se adopta solo con modelo/dimensión reales y recall medido.
 25. El rollback de Chatwoot a PostgreSQL 16 está documentado en `design.md` §9.7 y se ensaya en laboratorio antes de producción.
-26. El destino, la retención y la prueba de restore se fijan en CD-001; DAT-001 exige S3 compatible, offsite, cifrado y versionado.
+26. El destino, la retención y la prueba de restore se fijan en OPS-001; DAT-001 exige S3 compatible, offsite, cifrado, versionado y restore probado.
 27. La capacidad nominal es 100 inquilinos por celda; la efectiva se determina por el primer disparador de escalado de RF-10.3.
 
 ## 6. Decisiones
@@ -229,7 +229,7 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 | D-13 | Particionado `LIST` por `client_id` con 100 inquilinos por celda; al llegar al límite se abre una celda nueva. `HASH` queda diferido con trigger. | `LIST` aísla por inquilino y simplifica drop/migración; el presupuesto de 10.000 particiones no es el límite inmediato. |
 | D-14 | Representación vectorial por defecto `vector(d)`; `halfvec(d)` queda diferido con trigger de recall/memoria. | Sin el modelo y el dataset reales no se puede validar la pérdida de recall; la dimensión la define el contrato de embedding. |
 | D-15 | Rollback de Chatwoot a PostgreSQL 16 con la imagen anterior, documentado en `design.md` §9.7. | La validación en laboratorio fue exitosa; el rollback es una precaución operativa con RPO/RTO explícitos. |
-| D-16 | Backup: destino, retención y prueba se fijan en CD-001; DAT-001 exige S3 compatible, offsite, cifrado, versionado y restore probado. | Evita duplicar la decisión operativa en dos especificaciones; CD-001 ya gobierna el despliegue y los respaldos. |
+| D-16 | Backup: destino, retención y prueba se fijan en OPS-001; DAT-001 exige S3 compatible, offsite, cifrado, versionado y restore probado. | Evita duplicar la decisión operativa en dos especificaciones; OPS-001 gobierna la continuidad y CD-001 solo el despliegue. |
 | D-17 | Capacidad nominal de 100 inquilinos por celda; la efectiva es el primer disparador de RF-10.3. | HNSW, CPU o relaciones pueden reducir la capacidad; fijar un número menor sin medición sería arbitrario. |
 
 ## 7. Decisiones abiertas
@@ -251,3 +251,5 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 - 2026-10-20, decisión O-06: se documenta el rollback de Chatwoot a PostgreSQL 16 con la imagen anterior en `design.md` §9.7, con disparadores, backup, restore, verificación y RPO/RTO.
 - 2026-10-20, decisión O-07: el destino, la retención y la prueba de backup se difieren a CD-001; DAT-001 exige S3 compatible, offsite, cifrado, versionado y restore probado.
 - 2026-10-20, decisión O-08: la capacidad nominal es 100 inquilinos por celda; la efectiva es el primer disparador de RF-10.3 (inquilinos, relaciones, HNSW o CPU).
+- 2026-10-22: alineación con AUTH-D-06 y corrección de membresía 1:0..1. La cookie del panel transporta solo un `sid` opaco; la sesión de servidor guarda `client_id` y `routing_version`. `users.active_client_id` es el guardián global de una única membresía activa. JWT queda para APIs futuras. Se unifica el nombre físico `tenant_users` y se elimina `client_users`.
+- 2026-10-22: revisión de control del plan SDD. La decisión O-07 quedó superada por OPS-001 (creada el 2026-10-21, dueña de destino, retención y prueba de restore). `design.md` §9.1 ahora delega en OPS-001 y nombra la instancia actual `pg-portal`; la separación `pg-control-plane` sigue diferida (O-02, RF-01.9).

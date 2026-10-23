@@ -4,7 +4,7 @@
 |---|---|
 | ID | CHW-001 |
 | Versión | 1.0 |
-| Fecha | 2026-10-20 |
+| Fecha | 2026-10-20 · actualizado 2026-10-22 |
 | Depende de | [`requirements.md`](requirements.md) · [`DAT-001`](../dat-001-arquitectura-datos-multiinquilino/requirements.md) |
 | Fuente fijada | `chatwoot/chatwoot` · commit `042b438fe31d2a2ef00c396379b7064ab6d0034f` · release `4.19.0` |
 
@@ -140,6 +140,7 @@ Consecuencias:
 - `mocter-admin` provisiona identidad y membresía por API: `users` y `account_users` de la cuenta (`api-surface.md`, Platform API).
 - La lectura del liderazgo quedó resuelta con el cierre de O-04 (2026-10-21): no se crea `AccountUser` en cuentas subordinadas. `mocter-admin` agrega métricas con los tokens de servicio por inquilino (D-07) y expone solo los datos que cada inquilino decide compartir. Chatwoot no conoce la relación de liderazgo y no se cruza ningún límite de cuenta.
 - La membresía en cada cuenta subordinada se descarta: daría lectura total de la conversación y de la cartera de clientes, y cruzaría celdas. Contradice D-09 y el aislamiento de DAT-001.
+- La integración de Mocter no crea un segundo `AccountUser` para un usuario con membresía activa en otro inquilino. Chatwoot permite multi-cuenta técnica, pero la capa de sincronización rechaza la operación y no reutiliza el `User` global para dos inquilinos.
 
 ## 7. ERD
 

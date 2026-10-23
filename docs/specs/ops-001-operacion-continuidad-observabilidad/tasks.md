@@ -4,8 +4,9 @@
 |---|---|
 | ID | OPS-001 |
 | Versión | 1.0 |
-| Fecha | 2026-10-21 |
+| Fecha | 2026-10-21 · actualizado 2026-10-22 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
+| Estado | Aprobada |
 
 ## Convenciones
 
@@ -24,29 +25,29 @@
 
 - [ ] **T-02 · Validar pgBackRest sobre PostgreSQL 18 en laboratorio**
   - Construir una imagen de prueba con `pgvector/pgvector:pg18` + pgBackRest del repositorio PGDG.
-  - Ejecutar `stanza-create`, `check`, un full y un restore local.
-  - Verificación: los cuatro comandos terminan en `completed successfully` y el restore arranca PostgreSQL 18.
+  - Ejecutar `stanza-create`, `check`, un full y un restore local con `pgbackrest-secure`.
+  - Verificación: los cuatro comandos terminan en `completed successfully`, el restore arranca PostgreSQL 18 y la retención de WAL cubre el full más antiguo.
 
 - [ ] **T-03 · Validar Cloudflare R2 con pgBackRest**
   - Crear un bucket de laboratorio con versionado y un token de alcance mínimo.
   - Probar `repo1-s3-uri-style=path`, `repo1-s3-region=auto` y el endpoint de R2.
-  - Verificación: `stanza-create`, `check`, `backup` y `--repo1-verify verify` funcionan contra R2; se documenta la variante exacta que funcionó.
+  - Verificación: `stanza-create`, `check`, `backup` y `--repo1-verify verify` funcionan contra R2 con `pgbackrest-secure`; se documenta la variante exacta que funcionó.
 
 - [ ] **T-04 · Validar cifrado y ausencia de secretos en logs**
   - Inspeccionar objetos en R2 y confirmar que no son legibles sin la passphrase.
   - Revisar `pgbackrest.log` y el journal.
-  - Verificación: sin passphrase el contenido es ilegible; ni la passphrase ni las claves aparecen en ningún log.
+  - Verificación: sin passphrase el contenido es ilegible; ni la passphrase ni las claves aparecen en ningún log; `pgbackrest.conf` no contiene la passphrase y `cipher` es un archivo separado.
 
 ## Fase 1 · Respaldo
 
 - [ ] **T-05 · Construir la imagen `mocter-postgres`**
-  - `docker/postgres/Dockerfile` con pgBackRest y la versión fijada en T-02.
+  - `docker/postgres/Dockerfile` con pgBackRest, el wrapper `pgbackrest-secure` y la versión fijada en T-02.
   - Verificación: `docker run --rm mocter-postgres:pg18 pgbackrest version` responde y `postgres --version` reporta 18.
 
 - [ ] **T-06 · Configurar `postgresql.conf` y `pgbackrest.conf`**
   - Aplicar `wal_level`, `archive_mode`, `archive_command` y `archive_timeout` por instancia.
   - Montar el archivo de configuración con `0600`, fuera del repositorio.
-  - Verificación: `SHOW archive_mode` = `on`; `pgbackrest check` pasa; un `INSERT` genera WAL archivado.
+  - Verificación: `SHOW archive_mode` = `on`; `pgbackrest-secure check` pasa; un `INSERT` genera WAL archivado; el límite local de WAL está declarado y la alerta al 60 % configurada.
 
 - [ ] **T-07 · Crear el bucket y las credenciales de producción**
   - Bucket `mocter-backups` con versionado; token limitado al bucket.
@@ -54,15 +55,15 @@
 
 - [ ] **T-08 · Fijar presupuesto y alerta de costo (O-01)**
   - Registrar precios vigentes de R2 y del plan de Grafana Cloud elegido.
-  - Verificación: la fórmula de `design.md` §11 queda con valores reales y el presupuesto aprobado.
+  - Verificación: la fórmula de `design.md` §11 queda con valores reales, el presupuesto aprobado y la alerta al 80 % configurada.
 
 - [ ] **T-09 · Medir tamaño real y ajustar la política (O-04)**
   - Medir base, WAL diario y tamaño del repositorio tras la primera semana.
   - Verificación: la retención y la frecuencia de full caben en el presupuesto y cumplen RPO/RTO.
 
 - [ ] **T-10 · Programar los timers de systemd**
-  - Instalar `ops-backup-full`, `ops-backup-diff`, `ops-backup-check`, `ops-backup-verify` y `ops-alert-stale`.
-  - Verificación: `systemctl list-timers` los muestra activos y la primera ejecución deja log y métrica.
+  - Instalar `ops-backup-full`, `ops-backup-diff`, `ops-backup-check`, `ops-backup-verify`, `ops-backup-guard` y `ops-alert-stale`.
+  - Verificación: `systemctl list-timers` los muestra activos, cada timer ejecuta `docker exec <contenedor> pgbackrest-secure` y la primera ejecución deja log y métrica.
 
 - [ ] **T-11 · Documentar la rotación de la passphrase**
   - Procedimiento de repositorio nuevo y convivencia con el anterior.
@@ -109,16 +110,16 @@
   - Verificación: cada alerta crítica enlaza un runbook y el canal elegido recibe la notificación.
 
 - [ ] **T-21 · Probar la alerta de respaldo fallido**
-  - Detener el timer de full en laboratorio y esperar.
+  - Simular un fallo de `pgbackrest-secure` y un timer que no se ejecuta a la hora programada.
   - Verificación: la alerta llega en ≤ 5 minutos y el reenvío a los 30 minutos funciona.
 
 ## Fase 4 · Cierre
 
 - [ ] **T-22 · Verificar los criterios de aceptación**
-  - Recorrer los diez criterios de `requirements.md` §5 con evidencia.
+  - Recorrer todos los criterios de `requirements.md` §5 con evidencia.
   - Verificación: cada criterio tiene su archivo o salida asociada; ninguno queda en supuesto.
 
-- [ ] **T-23 · [HUMANO] Aprobar OPS-001**
+- [x] **T-23 · [HUMANO] Aprobar OPS-001**
   - Revisar `requirements.md`, `design.md` y `tasks.md`.
   - Cambiar el estado de `requirements.md` de `Borrador` a `Aprobada`.
   - Responsable: dueño del producto.

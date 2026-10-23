@@ -110,10 +110,10 @@ Al terminar una especificación, entrega:
 | CD-001 | [Despliegue continuo](docs/specs/cd-001-despliegue-continuo/requirements.md) | Implementada · Pendiente de primer release |
 | CORE-002 | [Optimización del cascarón](docs/specs/core-002-optimizacion-cascaron/requirements.md) | Implementada · Estable |
 | API-001 | [Documentación OpenAPI (Swagger)](docs/specs/api-001-openapi-swagger/requirements.md) | Implementada · Estable |
-| ADM-001 | [mocter-admin — núcleo administrativo de inquilinos](docs/specs/adm-001-mocter-admin/requirements.md) | Borrador · Documentos completos; D-30 (Router Global) y D-31 (roles/scopes) aprobadas; pendiente aprobación final |
-| AUTH-001 | [Sistema híbrido de autenticación y autorización](docs/specs/auth-001-autenticacion-hibrida/requirements.md) | Aprobado (documento de origen) · A-04 cerrada (AUTH-D-05); A-05 abierta; pendiente de `design.md` y `tasks.md` |
-| CHW-001 | [Inventario técnico de Chatwoot](docs/specs/chw-001-inventario-chatwoot/requirements.md) | Aprobada |
-| DAT-001 | [Arquitectura de datos multi-inquilino basada en celdas](docs/specs/dat-001-arquitectura-datos-multiinquilino/requirements.md) | Aprobada |
-| OPS-001 | [Operación, continuidad y observabilidad](docs/specs/ops-001-operacion-continuidad-observabilidad/requirements.md) | Borrador |
+| ADM-001 | [mocter-admin — núcleo administrativo de inquilinos](docs/specs/adm-001-mocter-admin/requirements.md) | Aprobada · 2026-10-22; D-15 (membresía 1:0..1), D-30 (Router Global) y D-31 (roles/scopes) aprobadas |
+| AUTH-001 | [Sistema híbrido de autenticación y autorización](docs/specs/auth-001-autenticacion-hibrida/requirements.md) | Aprobada · 2026-10-22; AUTH-D-01 a AUTH-D-06 cerradas |
+| CHW-001 | [Inventario técnico de Chatwoot](docs/specs/chw-001-inventario-chatwoot/requirements.md) | Aprobada · Sincronización alineada con membresía 1:0..1 |
+| DAT-001 | [Arquitectura de datos multi-inquilino basada en celdas](docs/specs/dat-001-arquitectura-datos-multiinquilino/requirements.md) | Aprobada · Alineada con AUTH-D-06 y membresía 1:0..1 |
+| OPS-001 | [Operación, continuidad y observabilidad](docs/specs/ops-001-operacion-continuidad-observabilidad/requirements.md) | Aprobada · 2026-10-22; decisiones O-01 a O-06 diferidas a implementación; lab T-02, T-03, T-08 y T-18 pendientes |
 
 

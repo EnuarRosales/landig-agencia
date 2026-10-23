@@ -4,9 +4,9 @@
 |---|---|
 | ID | ADM-001 |
 | Versión | 1.0 |
-| Fecha | 2026-10-21 |
+| Fecha | 2026-10-21 · actualizado 2026-10-22 |
 | Depende de | [`requirements.md`](requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/design.md) |
-| Estado | Borrador |
+| Estado | Aprobada |
 
 ## 1. Principios
 
@@ -27,7 +27,7 @@
 |---|---|---|
 | CHW-001 | Doble autoridad de tenencia, correlación `client_id` ↔ cuenta de Chatwoot, token de servicio por inquilino, sin enterprise. | Aprovisionamiento, SSO, estado y reintentos. |
 | DAT-001 | Router Global, celdas, límite de 100 inquilinos por celda, RLS, particionado de productos, migraciones por base. | Cómo se aprovisiona una celda y cómo se enruta una consulta. |
-| AUTH-001 | Identidad global, ancla de correo, Google/Facebook, TOTP, sesión en Redis, identidad en celda dedicada. | Cómo se resuelve la ubicación antes del login y cómo se vincula el dueño. |
+| AUTH-001 | Identidad global, ancla de correo, Google/Facebook, TOTP, sesión opaca de servidor (Redis/Postgres), identidad en celda dedicada. | Cómo se resuelve la ubicación antes del login y cómo se vincula el dueño. |
 | OPS-001 | Respaldo pgBackRest a R2, RPO/RTO, observabilidad off-host. | Jobs de retención y archivo legal; nada de backups. |
 
 **Fuera de alcance:** operar conversaciones, modificar el esquema de Chatwoot, habilitar enterprise, mensajería privada entre miembros y la landing pública.
@@ -56,11 +56,11 @@
         │ Global      │  │      │  pg-celdaN           │  │
         │ schema admin│  │      │  schema admin        │  │
         │ users       │  │      │  products (part.)    │  │
-        │ clients     │  │      │  product_files       │  │
+        │ clients     │  │      │  product_media       │  │
         │ organiz.    │  │      │  tenant_users (RLS)  │  │
         │ feed        │  │      └──────────┬───────────┘  │
         │ shares      │  │                 │              │
-        │ file_catalog│  │                 │              │
+        │media_catalog│  │                 │              │
         └──────┬──────┘  │                 │              │
                │         │                 │              │
         ┌──────▼──────┐  │      ┌──────────▼───────────┐  │
@@ -77,14 +77,14 @@
 | Componente | Dónde corre | Función |
 |---|---|---|
 | `apps/admin` | Contenedor propio, detrás de Traefik | Interfaz y API de administración |
-| Router Global | PostgreSQL del plano de control | Identidad, tenencia, planes, comunidades, feed, publicaciones de productos, catálogo de archivos |
-| Celdas | PostgreSQL independientes | Productos, embeddings, vínculos de archivos, proyección de usuarios |
+| Router Global | PostgreSQL del plano de control | Identidad, tenencia, planes, comunidades, feed, publicaciones de productos, `media_catalog` |
+| Celdas | PostgreSQL independientes | Productos, embeddings, vínculos y cuota de archivos, proyección de usuarios |
 | Redis 7+ | Plano de control | Rate limiting, revocación de sesión y caché de enrutamiento (AUTH-D-02) |
 | Chatwoot | Plano de soporte | Conversaciones, cuentas, SSO |
 | SeaweedFS | Almacenamiento de objetos | Multimedia de producto, deduplicada por hash |
 | R2 | Externo | Archivo legal cifrado; backups de OPS-001 |
 
-**Decisión de diseño aprobada (D-30):** las comunidades, el feed y las publicaciones de producto viven en el Router Global porque cruzan celdas; los productos, embeddings, vínculos de archivos y usuarios del inquilino quedan en la celda. El producto compartido no se mueve: se copia desde la celda de origen a la celda del adoptante por API, sin FK entre celdas (RF-10.8). Aprobada el 2026-10-21.
+**Decisión de diseño aprobada (D-30):** las comunidades, el feed y las publicaciones de producto viven en el Router Global porque cruzan celdas; los productos, embeddings, vínculos y cuota de archivos, y la proyección de usuarios del inquilino quedan en la celda. El producto compartido no se mueve: se copia desde la celda de origen a la celda del adoptante por API, sin FK entre celdas (RF-10.8). Aprobada el 2026-10-21.
 
 ## 4. Módulos de `mocter-admin`
 
@@ -110,12 +110,15 @@
 
 | Tabla | Clave | Notas |
 |---|---|---|
-| `users` | `id` | Ancla global: `email` único, `email_verified_at`, `identity_location` (`router` o `cell_id`) |
-| `clients` | `id` | `owner_user_id` no nulo, `contact_email`, `name`, `status`; el `tenant_owner` activo se materializa en `tenant_users` |
+| `users` | `id` | Ancla global: `email` único, `email_verified_at`, `identity_location` (`router` o `cell_id`), `active_client_id` nullable con `ON DELETE SET NULL`; un usuario tiene como máximo una membresía activa |
+| `cells` | `id` | `code`, `tier`, `status`, `pgbouncer_host`, `pgbouncer_port`, `database_name`, `max_clients`, `current_clients`, `region` |
+| `clients` | `id` | `owner_user_id` no nulo y único entre clientes no dados de baja, `contact_email`, `display_name`, `slug`, `lifecycle_status`, `plan_id`, `quota_version`; el `tenant_owner` activo se materializa en `tenant_users` |
 | `client_routing` | `client_id` | `cell_id`, `identity_location`; caché en Redis |
-| `plans` | `id` | Nombre, capacidades |
-| `plan_limits` | `(plan_id, key)` | Productos, `max_tenant_agents` (`tenant_owner` fijo en 1), imágenes, audios, videos, PDF, retención, bytes |
-| `client_plans` | `client_id` | Plan vigente, vigencia, `source` (`manual` o `self_service`), `assigned_by_user_id` |
+| `client_migrations` | `id` | `client_id`, `source_cell_id`, `target_cell_id`, `state`, `started_at`, `completed_at` |
+| `plans` | `id` | `code`, `name`, `is_public`, `price`, `currency` |
+| `plan_limits` | `(plan_id, dimension)` | Productos, `max_tenant_agents` (`tenant_owner` fijo en 1), imágenes, audios, videos, PDF, retención, bytes |
+| `client_plan_overrides` | `id` | `client_id`, `dimension`, `value`, `valid_from`, `valid_to`, `negotiated_by`, `updated_by` |
+| `client_plans` | `id` | Historial de asignaciones: `client_id`, `plan_id`, `valid_from`, `valid_to`, `source` (`manual` o `self_service`), `assigned_by_user_id`; el plan vigente se refleja en `clients.plan_id` |
 | `organizations` | `id` | `originator_client_id`, `name`, `moderation_mode` (`pre`, `post`, `none`) |
 | `organization_members` | `id` | `organization_id`, `client_id`, `role` (`originator`, `co_leader`, `member`), `status`, `joined_at`, `left_at` |
 | `organization_invitations` | `id` | `organization_id`, `email`, `invited_by`, `status`, `token`, `expires_at` |
@@ -127,21 +130,25 @@
 | `product_adoptions` | `id` | `share_id`, `adopter_client_id`, `created_by_user_id`, `clone_product_id`, `clone_cell_id`, `adopted_version`, `link_active` |
 | `clone_sync_policies` | `(adoption_id, attribute_key)` | `auto_sync` booleano |
 | `sync_runs` | `id` | `adoption_id`, `version`, `mode`, `attributes`, `status`, `error` |
+| `outbox_events` | `id` | `aggregate_type`, `aggregate_id`, `event_type`, `idempotency_key`, `status`, `attempts`, `available_at`, `created_at` |
 | `feed_posts` | `id` | `organization_id`, `author_client_id`, `author_user_id`, `body`, `status`, `published_at` |
 | `feed_moderation_events` | `id` | `post_id`, `actor_client_id`, `actor_user_id`, `action`, `reason`, `created_at` |
 | `notifications` | `id` | `client_id`, `type`, `payload`, `read_at` |
-| `file_catalog` | `id` | `hash`, `storage_key`, `size`, `mime`; sin `client_id` |
-| `chatwoot_accounts` | `client_id` | `account_id`, `status`, `idempotency_key`, `last_error`, `synced_at` |
+| `media_catalog` | `id` | `content_hash`, `storage_pool_id`, `storage_key`, `size_bytes`, `media_kind`; sin `client_id` |
+| `chatwoot_accounts` | `client_id` | `chatwoot_account_id`, `state`, `idempotency_key`, `last_error`, `synced_at` |
 | `audit_log` | `id` | Actor, acción, entidad, fecha; sin contenido de negocio |
 
 ### 5.2 Celdas — schema `admin`
 
 | Tabla | Clave | Notas |
 |---|---|---|
-| `tenant_users` | `(client_id, user_id)` | Objeto de negocio del inquilino: `role` (`tenant_owner` o `tenant_agent`), `status`, `invited_by`, `joined_at`; RLS. La tabla física `client_users` de DAT-001 queda por alinear. |
+| `tenant_users` | `id` | Objeto de negocio del inquilino: `client_id`, `user_id`, `role` (`tenant_owner` o `tenant_agent`), `status`, `invited_by`, `joined_at`, `left_at`; RLS. Un solo vínculo activo por `user_id`; el historial se conserva con una fila nueva por reingreso. La unicidad global se refuerza con `users.active_client_id`. |
+| `users` | `id` | Proyección local del usuario: `client_id`, `email`, `status`; RLS. No es el ancla global (AUTH-D-01). |
+| `client_media` | `id` | `client_id`, `media_id`, `size_bytes`; único `(client_id, media_id)`; RLS. Referencia distinta del inquilino al catálogo global |
+| `client_usage` | `id` | `client_id`, `dimension`, `used_value`; único `(client_id, dimension)`; RLS. Contador autoritativo de consumo |
 | `products` | `(client_id, id)` | `PARTITION BY LIST (client_id)`; `source_share_id`, `source_version` para clones |
 | `product_embeddings` | `(client_id, product_id)` | Particionada igual que `products` |
-| `product_files` | `(client_id, product_id, file_id)` | Vínculo producto–archivo; RLS |
+| `product_media` | `(client_id, product_id, media_id)` | Vínculo producto–archivo; único `(client_id, product_id, media_id)`; RLS |
 
 Toda tabla de inquilino lleva `client_id` no nulo, índice compuesto que empieza por esa columna y RLS forzado (RF-01.5, RF-10.11). `products` y `product_embeddings` se particionan; el resto no (RF-10.12).
 
@@ -153,6 +160,11 @@ CREATE UNIQUE INDEX organization_members_one_active
   ON organization_members (client_id)
   WHERE status = 'active';
 
+-- Un solo originador activo por comunidad.
+CREATE UNIQUE INDEX organization_members_one_originator
+  ON organization_members (organization_id)
+  WHERE role = 'originator' AND status = 'active';
+
 -- Una promoción pendiente por inquilino y comunidad.
 CREATE UNIQUE INDEX organization_promotions_one_pending
   ON organization_promotions (organization_id, target_client_id)
@@ -162,6 +174,32 @@ CREATE UNIQUE INDEX organization_promotions_one_pending
 CREATE UNIQUE INDEX tenant_users_one_owner
   ON tenant_users (client_id)
   WHERE role = 'tenant_owner' AND status = 'active';
+
+-- Historial de membresías por inquilino y usuario.
+CREATE INDEX tenant_users_by_client_user
+  ON tenant_users (client_id, user_id);
+
+-- Un solo vínculo activo por usuario en la celda; la unicidad global se refuerza con users.active_client_id.
+CREATE UNIQUE INDEX tenant_users_one_active_membership
+  ON tenant_users (user_id)
+  WHERE status = 'active';
+
+-- Un archivo distinto por inquilino.
+CREATE UNIQUE INDEX client_media_one_per_client
+  ON client_media (client_id, media_id);
+
+-- Un vínculo por producto y archivo.
+CREATE UNIQUE INDEX product_media_one_per_product
+  ON product_media (client_id, product_id, media_id);
+
+-- Un contador por dimensión.
+CREATE UNIQUE INDEX client_usage_one_per_dimension
+  ON client_usage (client_id, dimension);
+
+-- Un solo inquilino no dado de baja por dueño.
+CREATE UNIQUE INDEX clients_one_live_owner
+  ON clients (owner_user_id)
+  WHERE lifecycle_status <> 'deleted';
 
 -- Un producto compartido una vez por comunidad.
 CREATE UNIQUE INDEX product_shares_one_active
@@ -175,6 +213,10 @@ CREATE UNIQUE INDEX product_adoptions_one_per_client
 -- Una política por atributo y adopción.
 CREATE UNIQUE INDEX clone_sync_policies_one_per_attribute
   ON clone_sync_policies (adoption_id, attribute_key);
+
+-- Un evento de outbox por clave de idempotencia.
+CREATE UNIQUE INDEX outbox_events_one_idempotency
+  ON outbox_events (idempotency_key);
 ```
 
 **Decisión de diseño:** el historial de membresías no se borra. Salir marca `status = 'left'` y `left_at`; reingresar crea una fila nueva. El índice parcial solo cubre el vínculo activo, de modo que el reingreso no choca con el historial (RF-08.5).
@@ -183,7 +225,7 @@ CREATE UNIQUE INDEX clone_sync_policies_one_per_attribute
 
 ### 6.1 Ancla de identidad
 
-`users` es el ancla global: correo único y `identity_location`. El inquilino referencia a su dueño por `clients.owner_user_id`; desde esa relación se recuperan correo, roles y permisos (D-29). No hay índice HMAC ni tabla de enrutamiento de identidad separada.
+`users` es el ancla global: correo único, `identity_location` y `active_client_id` nullable. El puntero `active_client_id` garantiza una sola membresía activa por usuario; se anula al salir del inquilino o al dar de baja el inquilino. El inquilino referencia a su dueño por `clients.owner_user_id`; desde esa relación se recuperan correo, roles y permisos (D-29). No hay índice HMAC ni tabla de enrutamiento de identidad separada.
 
 | Caso | Dónde viven las credenciales | Cómo se resuelve el login |
 |---|---|---|
@@ -197,18 +239,19 @@ En la celda dedicada, el Router conserva el correo y el puntero, no las credenci
 1. El usuario se registra con Google o con correo y contraseña.
 2. Google se considera verificado; el correo manual queda pendiente hasta la confirmación (RF-14.6).
 3. Con la identidad verificada, se ejecuta el asistente guiado: datos del negocio, plan, preferencias.
-4. Al completar el asistente se crea el `client` con `owner_user_id` y se enruta a una celda. El usuario queda como `tenant_owner` único del inquilino.
-5. El inquilino opera sin comunidad hasta que `platform_admin` le asigna el rol de líder. El onboarding no crea comunidades ni autoasigna liderazgo (RF-08.1).
+4. Antes de crear el cliente se verifica que el usuario no tenga `active_client_id` ni sea dueño de un cliente no dado de baja; si ya tiene membresía o negocio, el alta se rechaza.
+5. Al completar el asistente se crea el `client` con `owner_user_id`, la fila `tenant_users` del `tenant_owner` y se enruta a una celda. `users.active_client_id` apunta a ese `client_id`.
+6. El inquilino opera sin comunidad hasta que `platform_admin` le asigna el rol de líder. El onboarding no crea comunidades ni autoasigna liderazgo (RF-08.1).
 
 El inquilino no existe antes de que el negocio esté configurado. El avance del asistente se guarda por usuario y, cuando existe, por inquilino (RF-14.4).
 
 ### 6.3 Alta manual
 
-El gestor de ventas (`platform_sales`) crea el inquilino y, en la misma operación, el usuario dueño. Si el correo ya existe, se vincula la identidad existente sin duplicarla (AUTH-001); si no existe, se crea. La operación falla si no hay `owner_user_id` (RF-01.6, D-29). En la misma operación se asigna el plan del catálogo; el `tenant_owner` queda único y sin `tenant_agent` hasta que lo invite.
+El gestor de ventas (`platform_sales`) crea el inquilino y, en la misma operación, el usuario dueño. Si el correo ya existe, se vincula la identidad existente sin duplicarla (AUTH-001); si no existe, se crea. La operación falla si no hay `owner_user_id` (RF-01.6, D-29) o si el usuario ya tiene un `active_client_id` distinto: no se puede asignar a un segundo inquilino. La reserva del `active_client_id` y la creación de `tenant_users` se hacen en la misma saga; si la celda falla, se compensa el puntero. En la misma operación se asigna el plan del catálogo; el `tenant_owner` queda único y sin `tenant_agent` hasta que lo invite.
 
 ### 6.4 Invitaciones
 
-La invitación es un canal alternativo para sumarse a un inquilino existente. Se usa para fidelización y para que el `tenant_owner` vincule miembros (RF-14.7). El invitado entra como `tenant_agent`; el `tenant_owner` es único y no se invita. A diferencia de la solicitud de unión a una comunidad, la invitación a un inquilino no crea comunidad: solo membresía de usuario.
+La invitación es un canal alternativo para sumarse a un inquilino existente. Se usa para fidelización y para que el `tenant_owner` vincule miembros (RF-14.7). El invitado entra como `tenant_agent`; el `tenant_owner` es único y no se invita. La invitación se rechaza si el usuario ya tiene una membresía activa en otro inquilino. La reserva del `active_client_id` se hace con un `UPDATE users SET active_client_id = :client_id WHERE id = :user_id AND active_client_id IS NULL`; si no afecta una fila, la invitación se rechaza. La fila `tenant_users` se crea después y se compensa si falla. A diferencia de la solicitud de unión a una comunidad, la invitación a un inquilino no crea comunidad: solo membresía de usuario.
 
 ## 7. Tenencia y celdas
 
@@ -219,7 +262,7 @@ La invitación es un canal alternativo para sumarse a un inquilino existente. Se
 - Las celdas comparten esquema y una línea de migración; el Router tiene su propia línea (RF-10.9, RF-10.10).
 - Las referencias entre planos son identificadores; no hay FK entre Router y celda ni entre celdas (RF-10.8).
 
-**Aprovisionamiento de celda:** crear la instancia, ejecutar la línea de migraciones, registrar la celda y actualizar el enrutamiento. La operación es idempotente y se audita.
+**Aprovisionamiento de celda:** crear la instancia, ejecutar la línea de migraciones, registrar la celda en `cells`, actualizar `client_routing` y auditar. La operación es idempotente.
 
 ## 8. Aprovisionamiento de Chatwoot
 
@@ -284,7 +327,7 @@ Cuando el autor cambia un producto compartido:
 
 ### 10.1 Scopes y roles
 
-Los roles se organizan en tres scopes independientes. Un mismo usuario puede tener roles en varios scopes y en varios inquilinos; la identidad es global (AUTH-001), pero los permisos se evalúan contra el vínculo activo (D-31).
+Los roles se organizan en tres scopes independientes. Un mismo usuario puede tener roles en varios scopes, pero como máximo en un inquilino; la identidad es global (AUTH-001) y la membresía de inquilino es 1:0..1. Los permisos se evalúan contra el vínculo activo (D-31).
 
 | Scope | Roles | Asignación |
 |---|---|---|
@@ -345,7 +388,7 @@ El inquilino #1 es la SaaS. Un usuario con rol de plataforma puede ser `tenant_o
 
 ### 10.3 Membresía
 
-- Un inquilino pertenece a una sola comunidad activa; la restricción es del inquilino, no del usuario (D-15).
+- Un inquilino pertenece a una sola comunidad activa; un usuario con membresía de inquilino pertenece a ese único inquilino y, por lo tanto, como máximo a su comunidad (D-15).
 - Salir no borra el negocio, sus datos ni los productos clonados (RF-08.5).
 - El originador no sale mientras sea líder: primero solicita la transferencia o el cierre de la comunidad, y `platform_admin` asigna el nuevo líder. Así no queda una comunidad sin originador.
 - El reingreso se hace por vinculación del originador o por solicitud aceptada por el originador.
@@ -379,10 +422,10 @@ Dos dominios separados (RF-07.9):
 
 | Dominio | Dueño | Almacenamiento | Cuota | Borrado |
 |---|---|---|---|---|
-| Multimedia de producto | Mocter | SeaweedFS, catálogo global | Sí, del plan | Por última referencia |
+| Multimedia de producto | Mocter | SeaweedFS, `media_catalog` | Sí, del plan | Por última referencia |
 | Adjuntos de conversación | Chatwoot ActiveStorage | Disco de Chatwoot | No | Con la conversación |
 
-El catálogo global guarda hash, clave, tamaño y tipo; no guarda inquilino (RF-07.5). El vínculo producto–archivo vive en la celda (RF-07.6). Antes de borrar un archivo, `mocter-admin` consulta todas las celdas que puedan referenciarlo; ninguna celda decide sola (RF-07.7). El borrado es diferido y se ejecuta solo cuando no queda referencia (RF-07.8).
+El catálogo global (`media_catalog`) guarda hash, clave, tamaño y tipo; no guarda inquilino (RF-07.5). El vínculo producto–archivo (`product_media`) y la referencia distinta del inquilino (`client_media`) viven en la celda; `client_usage` mantiene el contador autoritativo (RF-07.6). Antes de borrar un archivo, `mocter-admin` consulta todas las celdas que puedan referenciarlo; ninguna celda decide sola (RF-07.7). El borrado es diferido y se ejecuta solo cuando no queda referencia (RF-07.8).
 
 **GC en dos fases:** marcar el objeto como candidato, verificar referencias en todas las celdas y eliminar. Si una celda no responde, el objeto no se borra.
 
@@ -392,9 +435,9 @@ El catálogo global guarda hash, clave, tamaño y tipo; no guarda inquilino (RF-
 
 El plan define productos, `max_tenant_agents`, imágenes, audios, videos, PDF, retención de chats y bytes (RF-04.1). El `tenant_owner` es único por inquilino y no consume un asiento de agente; el plan free incluye un `tenant_owner` y cero `tenant_agent` (RF-04.7). La validación ocurre en `mocter-admin` antes de persistir o replicar; Chatwoot no la hace cumplir (RF-04.2). Un exceso se rechaza con mensaje explícito (RF-04.3).
 
-En venta manual, `platform_sales` asigna el plan del catálogo y registra `client_plans.source = 'manual'`. En autoservicio, el `tenant_owner` elige del catálogo y el plan free es el valor por defecto; el cambio queda auditado con `source = 'self_service'` (RF-04.7).
+En venta manual, `platform_sales` asigna el plan del catálogo, registra `client_plans` con `source = 'manual'` y actualiza `clients.plan_id`. En autoservicio, el `tenant_owner` elige del catálogo y el plan free es el valor por defecto; el cambio queda auditado con `source = 'self_service'` (RF-04.7). Cada cambio de plan u override incrementa `clients.quota_version`; la celda refresca el tope cuando ve una versión distinta.
 
-El almacenamiento facturado es la suma de tamaños de archivos distintos referenciados por el inquilino; el físico es el de objetos distintos en SeaweedFS (RF-04.4).
+El almacenamiento facturado es la suma de `client_media.size_bytes` distintos por inquilino; `client_usage` mantiene el contador por dimensión y el físico es el de objetos distintos en `media_catalog`/SeaweedFS (RF-04.4).
 
 ### 12.2 Retención de chats
 
@@ -424,10 +467,10 @@ No hay archivo por defecto. Un plan con archivo legal exporta cifrado a R2 con r
 | `mocter_migrator` | Sí | Propietario del schema | Migraciones |
 | `mocter_admin` | No | DML en `admin` del Router y de las celdas; RLS forzado | `apps/admin` |
 | `mocter_landing` | No | `INSERT` solo en solicitudes de contacto | Landing |
-| `mocter_auth` | No | `users`, `identities`, `sessions` del Router | Autenticación |
+| `mocter_auth` | No | `users`, `identities`, `sessions` del Router; `users` e `identities` de la celda dedicada | Autenticación |
 | Chatwoot | No | Su propia base | Chatwoot |
 
-El schema `admin` es la unidad de privilegios; la landing no accede a él (D-25, RF-09.3). En celdas, `mocter_admin` usa `SET LOCAL app.current_client_id` y no tiene `BYPASSRLS` (RF-10.11).
+El schema `admin` es la unidad de privilegios; la landing no accede a él (D-25, RF-09.3). En celdas, `mocter_admin` usa `SET LOCAL app.current_client_id` y no tiene `BYPASSRLS` (RF-10.11). En una celda dedicada, el rol `mocter_auth` se crea en la celda y solo accede a `users` e `identities`; `sessions` sigue en el Router Global.
 
 ### 14.2 Secretos y auditoría
 
@@ -463,7 +506,7 @@ El schema `admin` es la unidad de privilegios; la landing no accede a él (D-25,
 | Sección | Requisitos | Decisiones |
 |---|---|---|
 | §5 Modelo de datos | RF-01, RF-05, RF-07, RF-08, RF-10 | D-11 a D-13, D-15, D-19, D-25, D-29, D-30, D-31 |
-| §6 Identidad y alta | RF-01, RF-04, RF-14 | D-24, D-26, D-29, D-31 |
+| §6 Identidad y alta | RF-01, RF-04, RF-14 | D-12, D-24, D-26, D-29, D-31 |
 | §7 Tenencia y celdas | RF-10 | D-11, D-12 |
 | §8 Chatwoot | RF-02, RF-03 | D-01 a D-09 de CHW-001 |
 | §9 Productos y sincronización | RF-05, RF-06, RF-08 | D-18, D-21, D-22, D-23, D-30 |

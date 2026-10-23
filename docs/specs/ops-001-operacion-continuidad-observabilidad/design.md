@@ -4,9 +4,9 @@
 |---|---|
 | ID | OPS-001 |
 | Versión | 1.0 |
-| Fecha | 2026-10-21 |
+| Fecha | 2026-10-21 · actualizado 2026-10-22 |
 | Depende de | [`requirements.md`](requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) |
-| Estado | Borrador |
+| Estado | Aprobada |
 
 ## 1. Principios
 
@@ -99,7 +99,7 @@ pgBackRest se instala en la imagen de PostgreSQL (`pgvector/pgvector:pg18`, basa
 ```conf
 wal_level = replica
 archive_mode = on
-archive_command = 'pgbackrest --stanza=<stanza> archive-push %p'
+archive_command = 'pgbackrest-secure --stanza=<stanza> archive-push %p'
 archive_timeout = 60s
 ```
 
@@ -109,7 +109,7 @@ archive_timeout = 60s
 
 ### 4.3 `/etc/pgbackrest/pgbackrest.conf` (ejemplo: `pg-portal`)
 
-Archivo montado con permisos `0600`, fuera del repositorio:
+Archivo montado con permisos `0600`, propietario del usuario `postgres`, fuera del repositorio. No contiene la passphrase de cifrado:
 
 ```ini
 [global]
@@ -122,10 +122,9 @@ repo1-s3-uri-style=path
 repo1-s3-key=<ACCESS_KEY_ID>
 repo1-s3-key-secret=<SECRET_ACCESS_KEY>
 repo1-cipher-type=aes-256-cbc
-repo1-cipher-pass=<PASSPHRASE>
 repo1-retention-full-type=time
 repo1-retention-full=30
-repo1-retention-archive=1
+# No se fija repo1-retention-archive: el WAL debe cubrir el full más antiguo.
 compress-type=zst
 process-max=2
 log-level-console=info
@@ -137,15 +136,17 @@ pg1-port=5432
 pg1-user=postgres
 ```
 
-Para celdas y Chatwoot cambian `repo1-path`, `repo1-retention-full` (14) y el nombre de la stanza.
+Para celdas y Chatwoot cambian `repo1-path`, `repo1-retention-full` (14) y el nombre de la stanza. No se fija `repo1-retention-archive`: la retención de WAL debe cubrir el full más antiguo (RF-01.4); T-02 y T-12 lo verifican.
 
-> **No verificado:** `repo1-s3-uri-style=path` y `repo1-s3-region=auto` son la configuración esperada para R2, pero deben probarse con `pgbackrest check` en laboratorio antes de producción (T-03). Si R2 rechaza el estilo de URL, se documenta la variante que funcione.
+`pgbackrest-secure` es un wrapper con permisos `0700`, propietario `postgres`, que lee la passphrase de `/etc/pgbackrest/cipher` (`0600`, propietario `postgres`) y ejecuta `pgbackrest` con `--repo1-cipher-pass`. El archivo de passphrase no es el mismo que el de credenciales de R2. `archive_command`, los timers y los runbooks usan el wrapper.
+
+> **No verificado:** `repo1-s3-uri-style=path` y `repo1-s3-region=auto` son la configuración esperada para R2, pero deben probarse con `pgbackrest-secure check` en laboratorio antes de producción (T-03). Si R2 rechaza el estilo de URL, se documenta la variante que funcione.
 
 ### 4.4 Inicialización de una stanza
 
 ```bash
-docker exec -it pg-portal pgbackrest --stanza=pg-portal stanza-create
-docker exec -it pg-portal pgbackrest --stanza=pg-portal check
+docker exec -it pg-portal pgbackrest-secure --stanza=pg-portal stanza-create
+docker exec -it pg-portal pgbackrest-secure --stanza=pg-portal check
 ```
 
 Salida esperada: `stanza-create command end: completed successfully` y `check command end: completed successfully`. Si `check` falla en `archive-push`, el problema está en las credenciales de R2 o en el `archive_command`.
@@ -156,13 +157,14 @@ Se usan timers de systemd en el host, no cron dentro del contenedor: sobreviven 
 
 | Timer | Cuándo (UTC) | Comando | Efecto |
 |---|---|---|---|
-| `ops-backup-full` | Domingo 02:00 | `pgbackrest --stanza=<s> --type=full backup` | Full semanal |
-| `ops-backup-diff` | Lunes a sábado 02:00 | `pgbackrest --stanza=<s> --type=diff backup` | Diferencial diaria |
-| `ops-backup-check` | Diario 01:00 | `pgbackrest --stanza=<s> check` | Conectividad y archiving |
-| `ops-backup-verify` | Lunes 04:00 | `pgbackrest --stanza=<s> --repo1-verify verify` | Checksums del repositorio |
+| `ops-backup-full` | Domingo 02:00 | `pgbackrest-secure --stanza=<s> --type=full backup` | Full semanal |
+| `ops-backup-diff` | Lunes a sábado 02:00 | `pgbackrest-secure --stanza=<s> --type=diff backup` | Diferencial diaria |
+| `ops-backup-check` | Diario 01:00 | `pgbackrest-secure --stanza=<s> check` | Conectividad y archiving |
+| `ops-backup-verify` | Lunes 04:00 | `pgbackrest-secure --stanza=<s> --repo1-verify verify` | Checksums del repositorio |
+| `ops-backup-guard` | Cada 5 min | Consulta el estado de la última corrida y la hora programada | Alerta si un full/diff falló o no comenzó a tiempo |
 | `ops-alert-stale` | Cada hora | Consulta la antigüedad del último full | Alerta si supera 8 días |
 
-Cada unidad escribe en el journal y en `/var/log/mocter/backup.log`. La verificación de que corrió es la métrica `pgbackrest_last_full_timestamp`, no el código de salida de un cron.
+Los timers corren en el host y ejecutan el wrapper dentro del contenedor de la instancia (`docker exec <contenedor> pgbackrest-secure ...`); no se instala pgBackRest en el host. Cada unidad escribe en el journal y en `/var/log/mocter/backup.log`. La verificación de que corrió es la métrica `pgbackrest_backup_last_success_timestamp`, no el código de salida de un cron. El script de respaldo publica además `pgbackrest_backup_last_status` y `pgbackrest_backup_last_attempt_timestamp`; `ops-backup-guard` usa esas métricas para alertar por fallo o ausencia en ≤ 5 minutos (RF-05.6).
 
 > **Nota para el operador:** el full del domingo y el `verify` del lunes son la misma ventana de I/O. Si el VPS muestra presión de disco, se mueve `verify` al martes. Es una decisión operativa, no de diseño.
 
@@ -170,12 +172,13 @@ Cada unidad escribe en el journal y en `/var/log/mocter/backup.log`. La verifica
 
 | Secreto | Dónde vive | Copia de recuperación |
 |---|---|---|
-| `repo1-cipher-pass` | Archivo `0600` en el VPS, fuera del repo | Gestor de secretos + copia impresa/offline del dueño |
-| Credenciales R2 | Archivo `0600` en el VPS, fuera del repo | Gestor de secretos |
+| `repo1-cipher-pass` | Archivo `/etc/pgbackrest/cipher` `0600`, separado de `pgbackrest.conf` | Gestor de secretos + copia impresa/offline del dueño |
+| Credenciales R2 | `pgbackrest.conf` `0600` en el VPS, fuera del repo | Gestor de secretos |
 | Passphrase del gestor | Memoria del dueño + recuperación del gestor | Procedimiento del gestor |
 
 Reglas:
 
+- La passphrase y las credenciales R2 no comparten archivo; ambos viven con permisos `0600` y propietario `postgres`.
 - Sin la passphrase, el repositorio es irrecuperable. No hay recuperación del proveedor.
 - La rotación de la passphrase de cifrado no es en sitio: se crea un repositorio nuevo y se conserva el anterior hasta su expiración. El procedimiento se documenta en T-11.
 - R2 guarda bytes cifrados; el versionado de R2 protege contra borrado, no contra pérdida de la passphrase.
@@ -205,7 +208,7 @@ Reglas:
      -v /etc/pgbackrest:/etc/pgbackrest:ro \
      --env-file /opt/mocter/.env \
      mocter-postgres:pg18 \
-     pgbackrest --stanza=pg-portal --delta restore
+     pgbackrest-secure --stanza=pg-portal --delta restore
    ```
 
    Salida esperada: `restore command end: completed successfully`.
@@ -223,14 +226,16 @@ Reglas:
 8. Reapuntar el volumen productivo o renombrar el volumen restaurado, según el procedimiento de incidente.
 9. Registrar duración real, punto recuperado y diferencia contra RTO.
 
-**Error común:** `[028]: restore command returned 1`. Causa habitual: credenciales de R2 o passphrase incorrecta. No reintentar en bucle; verificar `pgbackrest check` primero.
+**Error común:** `[028]: restore command returned 1`. Causa habitual: credenciales de R2 o passphrase incorrecta. No reintentar en bucle; verificar `pgbackrest-secure check` primero.
 
 ### 7.2 PITR a un instante
 
 **Cuándo:** un borrado o una corrupción lógica con hora conocida.
 
+Se ejecuta en un contenedor temporal con el volumen de destino montado, igual que §7.1:
+
 ```bash
-pgbackrest --stanza=pg-portal \
+pgbackrest-secure --stanza=pg-portal \
   --type=time \
   --target="2026-10-21 14:00:00+00" \
   --target-action=promote \
@@ -298,10 +303,13 @@ La tabla exacta de conteos críticos se fija por instancia en T-10.
 | Pérdida total del VPS | Sitio caído + alerta externa | Aprovisionar VPS, restaurar control plane, celdas y Chatwoot en ese orden | 2 h control / 4 h total |
 | Corrupción lógica | Error de aplicación o datos inconsistentes | PITR al instante previo; validar | 2 h control |
 | Borrado accidental de tabla | Alerta o reporte | Recuperar tabla desde scratch (§7.5) | 4 h |
-| Ransomware | Archivos cifrados o accesos anómalos | Aislar el VPS, restaurar desde R2, rotar credenciales y passphrase | 8 h |
+| Ransomware | Archivos cifrados o accesos anómalos | Aislar el VPS, restaurar desde R2, rotar credenciales y passphrase | 8 h total; restore de datos ≤ 2/4 h |
 | R2 no disponible | `archive-push` falla | La operación continúa; WAL se acumula; alerta crítica al superar el límite de disco | Sin caída |
+| Redis del plano de control no disponible | Healthcheck o error de auth | El auth usa Postgres como fallback; si Postgres tampoco responde, falla cerrado; no se crean sesiones locales en el pod | Sin pérdida de sesión persistida |
 
-**Dependencias del restore:** DNS de `mocter.co`, Traefik, credenciales de GHCR para la imagen, archivo `.env` de producción y acceso al gestor de secretos. Si falta cualquiera, el RTO no se cumple. La lista se verifica en cada prueba trimestral.
+El RTO de ransomware incluye contención y rotación de credenciales; el restore de datos mantiene los objetivos de 2 h para el control plane y 4 h para celdas y Chatwoot (RF-03.1).
+
+**Dependencias del restore:** DNS de `mocter.co`, Traefik, credenciales de GHCR para la imagen, archivo `.env` de producción y acceso al gestor de secretos. **Dependencia de runtime:** Redis 7+ del plano de control para sesión, revocación y caché de enrutamiento; se reconstruye vacío tras el restore. Si falta cualquiera de las dependencias de restore, el RTO no se cumple. La lista se verifica en cada prueba trimestral.
 
 ## 9. Observabilidad
 
@@ -331,8 +339,11 @@ La tabla exacta de conteos críticos se fija por instancia en T-10.
 | CPU P95 | node_exporter | > 70 % sostenido 10 min | Alto |
 | Espacio libre | node_exporter | < 20 % | Alto |
 | Antigüedad del último full | Script de backup | > 8 días | Crítico |
+| Fallo de backup full/diff | Script de backup | Última corrida con error | Crítico |
+| Backup no iniciado a la hora | Script de backup | > 5 min de retraso | Crítico |
 | Último `archive-push` | pgBackRest | > 15 min | Crítico |
 | `verify` fallido | pgBackRest | Última corrida con error | Crítico |
+| Consumo del presupuesto | Costo estimado | > 80 % | Aviso |
 | Sitio público | Synthetic Monitoring | Caído 2 min | Crítico |
 
 ### 9.3 Dashboards
@@ -346,9 +357,9 @@ La tabla exacta de conteos críticos se fija por instancia en T-10.
 
 | Severidad | Cuándo | Canal | Escalado |
 |---|---|---|---|
-| Crítico | Servicio caído, backup roto o RPO incumplido | Correo + mensajería + push | Reenvío a los 30 min si no se acusa (RF-05.5) |
+| Crítico | Servicio caído, backup fallido o no iniciado, RPO incumplido | Correo + mensajería + push | Reenvío a los 30 min si no se acusa (RF-05.5) |
 | Alto | Degradación con riesgo: disco, CPU, pool, HNSW | Correo + mensajería | Sin reenvío |
-| Aviso | Tendencia o umbral informativo | Correo | No |
+| Aviso | Tendencia o umbral informativo, incluido el 80 % del presupuesto | Correo | No |
 
 Reglas de higiene:
 
@@ -390,22 +401,22 @@ Los valores usan 0,015 USD por GB-mes como referencia y no incluyen operaciones.
 
 - Token R2 de alcance mínimo: solo el bucket `mocter-backups`, solo objetos, sin administración de cuenta.
 - Credenciales separadas por entorno; la de producción no se usa en laboratorio.
-- Ningún secreto en Git. `.env` y `pgbackrest.conf` con `0600` y propietario root.
-- La passphrase de cifrado no se guarda junto a las credenciales de R2 en el VPS.
+- Ningún secreto en Git. `.env` con `0600` y propietario root; `pgbackrest.conf` y `cipher` con `0600` y propietario `postgres`.
+- La passphrase de cifrado no comparte archivo con las credenciales de R2 en el VPS.
 - El acceso al VPS se hace por clave SSH; el restore requiere además el gestor de secretos.
-- Los logs de pgBackRest no incluyen la passphrase ni las claves; se verifica en T-06.
+- Los logs de pgBackRest no incluyen la passphrase ni las claves; se verifica en T-04.
 
 ## 13. Verificación de esta spec
 
 | Control | Comando | Evidencia |
 |---|---|---|
-| Configuración válida | `pgbackrest --stanza=<s> check` | Salida `completed successfully` |
-| Backup real | `pgbackrest --stanza=<s> --type=full backup` | Full en R2 con timestamp |
-| Integridad | `pgbackrest --stanza=<s> --repo1-verify verify` | Sin errores de checksum |
+| Configuración válida | `pgbackrest-secure --stanza=<s> check` | Salida `completed successfully` |
+| Backup real | `pgbackrest-secure --stanza=<s> --type=full backup` | Full en R2 con timestamp |
+| Integridad | `pgbackrest-secure --stanza=<s> --repo1-verify verify` | Sin errores de checksum |
 | Restore | Runbook §7.1 en entorno aislado | Duración ≤ RTO |
 | PITR | Runbook §7.2 a un timestamp conocido | Dato presente hasta el punto y ausente después |
 | Observabilidad | Dashboard de respaldos | Último full y último WAL visibles |
-| Alerta | Detener el timer de full en laboratorio | Alerta en ≤ 5 min |
+| Alerta | Simular un fallo de backup y un timer no ejecutado en laboratorio | Alerta en ≤ 5 min |
 | Documentación | Ejecución por alguien sin contexto | Completa sin ayuda |
 
 ## 14. Riesgos

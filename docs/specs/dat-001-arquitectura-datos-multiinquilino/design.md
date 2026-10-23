@@ -5,7 +5,7 @@
 | ID | DAT-001 |
 | Versión | 1.0 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 |
+| Fecha | 2026-10-20 · actualizado 2026-10-22 |
 | Depende de | [`requirements.md`](requirements.md) |
 | Relacionado | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 
@@ -294,16 +294,15 @@ Mientras compartan instancia, la landing y el control usan esquemas y roles sepa
 
 ### 4.2 Contrato de sesión
 
-El JWT o la sesión transporta:
+El formato del token no cambia el contrato: la sesión de servidor y el JWT de API resuelven `client_id` y `routing_version`, y ninguno fija un `cell_id` permanente.
 
-```json
-{
-  "client_id": "019535d9-3df7-79fb-b466-fa907fa17f9e",
-  "routing_version": 7
-}
+```text
+Cookie del panel: __Host-mocter_sid=<sid opaco>
+Registro sessions: { sid_hash, user_id, client_id, routing_version, expires_at, last_seen_at, revoked_at }
+JWT de API: { sub, client_id, routing_version, scope, jti, exp }
 ```
 
-No transporta `cell_id`. Un `cell_id` embebido queda obsoleto en cuanto el inquilino migra. Si se necesita para diagnóstico, se resuelve en el servidor y se registra, no se firma en el token.
+La cookie solo transporta el `sid`; el `client_id` y el `routing_version` viven en el registro de sesión del servidor. El JWT de API los lleva en sus claims. Un `cell_id` embebido queda obsoleto en cuanto el inquilino migra. Si se necesita para diagnóstico, se resuelve en el servidor y se registra, no se firma en el token.
 
 ### 4.3 Invalidación
 
@@ -407,7 +406,7 @@ En el Router Global, la misma política se aplica a las tablas hijas con `client
 
 ### 5.4 Identidad global y usuarios de celda
 
-La identidad de la plataforma (`users`, `identities`, `sessions` en el Router Global) es global: un usuario puede pertenecer a varias organizaciones o inquilinos y no tiene un `client_id` único. Por eso no usa RLS por `client_id`; se protege con un rol de autenticación dedicado y filtros de aplicación. Las tablas de membresía y tenencia (`organization_members`, `client_users`; el objeto de negocio es `tenant_users`, nombre a alinear) sí llevan `client_id` y usan RLS.
+La identidad de la plataforma (`users`, `identities`, `sessions` en el Router Global) es global y no usa RLS por `client_id`. `users` no tiene `client_id`; lleva `active_client_id` nullable como puntero de membresía única. La membresía y su historial viven en `tenant_users` en la celda, llevan `client_id` y usan RLS. El nombre canónico es `tenant_users`; se descarta `client_users` para no duplicar el vocabulario. `sessions` puede registrar el `client_id` activo, pero no es una tabla de tenencia. Un usuario tiene como máximo una membresía activa; `users.active_client_id` es el guardián global de esa regla.
 
 La tabla `users` de cada celda (sección 6.1) es distinta: es la proyección de los usuarios que pertenecen al inquilino, lleva `client_id` y usa RLS. No es la tabla de identidad global.
 
@@ -417,6 +416,7 @@ La tabla `users` de cada celda (sección 6.1) es distinta: es la proyección de 
 
 | Tabla | Particionada | Estrategia |
 |---|---|---|
+| `tenant_users` | No | `id` + `client_id` + `user_id` + índice `(client_id, user_id)` + único parcial de `user_id` activo + RLS; historial de membresía del inquilino |
 | `users` | No | `client_id` + índice compuesto + RLS |
 | `roles` | No | `client_id` + índice compuesto + RLS |
 | `settings` | No | `client_id` + índice compuesto + RLS |
@@ -800,11 +800,11 @@ Si la suma de índices HNSW supera el 65% de la RAM de la celda, se dispara el e
 
 ### 9.1 Backup y restore
 
-El destino, la retención y la frecuencia de prueba se fijan en CD-001. DAT-001 exige que el backup sea S3 compatible, offsite, cifrado, versionado y con restore probado. La tabla siguiente es una propuesta inicial, no una decisión cerrada.
+El destino, la retención y la frecuencia de prueba se fijan en OPS-001; la continuidad no está en el alcance de CD-001. DAT-001 exige que el backup sea S3 compatible, offsite, cifrado, versionado y con restore probado. La tabla siguiente es orientativa; la política autoritativa es la de OPS-001.
 
 | Instancia | Frecuencia | Retención | Destino |
 |---|---|---|---|
-| `pg-control-plane` | Diaria + WAL | 30 días | S3 compatible |
+| `pg-portal` (Router Global; hoy comparte base con la landing) | Diaria + WAL | 30 días | S3 compatible |
 | `pg-cell-*` | Diaria + WAL | 14 días | S3 compatible |
 | `pg-chatwoot` | Diaria + WAL | 14 días | S3 compatible |
 
@@ -901,8 +901,8 @@ La única frontera es la API de Mocter. Si N8N produce archivos, lo hace por el 
 
 | Spec | Cambio necesario | Estado |
 |---|---|---|
-| ADM-001 | RF-04, RF-07 y RF-10 alineados; O-07 cerrada con la fórmula de almacenamiento facturado; O-13 a O-16 abiertas | Alineado (T-12) |
-| AUTH-001 | A-03 resuelta con el Redis dedicado del plano de control; identidad global con rol dedicado y filtros; RLS solo en tablas de tenencia (O-03); A-04 cerrada con `tenant_users` (nombre a alinear); A-05 sigue abierta | Alineado (T-13); alineación de nombre pendiente |
+| ADM-001 | RF-04, RF-07 y RF-10 alineados; O-07 cerrada con la fórmula de almacenamiento facturado; O-13 a O-16 cerradas | Alineado (T-12) |
+| AUTH-001 | A-03 resuelta con el Redis dedicado del plano de control; identidad global con rol dedicado y filtros; RLS solo en tablas de tenencia (O-03); A-04 cerrada con `tenant_users`; A-05 cerrada con sesión opaca de servidor y JWT solo para APIs; membresía 1:0..1 con `users.active_client_id` | Alineado (T-16); nombre canónico `tenant_users` |
 | CHW-001 | Redis 7+, Sidekiq y PostgreSQL 18 validado en laboratorio; T-13 consume DAT-001 | Alineado (T-14) |
 | Directiva de base de datos | `clients.id` como PK y `client_id` como FK; `products` y `product_embeddings` particionadas; el resto con RLS | Alineado en este documento |
 

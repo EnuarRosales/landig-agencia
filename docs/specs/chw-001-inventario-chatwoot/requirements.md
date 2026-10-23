@@ -5,7 +5,7 @@
 | ID | CHW-001 |
 | Versión | 1.0 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 |
+| Fecha | 2026-10-20 · actualizado 2026-10-22 |
 | Documentos | `requirements.md` (este) · [`design.md`](design.md) · [`tasks.md`](tasks.md) |
 | Fuente fijada | `chatwoot/chatwoot` · commit `042b438fe31d2a2ef00c396379b7064ab6d0034f` · release `4.19.0` (2026-10-20) |
 | Depende de | [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) (arquitectura de datos multi-inquilino) |
@@ -65,6 +65,7 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 | RF-02.4 | Documentar `platform_app_permissibles` y su consecuencia: un Platform App solo administra cuentas que creó. |
 | RF-02.5 | Documentar los roles disponibles sin enterprise (`agent`, `administrator`). |
 | RF-02.6 | Documentar el modelo multi-cuenta (`account_users`): un `User` global puede pertenecer a N cuentas y no existe lectura cross-account fuera de esa membresía. |
+| RF-02.7 | La integración de Mocter no crea un segundo `account_user` para un usuario con membresía activa en otro inquilino. Chatwoot puede permitir la multi-cuenta técnica; la capa de sincronización de Mocter rechaza la operación y no reutiliza el `User` global para dos inquilinos. |
 
 ### RF-03 · Superficie de API
 
@@ -146,3 +147,4 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 
 - 2026-10-20: alineación con DAT-001 (T-14): PostgreSQL 18 + pgvector, Redis 7+ y Sidekiq en el plano de soporte; esquema de Chatwoot fuera de la directiva de base de datos y del particionado de Mocter; D-10 agregada; criterio de aceptación 9 agregado.
 - 2026-10-21: O-04 cerrada por ADM-001 D-19: el liderazgo no recibe `AccountUser` en cuentas subordinadas; la lectura se agrega en `mocter-admin` y se limita a métricas y datos compartidos por el inquilino.
+- 2026-10-22: corrección de tenencia 1:0..1 (AUTH-D-06). Chatwoot puede permitir multi-cuenta técnica, pero la sincronización de Mocter rechaza un segundo `account_user` para un usuario con membresía activa en otro inquilino.

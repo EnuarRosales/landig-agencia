@@ -4,8 +4,8 @@
 |---|---|
 | ID | OPS-001 |
 | Versión | 1.0 |
-| Estado | Borrador |
-| Fecha | 2026-10-21 |
+| Estado | Aprobada |
+| Fecha | 2026-10-21 · actualizado 2026-10-22 |
 | Documentos | `requirements.md` (este) · [`design.md`](design.md) · [`tasks.md`](tasks.md) |
 | Depende de | [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) · [CD-001](../cd-001-despliegue-continuo/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 | Directivas | `.agents/AGENTS.md` |
@@ -90,6 +90,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-03.4 | Se documentan las dependencias externas del restore: DNS, Traefik, credenciales de GHCR y acceso a R2. |
 | RF-03.5 | La pérdida del VPS no pierde el respaldo: el repositorio vive en R2 y la passphrase en un gestor de secretos externo. |
 | RF-03.6 | La prueba de restore es trimestral, con fecha, ejecutor, duración, resultado y evidencia adjunta. |
+| RF-03.7 | El Redis 7+ del plano de control es una dependencia de autenticación y enrutamiento. Su indisponibilidad se monitorea y se trata como incidente del plano de control; el store de sesiones no vive en el pod y no se degrada a sesiones locales. Si Redis cae, el auth usa Postgres como fallback; si Postgres tampoco responde, falla cerrado. |
 
 ### RF-04 · Observabilidad
 
@@ -120,7 +121,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-06.2 | Las credenciales de R2 y la passphrase de cifrado se rotan al menos una vez al año y ante cualquier sospecha de compromiso. |
 | RF-06.3 | Ningún secreto vive en el repositorio. Los archivos de configuración con credenciales tienen permisos `0600`. |
 | RF-06.4 | La passphrase de cifrado se guarda en un gestor de secretos y en una copia offsite; sin ella el respaldo es irrecuperable. |
-| RF-06.5 | Restaurar exige dos secretos distintos: acceso a R2 y passphrase. Ninguno de los dos se guarda junto al otro en el VPS. |
+| RF-06.5 | Restaurar exige dos secretos distintos: acceso a R2 y passphrase. Cada uno vive en un archivo separado con permisos `0600` en el VPS; ninguno se guarda en el repositorio ni en el mismo archivo. |
 
 ### RF-07 · Costos
 
@@ -152,6 +153,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 8. El costo mensual se calcula con datos reales y respeta el presupuesto aprobado.
 9. Ningún secreto de R2 ni la passphrase aparecen en el repositorio.
 10. Un operador sin contexto previo puede ejecutar el runbook de restore siguiendo solo la spec.
+11. La indisponibilidad del Redis del plano de control se detecta y no degrada a sesiones locales; el auth usa Postgres como fallback y, si tampoco responde, falla cerrado.
 
 ## 6. Decisiones
 
@@ -179,6 +181,10 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | O-05 | ¿Qué retención de logs se necesita: 14, 30 o 90 días? | Afecta el plan y el costo de Grafana Cloud. |
 | O-06 | ¿El respaldo de SeaweedFS entra en esta spec o en la de archivos? | Define el alcance del respaldo de multimedia; hoy queda fuera. |
 
+Aprobada el 2026-10-22 con estas seis decisiones diferidas a la implementación; se ajustan antes de producción.
+
 ## 8. Trazabilidad
 
 - 2026-10-21: se crea OPS-001 por contradicción entre DAT-001 §9.1 y el alcance excluido de CD-001. Decisiones D-01 (R2) y D-02 (RPO/RTO) aprobadas por el dueño del producto; alcance ampliado a observabilidad y alertas por la misma exclusión de CD-001.
+- 2026-10-22: **OPS-001 aprobada** por el dueño del producto. Las decisiones O-01 a O-06 quedan diferidas a la implementación y las tareas de laboratorio T-02, T-03, T-08 y T-18 se ejecutan antes de producción. El planeamiento global del SDD queda cerrado; la implementación y RDD requieren autorización explícita aparte.
+- 2026-10-22: alineación con AUTH-D-06; Redis es dependencia de runtime con fallback a Postgres y fallo cerrado. Se agrega guardia de backup cada 5 minutos, alerta de fallo/ausencia, alerta de presupuesto al 80 % y se corrige la retención de WAL para que cubra el full más antiguo. La passphrase de cifrado queda en un archivo separado de las credenciales R2 y se inyecta con el wrapper `pgbackrest-secure`.

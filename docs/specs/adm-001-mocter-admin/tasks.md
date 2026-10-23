@@ -4,9 +4,9 @@
 |---|---|
 | ID | ADM-001 |
 | Versión | 1.0 |
-| Fecha | 2026-10-21 |
+| Fecha | 2026-10-21 · actualizado 2026-10-22 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) · CHW-001 · DAT-001 · AUTH-001 · OPS-001 |
-| Estado | Pendiente de aprobación |
+| Estado | Aprobada |
 
 ## Convenciones
 
@@ -29,7 +29,7 @@
 
 - [ ] **T-03 · Crear schemas y roles de base**
   - Schema `admin` en Router y celdas; roles `mocter_migrator`, `mocter_admin`, `mocter_landing`, `mocter_auth`.
-  - Verificación: `mocter_admin` no tiene DDL ni `BYPASSRLS`; `mocter_landing` solo inserta solicitudes de contacto y no accede al schema `admin`.
+  - Verificación: `mocter_admin` no tiene DDL ni `BYPASSRLS`; `mocter_landing` solo inserta solicitudes de contacto y no accede al schema `admin`; en una celda dedicada, `mocter_auth` solo accede a `users` e `identities`.
   - Criterios 26 y RF-09.3 (D-25).
 
 - [ ] **T-04 · Definir las dos líneas de migración**
@@ -40,34 +40,34 @@
 ## Fase 1 · Identidad, tenencia y alta
 
 - [ ] **T-05 · Implementar el ancla de identidad**
-  - `users` global con correo único, `email_verified_at` e `identity_location`.
-  - Verificación: Google entra verificado; correo/contraseña queda pendiente hasta confirmar; el login resuelve la ubicación antes de verificar.
-  - RF-14.6, AUTH-D-01, D-29.
+  - `users` global con correo único, `email_verified_at`, `identity_location` y `active_client_id` nullable.
+  - Verificación: Google entra verificado; correo/contraseña queda pendiente hasta confirmar; el login resuelve la ubicación antes de verificar; un usuario sin inquilino tiene `active_client_id` nulo.
+  - RF-01.10, RF-14.6, AUTH-D-01, AUTH-D-05, D-29.
 
 - [ ] **T-06 · Implementar `clients` y `owner_user_id`**
-  - `owner_user_id` no nulo, `contact_email`, ciclo de vida y `client_routing`.
-  - Verificación: insertar un cliente sin dueño falla; el alta manual crea o vincula el usuario en la misma operación.
-  - RF-01.6, criterio 31, D-29.
+  - `owner_user_id` no nulo y único entre clientes no dados de baja, `contact_email`, ciclo de vida y `client_routing`.
+  - Verificación: insertar un cliente sin dueño falla; un usuario no puede ser dueño de dos inquilinos no dados de baja; el alta manual crea o vincula el usuario en la misma operación.
+  - RF-01.6, RF-01.10, criterio 31, D-29.
 
 - [ ] **T-07 · Implementar onboarding guiado**
   - Asistente de menos de 5 minutos, interrumpible, reejecutable; crea el cliente al completar los datos del negocio.
-  - Verificación: el avance se recupera tras interrumpir; el cliente no existe antes de completar el paso de negocio.
+  - Verificación: el avance se recupera tras interrumpir; el cliente no existe antes de completar el paso de negocio; un usuario con membresía activa o dueño de un cliente no dado de baja no crea otro inquilino.
   - RF-14.1 a RF-14.4, RF-14.6.
 
 - [ ] **T-08 · Implementar invitaciones**
   - Invitación a inquilino existente y a comunidad; token con vencimiento.
-  - Verificación: una invitación vencida no crea membresía; el invitado entra como `tenant_agent` y el `tenant_owner` es único.
-  - RF-08.6, RF-14.7, D-31.
+  - Verificación: una invitación vencida no crea membresía; el invitado entra como `tenant_agent`; se rechaza si ya tiene una membresía activa en otro inquilino; el `tenant_owner` es único.
+  - RF-08.6, RF-08.4, RF-14.7, D-31.
 
 - [ ] **T-09 · Implementar aprovisionamiento de celdas**
-  - Alta de instancia, migración, registro en `client_routing` y caché en Redis.
+  - Alta de instancia, migración, registro en `cells` y `client_routing`, y caché en Redis.
   - Verificación: la celda 101 abre una nueva; una consulta sin resolución de celda se rechaza.
   - RF-10.5, RF-10.7, RF-10.15.
 
 ## Fase 2 · Planes y Chatwoot
 
 - [ ] **T-10 · Implementar planes y límites**
-  - `plans`, `plan_limits`, `client_plans`; validación antes de persistir. `tenant_owner` único y `tenant_agent` según `max_tenant_agents`; free con 1 owner y 0 agents.
+  - `plans`, `plan_limits`, `client_plan_overrides`, `client_plans`; `clients.plan_id` vigente; validación antes de persistir. `tenant_owner` único y `tenant_agent` según `max_tenant_agents`; free con 1 owner y 0 agents.
   - Verificación: un exceso de productos, `tenant_agent` o bytes se rechaza con mensaje explícito; la venta manual asigna el plan y el autoservicio parte del free.
   - RF-04.1 a RF-04.4, RF-04.7.
 
@@ -84,13 +84,13 @@
 ## Fase 3 · Productos, archivos y sincronización
 
 - [ ] **T-13 · Implementar productos y embeddings**
-  - Tablas particionadas por `client_id`, RLS forzado, `product_files`.
+  - `products` y `product_embeddings` particionadas por `client_id`; `product_media` con RLS y unicidad por producto y archivo.
   - Verificación: una consulta sin `SET LOCAL app.current_client_id` no devuelve filas; la partición de 100 inquilinos se crea.
   - RF-05, RF-10.11, RF-10.12.
 
 - [ ] **T-14 · Implementar el catálogo global de archivos**
-  - `file_catalog`, SeaweedFS, deduplicación por hash, vínculo en celda.
-  - Verificación: dos productos que referencian el mismo archivo comparten una sola ficha y un solo objeto.
+  - `media_catalog`, `client_media`, `product_media`, `client_usage`, SeaweedFS y deduplicación por hash; el vínculo y la cuota viven en la celda.
+  - Verificación: dos productos que referencian el mismo archivo comparten una sola ficha y un solo objeto; el archivo se cuenta una vez por inquilino.
   - RF-07.1 a RF-07.6.
 
 - [ ] **T-15 · Implementar el GC por última referencia**
@@ -117,7 +117,7 @@
 
 - [ ] **T-19 · Implementar organizaciones y membresías**
   - Organización, roles (`originator`, `co_leader`, `member`), historial, índice único de membresía activa, asignación de líder por `platform_admin` y promociones en `organization_promotions`.
-  - Verificación: un inquilino no puede tener dos membresías activas; salir y reingresar conserva el historial; solo `platform_admin` asigna líder; una promoción no se activa sin aceptación del `tenant_owner` promovido.
+  - Verificación: un inquilino no puede tener dos membresías activas; un usuario no puede tener dos membresías de inquilino activas; un solo originador activo por comunidad; salir y reingresar conserva el historial; solo `platform_admin` asigna líder; una promoción no se activa sin aceptación del `tenant_owner` promovido.
   - RF-08.1 a RF-08.5, RF-08.18, D-14, D-15, D-31.
 
 - [ ] **T-20 · Implementar admisión y gobierno**
@@ -178,8 +178,8 @@
 
 - [ ] **T-30 · Verificar seguridad de roles y RLS**
   - `mocter_admin` sin DDL ni `BYPASSRLS`; landing sin acceso al schema `admin`; celdas con `SET LOCAL`; roles de plataforma sin acceso rutinario a chats ni datos operativos, con break-glass auditado.
-  - Verificación: pruebas negativas por rol y por tabla; `platform_sales` no accede a chats; todo break-glass deja registro en `audit_log`.
-  - Criterio 26, RF-10.11, D-25, D-31.
+  - Verificación: pruebas negativas por rol y por tabla; `platform_sales` no accede a chats; todo break-glass deja registro en `audit_log`; una segunda membresía activa por usuario se rechaza aunque esté en otra celda o llegue en paralelo.
+  - Criterio 26, RF-01.10, RF-10.11, D-25, D-31.
 
 - [ ] **T-31 · Verificar el aislamiento entre celdas**
   - Sin FK entre planos; referencias solo por identificador; consultas siempre resueltas por routing.
@@ -197,10 +197,10 @@
   - RF-10.11, RF-10.12, RF-10.15.
 
 - [ ] **T-34 · Verificar los criterios de aceptación**
-  - Recorrer los 37 criterios de `requirements.md` §5.
+  - Recorrer los 38 criterios de `requirements.md` §5.
   - Verificación: cada criterio tiene evidencia de prueba o queda marcado como pendiente con motivo.
   - §5 completo.
 
-- [ ] **T-35 · [HUMANO] Aprobar ADM-001**
+- [x] **T-35 · [HUMANO] Aprobar ADM-001**
   - Revisar `requirements.md`, `design.md` y `tasks.md`; aprobar o registrar correcciones.
   - Verificación: estado `Aprobada` en `.agents/AGENTS.md` §6 y en la cabecera de la spec.

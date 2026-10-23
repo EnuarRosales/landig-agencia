@@ -96,3 +96,7 @@
 - [x] **T-15 · Registrar DAT-001, ADM-001, AUTH-001 y CHW-001 en el índice de especificaciones**
   - Agregar las filas en `.agents/AGENTS.md` §6.
   - Verificación: los enlaces apuntan a `docs/specs/<id>/requirements.md` y los estados coinciden con cada documento.
+
+- [x] **T-16 · Alinear AUTH-D-06 y la membresía 1:0..1**
+  - Sesión opaca de servidor para el panel; JWT solo para APIs; `users.active_client_id` como guardián global; la cookie solo transporta el `sid`.
+  - Verificación: DAT-001 no afirma multipertenencia; RF-04.3 y RF-05.5 distinguen cookie, sesión de servidor y JWT de API.
