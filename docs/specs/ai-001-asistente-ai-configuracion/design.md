@@ -45,6 +45,8 @@ Ambas tablas llevan la auditoría de la directiva (RF-10.9) y son administradas 
 | `labels` JSONB `{es,en}` | Nombre visible del campo en la zona de administración |
 | `is_active` | Un campo inactivo no muestra el botón |
 
+El registro cubre **todo `textarea`** que el inquilino redacte; la lista es el conjunto inicial y se amplía con cada campo nuevo (RF-01.3). Los campos de una línea solo se registran si el prompt maestro del campo lo justifica.
+
 ### 3.2 `ai_assist_prompts` — prompts maestros versionados
 
 | Atributo | Regla |

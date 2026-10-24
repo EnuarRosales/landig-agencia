@@ -25,9 +25,9 @@ Todo atributo de texto que el inquilino deba llenar y que admita asistencia tien
 
 | ID | Requisito |
 |---|---|
-| RF-01.1 | Todo atributo de texto que el inquilino llene y sea asistible debe estar registrado como campo asistido (`ai_assist_fields`) con su prompt maestro. Un campo asistible sin prompt maestro es un defecto, no una mejora futura. |
+| RF-01.1 | Todo **campo de texto libre (`textarea`)** que el inquilino redacte debe tener «Mejorar con AI» y estar registrado como campo asistido (`ai_assist_fields`) con su prompt maestro. Los campos de una línea (nombre, precio, slug) quedan fuera salvo que el prompt maestro del campo lo justifique. Un textarea sin prompt maestro es un defecto, no una mejora futura. |
 | RF-01.2 | La cobertura inicial prioriza la configuración del bot (objetivo, tono, persona, instrucciones, saludo, fallback, temas permitidos/excluidos), los productos (nombre, descripción, prompt de venta, `price_note`, `alt_text`), las notas de prospectos, las etiquetas del inquilino (`label.title`, `label.description`) y los pasos de recordatorios (`followup_step.message`). |
-| RF-01.3 | La plataforma puede agregar campos asistidos sin tocar las pantallas: el botón aparece cuando el campo tiene prompt maestro activo. |
+| RF-01.3 | La plataforma puede agregar campos asistidos sin tocar las pantallas: el botón aparece cuando el campo tiene prompt maestro activo. La cobertura se extiende a **todo `textarea` nuevo** que se agregue al sistema. |
 
 ### RF-02 · Biblioteca de prompts maestros (zona de la SaaS)
 

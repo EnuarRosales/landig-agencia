@@ -51,8 +51,9 @@
 
 - [ ] **T-07 · Implementar onboarding guiado**
   - Asistente de menos de 5 minutos, interrumpible, reejecutable; crea el cliente al completar los datos del negocio.
-  - Verificación: el avance se recupera tras interrumpir; el cliente no existe antes de completar el paso de negocio; un usuario con membresía activa o dueño de un cliente no dado de baja no crea otro inquilino.
-  - RF-14.1 a RF-14.4, RF-14.6.
+  - Deja al inquilino **operativo**: un producto, bot con preset y canal web activo; defaults de plataforma y pendientes opcionales que no bloquean.
+  - Verificación: un usuario nuevo completa el alta en una sesión corta y el bot responde en el widget web con su producto; la conexión de WhatsApp puede completarse después sin bloquear el alta; el avance se recupera tras interrumpir; el cliente no existe antes de completar el paso de negocio; un usuario con membresía activa o dueño de un cliente no dado de baja no crea otro inquilino; ningún paso avanzado es obligatorio.
+  - RF-14.1 a RF-14.10.
 
 - [ ] **T-08 · Implementar invitaciones**
   - Invitación a inquilino existente y a comunidad; token con vencimiento.

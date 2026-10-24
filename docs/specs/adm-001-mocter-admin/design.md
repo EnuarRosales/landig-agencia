@@ -154,7 +154,13 @@ Todas las tablas llevan las columnas de auditoría de la directiva de base de da
 | `products` | `(client_id, id)` | `PARTITION BY LIST (client_id)`; atributos ERP y de feed en §9.0; `source_share_id`, `source_version` para clones |
 | `product_embeddings` | `(client_id, product_id)` | Particionada igual que `products` |
 | `product_media` | `(client_id, product_id, media_id)` | Vínculo producto-archivo con `alt_text`; único `(client_id, product_id, media_id)`; RLS |
-| `tenant_labels` | `id` | Espejo de las etiquetas de Chatwoot con propiedad del inquilino: `chatwoot_label_id` (único por inquilino), `title`, `description`, `color`, `show_on_sidebar`, `origin` (`chatwoot_default`/`chatwoot_custom`/`mocter_custom`), `state`, `synced_at`; RLS y soft delete |
+| `tenant_labels` | `id` | Espejo de las etiquetas de Chatwoot con propiedad del inquilino: `chatwoot_label_id` (único por inquilino), `title`, `description`, `color`, `show_on_sidebar`, `origin` (`chatwoot_default`/`chatwoot_custom`/`mocter_custom`/`mocter_default`), `state`, `synced_at`; RLS y soft delete |
+| `client_business_info` | `client_id` (1:1) | Contexto de atención: `payment_methods` JSONB, `returns_policy`, `warranty_policy`, `shipping_policy` JSONB (envío gratis y costo por defecto), `order_message`, `faqs` JSONB; RLS |
+| `shipping_carriers` | `id` | `client_id`, `name`, `is_active`, `sort_order`; RLS |
+| `delivery_groups` | `id` | `client_id`, `name`, `code`; agrupa productos por tiempo de entrega |
+| `delivery_rules` | `id` | `client_id`, `delivery_group_id`, `city` (nulo = resto del país), `min_business_days`, `max_business_days`, `same_day`; RLS |
+| `product_price_tiers` | `(client_id, product_id, min_qty)` | `price_cents`, `is_recommended`; escalones de cantidad (1/2/3) |
+| `product_faqs` | `id` | `client_id`, `product_id` nullable (nulo = general), `question`, `answer`, `keywords` JSONB; RLS |
 
 Toda tabla de inquilino lleva `client_id` no nulo, índice compuesto que empieza por esa columna y RLS forzado (RF-01.5, RF-10.11). `products` y `product_embeddings` se particionan; el resto no (RF-10.12).
 
@@ -296,6 +302,11 @@ Las etiquetas de Chatwoot (`/api/v1/accounts/{account_id}/labels`) son por cuent
 
 - **«Chatwoot propone, Mocter decide»:** el espejo del inquilino vive en su celda con RLS; el upsert es idempotente por `(client_id, chatwoot_label_id)`.
 - **Origen:** las etiquetas que Chatwoot crea por defecto al aprovisionar la cuenta se marcan `chatwoot_default` (la lista exacta de 4.19 se identifica en laboratorio, T-32 de CHW-001 alineada); las creadas por el inquilino en Chatwoot llegan como `chatwoot_custom`; las creadas desde Mocter se marcan `mocter_custom` y se empujan por la API.
+- **Conjunto reservado de Mocter:** todo inquilino recibe `lead-frio`, `lead-tibio`, `lead-caliente` y `compra-realizada` con `origin = mocter_default` (RF-03.7). Son la salida del clasificador de BOT-002: no se renombran ni se eliminan, y el clasificador devuelve exactamente uno de esos slugs.
+
+### 8.2 Contexto de atención del negocio
+
+El inquilino configura en su celda el contexto que el bot usa en cada atención (RF-03.8): `client_business_info` (métodos de pago, devoluciones, garantía, FAQs, mensaje de cierre), `shipping_carriers` (transportadoras admitidas), `delivery_groups` + `delivery_rules` (tiempos por ciudad y grupo de producto), `product_price_tiers` (escalones de cantidad con precio y recomendado) y `product_faqs` (respuestas por producto o generales). El motor BOT-002 los compone en el prompt en runtime; el inquilino los edita una sola vez y no regenera nada.
 - **Gestión desde Mocter:** el inquilino crea, edita (título, descripción, color, visibilidad) y archiva etiquetas; el sistema ejecuta la configuración en Chatwoot con idempotencia. Una etiqueta borrada en Chatwoot queda archivada en el espejo (`state = archived`), sin perder correlación histórica.
 - Las etiquetas sirven luego para flujos del bot (BOT-001) y para mapear `tags` de prospectos (CRM-001); ese consumo se define en cada spec.
 
@@ -318,6 +329,7 @@ Un producto puede ser **cualquier bien o servicio** que el inquilino agregue a s
 | Taxonomía | `category`, `google_product_category` | `category` propia mapea a `product_type` de Google; `google_product_category` nullable |
 | Variantes | `color`, `size`, `material`, `gender`, `age_group`, `pattern`, `attributes` JSONB | Campos nombrados de los feeds + catch-all para `additional_variant_attribute` y similares |
 | Venta | `prompt` | Contexto de venta del bot; **no se vectoriza** (RF-05.7) |
+| Bot | `keywords` JSONB, `media_term`, `benefits` JSONB, `delivery_group_id`, `free_shipping`, `shipping_cost_cents` | Insumos del prompt dinámico (BOT-002) y de la regla de envío de ORD-001: detección de intención, marcador multimedia, beneficios, grupo de entrega y costo/beneficio de envío |
 | Compartición | `source_share_id`, `source_version` | Solo en clones (§9.2) |
 | Auditoría | `created_at`, `updated_at`, `created_by`, `updated_by`; `deleted_at`, `deleted_by` | Soft delete: un producto archivado conserva historial de shares |
 

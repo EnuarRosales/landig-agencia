@@ -132,6 +132,16 @@ Configurar y gobernar el bot de atención automatizada de cada inquilino: objeti
 | RF-11.7 | Límites y auditoría: máximo de pasos por secuencia (10 por defecto), rate limit por inquilino, y todo envío queda registrado con actor `bot` y el estado en `bot_followup_runs`. |
 | RF-11.8 | La plataforma ofrece una **inicialización por defecto editable**: secuencias de ejemplo sembradas por inquilino con `origin = platform_default`, que el inquilino adopta, modifica, archiva o ignora. Las suyas son `origin = tenant_custom`. |
 
+### RF-12 · Trial de inferencia para onboarding
+
+| ID | Requisito |
+|---|---|
+| RF-12.1 | Todo inquilino nuevo recibe un **trial de inferencia de plataforma de 60 minutos** desde la activación del bot, sin renovación automática. |
+| RF-12.2 | El trial se comunica con claridad en el onboarding y en el panel: qué incluye, cuánto dura y qué pasa al vencer (conectar BYOK o comprar saldo). |
+| RF-12.3 | `platform_admin` puede desactivarlo manualmente por inquilino desde la zona admin de Mocter; el vencimiento y la desactivación son inmediatos. |
+| RF-12.4 | El consumo del trial se registra en `ai_usage_events` con `purpose = 'trial'` y no genera deuda ni saldo negativo. |
+| RF-12.5 | Al vencer o desactivarse, el bot deja de operar en modo trial y muestra al inquilino el CTA para conectar su proveedor o comprar inferencia Mocter. |
+
 ## 4. Decisiones del borrador
 
 | ID | Decisión | Consecuencia |
@@ -143,6 +153,7 @@ Configurar y gobernar el bot de atención automatizada de cada inquilino: objeti
 | D-05 | Dos modos por proveedor: BYOK y Mocter; ante saldo insuficiente el bot falla a un proveedor BYOK habilitado. | El inquilino nunca queda sin bot por quedarse sin saldo si tiene una llave propia. |
 | D-06 | El catálogo es una whitelist: el inquilino solo puede registrar proveedores y modelos admisibles. | La plataforma gobierna qué entra a su ecosistema. |
 | D-07 | **Fases del negocio:** el día uno sale BYOK (cada inquilino registra su proveedor); la billetera, el spread y la inferencia Mocter quedan diseñados como fundaciones y se activan cuando el equipo madure la propuesta de agregador de inferencia. | El modelo de datos y los contratos ya existen; la activación no bloquea el lanzamiento. |
+| D-08 | **Trial de inferencia de onboarding:** 60 minutos por inquilino, informado explícitamente, desactivable manualmente desde la zona admin de Mocter; al vencer, se exige BYOK o saldo. | Permite operar sin fricción en el alta con un costo acotado y controlable. |
 | D-08 | Las instancias de canal las aprovisiona ADM-001 (ya documentado en CHW-001); BOT-001 aporta el catálogo de admisibles y la habilitación del bot por canal. La gestión del inquilino ocurre en Mocter. | No se duplica el aprovisionamiento de Chatwoot entre specs. |
 
 ## 5. Propuesta de negocio por madurar (para el equipo)
@@ -158,6 +169,8 @@ Decisión registrada (D-07): **día uno = BYOK**; **el agregador de inferencia e
 | O-05 | ¿Prepago estricto (saldo ≥ costo estimado) o saldo negativo controlado? | Propuesta del borrador: prepago estricto con fallback BYOK. |
 | O-06 | ¿El saldo cubre solo el bot o también futuras capacidades IA (embeddings, resúmenes)? | El diseño de la billetera es neutral a la capacidad; hoy solo el bot la consume. |
 | O-07 | ¿La billetera y los precios de inferencia se expresan en USD o en la moneda del inquilino (`clients.currency`, inicialmente COP)? | El borrador usa USD como unidad de cuenta; al madurar la propuesta se decide la moneda de exhibición y conversión en la recarga. |
+
+O-08 quedó resuelta por **D-08**: trial de inferencia de 60 minutos, informado y desactivable desde la zona admin.
 
 La propuesta de valor para el equipo: Mocter como agregador de inferencia — el inquilino técnico trae su llave (BYOK, sin costo para Mocter) y el inquilino sin fricción compra tokens prepagos con spread; ingreso por uso, sin riesgo crediticio, diferenciado de la competencia.
 
@@ -185,4 +198,6 @@ El motor de inferencia en sí (orquestación de la conversación, memoria, herra
 - L5 (2026-10-23): **BOT-001 aprobada** con alcance de día uno (catálogo, bot, canales desde Mocter y BYOK) y la propuesta de agregador de inferencia documentada como fundaciones por madurar (D-07). El planeamiento no inicia implementación ni RDD.
 - L6 (2026-10-23): AI-001 consumirá la configuración de inferencia (BYOK y, al madurar la propuesta, Mocter) para el asistente de configuración; `ai_usage_events` gana la columna `purpose` (`bot` o `assist`).
 - L7 (2026-10-23): se agrega RF-11 por decisión del usuario: el bot configura secuencias de recordatorios globales (textos en intervalos de tiempo y en orden) para atender prospectos por los canales habilitados. Incluye reglas de parada, consentimiento (CRM-001) y la restricción de plantillas de WhatsApp fuera de la ventana de 24 h.
+- L8 (2026-10-23): se agrega O-08 a la propuesta de negocio: **trial de inferencia** acotado para el onboarding, porque BYOK es el único bloqueo real del time-to-value de 5 minutos. El resto del alta queda cubierto por defaults (ADM-001 RF-14.8 a RF-14.10).
+- L9 (2026-10-23): **O-08 resuelta por D-08:** trial de inferencia de **60 minutos** por inquilino, informado explícitamente, desactivable manualmente desde la zona admin de Mocter; al vencer, el inquilino conecta BYOK o compra saldo. Consumo en `ai_usage_events` con `purpose = 'trial'`, sin deuda.
 - L8 (2026-10-23): corrección del usuario — «No estoy de acuerdo con el planteamiento, en cuanto a que no son flujos fijos, la imagen era un ejemplo no debe tomarse literal, debemos es generar el objeto y sus atributos para que el inquilino pueda configurar su recordatorios personalizados, podemos es ofrecer una inicializacion por defecto.» RF-11.1/11.2 se reformulan como motor personalizable y se agrega RF-11.8 (inicialización por defecto editable con `origin = platform_default`).
