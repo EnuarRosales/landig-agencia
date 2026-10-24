@@ -8,7 +8,7 @@
 | Fecha | 2026-10-21 · actualizado 2026-10-22 |
 | Documentos | `requirements.md` (este) · `design.md` · `tasks.md` |
 | Depende de | CHW-001 (inventario técnico de Chatwoot) · DAT-001 (arquitectura de datos) · AUTH-001 (autenticación) |
-| Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` |
+| Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` · `.agents/rules/rules-for-i18n.md` |
 
 ## 1. Propósito
 
@@ -86,6 +86,7 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | RF-03.3 | Cada inquilino tiene su propio usuario de servicio con token, usado para las operaciones que la Platform API no cubre. |
 | RF-03.4 | La escritura es unidireccional desde `mocter-admin`. De Chatwoot solo regresan identificadores y estado. |
 | RF-03.5 | Las capacidades de pago de Chatwoot no se habilitan ni se usan; el directorio `enterprise/` se conserva en el fork sin activarse. |
+| RF-03.6 | Las etiquetas de Chatwoot se sincronizan con un objeto de propiedad del inquilino (`tenant_labels`, en su celda) que hereda `id`, `title`, `description`, `color` y `show_on_sidebar`. El inquilino agrega etiquetas personalizadas además de las predeterminadas de Chatwoot y las gestiona desde Mocter (crear, editar, archivar), y el sistema configura Chatwoot por detrás. La sincronización es idempotente y marca el origen de cada etiqueta (`chatwoot_default`, `chatwoot_custom` o `mocter_custom`). |
 
 ### RF-04 · Planes y restricciones
 
@@ -107,6 +108,12 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | RF-05.2 | La tabla de productos se particiona por `client_id` con `PARTITION BY LIST`. |
 | RF-05.3 | Los objetos que no requieren vectorización no se particionan y solo llevan `client_id`. |
 | RF-05.4 | Un producto pertenece a un único inquilino. |
+| RF-05.5 | Los atributos del producto son de tipo ERP y siguen el vocabulario de los feeds de Google Merchant Center y Meta: identificadores (`sku`, `gtin`, `mpn`, `item_group_id`), condición y disponibilidad con los valores soportados por los feeds, marca, precio con moneda ISO 4217, categoría propia y `google_product_category`, variantes nombradas (`color`, `size`, `material`, `gender`, `age_group`, `pattern`) y atributos libres en JSONB. |
+| RF-05.6 | Cada producto registra su origen de ingesta (`source_system`, `source_external_id`, `source_url`) para las integraciones futuras (Droppi, Shopify, Effi, MercadoLibre y similares); la dupla `(client_id, source_system, source_external_id)` es única cuando el origen no es manual. |
+| RF-05.7 | La composición del texto que se vectoriza es administrable por el equipo Mocter (`vectorization_config`) y parte con una vectorización por defecto: nombre, descripción, categoría y marca. El prompt de venta no se vectoriza. |
+| RF-05.8 | Los únicos atributos obligatorios de un producto son nombre, descripción y precio de venta. El resto es opcional o tiene valor por defecto (`kind = physical`, `condition = new`, `availability = in_stock`, `status = draft`); no se genera fricción de ingreso. |
+| RF-05.9 | La moneda del catálogo se define por inquilino: `clients.currency` en ISO 4217, por defecto `COP` para la operación inicial en Colombia y editable en el onboarding. El producto hereda esa moneda y puede sobrescribirla solo para vender en otra moneda. |
+| RF-01.11 | El perfil del inquilino lleva sus datos de contacto y comerciales: `phone` (E.164), `website_url`, `tax_id` (NIT), dirección (`country`, `state`, `city`, `address_line`, `postal_code`), `industry`, `timezone` (por defecto `America/Bogota`), `logo_media_id` y `social_links` JSONB. Son opcionales para no generar fricción de alta; el `phone` es un dato de contacto del negocio usado en la comunidad y no es el registro del canal de WhatsApp, que vive en Chatwoot (CHW-001). |
 
 ### RF-06 · Clonación y sincronización de productos
 
@@ -135,6 +142,13 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | RF-07.9 | Existen dos dominios de archivos: multimedia de producto, propiedad de Mocter, con catálogo global, SeaweedFS, deduplicación por hash, cuota y borrado por ausencia de referencias; y adjuntos de conversación, propiedad de Chatwoot ActiveStorage, sin deduplicación, sin cuota de producto y con política propia. |
 | RF-07.10 | Los adjuntos de Chatwoot no se cuentan en la cuota de producto y no se eliminan desde el GC de producto. |
 | RF-07.11 | Los adjuntos de Chatwoot siguen la retención de su conversación y no tienen plazo propio. Al borrarse la conversación se purgan sus blobs de ActiveStorage; si Chatwoot no los elimina, `mocter-admin` completa la limpieza. |
+| RF-07.12 | Los formatos de archivo admitidos como **ingreso** son restrictivos por tipo de medio: imágenes `webp`, `avif`, `png`, `jpeg`; audio `opus`, `aac`, `mp3`; video `mp4` (H.264 + AAC) y `webm` (VP9/AV1 + Opus); documentos `pdf`. Todo otro formato se rechaza al subir con mensaje explícito; la validación es por contenido, no por extensión. |
+| RF-07.13 | La ficha técnica del catálogo agrega `mime_type`, `original_filename`, `source_format`, dimensiones (`width`, `height`) para imágenes, `duration_ms` para audio y video, y `processing_status` (`uploaded`/`processing`/`ready`/`failed`). El peso máximo por archivo se configura por plataforma. |
+| RF-07.14 | El texto alternativo (`alt_text`) es del vínculo producto-archivo (`product_media`), no del catálogo global: un mismo archivo puede tener distinto alt text por producto. Las variantes del archivo (`media_variants`) viven en el Router Global con ficha propia. |
+| RF-07.15 | Canonicalización de la biblioteca: tras validar el ingreso, el sistema convierte toda imagen al formato canónico `webp` y todo video al canónico `webm` (VP9 + Opus); el archivo de origen se descarta al terminar el procesamiento. La deduplicación opera sobre los bytes canónicos. Las variantes derivadas (`thumbnail`, `preview`) y las de compatibilidad de canal (`mp4_compat` para WhatsApp, `jpeg_compat` si un canal lo exige) se generan bajo demanda y se cachean. El audio no se transcodifica. |
+| RF-07.16 | El tamaño máximo admisible por archivo se define por plataforma: video 100 MB e imágenes 10 MB por defecto. Se valida antes de aceptar la subida. |
+| RF-07.17 | En lugar de cargar un archivo, el inquilino puede definir un enlace (URL `https`) para videos de plataformas admitidas (YouTube, TikTok, Vimeo, Instagram, Facebook) o para imágenes de cualquier fuente pública. El enlace no consume cuota de almacenamiento. Las plataformas admisibles viven en un catálogo gobernado por la plataforma (`external_media_providers`). |
+| RF-07.18 | Los enlaces externos se validan: `https` obligatorio, sin credenciales en la URL, sin IPs privadas ni loopback. El video externo se entrega como embed o enlace, sin transcodificar. La imagen externa se muestra por enlace y se importa (validación por contenido + canonicalización a `webp`) solo cuando un canal la entrega; si la fuente falla, el vínculo se marca con error visible para el inquilino. |
 
 ### RF-08 · Comunidades y organizaciones
 
@@ -194,9 +208,10 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | ID | Requisito |
 |---|---|
 | RF-11.1 | La interfaz está internacionalizada desde el inicio. Ningún texto visible se escribe directamente en un componente. |
-| RF-11.2 | El idioma se resuelve por preferencia del usuario y, en su ausencia, por la configuración regional del navegador, con un idioma por defecto explícito. |
+| RF-11.2 | El idioma se resuelve en este orden: preferencia del usuario; en su ausencia, el idioma del inquilino (`clients.locale`); en su ausencia, la configuración regional del navegador; con un idioma por defecto explícito. |
 | RF-11.3 | Los formatos de fecha, número y moneda se resuelven según la configuración regional activa. |
-| RF-11.4 | Agregar un idioma no exige reestructurar componentes. El conjunto inicial de idiomas se decide aparte. |
+| RF-11.4 | Agregar un idioma no exige reestructurar componentes; el conjunto soportado se valida por la aplicación, sin `CHECK` en la base. El conjunto inicial es Español e Inglés (`es`, `en`). |
+| RF-11.5 | El idioma es un atributo del cliente: `clients.locale`, por defecto `es`, elegido en el onboarding. |
 
 ### RF-12 · Tema claro y oscuro
 
@@ -341,3 +356,14 @@ Cerradas:
 - 2026-10-21: roles por scopes (D-31), `tenant_owner` único y `tenant_agent` por plan, inquilino #1 SaaS, asignación del líder por `platform_admin` y promoción de co-líderes con aceptación. RF-01.8/01.9, RF-04.7, RF-08.18/08.19 y criterios 32 a 37 agregados; D-14 y RF-08.1/08.2/08.6 actualizados. A-04 de AUTH-001 cerrada.
 - 2026-10-22: corrección de tenencia 1:0..1: un usuario pertenece a un solo inquilino; `users.active_client_id` es el guardián global. D-15, RF-01.10, RF-08.3/08.4, criterios 15 y 38, y D-31 actualizados. A-05 de AUTH-001 cerrada con AUTH-D-06. Se unifica el nombre físico `tenant_users`.
 - 2026-10-22: ADM-001 aprobada. La revisión final corrigió el historial de `tenant_users` con `id`, alineó archivos y planes con DAT-001, agregó el acceso de `mocter_auth` a la identidad de la celda dedicada, reforzó una membresía activa y un negocio por usuario, y un solo originador por comunidad.
+- 2026-10-23: internacionalización como atributo del cliente. RF-11.2 ahora resuelve el idioma por usuario → inquilino → navegador → defecto; RF-11.4 fija el conjunto inicial Español e Inglés; se agrega RF-11.5 (`clients.locale`, por defecto `es`). Reabre el alcance de T-06 y T-27.
+- 2026-10-23: ajuste fino del catálogo de productos. `type` (`good`/`service`) se reemplaza por `kind` (`physical`, `digital`, `service`), que internacionaliza mejor. RF-05.5 a RF-05.7 agregan atributos ERP alineados con Google Merchant Center y Meta (`sku`, `gtin`, `mpn`, `condition`, `availability`, `brand`, variantes, `google_product_category`), origen de ingesta para integraciones futuras (Droppi, Shopify, Effi, MercadoLibre) y la vectorización administrable por el equipo Mocter (`vectorization_config`), con default nombre + descripción + categoría + marca. El prompt de venta queda fuera del embedding.
+- 2026-10-23: alta mínima de productos sin fricción (RF-05.8): los únicos atributos obligatorios son nombre, descripción y precio de venta; `price_cents` deja de ser nullable y el resto hereda valores por defecto (`kind = physical`, `condition = new`, `availability = in_stock`, `status = draft`).
+- 2026-10-23: la moneda no es atributo obligatorio del producto (RF-05.9): el catálogo hereda `clients.currency` (ISO 4217, por defecto `COP` para la operación inicial en Colombia), editable en el onboarding; el producto la sobrescribe solo si vende en otra moneda. Ajusta el «default USD» anterior.
+- 2026-10-23: ficha de archivos completada por decisión del usuario: formatos admitidos restrictivos por tipo de medio (imágenes `webp`/`avif`/`png`/`jpeg`; audio `opus`/`aac`/`mp3`; video `mp4`/`webm`; documentos `pdf`), ficha técnica extendida (`mime_type`, `original_filename`, `width`/`height`, `duration_ms`, `processing_status`) y `alt_text` por vínculo + `media_variants` (RF-07.12 a RF-07.14).
+- 2026-10-23: canonicalización de la biblioteca (RF-07.15): el ingreso admite los formatos indicados y el sistema convierte imágenes a `webp` y videos a `webm` (VP9 + Opus); el origen se descarta al llegar a `ready`. La dedup opera sobre bytes canónicos y las variantes de compatibilidad de canal (`mp4_compat`, `jpeg_compat`) se generan bajo demanda. El audio no se transcodifica.
+- 2026-10-23: enlaces externos de medios (RF-07.16 a RF-07.18): tamaño máximo por archivo (video 100 MB, imágenes 10 MB, configurables), videos por URL de plataformas admitidas (YouTube, TikTok, Vimeo, Instagram, Facebook) como embed sin cuota, e imágenes por URL con importación perezosa a `webp` solo al entregar por canal. Validación https, sin credenciales y sin IPs privadas (SSRF).
+- 2026-10-23: perfil comercial del inquilino (RF-01.11): `phone` (E.164, dato de contacto para la comunidad, no es el registro del canal de WhatsApp — ese vive en Chatwoot), `website_url`, `tax_id` (NIT), dirección, `industry`, `timezone` (default `America/Bogota`), `logo_media_id` y `social_links`. Todo opcional para no generar fricción. El perfil de compartición hereda `phone`, `display_name` y `contact_email` de `clients` y solo administra la visibilidad.
+- 2026-10-23: CRM-001 nace para los prospectos del inquilino (fuente de verdad Mocter, Chatwoot como proyección). ADM-001 alinea: `mocter-core` materializa el maestro de contactos y el onboarding pedirá el consentimiento comercial opcional consumiendo `user_consents` de AUTH-001 (Habeas Data).
+- 2026-10-23: etiquetas de Chatwoot sincronizadas con un objeto de propiedad del inquilino (RF-03.6): `tenant_labels` en la celda hereda `id`, `title`, `description`, `color` y `show_on_sidebar`; el inquilino gestiona las etiquetas desde Mocter y agrega personalizadas además de las predeterminadas de Chatwoot. El inventario de etiquetas por defecto de 4.19 se identifica en laboratorio (CHW-001).
+- 2026-10-23: la internacionalización se eleva a **regla general del sistema** (directiva `rules/rules-for-i18n.md`, registrada en la constitución §4.6): Español e Inglés en toda interfaz, correos y notificaciones, con Español por defecto. `clients.locale` sigue siendo el atributo por inquilino dentro de esa regla.

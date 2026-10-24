@@ -92,6 +92,14 @@ Toda función, clase, interfaz, método y endpoint exportado o con lógica no tr
 
 Toda base de datos propia de Mocter cumple las buenas prácticas de PostgreSQL y Drizzle ORM: nomenclatura en minúscula con separador `_`, comentarios de tabla y columna obligatorios, integridad referencial donde la lógica de negocio la exija, índices por camino de acceso conocido, y modelo lógico normalizado antes de cualquier particionado. **No aplica a la base de datos de Chatwoot.** Consulte la directiva completa en [rules/rules-for-database-postgres-drizzle.md](rules/rules-for-database-postgres-drizzle.md).
 
+### 4.6 Internacionalización (i18n)
+
+Toda interfaz y texto visible de Mocter soporta **Español e Inglés**, con **Español por defecto**. Ningún texto visible va incrustado en componentes: vive en diccionarios por idioma, y el idioma activo se resuelve por usuario → inquilino (`clients.locale`) → navegador → defecto. Consulte la directiva completa en [rules/rules-for-i18n.md](rules/rules-for-i18n.md).
+
+### 4.7 Asistencia AI en la configuración
+
+Todo atributo de texto que el inquilino deba llenar y que admita asistencia cuenta con **«Mejorar con AI»**: la plataforma mantiene una biblioteca de prompts maestros por campo (AI-001) y la sugerencia siempre es revisada y aceptada por el inquilino; nunca se guarda sola. La inferencia usa el proveedor BYOK del inquilino o la inferencia Mocter cuando la propuesta de agregador madure. Consulte la spec [AI-001](docs/specs/ai-001-asistente-ai-configuracion/requirements.md).
+
 ## 5. Formato del reporte del agente
 
 Al terminar una especificación, entrega:
@@ -115,5 +123,9 @@ Al terminar una especificación, entrega:
 | CHW-001 | [Inventario técnico de Chatwoot](docs/specs/chw-001-inventario-chatwoot/requirements.md) | Aprobada · Sincronización alineada con membresía 1:0..1 |
 | DAT-001 | [Arquitectura de datos multi-inquilino basada en celdas](docs/specs/dat-001-arquitectura-datos-multiinquilino/requirements.md) | Aprobada · Alineada con AUTH-D-06 y membresía 1:0..1 |
 | OPS-001 | [Operación, continuidad y observabilidad](docs/specs/ops-001-operacion-continuidad-observabilidad/requirements.md) | Aprobada · 2026-10-22; decisiones O-01 a O-06 diferidas a implementación; lab T-02, T-03, T-08 y T-18 pendientes |
+| BOT-001 | [Bot de atención automatizada con LLM e inferencia como servicio](docs/specs/bot-001-atencion-automatizada-llm/requirements.md) | Aprobada · 2026-10-23; día uno: bot, canales desde Mocter y BYOK; propuesta de negocio por madurar: agregador de inferencia (billetera + spread) |
+| CRM-001 | [Prospectos y gestión comercial](docs/specs/crm-001-prospectos-gestion-comercial/requirements.md) | Aprobada · 2026-10-23; maestro de prospectos en Mocter, Chatwoot como proyección, Habeas Data (Ley 1581 de 2012) para prospectos y usuarios; abiertas O-01 a O-03 |
+| AI-001 | [Asistente AI de configuración](docs/specs/ai-001-asistente-ai-configuracion/requirements.md) | Aprobada · 2026-10-23; prompts maestros por campo y «Mejorar con AI» con BYOK o inferencia Mocter |
+| REP-001 | [Informes y dashboards](docs/specs/rep-001-informes-dashboards/requirements.md) | Borrador · 2026-10-23; dashboard del inquilino y de la SaaS con períodos día/semana/mes/trimestre/semestre/año y rango personalizado |
 
 

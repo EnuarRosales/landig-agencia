@@ -90,8 +90,9 @@ Traefik ──► apps/admin (módulo identity)
 | `sessions` | `id` | `sid_hash` único, `user_id`, `client_id` nullable, `routing_version`, `csrf_hash`, `auth_method`, `mfa_at`, `reauth_at`, `created_at`, `last_seen_at`, `expires_at`, `absolute_expires_at`, `revoked_at`, `revoked_reason`, `ip_hash`, `user_agent_hash` |
 | `email_verification_tokens` | `id` | `user_id`, `token_hash` único, `expires_at`, `consumed_at`, `created_at`, `requested_ip_hash` |
 | `password_reset_tokens` | `id` | `user_id`, `token_hash` único, `purpose` (`reset` o `setup`), `expires_at`, `consumed_at`, `created_at`, `requested_ip_hash` |
+| `user_consents` | `id` | `user_id`, `purpose` (`data_treatment`, `commercial_comms`), `policy_version`, `status` (`granted`/`revoked`), `granted_at`, `revoked_at`, `channel`, `evidence_ref` |
 
-`users` no tiene `client_id` y no usa RLS. `sessions` puede llevar `client_id`, pero no es una tabla de tenencia. `identities` no lleva tenencia. Estas cinco tablas se protegen con el rol `mocter_auth` y filtros de aplicación.
+`users` no tiene `client_id` y no usa RLS. `sessions` puede llevar `client_id`, pero no es una tabla de tenencia. `identities` no lleva tenencia. Estas seis tablas (identidad, sesión, tokens y `user_consents`) se protegen con el rol `mocter_auth` y filtros de aplicación. Todas siguen la convención global de auditoría (DAT-001 RF-10.9): `created_at`, `updated_at`, `created_by`, `updated_by`; `sessions` usa `revoked_at` y los tokens `consumed_at` como su baja lógica, sin duplicar `deleted_at`.
 
 Columnas de `users`:
 
@@ -123,6 +124,8 @@ Columnas de `users`:
 El cifrado de los secretos TOTP usa AES-256-GCM con nonce y tag, y AAD `user_id:key_id`; el AAD impide mover un ciphertext entre usuarios o claves.
 
 Los tokens de verificación y de recuperación son de 32 bytes, se guardan solo como `token_hash = SHA-256(token)`, tienen `expires_at` y `consumed_at`, y se consumen en una transacción con la marca. El token de `password_reset_tokens` lleva `purpose`: `reset` para una cuenta con contraseña y `setup` para una cuenta federada que establece la primera. `requested_ip_hash` es un hash con `AUTH_RATE_LIMIT_PEPPER`; no se guarda la IP en claro. El token en claro solo existe en el enlace enviado por correo.
+
+`user_consents` registra el consentimiento de los usuarios de la plataforma (Habeas Data, Ley 1581 de 2012, Colombia): el registro exige aceptación del aviso de privacidad y autorización de tratamiento (`purpose = data_treatment`); el consentimiento comercial (`commercial_comms`) es opcional y puede capturarse en el onboarding (ADM-001). Append-only por otorgamiento; la revocación marca `revoked_at` en la fila vigente. Los derechos del titular (acceso, corrección, supresión con anonimización, revocación) se ejercen por procedimiento de soporte auditado.
 
 ### 4.2 Celda dedicada — schema `admin`
 
@@ -188,7 +191,7 @@ Toda tabla y columna no evidente lleva comentario en la base, según `.agents/AG
 
 ### 5.1 Registro nativo
 
-1. `POST /auth/register` recibe correo y contraseña. Valida `Origin`, content type y rate limit. Normaliza el correo y aplica la política antes de tocar la base.
+1. `POST /auth/register` recibe correo y contraseña. Valida `Origin`, content type y rate limit. Normaliza el correo y aplica la política antes de tocar la base. Exige aceptación del aviso de privacidad y autorización de tratamiento de datos personales (Ley 1581 de 2012, Colombia); sin ella no se crea la cuenta, y el otorgamiento se registra en `user_consents` con `policy_version` y canal.
 2. Si el correo ya existe, responde siempre `202` con el mensaje genérico: «Si la cuenta existe, enviamos un correo con instrucciones.» No crea un usuario nuevo ni revela el método existente.
    - Si la cuenta es federada, el correo enviado contiene un token `setup` de 30 minutos; al confirmarlo se setea `email_verified_at`, se guarda la contraseña Argon2id y se vincula la credencial nativa al mismo `user_id` sin crear otra cuenta. La contraseña enviada en el registro no se persiste para una cuenta federada: el formulario de `setup` la solicita de nuevo junto con el token.
    - Si la cuenta es nativa y no está verificada, el correo reenvía el enlace de verificación; si ya está verificada, invita a iniciar sesión o a recuperar la contraseña.
@@ -396,7 +399,7 @@ Las cookies de OAuth no usan el prefijo `__Host-` porque su `Path` está acotado
 | 2FA en cuenta federada | `403` | «La autenticación de doble factor solo está disponible para cuentas con contraseña.» |
 | Sesión inválida | `401` | «La sesión venció. Iniciá sesión de nuevo.» |
 
-Los errores internos devuelven `500` o `503` con un código opaco; nunca incluyen stack traces, SQL, correo, token ni nombre del proveedor.
+Los errores internos devuelven `500` o `503` con un código opaco; nunca incluyen stack traces, SQL, correo, token ni nombre del proveedor. Todos los mensajes de usuario de esta sección viven en los diccionarios de la directiva de i18n (`es`/`en`, Español por defecto); la tabla muestra el texto en español.
 
 ### 6.4 Operaciones internas
 

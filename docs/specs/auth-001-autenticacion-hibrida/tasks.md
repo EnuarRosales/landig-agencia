@@ -26,7 +26,7 @@
   - Evidencia: `git status`, `pnpm -v`, `turbo --version` y salida de `docker compose config -q`.
 
 - [ ] **T-02 · Crear las migraciones de identidad del Router**
-  - Crear `users`, `identities`, `sessions`, `email_verification_tokens` y `password_reset_tokens` en el schema `admin` del Router.
+  - Crear `users`, `identities`, `sessions`, `email_verification_tokens`, `password_reset_tokens` y `user_consents` en el schema `admin` del Router.
   - Aplicar los índices del Router de `design.md` §4.3, los `CHECK` de `identity_location`, `status`, proveedor y `purpose`, y comentarios de tabla y columna.
   - Verificación: `drizzle-kit check` pasa; la migración aplica desde cero y desde el estado anterior; el índice de correo rechaza mayúsculas duplicadas; no se guarda `sid` ni token en claro.
 
@@ -59,7 +59,7 @@
 - [ ] **T-08 · Implementar registro nativo**
   - Crear usuario no verificado, token de 24 horas y envío SMTP; respuesta genérica para correo existente y nuevo.
   - No crear sesión ni inquilino; no revelar si la cuenta es nativa o federada.
-  - Verificación: dos registros con el mismo correo no duplican; la respuesta es idéntica; el token no aparece en la respuesta; el correo existente recibe instrucciones, no una cuenta nueva; si la cuenta existente es federada, recibe un enlace `setup` para establecer su primera contraseña y la contraseña del registro no se persiste.
+  - Verificación: dos registros con el mismo correo no duplican; la respuesta es idéntica; el token no aparece en la respuesta; el correo existente recibe instrucciones, no una cuenta nueva; si la cuenta existente es federada, recibe un enlace `setup` para establecer su primera contraseña y la contraseña del registro no se persiste; un registro sin consentimiento de tratamiento se rechaza y no crea cuenta, y el consentimiento queda en `user_consents` con versión y canal.
 
 - [ ] **T-09 · Implementar verificación de correo**
   - `POST /auth/email/verify/request` y `POST /auth/email/verify/confirm`; token de 32 bytes, hash, un solo uso, TTL 24 h y reenvío limitado.

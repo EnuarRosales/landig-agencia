@@ -71,3 +71,18 @@ Además:
 1. Consulta de control que detecta tablas sin comentario.
 2. `EXPLAIN (ANALYZE, BUFFERS)` sobre las consultas críticas antes de agregar índices.
 3. Revisión de `pg_stat_user_indexes` para detectar índices sin uso.
+
+## 8. Auditoría de registros
+
+Regla global de auditoría para todas las tablas propias de Mocter.
+
+1. **Obligatorios en todas las tablas:**
+   - `created_at timestamp with time zone NOT NULL DEFAULT now()` — fecha y hora exacta de la inserción inicial; nunca cambia después.
+   - `updated_at timestamp with time zone NOT NULL DEFAULT now()` — se actualiza automáticamente en cada `UPDATE`.
+   - `created_by text NOT NULL` — identifica al usuario, servicio o sistema que originó el registro.
+   - `updated_by text NOT NULL` — identifica al último actor que modificó el registro; cambia en cada `UPDATE`.
+2. **Soft delete (complementarios):** `deleted_at timestamp with time zone` y `deleted_by text` en las tablas que se eliminan lógicamente. Las consultas habituales filtran `deleted_at IS NULL`.
+3. **Sin duplicar ciclos de vida:** las tablas que ya modelan su baja o consumo con una columna de dominio conservan esa columna y no agregan `deleted_at`: `clients.lifecycle_status`, `sessions.revoked_at`, `consumed_at` de los tokens y `tenant_users.left_at` (historial por reingreso).
+4. Los actores de sistema se identifican con un nombre estable de servicio (por ejemplo `mocter-admin`, `mocter-auth`), nunca con credenciales ni con un usuario personal.
+5. `created_by` y `updated_by` se extraen del contexto de seguridad de la aplicación en la misma operación que la escritura; no se rellenan con un trigger que oculte el actor real.
+6. Las migraciones que agregan estas columnas a tablas existentes usan un valor de sistema para las filas previas.

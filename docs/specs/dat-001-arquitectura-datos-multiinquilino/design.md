@@ -106,7 +106,7 @@ Todas las tablas siguen la directiva: nombre plural, PK `id`, FK `<entidad>_id`,
 | `plans` | Catálogo de planes | `id`, `code`, `name`, `is_public`, `price`, `currency`, `created_at` |
 | `plan_limits` | Topes por plan | `id`, `plan_id`, `dimension`, `value`, `created_at` |
 | `client_plan_overrides` | Topes negociados | `id`, `client_id`, `dimension`, `value`, `valid_from`, `valid_to`, `negotiated_by`, `updated_by`, `created_at`, `updated_at` |
-| `media_catalog` | Catálogo global de archivos | `id`, `content_hash`, `storage_pool_id`, `storage_key`, `size_bytes`, `media_kind`, `created_at` |
+| `media_catalog` | Catálogo global de archivos | `id`, `content_hash`, `storage_pool_id`, `storage_key`, `size_bytes`, `media_kind`, `mime_type`, `source_format`, `original_filename`, `width`, `height`, `duration_ms`, `processing_status`, `storage_type`, `source_url`, `provider`, `created_at` |
 | `chatwoot_accounts` | Correlación con Chatwoot | `id`, `client_id`, `chatwoot_account_id`, `state`, `idempotency_key`, `last_error`, `synced_at` |
 | `organizations` | Comunidades u organizaciones | `id`, `name`, `created_at` |
 | `organization_members` | Membresías | `id`, `organization_id`, `client_id`, `role`, `created_at` |
@@ -704,6 +704,8 @@ WHERE u.dimension = 'storage_bytes';
 La reconciliación se ejecuta periódicamente y deja auditoría del delta. Para facturación global, un job agrega `client_usage` de cada celda; el control plane no mantiene un contador autoritativo duplicado.
 
 ## 7. Búsqueda vectorial
+
+La composición de `content` la gobierna `vectorization_config` (ADM-001 RF-05.7), administrada por la plataforma en el Router Global; el pipeline de cada celda la lee por API. El default vectoriza nombre, descripción, categoría y marca; el prompt de venta queda fuera. El ejemplo de §7.2 usa `content` ya compuesto con esa regla.
 
 ### 7.1 Índice HNSW
 

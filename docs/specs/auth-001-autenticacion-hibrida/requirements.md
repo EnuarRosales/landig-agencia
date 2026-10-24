@@ -132,6 +132,10 @@ El Router Global conserva el ancla de enrutamiento del usuario: su correo y el p
 
 Ver DAT-001 RF-05.5 y [`design.md`](../dat-001-arquitectura-datos-multiinquilino/design.md) §5.4.
 
+### 2.6 Habeas Data para los usuarios de la plataforma
+
+La Ley 1581 de 2012 (Colombia) no alcanza solo a los contactos finales: también a los **usuarios del SaaS** (dueño y agentes del inquilino). El registro exige aceptación del aviso de privacidad y autorización de tratamiento (`user_consents`, `purpose = data_treatment`) y sin ella no se crea la cuenta; el consentimiento comercial (`commercial_comms`) es opcional y puede capturarse en el onboarding (ADM-001). Los derechos del titular (acceso, corrección, supresión con anonimización y revocación) se ejercen por procedimiento de soporte auditado. La supresión de un usuario es lógica y anonimizada, preservando las reglas de negocio (1:0..1, historial de `tenant_users`).
+
 ## 3. Decisiones
 
 ### Tomadas
@@ -159,3 +163,5 @@ No quedan decisiones abiertas. A-05 se cerró con AUTH-D-06.
 - 2026-10-22: se crean `design.md` y `tasks.md`. El diseño fija sesión opaca, identidad en Router o celda dedicada, 2FA TOTP, OAuth con state/PKCE, rate limiting en Redis y SSO a Chatwoot. Estado de la spec: Borrador; no se inicia implementación ni RDD.
 - 2026-10-22: revisión de consistencia de `design.md` y `tasks.md`: se corrigieron la fuente del token CSRF, el callback de vinculación sin cookie de sesión, el fail-closed de Postgres frente a la caché de Redis, los permisos de `mocter_auth` (`INSERT` en `identities` de celda, sin `audit_log`), los índices de celda, el alcance del rate limiting y la migración de identidad. Sin cambios de alcance.
 - 2026-10-22: **AUTH-001 aprobada.** La revisión de control cerró además el flujo `setup` para que una cuenta federada establezca su primera contraseña (`purpose` en `password_reset_tokens`) y alineó las referencias a los criterios de aceptación del documento de origen. AUTH-D-01 a AUTH-D-06 quedan cerradas; el planeamiento no inicia implementación ni RDD.
+- 2026-10-23: alineación con DAT-001 RF-10.9: las tablas de identidad siguen la convención global de auditoría (`created_at`, `updated_at`, `created_by`, `updated_by`); `sessions` usa `revoked_at` y los tokens `consumed_at` como baja lógica, sin duplicar `deleted_at`.
+- 2026-10-23: Habeas Data para usuarios de la plataforma (con CRM-001): nueva tabla `user_consents` en el Router, consentimiento obligatorio de tratamiento en el registro (Ley 1581 de 2012), consentimiento comercial opcional en el onboarding y derechos del titular por soporte auditado (§2.6, design §4.1 y §5.1).

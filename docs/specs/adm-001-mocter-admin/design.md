@@ -106,13 +106,15 @@
 
 ## 5. Modelo de datos
 
+Todas las tablas llevan las columnas de auditoría de la directiva de base de datos: `created_at`, `updated_at`, `created_by`, `updated_by`, más `deleted_at` y `deleted_by` donde aplica soft delete. Las columnas de ciclo de vida ya documentadas no se duplican: `clients.lifecycle_status`, `sessions.revoked_at`, `consumed_at` de los tokens y `tenant_users.left_at` cumplen el rol de borrado lógico (DAT-001 RF-10.9).
+
 ### 5.1 Router Global — schema `admin`
 
 | Tabla | Clave | Notas |
 |---|---|---|
 | `users` | `id` | Ancla global: `email` único, `email_verified_at`, `identity_location` (`router` o `cell_id`), `active_client_id` nullable con `ON DELETE SET NULL`; un usuario tiene como máximo una membresía activa |
 | `cells` | `id` | `code`, `tier`, `status`, `pgbouncer_host`, `pgbouncer_port`, `database_name`, `max_clients`, `current_clients`, `region` |
-| `clients` | `id` | `owner_user_id` no nulo y único entre clientes no dados de baja, `contact_email`, `display_name`, `slug`, `lifecycle_status`, `plan_id`, `quota_version`; el `tenant_owner` activo se materializa en `tenant_users` |
+| `clients` | `id` | `owner_user_id` no nulo y único entre clientes no dados de baja, `contact_email`, `phone` (E.164, contacto comercial), `website_url`, `display_name`, `slug`, `lifecycle_status`, `plan_id`, `quota_version`, `locale` (`es` por defecto; conjunto inicial `es`/`en` validado por la aplicación), `currency` (ISO 4217, por defecto `COP` para la operación inicial en Colombia; editable en el onboarding), `tax_id`, `country`/`state`/`city`/`address_line`/`postal_code`, `industry`, `timezone` (por defecto `America/Bogota`), `logo_media_id`, `social_links` JSONB; el `tenant_owner` activo se materializa en `tenant_users` |
 | `client_routing` | `client_id` | `cell_id`, `identity_location`; caché en Redis |
 | `client_migrations` | `id` | `client_id`, `source_cell_id`, `target_cell_id`, `state`, `started_at`, `completed_at` |
 | `plans` | `id` | `code`, `name`, `is_public`, `price`, `currency` |
@@ -124,7 +126,7 @@
 | `organization_invitations` | `id` | `organization_id`, `email`, `invited_by`, `status`, `token`, `expires_at` |
 | `organization_join_requests` | `id` | `organization_id`, `client_id`, `status`, `decided_by`, `decided_at` |
 | `organization_promotions` | `id` | `organization_id`, `target_client_id`, `promoted_by_client_id`, `status`, `accepted_by_user_id`, `created_at`, `decided_at` |
-| `client_sharing_profiles` | `client_id` | `display_name`, `contact_email`, `phone`, visibilidad por campo |
+| `client_sharing_profiles` | `client_id` | Hereda `display_name`, `contact_email` y `phone` de `clients`; el inquilino administra solo la visibilidad por campo |
 | `product_shares` | `id` | `organization_id`, `sharer_client_id`, `created_by_user_id`, `source_product_id`, `source_cell_id`, `current_version`, `status` |
 | `product_share_versions` | `(share_id, version)` | `changed_attributes`, `created_at` |
 | `product_adoptions` | `id` | `share_id`, `adopter_client_id`, `created_by_user_id`, `clone_product_id`, `clone_cell_id`, `adopted_version`, `link_active` |
@@ -134,8 +136,11 @@
 | `feed_posts` | `id` | `organization_id`, `author_client_id`, `author_user_id`, `body`, `status`, `published_at` |
 | `feed_moderation_events` | `id` | `post_id`, `actor_client_id`, `actor_user_id`, `action`, `reason`, `created_at` |
 | `notifications` | `id` | `client_id`, `type`, `payload`, `read_at` |
-| `media_catalog` | `id` | `content_hash`, `storage_pool_id`, `storage_key`, `size_bytes`, `media_kind`; sin `client_id` |
+| `media_catalog` | `id` | `content_hash` (bytes canónicos o hash de la URL externa), `storage_pool_id`, `storage_key`, `size_bytes`, `media_kind`, `mime_type`, `source_format`, `original_filename`, `width`, `height`, `duration_ms`, `processing_status`, `storage_type` (`internal`/`external`), `source_url` (https, solo external), `provider` (código del allowlist); sin `client_id` |
+| `media_variants` | `(media_id, variant_code)` | Variantes derivadas (`thumbnail`, `preview`) con ficha propia (`storage_pool_id`, `storage_key`, `size_bytes`, `width`, `height`, `mime_type`); en el Router Global |
+| `external_media_providers` | `code` | Plataformas admisibles para enlaces externos: `code` (youtube, tiktok, vimeo, instagram, facebook), `labels` JSONB `{es,en}`, `url_pattern`, `embeddable`, `is_admissible`, `sort_order` |
 | `chatwoot_accounts` | `client_id` | `chatwoot_account_id`, `state`, `idempotency_key`, `last_error`, `synced_at` |
+| `vectorization_config` | `attribute_key` | Qué atributos del producto componen el texto que se vectoriza: `attribute_key`, `enabled`, `position`; administrada y versionada por la plataforma (RF-05.7, §9.0) |
 | `audit_log` | `id` | Actor, acción, entidad, fecha; sin contenido de negocio |
 
 ### 5.2 Celdas — schema `admin`
@@ -146,9 +151,10 @@
 | `users` | `id` | Proyección local del usuario: `client_id`, `email`, `status`; RLS. No es el ancla global (AUTH-D-01). |
 | `client_media` | `id` | `client_id`, `media_id`, `size_bytes`; único `(client_id, media_id)`; RLS. Referencia distinta del inquilino al catálogo global |
 | `client_usage` | `id` | `client_id`, `dimension`, `used_value`; único `(client_id, dimension)`; RLS. Contador autoritativo de consumo |
-| `products` | `(client_id, id)` | `PARTITION BY LIST (client_id)`; `source_share_id`, `source_version` para clones |
+| `products` | `(client_id, id)` | `PARTITION BY LIST (client_id)`; atributos ERP y de feed en §9.0; `source_share_id`, `source_version` para clones |
 | `product_embeddings` | `(client_id, product_id)` | Particionada igual que `products` |
-| `product_media` | `(client_id, product_id, media_id)` | Vínculo producto–archivo; único `(client_id, product_id, media_id)`; RLS |
+| `product_media` | `(client_id, product_id, media_id)` | Vínculo producto-archivo con `alt_text`; único `(client_id, product_id, media_id)`; RLS |
+| `tenant_labels` | `id` | Espejo de las etiquetas de Chatwoot con propiedad del inquilino: `chatwoot_label_id` (único por inquilino), `title`, `description`, `color`, `show_on_sidebar`, `origin` (`chatwoot_default`/`chatwoot_custom`/`mocter_custom`), `state`, `synced_at`; RLS y soft delete |
 
 Toda tabla de inquilino lleva `client_id` no nulo, índice compuesto que empieza por esa columna y RLS forzado (RF-01.5, RF-10.11). `products` y `product_embeddings` se particionan; el resto no (RF-10.12).
 
@@ -282,7 +288,58 @@ Reglas:
 - Toda llamada usa clave de idempotencia; el reintento no duplica cuentas ni usuarios (RF-03.2).
 - No se habilita ni se usa código enterprise (RF-03.5).
 
+### 8.1 Etiquetas
+
+Las etiquetas de Chatwoot (`/api/v1/accounts/{account_id}/labels`) son por cuenta y se aplican a conversaciones y, según la versión, a contactos. Sus atributos heredados son `id` (numérico), `title`, `description`, `color` (hex) y `show_on_sidebar`.
+
+**Sincronización con `tenant_labels` (RF-03.6):**
+
+- **«Chatwoot propone, Mocter decide»:** el espejo del inquilino vive en su celda con RLS; el upsert es idempotente por `(client_id, chatwoot_label_id)`.
+- **Origen:** las etiquetas que Chatwoot crea por defecto al aprovisionar la cuenta se marcan `chatwoot_default` (la lista exacta de 4.19 se identifica en laboratorio, T-32 de CHW-001 alineada); las creadas por el inquilino en Chatwoot llegan como `chatwoot_custom`; las creadas desde Mocter se marcan `mocter_custom` y se empujan por la API.
+- **Gestión desde Mocter:** el inquilino crea, edita (título, descripción, color, visibilidad) y archiva etiquetas; el sistema ejecuta la configuración en Chatwoot con idempotencia. Una etiqueta borrada en Chatwoot queda archivada en el espejo (`state = archived`), sin perder correlación histórica.
+- Las etiquetas sirven luego para flujos del bot (BOT-001) y para mapear `tags` de prospectos (CRM-001); ese consumo se define en cada spec.
+
 ## 9. Productos, publicaciones y sincronización
+
+### 9.0 Atributos del producto
+
+Un producto puede ser **cualquier bien o servicio** que el inquilino agregue a su catálogo (RF-05.4). El tipo se llama `kind` —no `type`/`good`, que no internacionaliza bien— con valores `physical`, `digital`, `service`. Los atributos son de tipo ERP y siguen el vocabulario de los feeds de Google Merchant Center y Meta (RF-05.5), de modo que una integración futura (Droppi, Shopify, Effi, MercadoLibre) mapee directo.
+
+**Alta mínima sin fricción (RF-05.8):** los únicos atributos obligatorios son `name`, `description` y `price_cents`. La moneda no se pregunta en el alta: se hereda de `clients.currency` (por defecto `COP`) y el producto puede sobrescribirla si vende en otra moneda (RF-05.9). Todo lo demás es opcional o tiene valor por defecto (`kind = physical`, `condition = new`, `availability = in_stock`, `status = draft`).
+
+| Grupo | Atributos | Nota |
+|---|---|---|
+| Identidad | `client_id` + `id` | PK compuesta y partición `LIST (client_id)` |
+| Identificadores | `sku`, `gtin`, `mpn`, `item_group_id` | `gtin` (UPC/EAN/ISBN) y `mpn` opcionales en servicios; `item_group_id` agrupa variantes |
+| Origen de ingesta | `source_system`, `source_external_id`, `source_url` | `manual`, `droppi`, `shopify`, `effi`, `mercadolibre`, …; únicos `(client_id, source_system, source_external_id)` cuando no es manual (RF-05.6) |
+| Básicos | `name` (≤150), `description` (≤5000), `brand` | `name` es el `title` de los feeds |
+| Tipo y estado | `kind` (`physical`/`digital`/`service`, default `physical`), `condition` (`new`/`refurbished`/`used`, default `new`), `availability` (`in_stock`/`out_of_stock`/`preorder`/`backorder`, default `in_stock`), `status` (`draft`/`published`/`archived`, default `draft`), `sort_order` | `condition` y `availability` usan los valores en inglés de los feeds |
+| Comercial | `price_cents` (obligatorio), `sale_price_cents`, `currency` (ISO 4217, nullable: hereda `clients.currency`), `price_note` | `price_note` complementa el precio («desde $X», «por hora») y alimenta al bot, no al feed |
+| Taxonomía | `category`, `google_product_category` | `category` propia mapea a `product_type` de Google; `google_product_category` nullable |
+| Variantes | `color`, `size`, `material`, `gender`, `age_group`, `pattern`, `attributes` JSONB | Campos nombrados de los feeds + catch-all para `additional_variant_attribute` y similares |
+| Venta | `prompt` | Contexto de venta del bot; **no se vectoriza** (RF-05.7) |
+| Compartición | `source_share_id`, `source_version` | Solo en clones (§9.2) |
+| Auditoría | `created_at`, `updated_at`, `created_by`, `updated_by`; `deleted_at`, `deleted_by` | Soft delete: un producto archivado conserva historial de shares |
+
+**Mapeo a feeds (referencia de integraciones futuras):**
+
+| Mocter | Google Merchant Center | Meta catalog |
+|---|---|---|
+| `name` | `title` | `title` |
+| `description` | `description` | `description` |
+| `price_cents` + `currency` | `price` | `price` |
+| `availability` | `availability` | `availability` |
+| `condition` | `condition` | `condition` |
+| `brand` | `brand` | `brand` |
+| `sku` / `gtin` / `mpn` | `id` (sku), `gtin`, `mpn` | `id`, `gtin`, `mpn` |
+| `category` / `google_product_category` | `product_type` / `google_product_category` | `product_type` / `google_product_category` |
+| `color`, `size`, … | `color`, `size`, … | `color`, `size`, … |
+| `item_group_id` | `item_group_id` | `item_group_id` |
+| `product_media` → `media_catalog` | `image_link` | `image_link` |
+| `source_url` | `link` | `link` |
+| `sale_price_cents` | `sale_price` | `sale_price` |
+
+**Vectorización (RF-05.7).** `vectorization_config` (Router Global, administrada por el equipo Mocter) define qué atributos componen `product_embeddings.content`, con `attribute_key`, `enabled` y `position`, versionada. El default de este plan: `name`, `description`, `category`, `brand`. El `prompt` queda excluido. El pipeline de embedding de cada celda lee la configuración por API (sin FK entre planos) y re-embebe los productos afectados cuando cambia. El `metadata` del embedding lleva `{kind, condition, availability, brand, category, google_product_category, color, size, material, gender, age_group, pattern}` para filtrar la búsqueda.
 
 ### 9.1 Producto y publicación
 
@@ -427,6 +484,47 @@ Dos dominios separados (RF-07.9):
 
 El catálogo global (`media_catalog`) guarda hash, clave, tamaño y tipo; no guarda inquilino (RF-07.5). El vínculo producto–archivo (`product_media`) y la referencia distinta del inquilino (`client_media`) viven en la celda; `client_usage` mantiene el contador autoritativo (RF-07.6). Antes de borrar un archivo, `mocter-admin` consulta todas las celdas que puedan referenciarlo; ninguna celda decide sola (RF-07.7). El borrado es diferido y se ejecuta solo cuando no queda referencia (RF-07.8).
 
+### 11.1 Formatos admitidos
+
+Restrictivo por tipo de medio; cualquier otro formato se rechaza al subir con mensaje explícito (i18n es/en). La validación es **por contenido** (magic bytes), no por extensión (RF-07.12). Lo que se guarda como canónico es el resultado de la conversión de §11.4, no el archivo subido:
+
+| `media_kind` | Formatos admitidos | Por qué |
+|---|---|---|
+| imagen | `webp`, `avif`, `png`, `jpeg` | WebP/AVIF óptimos para web; PNG sin pérdida (logos, diagramas); JPEG por compatibilidad. Sin SVG (puede llevar scripts) ni GIF (superado por WebP animado) |
+| audio | `opus`, `aac`, `mp3` | Opus óptimo calidad/bitrate; AAC nativo de iOS/WhatsApp; MP3 por compatibilidad |
+| video | `mp4` (H.264 + AAC), `webm` (VP9/AV1 + Opus) | MP4 compatibilidad universal; WebM óptimo para web |
+| pdf | `pdf` | Único formato de documento |
+
+El peso máximo por archivo se define por plataforma: video 100 MB e imágenes 10 MB por defecto (RF-07.16); se valida antes de aceptar la subida. La lista de formatos se revisa cuando cambien los navegadores o los canales de Chatwoot.
+
+### 11.2 Ficha técnica extendida
+
+`media_catalog` agrega (RF-07.13): `mime_type` (obligatorio, del canónico), `source_format` (formato de ingreso, para diagnóstico), `original_filename` (sanitizado, sin ruta), `width` y `height` (solo imágenes), `duration_ms` (solo audio/video), `processing_status` (`uploaded` → `processing` → `ready` | `failed`; `external` para enlaces) y `processing_error` (nullable). El `content_hash` es el hash de los **bytes canónicos** (post-conversión, §11.4) o de la URL normalizada en el caso externo (§11.5). El `alt_text` vive en `product_media`, no en el catálogo: el mismo archivo puede tener distinto texto alternativo por producto (RF-07.14).
+
+### 11.3 Variantes
+
+`media_variants` (Router Global): `media_id`, `variant_code` (`thumbnail`, `preview`, `mp4_compat`, `jpeg_compat`), `storage_pool_id`, `storage_key`, `size_bytes`, `width`, `height`, `mime_type` y auditoría; único `(media_id, variant_code)`. `thumbnail` y `preview` se generan cuando la interfaz del catálogo las necesite; `mp4_compat` y `jpeg_compat` son variantes de compatibilidad de canal que se generan **bajo demanda** y quedan cacheadas (RF-07.15).
+
+### 11.4 Canonicalización
+
+Flujo: subida → validación de formato por contenido → almacenamiento transitorio del origen → transcodificación **asíncrona** → alta del canónico y sus variantes → descarte del origen al llegar a `ready`. En `failed`, el origen se conserva para diagnóstico y reintento idempotente (RF-07.15).
+
+- **Imágenes → `webp` canónico.** Perfil de calidad fijo para que la conversión sea determinista (la misma entrada produce los mismos bytes y habilita la deduplicación); transparencia y animación preservadas. Dos inquilinos que suben el mismo JPEG comparten el mismo WebP canónico.
+- **Video → `webm` canónico** (VP9 + Opus). La transcodificación de video es costosa en CPU: corre en un worker asíncrono con reintentos idempotentes. WhatsApp no acepta WebM, por eso la variante `mp4_compat` (H.264 + AAC) se genera bajo demanda cuando un canal la requiere y queda cacheada.
+- **Audio:** sin transcodificación; se guarda el formato admitido de ingreso.
+- **Entrega por canal:** la capa de entrega elige el canónico o la variante compatible según el canal; si el laboratorio confirma que algún canal no acepta WebP, se agrega la variante `jpeg_compat` bajo demanda.
+- Los estados de procesamiento se muestran al inquilino («procesando…») según la directiva de i18n.
+
+### 11.5 Enlaces externos
+
+El inquilino puede definir un enlace en lugar de cargar un archivo (RF-07.17): **no consume cuota** porque `size_bytes` queda nulo y `client_media.size_bytes` registra 0 para ese vínculo.
+
+- **Video externo (embed):** solo plataformas admitidas del catálogo `external_media_providers` (YouTube, TikTok, Vimeo, Instagram, Facebook). `provider` guarda el código de la plataforma; la UI lo embebe (iframe del proveedor) y el bot envía el enlace por el canal. Sin transcodificación ni almacenamiento.
+- **Imagen externa (importación perezosa):** se guarda la URL y la UI y los feeds la muestran por enlace; al **entregarla por un canal** (WhatsApp/Chatwoot), el sistema la descarga una única vez, valida por contenido, la canonicaliza a `webp` y la promueve a `internal`; a partir de ahí consume cuota y deja de depender del origen. Si la descarga falla, el vínculo queda `failed` con aviso visible para el inquilino.
+- **Seguridad (RF-07.18):** solo `https`, sin credenciales en la URL, sin IPs privadas ni loopback en el destino; la descarga usa un guard SSRF y timeout. El catálogo de plataformas lo gobierna la plataforma.
+- **Deduplicación:** para externos, `content_hash = SHA-256(url normalizada)` con índice único parcial (`WHERE storage_type = 'external'`); el mismo enlace no se registra dos veces.
+- **GC:** un enlace externo no tiene objeto que borrar; el desvínculo elimina solo las filas.
+
 **GC en dos fases:** marcar el objeto como candidato, verificar referencias en todas las celdas y eliminar. Si una celda no responde, el objeto no se borra.
 
 ## 12. Planes y retención
@@ -452,7 +550,7 @@ No hay archivo por defecto. Un plan con archivo legal exporta cifrado a R2 con r
 
 ## 13. Interfaz
 
-- **i18n desde el inicio:** ningún texto visible incrustado; idioma por usuario y, en su ausencia, por configuración regional (RF-11).
+- **i18n desde el inicio:** ningún texto visible incrustado; idioma por usuario y, en su ausencia, por el idioma del inquilino (`clients.locale`) y la configuración regional (RF-11).
 - **Tema claro y oscuro:** por defecto sigue al sistema; la preferencia se conserva; ambos cumplen contraste (RF-12).
 - **Marca blanca:** solo tokens de identidad visual, habilitada por plan; validación de contraste antes de aplicar; restauración en una acción (RF-15).
 - **Simplicidad:** una acción principal por vista; sin explicación externa ni más de un concepto nuevo por pantalla; estados vacío, carga y error con recuperación (RF-13).

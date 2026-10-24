@@ -123,7 +123,7 @@ Columnas mínimas:
 | Agentes | `users`, `account_users` | `/platform/api/v1/users`, `/platform/api/v1/accounts/{id}/account_users` | Sí | `mocter-admin` |
 | Inboxes y canales | `inboxes`, `channel_*` | `/api/v1/accounts/{id}/inboxes` | Sí | `mocter-admin` |
 | Equipos | `teams`, `team_members` | `/api/v1/accounts/{id}/teams` | Sí | `mocter-admin` |
-| Etiquetas | `labels` | `/api/v1/accounts/{id}/labels` | Opcional | `mocter-admin` |
+| Etiquetas | `labels` | `/api/v1/accounts/{id}/labels` | Opcional | `mocter-admin` — atributos: `id`, `title`, `description`, `color`, `show_on_sidebar`; por cuenta, aplican a conversaciones y (según versión) contactos; la lista de etiquetas por defecto de 4.19 se identifica en laboratorio |
 | Atributos personalizados | `custom_attribute_definitions` | `/api/v1/accounts/{id}/custom_attribute_definitions` | Sí | `mocter-admin` |
 | Contactos | `contacts`, `contact_inboxes` | `/api/v1/accounts/{id}/contacts` | Proyección desde `mocter-core` | `mocter-core` |
 | Conversaciones y mensajes | `conversations`, `messages` | `/api/v1/accounts/{id}/conversations` | No | `chatwoot` |

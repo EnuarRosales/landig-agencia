@@ -169,6 +169,8 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 | RF-10.5 | Cada tipo de instancia tiene un perfil de configuración propio (`shared_buffers`, `work_mem`, `maintenance_work_mem`, `max_connections`, autovacuum, WAL). |
 | RF-10.6 | Los secretos se gestionan fuera del repositorio. |
 | RF-10.7 | Kubernetes con CloudNativePG es una evolución futura; la implementación actual es Docker Compose sobre el VPS con Traefik. |
+| RF-10.9 | Toda tabla propia del sistema lleva las columnas de auditoría mínimas `created_at`, `updated_at`, `created_by` y `updated_by`, y `deleted_at`/`deleted_by` donde aplica soft delete, según la directiva de base de datos. Las columnas de ciclo de vida ya documentadas no se duplican. |
+| RF-10.10 | La composición del texto vectorizado es administrable por la plataforma (`vectorization_config` de ADM-001); el default vectoriza nombre, descripción, categoría y marca, y excluye el prompt de venta. |
 
 ### RF-11 · Versiones y compatibilidad
 
@@ -231,6 +233,7 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 | D-15 | Rollback de Chatwoot a PostgreSQL 16 con la imagen anterior, documentado en `design.md` §9.7. | La validación en laboratorio fue exitosa; el rollback es una precaución operativa con RPO/RTO explícitos. |
 | D-16 | Backup: destino, retención y prueba se fijan en OPS-001; DAT-001 exige S3 compatible, offsite, cifrado, versionado y restore probado. | Evita duplicar la decisión operativa en dos especificaciones; OPS-001 gobierna la continuidad y CD-001 solo el despliegue. |
 | D-17 | Capacidad nominal de 100 inquilinos por celda; la efectiva es el primer disparador de RF-10.3. | HNSW, CPU o relaciones pueden reducir la capacidad; fijar un número menor sin medición sería arbitrario. |
+| D-18 | Las cuatro columnas de auditoría (`created_at`, `updated_at`, `created_by`, `updated_by`) son obligatorias en todas las tablas; el soft delete (`deleted_at`, `deleted_by`) se aplica solo donde corresponde. Las columnas de ciclo de vida ya documentadas cumplen ese rol y no se duplican. | Un solo mecanismo de baja por tabla evita dos fuentes de verdad sobre el mismo hecho y mantiene el historial de `tenant_users` intacto. |
 
 ## 7. Decisiones abiertas
 
@@ -253,3 +256,5 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 - 2026-10-20, decisión O-08: la capacidad nominal es 100 inquilinos por celda; la efectiva es el primer disparador de RF-10.3 (inquilinos, relaciones, HNSW o CPU).
 - 2026-10-22: alineación con AUTH-D-06 y corrección de membresía 1:0..1. La cookie del panel transporta solo un `sid` opaco; la sesión de servidor guarda `client_id` y `routing_version`. `users.active_client_id` es el guardián global de una única membresía activa. JWT queda para APIs futuras. Se unifica el nombre físico `tenant_users` y se elimina `client_users`.
 - 2026-10-22: revisión de control del plan SDD. La decisión O-07 quedó superada por OPS-001 (creada el 2026-10-21, dueña de destino, retención y prueba de restore). `design.md` §9.1 ahora delega en OPS-001 y nombra la instancia actual `pg-portal`; la separación `pg-control-plane` sigue diferida (O-02, RF-01.9).
+- 2026-10-23: se agregan RF-10.9 y D-18 por decisión del usuario: columnas de auditoría obligatorias en todas las tablas (`created_at`, `updated_at`, `created_by`, `updated_by`), soft delete donde aplique y sin duplicar las columnas de ciclo de vida ya documentadas. La regla global vive en la directiva de base de datos (§8).
+- 2026-10-23: RF-10.10 — vectorización administrable por la plataforma con default nombre + descripción + categoría + marca; el prompt de venta queda fuera del embedding (alineado con ADM-001 RF-05.5 a RF-05.7).

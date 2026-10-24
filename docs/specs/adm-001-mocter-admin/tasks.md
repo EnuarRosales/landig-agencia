@@ -28,7 +28,7 @@
   - No se alteran routers existentes (D-10).
 
 - [ ] **T-03 · Crear schemas y roles de base**
-  - Schema `admin` en Router y celdas; roles `mocter_migrator`, `mocter_admin`, `mocter_landing`, `mocter_auth`.
+  - Schema `admin` en Router y celdas; roles `mocter_migrator`, `mocter_admin`, `mocter_landing`, `mocter_auth`. Todas las tablas llevan `created_at`, `updated_at`, `created_by`, `updated_by` (y `deleted_at`/`deleted_by` donde aplica soft delete) según la directiva de base de datos y DAT-001 RF-10.9.
   - Verificación: `mocter_admin` no tiene DDL ni `BYPASSRLS`; `mocter_landing` solo inserta solicitudes de contacto y no accede al schema `admin`; en una celda dedicada, `mocter_auth` solo accede a `users` e `identities`.
   - Criterios 26 y RF-09.3 (D-25).
 
@@ -45,9 +45,9 @@
   - RF-01.10, RF-14.6, AUTH-D-01, AUTH-D-05, D-29.
 
 - [ ] **T-06 · Implementar `clients` y `owner_user_id`**
-  - `owner_user_id` no nulo y único entre clientes no dados de baja, `contact_email`, ciclo de vida y `client_routing`.
-  - Verificación: insertar un cliente sin dueño falla; un usuario no puede ser dueño de dos inquilinos no dados de baja; el alta manual crea o vincula el usuario en la misma operación.
-  - RF-01.6, RF-01.10, criterio 31, D-29.
+  - `owner_user_id` no nulo y único entre clientes no dados de baja, `contact_email`, `locale` (por defecto `es`), `currency` (ISO 4217, por defecto `COP`), `phone`, `website_url`, `tax_id`, dirección, `industry`, `timezone`, `logo_media_id`, `social_links`, ciclo de vida y `client_routing`.
+  - Verificación: insertar un cliente sin dueño falla; un usuario no puede ser dueño de dos inquilinos no dados de baja; el alta manual crea o vincula el usuario en la misma operación; el alta se completa sin `phone`, NIT ni dirección.
+  - RF-01.6, RF-01.10, RF-01.11, RF-11.5, RF-05.9, criterio 31, D-29.
 
 - [ ] **T-07 · Implementar onboarding guiado**
   - Asistente de menos de 5 minutos, interrumpible, reejecutable; crea el cliente al completar los datos del negocio.
@@ -78,20 +78,25 @@
 
 - [ ] **T-12 · Implementar la correlación y el estado**
   - `chatwoot_accounts` con idempotencia, último error y marca de sincronización.
-  - Verificación: dos llamadas concurrentes con la misma clave producen una sola cuenta.
-  - RF-03.2.
+  - `tenant_labels`: espejo de las etiquetas de Chatwoot con upsert idempotente por `(client_id, chatwoot_label_id)`, origen (`chatwoot_default`/`chatwoot_custom`/`mocter_custom`) y gestión desde Mocter (crear, editar, archivar) con escritura por API a Chatwoot.
+  - Verificación: dos llamadas concurrentes con la misma clave producen una sola cuenta; dos sincronizaciones de la misma etiqueta producen una sola fila; una etiqueta creada en Mocter aparece en Chatwoot y una borrada en Chatwoot queda archivada en el espejo.
+  - RF-03.2, RF-03.6.
 
 ## Fase 3 · Productos, archivos y sincronización
 
 - [ ] **T-13 · Implementar productos y embeddings**
-  - `products` y `product_embeddings` particionadas por `client_id`; `product_media` con RLS y unicidad por producto y archivo.
-  - Verificación: una consulta sin `SET LOCAL app.current_client_id` no devuelve filas; la partición de 100 inquilinos se crea.
+  - `products` y `product_embeddings` particionadas por `client_id`; atributos ERP y de feed de §9.0; `product_media` con RLS y unicidad por producto y archivo.
+  - `vectorization_config` en el Router con el default de §9.0 (nombre, descripción, categoría y marca).
+  - Verificación: una consulta sin `SET LOCAL app.current_client_id` no devuelve filas; la partición de 100 inquilinos se crea; la tabla expone `sku`, `gtin`, `mpn`, `condition`, `availability`, `brand` y variantes; un producto se crea solo con nombre, descripción y precio, hereda la moneda del inquilino y el resto hereda defaults (RF-05.8, RF-05.9); cambiar un atributo de la config re-embebe los productos afectados; el `prompt` nunca entra al embedding.
   - RF-05, RF-10.11, RF-10.12.
 
 - [ ] **T-14 · Implementar el catálogo global de archivos**
-  - `media_catalog`, `client_media`, `product_media`, `client_usage`, SeaweedFS y deduplicación por hash; el vínculo y la cuota viven en la celda.
-  - Verificación: dos productos que referencian el mismo archivo comparten una sola ficha y un solo objeto; el archivo se cuenta una vez por inquilino.
-  - RF-07.1 a RF-07.6.
+  - `media_catalog` con ficha extendida (§11.2), `media_variants`, `client_media`, `product_media` (con `alt_text`), `client_usage`, SeaweedFS y deduplicación por hash; el vínculo y la cuota viven en la celda.
+  - Validación restrictiva de formatos por `media_kind` (§11.1) por contenido, no por extensión; tamaño máximo por archivo (video 100 MB, imágenes 10 MB).
+  - Canonicalización (§11.4): imágenes a `webp` y videos a `webm`; el origen se descarta en `ready`; variantes de canal bajo demanda.
+  - Enlaces externos (§11.5): videos embed de plataformas admitidas e imágenes por URL con importación perezosa; catálogo `external_media_providers` gobernado por la plataforma.
+  - Verificación: dos productos que referencian el mismo archivo comparten una sola ficha y un solo objeto; el archivo se cuenta una vez por inquilino; un `svg`, `gif` o formato no listado se rechaza con mensaje explícito; una imagen `png` subida queda almacenada como `webp` canónico y el origen se descarta; un video `mp4` genera el `webm` canónico; el hash de dedup corresponde a los bytes canónicos; un enlace externo no consume cuota y una URL con `http`, credenciales o IP privada se rechaza; la imagen externa se importa y canonicaliza en la primera entrega por canal; el `alt_text` es independiente por vínculo.
+  - RF-07.1 a RF-07.6, RF-07.12 a RF-07.18.
 
 - [ ] **T-15 · Implementar el GC por última referencia**
   - Dos fases: marcar, consultar todas las celdas, eliminar.
@@ -160,8 +165,8 @@
 ## Fase 6 · Interfaz
 
 - [ ] **T-27 · Implementar i18n y temas**
-  - Textos fuera de componentes; idioma por usuario y región; tema claro/oscuro con preferencia persistida.
-  - Verificación: ningún texto visible incrustado; ambos temas cumplen contraste.
+  - Textos fuera de componentes; idioma por usuario, por inquilino (`clients.locale`) y región; conjunto inicial ES/EN; tema claro/oscuro con preferencia persistida.
+  - Verificación: ningún texto visible incrustado; ambos temas cumplen contraste; un inquilino sin preferencia de usuario resuelve `clients.locale`; la cuenta de Chatwoot recibe el locale solo si la API 4.19 lo expone (se valida en laboratorio).
   - RF-11, RF-12.
 
 - [ ] **T-28 · Implementar marca blanca**
