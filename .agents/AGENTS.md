@@ -98,7 +98,7 @@ Toda interfaz y texto visible de Mocter soporta **Español e Inglés**, con **Es
 
 ### 4.7 Asistencia AI en la configuración
 
-Todo **campo de texto libre (`textarea`)** que el inquilino redacte cuenta con **«Mejorar con AI»**; los campos de una línea (nombre, precio, slug) quedan fuera salvo que el prompt maestro del campo lo justifique. La plataforma mantiene una biblioteca de prompts maestros por campo (AI-001) y la sugerencia siempre es revisada y aceptada por el inquilino; nunca se guarda sola. La inferencia usa el proveedor BYOK del inquilino, el trial de onboarding o la inferencia Mocter cuando la propuesta de agregador madure. Consulte la spec [AI-001](docs/specs/ai-001-asistente-ai-configuracion/requirements.md).
+Todo **campo de texto libre (`textarea`)** que el inquilino redacte cuenta con **«Mejorar con AI»**, en **todos los planes**; los campos de una línea (nombre, precio, slug) quedan fuera salvo que el prompt maestro del campo lo justifique. La plataforma mantiene una biblioteca de prompts maestros por campo (AI-001) y la sugerencia siempre es revisada y aceptada por el inquilino; nunca se guarda sola. La inferencia usa el proveedor BYOK del inquilino, el trial de onboarding o la inferencia Mocter cuando la propuesta de agregador madure. Consulte la spec [AI-001](docs/specs/ai-001-asistente-ai-configuracion/requirements.md).
 
 ### 4.8 Diseño visual (Mobile First + sistema de diseño)
 
@@ -135,6 +135,7 @@ Al terminar una especificación, entrega:
 | BOT-002 | [Motor de atención y composición dinámica de prompts](docs/specs/bot-002-motor-atencion-prompts/requirements.md) | Borrador · 2026-10-23; prompt compuesto en runtime, clasificación de leads y captura de pedido |
 | ORD-001 | [Pedidos y fulfillment](docs/specs/ord-001-pedidos-fulfillment/requirements.md) | Borrador · 2026-10-23; pedido desde bot y manual, estados, pago, envío y devoluciones |
 | BILL-001 | [Facturación SaaS, pagos y facturación electrónica](docs/specs/bill-001-facturacion-saas/requirements.md) | Borrador · 2026-10-23; suscripciones, pasarela de pagos, dunning y facturación electrónica DIAN vía proveedor autorizado |
+| REF-001 | [Programa de referidos](docs/specs/ref-001-programa-referidos/requirements.md) | Borrador · 2026-10-24; atribución y recompensas (crédito o comisión + descuento); pendiente de decisión comercial |
 | CRM-001 | [Prospectos y gestión comercial](docs/specs/crm-001-prospectos-gestion-comercial/requirements.md) | Aprobada · 2026-10-23; maestro de prospectos en Mocter, Chatwoot como proyección, Habeas Data (Ley 1581 de 2012) para prospectos y usuarios; abiertas O-01 a O-03 |
 | AI-001 | [Asistente AI de configuración](docs/specs/ai-001-asistente-ai-configuracion/requirements.md) | Aprobada · 2026-10-23; prompts maestros por campo y «Mejorar con AI» con BYOK o inferencia Mocter |
 | REP-001 | [Informes y dashboards](docs/specs/rep-001-informes-dashboards/requirements.md) | Borrador · 2026-10-23; dashboard del inquilino y de la SaaS con períodos día/semana/mes/trimestre/semestre/año y rango personalizado |

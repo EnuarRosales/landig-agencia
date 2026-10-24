@@ -69,6 +69,8 @@
 
 - [ ] **T-10 · Implementar planes y límites**
   - `plans`, `plan_limits`, `client_plan_overrides`, `client_plans`; `clients.plan_id` vigente; validación antes de persistir. `tenant_owner` único y `tenant_agent` según `max_tenant_agents`; free con 1 owner y 0 agents.
+  - Catálogos `plan_dimensions` y `plan_features`, valores `plan_feature_values` y overrides de capacidad `client_feature_overrides`; metadata de plan (trial, gracia, estado, orden, ciclos).
+  - Verificación: un plan retirado no se ofrece en autoservicio; un override de capacidad aplica solo a su inquilino; una capacidad ausente se rechaza con mensaje explícito.
   - Verificación: un exceso de productos, `tenant_agent` o bytes se rechaza con mensaje explícito; la venta manual asigna el plan y el autoservicio parte del free.
   - RF-04.1 a RF-04.4, RF-04.7.
 

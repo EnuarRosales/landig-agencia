@@ -117,10 +117,14 @@ Todas las tablas llevan las columnas de auditoría de la directiva de base de da
 | `clients` | `id` | `owner_user_id` no nulo y único entre clientes no dados de baja, `contact_email`, `phone` (E.164, contacto comercial), `website_url`, `display_name`, `slug`, `lifecycle_status`, `plan_id`, `quota_version`, `locale` (`es` por defecto; conjunto inicial `es`/`en` validado por la aplicación), `currency` (ISO 4217, por defecto `COP` para la operación inicial en Colombia; editable en el onboarding), `tax_id`, `country`/`state`/`city`/`address_line`/`postal_code`, `industry`, `timezone` (por defecto `America/Bogota`), `logo_media_id`, `social_links` JSONB; el `tenant_owner` activo se materializa en `tenant_users` |
 | `client_routing` | `client_id` | `cell_id`, `identity_location`; caché en Redis |
 | `client_migrations` | `id` | `client_id`, `source_cell_id`, `target_cell_id`, `state`, `started_at`, `completed_at` |
-| `plans` | `id` | `code`, `name`, `is_public`, `price`, `currency` |
+| `plans` | `id` | `code`, `name`, `description`, `price`, `currency`, `is_public`, `trial_days`, `grace_days`, `status` (`active`/`retired`), `sort_order`, `billing_cycles` JSONB |
 | `plan_limits` | `(plan_id, dimension)` | Productos, `max_tenant_agents` (`tenant_owner` fijo en 1), imágenes, audios, videos, PDF, retención, bytes |
 | `client_plan_overrides` | `id` | `client_id`, `dimension`, `value`, `valid_from`, `valid_to`, `negotiated_by`, `updated_by` |
 | `client_plans` | `id` | Historial de asignaciones: `client_id`, `plan_id`, `valid_from`, `valid_to`, `source` (`manual` o `self_service`), `assigned_by_user_id`; el plan vigente se refleja en `clients.plan_id` |
+| `plan_dimensions` | `key` | Catálogo de dimensiones numéricas: etiqueta es/en, unidad, tipo, mínimo, máximo y valor por defecto |
+| `plan_features` | `key` | Catálogo de capacidades: etiqueta es/en, tipo (`boolean`/`enum`), opciones y descripción |
+| `plan_feature_values` | `(plan_id, feature_key)` | `enabled`, `value` JSONB (nivel o parámetro de la capacidad) |
+| `client_feature_overrides` | `id` | `client_id`, `feature_key`, `value`, `valid_from/to`, `negotiated_by`, `updated_by` |
 | `organizations` | `id` | `originator_client_id`, `name`, `moderation_mode` (`pre`, `post`, `none`) |
 | `organization_members` | `id` | `organization_id`, `client_id`, `role` (`originator`, `co_leader`, `member`), `status`, `joined_at`, `left_at` |
 | `organization_invitations` | `id` | `organization_id`, `email`, `invited_by`, `status`, `token`, `expires_at` |
@@ -544,6 +548,12 @@ El inquilino puede definir un enlace en lugar de cargar un archivo (RF-07.17): *
 ### 12.1 Planes
 
 El plan define productos, `max_tenant_agents`, imágenes, audios, videos, PDF, retención de chats y bytes (RF-04.1). El `tenant_owner` es único por inquilino y no consume un asiento de agente; el plan free incluye un `tenant_owner` y cero `tenant_agent` (RF-04.7). La validación ocurre en `mocter-admin` antes de persistir o replicar; Chatwoot no la hace cumplir (RF-04.2). Un exceso se rechaza con mensaje explícito (RF-04.3).
+
+**Modelo en dos capas (RF-04.8/RF-04.9).** Los límites numéricos viven en `plan_limits` y las capacidades en `plan_feature_values`; ambos se catalogan (`plan_dimensions`, `plan_features`) para evitar claves libres. El `platform_owner` define el catálogo y los valores; `platform_sales` asigna el plan y negocia overrides numéricos o de capacidad; el `tenant_owner` elige entre los planes públicos en estado `active`. `plans` guarda además descripción, `trial_days`, `grace_days`, `status` y ciclos de cobro permitidos.
+
+- **Dimensiones iniciales:** las actuales + `max_bots`, `max_channels`, `max_followup_sequences` y `ai_tokens_monthly` (si se aprueba O-04 de BOT-001).
+- **Capacidades iniciales:** `white_label` (`none`/`paleta`/`completa`), `custom_domain`, `legal_archive`, `community_feed`, `data_export`, `api_access`.
+- **Fuera del gate:** la asistencia AI («Mejorar con AI») es transversal a todos los planes (AI-001 D-05).
 
 En venta manual, `platform_sales` asigna el plan del catálogo, registra `client_plans` con `source = 'manual'` y actualiza `clients.plan_id`. En autoservicio, el `tenant_owner` elige del catálogo y el plan free es el valor por defecto; el cambio queda auditado con `source = 'self_service'` (RF-04.7). Cada cambio de plan u override incrementa `clients.quota_version`; la celda refresca el tope cuando ve una versión distinta.
 

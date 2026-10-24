@@ -28,6 +28,7 @@ Todo atributo de texto que el inquilino deba llenar y que admita asistencia tien
 | RF-01.1 | Todo **campo de texto libre (`textarea`)** que el inquilino redacte debe tener «Mejorar con AI» y estar registrado como campo asistido (`ai_assist_fields`) con su prompt maestro. Los campos de una línea (nombre, precio, slug) quedan fuera salvo que el prompt maestro del campo lo justifique. Un textarea sin prompt maestro es un defecto, no una mejora futura. |
 | RF-01.2 | La cobertura inicial prioriza la configuración del bot (objetivo, tono, persona, instrucciones, saludo, fallback, temas permitidos/excluidos), los productos (nombre, descripción, prompt de venta, `price_note`, `alt_text`), las notas de prospectos, las etiquetas del inquilino (`label.title`, `label.description`) y los pasos de recordatorios (`followup_step.message`). |
 | RF-01.3 | La plataforma puede agregar campos asistidos sin tocar las pantallas: el botón aparece cuando el campo tiene prompt maestro activo. La cobertura se extiende a **todo `textarea` nuevo** que se agregue al sistema. |
+| RF-01.4 | La asistencia AI está disponible en **todos los planes**, sin importar el nivel contratado: no es una capacidad de plan. |
 
 ### RF-02 · Biblioteca de prompts maestros (zona de la SaaS)
 
@@ -73,6 +74,7 @@ Todo atributo de texto que el inquilino deba llenar y que admita asistencia tien
 | D-02 | Human-in-the-loop obligatorio: la AI propone, el inquilino acepta. | Se evita que un mal prompt maestreo dañe configuraciones en silencio. |
 | D-03 | Día uno = BYOK; sin proveedor, el botón se deshabilita. | El asistente no depende de que la propuesta de inferencia Mocter madure. |
 | D-04 | La biblioteca es versionada y con ejemplos de evaluación por campo. | Un cambio de prompt o modelo se puede medir antes y después. |
+| D-05 | La asistencia AI es **transversal a todos los planes**; no se gatea por plan. | Todos los inquilinos acceden a «Mejorar con AI»; el costo se controla con rate limit, no con el plan. |
 
 ## 5. Decisiones abiertas
 
@@ -80,7 +82,8 @@ Todo atributo de texto que el inquilino deba llenar y que admita asistencia tien
 |---|---|---|
 | O-01 | ¿El asistente usa el mismo modelo del bot o un modelo propio por defecto (p. ej. el más barato del preset)? | Define costo y calidad; propuesta: modelo propio por defecto, configurable por plataforma. |
 | O-02 | ¿El asistente tiene límite de uso mensual por inquilino o es libre? | Define guardrails de costo; propuesta: libre en BYOK, sujeto a la billetera en modo Mocter. |
-| O-03 | ¿La asistencia AI es parte del plan o transversal a todos los planes? | Decisión comercial; propuesta: transversal, es parte de la experiencia Mocter. |
+
+O-03 quedó resuelta por **D-05**: la asistencia AI es transversal a todos los planes.
 
 ## 6. Fuera de alcance
 
@@ -100,3 +103,4 @@ El motor de inferencia y su orquestación (BOT-002). La generación automática 
 
 - L1 (2026-10-23): «Regla que no hemos tratado, todos los atributos que deba llenar el inquilino y que puedan ser asistido por AI deben tener dicha capacidad para ayudar a nuevos usuarios a configurar su entorno en el menor tiempo posible pero con la mayor calidad tambien. Por ello a nivel de la SaaS debe existir una zona en la que se generen prompt especializados que ayuden a ayudar a los inquilinos a configurar esas partes del sistema por ejemplo cuando esta configurando el objetivo del bot, el inquilino con inferencia propia de mocter o con su propio proveedor de inferencia si ya configuro el proveedor de inferencia escribe algo de contexto y luego da clic en mejorar con AI el sistema toma ese texto y lo une con el prompt maestro del sistema diseñado exactamente para ese campo y lo mejora.»
 - L2 (2026-10-23): **AI-001 aprobada.** Quedan abiertas O-01 (modelo por defecto del asistente), O-02 (límite de uso) y O-03 (transversal o por plan) para resolver en la fase 0 de implementación.
+- L3 (2026-10-24): **O-03 resuelta:** la asistencia AI es transversal a todos los planes (D-05); no se gatea por plan.
