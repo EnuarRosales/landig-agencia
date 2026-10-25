@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | CRM-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.2 (Aprobada — decisiones O-01 a O-03 cerradas) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 
@@ -19,14 +19,14 @@
 
 ## Fase 0 · Decisiones
 
-- [ ] **T-01 · [HUMANO] Cerrar las decisiones abiertas**
-  - Resolver O-01 (propósitos de consentimiento), O-02 (aviso de privacidad: template de plataforma o del inquilino) y O-03 (captura inicial por WhatsApp: mensaje interactivo o enlace).
-  - Verificación: cada decisión queda registrada en `requirements.md` §5 con su resultado y fecha.
+- [x] **T-01 · [HUMANO] Cerrar las decisiones abiertas (2026-10-25)**
+  - Cerradas: O-01 (dos propósitos: tratamiento + comercial), O-02 (template editable con revisión legal) y O-03 (botones interactivos + enlace al aviso).
+  - Verificación: las decisiones quedaron registradas en `requirements.md` §5 y en la trazabilidad.
 
 ## Fase 1 · Maestro de prospectos
 
 - [ ] **T-02 · Crear las migraciones de prospectos**
-  - `prospects` y `prospect_consents` en la celda con RLS, auditoría (RF-10.9), índices únicos parciales (email, documento, `chatwoot_contact_id`) y comentarios.
+  - `prospects`, `prospect_consents` y `privacy_notices` en la celda con RLS, auditoría (RF-10.9), índices únicos parciales (email, documento, `chatwoot_contact_id`, versión de aviso) y comentarios.
   - Verificación: `drizzle-kit check` pasa; una consulta sin contexto RLS no devuelve filas; un email duplicado por inquilino no ingresa.
 
 - [ ] **T-03 · Implementar el alta manual y la edición**
@@ -44,8 +44,16 @@
 ## Fase 2 · Consentimiento (Habeas Data)
 
 - [ ] **T-06 · Implementar `prospect_consents`**
-  - Captura con propósito, versión de política, canal y evidencia; revocación inmediata fechada; derechos de acceso, corrección y supresión.
+  - Captura con dos propósitos (`data_treatment`, `commercial_comms`), versión de política, canal, evidencia; revocación inmediata fechada; derechos de acceso, corrección y supresión.
   - Verificación: sin consentimiento comercial vigente, la acción comercial se bloquea; la revocación queda registrada con fecha y canal.
+
+- [ ] **T-06A · Implementar el aviso de privacidad versionado**
+  - `privacy_notices` con template de plataforma, copia editable por inquilino, estados `draft`/`in_review`/`published`/`retired` y revisión legal.
+  - Verificación: solo un aviso `published` se usa en la captura; un cambio crea versión nueva y los consentimientos viejos conservan su versión.
+
+- [ ] **T-06B · Implementar la captura por WhatsApp**
+  - Botones interactivos + enlace al aviso; registrar `channel = whatsapp_buttons`, `message_id`, fecha y versión.
+  - Verificación: sin aceptación explícita no hay consentimiento; la evidencia queda enlazada al mensaje de Chatwoot.
 
 - [ ] **T-07 · Implementar la supresión con anonimización**
   - Baja lógica con reemplazo de datos personales por tokens irreversibles; trazabilidad conservada.

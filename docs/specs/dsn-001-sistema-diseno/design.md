@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | DSN-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.2 (Aprobada — decisiones O-01 a O-04 cerradas) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [MIG-001](../mig-001-nextjs-migration/design.md) |
 | Directivas | `.agents/AGENTS.md` (§4.8) · `.agents/rules/rules-for-i18n.md` |
 | Estado | Aprobada |
@@ -16,6 +16,8 @@
 3. **Tokens en capas.** Primitivos → semánticos → marca; la personalización solo actúa en la capa de marca.
 4. **HUD sutil, negocio primero.** El lenguaje de alto contraste se usa para jerarquía y datos, no para decorar.
 5. **El inquilino top siente la plataforma como suya.** Logo, color, tipografía y dominio sin marca Mocter visible en su espacio.
+6. **Catálogo vivo en el producto.** La ruta interna `/design-system` documenta componentes, tokens y variantes; no se usa Storybook en v1.
+7. **Tema que respeta al usuario.** Sigue la preferencia del sistema y usa oscuro como fallback del primer render.
 
 ## 2. Stack confirmado
 
@@ -123,6 +125,10 @@ Contraste 4.5:1 (texto) y 3:1 (UI y focus); foco visible consistente; navegació
 | Mobile First | Cada vista de la lista §5 se aprueba primero en ancho 390px y luego en escritorio |
 | Contraste | La paleta base y 3 paletas custom pasan AA en claro y oscuro |
 | Temas | Un cambio de paleta de inquilino no altera el layout ni a otros inquilinos; la restauración vuelve al default |
+| Tema inicial | Sin preferencia del sistema, el primer render usa oscuro; con preferencia, la respeta |
+| Catálogo | `/design-system` muestra todos los componentes, tokens y variantes en claro y oscuro; no hay Storybook en v1 |
+| HUD | La operación diaria no usa grilla/noise; el glow se limita a hover, estados vivos y pantallas de marca |
+| Tipografía | Solo Top/Enterprise puede cargar una tipografía de marca; White-label no la expone |
 | Tablas | Paginación, filtros y ordenamiento funcionan en la misma tabla desde móvil y escritorio |
 | Tokens | La paleta, inputs, sidebar y layout del tema base coinciden con la especificación de estilos de referencia (validado contra el CSS fuente, no solo visualmente) |
 | Marca blanca | En capa 3, el espacio del inquilino no muestra marca Mocter |
@@ -134,7 +140,7 @@ Contraste 4.5:1 (texto) y 3:1 (UI y focus); foco visible consistente; navegació
 |---|---|
 | Paleta custom rompe contraste | Validación AA automática en escritura + preview |
 | Inconsistencia entre vistas | Catálogo único de componentes; solo se usan los del catálogo |
-| Estética «cyber» mal recibida por negocios | HUD sutil por defecto (O-02); el glow y grid se limitan a pantallas de marca |
+| Estética «cyber» mal recibida por negocios | HUD sutil en la operación; el glow y la grilla se limitan a pantallas de marca |
 | Carga de fuentes | Self-hosted, subset es/en, `font-display: swap` |
 | Copia de identidad de terceros | El lenguaje visual es propio de Mocter; sin assets ni logo de terceros |
 

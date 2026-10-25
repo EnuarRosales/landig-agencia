@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | AI-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.2 (Aprobada — decisiones O-01 y O-02 cerradas) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [BOT-001](../bot-001-atencion-automatizada-llm/design.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [CRM-001](../crm-001-prospectos-gestion-comercial/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) |
 | Estado | Aprobada |
 
@@ -14,7 +14,8 @@
 2. **Prompt maestro por campo.** Cada atributo asistible tiene un prompt diseñado exactamente para él, versionado y evaluado.
 3. **La plataforma gobierna los prompts.** El inquilino solo usa el botón.
 4. **El idioma respeta al inquilino.** La sugerencia sale en `clients.locale`.
-5. **Costo transparente.** BYOK lo paga el inquilino a su proveedor; modo Mocter debita la billetera (cuando madure).
+5. **Costo transparente.** BYOK lo paga el inquilino a su proveedor; modo Mocter debita la misma billetera del bot. No hay límite mensual separado para el asistente.
+6. **Modelo propio del asistente.** Usa un modelo por defecto distinto del bot, configurable por la plataforma según costo y calidad.
 
 ## 2. Arquitectura
 
@@ -72,8 +73,8 @@ El ensamblado es: `master_prompt` + borrador del inquilino + `output_rules` con 
 
 ## 5. Inferencia
 
-- **Día uno (BYOK):** usa `tenant_ai_providers` + `tenant_model_settings` del inquilino (BOT-001); el modelo por defecto del asistente se define por plataforma (O-01).
-- **Modo Mocter (propuesta):** cuando la billetera madure, el asistente puede usar la inferencia Mocter; el costo se debita del saldo según el precio minorista del modelo.
+- **Día uno (BYOK):** usa `tenant_ai_providers` + `tenant_model_settings` del inquilino (BOT-001). El asistente tiene un **modelo propio por defecto**, distinto del modelo del bot y configurable por `platform_owner`/`platform_admin`.
+- **Modo Mocter:** cuando la billetera esté activa, el asistente puede usar la inferencia Mocter; el costo se debita de la misma billetera del bot, sin límite mensual separado.
 - El consumo siempre se registra en `ai_usage_events` con `purpose = 'assist'` (se agrega la columna `purpose` al ledger de BOT-001).
 
 ## 6. Seguridad y auditoría
@@ -94,6 +95,8 @@ UI es/en (Español por defecto); `input_hint` y etiquetas del registro en ambos 
 | Flujo | El borrador + prompt maestro devuelve una sugerencia en el idioma del inquilino; la sugerencia no se guarda sin aceptar |
 | Validación | Una sugerencia que excede la longitud del campo no se puede aceptar |
 | Inferencia | Sin BYOK el botón está deshabilitado con aviso; con BYOK, el consumo queda en `ai_usage_events` con propósito `assist` |
+| Modelo | El asistente usa su modelo propio por defecto, distinto del bot, y la plataforma puede cambiarlo sin tocar el prompt |
+| Límite | No hay límite mensual separado; en Mocter el consumo debita la billetera compartida del bot |
 | Auditoría | La aceptación queda con origen `ai_suggested` y versión de prompt |
 | Prompt | Un cambio de prompt pasa la batería de ejemplos de evaluación antes de activarse |
 

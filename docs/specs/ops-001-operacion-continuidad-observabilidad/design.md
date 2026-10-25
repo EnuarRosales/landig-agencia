@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.0 |
-| Fecha | 2026-10-21 · actualizado 2026-10-22 |
+| Versión | 1.1 |
+| Fecha | 2026-10-21 · actualizado 2026-10-24 |
 | Depende de | [`requirements.md`](requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) |
 | Estado | Aprobada |
 
@@ -17,6 +17,7 @@
 5. **Un fallo no arrastra a los demás.** Cada instancia tiene su repositorio, su stanza y su retención.
 6. **La observabilidad no vive donde vive el servicio.** Métricas y alertas se recolectan fuera del VPS.
 7. **Todo procedimiento es reproducible.** Comandos exactos, salida esperada y verificación.
+8. **La multimedia también se protege.** SeaweedFS entra en el mismo esquema de backup/restore y alertas.
 
 > **Cómo leer este documento.** Las secciones §2 a §6 explican el diseño. Las §7 a §10 son operación: runbooks, escenarios y alertas. La §15 es un glosario para quien nunca trabajó con respaldos. Lo marcado como **no verificado** debe confirmarse en laboratorio antes de producción (ver `tasks.md`).
 
@@ -296,6 +297,15 @@ La tabla exacta de conteos críticos se fija por instancia en T-10.
 5. Guardar evidencia: fecha, ejecutor, comando, salida, duración y diferencias.
 6. Registrar hallazgos y abrir tareas de corrección.
 
+### 7.8 Respaldo y restore de SeaweedFS
+
+1. **Alcance:** volumen de datos de SeaweedFS (`/data` del contenedor) y metadatos del catálogo de archivos.
+2. **Frecuencia:** full semanal + incremental diario, cifrado en cliente antes de subir a R2. RPO de multimedia ≤ 24 h; RTO ≤ 4 h.
+3. **Procedimiento:** snapshot consistente del volumen, sync a un prefijo dedicado en R2 y registro de fecha, tamaño, cantidad de objetos y hash del manifiesto.
+4. **Restore:** crear un volumen nuevo, restaurar el snapshot, montarlo en una instancia aislada de SeaweedFS y verificar una muestra de objetos contra los hashes del catálogo.
+5. **Verificación:** una imagen, un audio, un video y un PDF se recuperan y se comparan por hash; el restore no toca el volumen productivo.
+6. **Credenciales:** token de R2 limitado al prefijo de media; la passphrase de cifrado no comparte archivo con la de PostgreSQL.
+
 ## 8. Escenarios de continuidad
 
 | Escenario | Detección | Acción | RTO objetivo |
@@ -319,7 +329,7 @@ El RTO de ransomware incluye contención y rotación de credenciales; el restore
 |---|---|---|
 | Grafana Alloy | Agente de recolección y envío | — |
 | Grafana Cloud Metrics | Series de todos los exporters | 30 días |
-| Grafana Cloud Logs (Loki) | Logs de contenedores y backups | 14 días (O-05) |
+| Grafana Cloud Logs (Loki) | Logs de contenedores y backups | 14 días |
 | Grafana Alerting | Reglas, silencios y notificaciones | — |
 | Grafana Synthetic Monitoring | Disponibilidad externa de `mocter.co` | 30 días |
 
@@ -341,6 +351,7 @@ El RTO de ransomware incluye contención y rotación de credenciales; el restore
 | Antigüedad del último full | Script de backup | > 8 días | Crítico |
 | Fallo de backup full/diff | Script de backup | Última corrida con error | Crítico |
 | Backup no iniciado a la hora | Script de backup | > 5 min de retraso | Crítico |
+| Antigüedad del backup de SeaweedFS | Script de media | > 24 h | Crítico |
 | Último `archive-push` | pgBackRest | > 15 min | Crítico |
 | `verify` fallido | pgBackRest | Última corrida con error | Crítico |
 | Consumo del presupuesto | Costo estimado | > 80 % | Aviso |
@@ -351,7 +362,7 @@ El RTO de ransomware incluye contención y rotación de credenciales; el restore
 1. **Control plane:** CPU, memoria, disco, conexiones, WAL, antigüedad de backups.
 2. **Celda:** las mismas métricas por celda, más HNSW y particiones.
 3. **Chatwoot:** base, Sidekiq, cola y latencia.
-4. **Respaldos:** último full por stanza, último WAL, resultado de `verify`, tamaño del repositorio y costo estimado.
+4. **Respaldos:** último full por stanza, último WAL, resultado de `verify`, tamaño del repositorio, backup de SeaweedFS y costo estimado.
 
 ## 10. Alertas
 
@@ -368,7 +379,7 @@ Reglas de higiene:
 - Una alerta que se repite sin acción se convierte en tarea, no en ruido permanente.
 - El operador único no recibe alertas que no pueda accionar.
 
-Canales definitivos y segundo respondedor: O-02. Mientras no se resuelva, se usa correo y mensajería del dueño del producto.
+Operador único en v1: correo, mensajería y push para lo crítico al dueño del producto; sin segundo respondedor. El riesgo se revisa cuando el SLA lo exija.
 
 ## 11. Costos
 
@@ -383,7 +394,7 @@ costo_mensual = (GB_almacenados × precio_GB_mes)
 
 - R2 no cobra egress; las pruebas de restore no suman costo de transferencia.
 - Las operaciones de clase A incluyen escrituras y listados; las de clase B, lecturas.
-- El monitoreo se estima según el plan de Grafana Cloud que se contrate (O-05).
+- El monitoreo se estima con el plan gratuito/entry de Grafana Cloud, dentro del presupuesto **≤ USD 50/mes** aprobado para R2 + observabilidad.
 
 > **No verificado:** los precios unitarios de R2 y de Grafana Cloud se confirman al contratar y se registran en T-08. Esta spec fija la fórmula, no los valores vigentes.
 
@@ -428,7 +439,7 @@ Los valores usan 0,015 USD por GB-mes como referencia y no incluyen operaciones.
 | R2 no disponible | WAL se acumula y puede llenar el disco | Alerta al 60 % del límite de retención local; reintento automático |
 | Ventana de full con presión de I/O | Degradación del servicio | `process-max` limitado y horario de madrugada |
 | Drill trimestral omitido | RTO no confiable | Fecha agendada y evidencia obligatoria (CA-4) |
-| Costo de logs crece | Gasto no previsto | Retención definida (O-05) y alerta de presupuesto |
+| Costo de logs crece | Gasto no previsto | Retención de 14 días y alerta de presupuesto al 80 % |
 | Token de R2 filtrado | Acceso a respaldos | Alcance mínimo, rotación y versionado |
 | Backup de Chatwoot restaurado en base equivocada | Corrupción cruzada | Runbook §7.4 y verificación de imagen 4.19.0 |
 

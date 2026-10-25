@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | BOT-001 |
-| Versión | 0.2 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.3 (Aprobada — decisiones O-01 a O-07 cerradas) |
+| Fecha | 2026-10-24 |
 | Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) |
 | Estado | Aprobada |
 
@@ -12,8 +12,8 @@
 
 1. **Fricción mínima.** El inquilino configura lo indispensable; la plataforma aporta presets, tonos, defaults y recomendaciones.
 2. **Catálogo gobernado.** Solo la plataforma crea proveedores, modelos, tonos, presets y canales admisibles; el inquilino elige dentro de la whitelist.
-3. **Día uno BYOK, agregador después.** El día uno el inquilino registra su proveedor; la billetera, el spread y la inferencia Mocter quedan diseñadas como fundaciones (D-07).
-4. **El dinero se cuenta en enteros.** Saldos, precios y consumos en centavos de USD.
+3. **Día uno BYOK; billetera y spread aprobados como fundaciones.** El día uno el inquilino registra su proveedor; la billetera, el spread y la inferencia Mocter ya tienen decisiones cerradas y pueden activarse por fases (D-07).
+4. **El dinero se cuenta en enteros.** Saldos, costos y consumos en centavos de USD; el checkout muestra y cobra en la moneda del inquilino con FX y redondeo controlados.
 5. **El bot nunca se queda mudo.** Sin saldo, falla a un proveedor BYOK habilitado; sin alternativa, responde el fallback y pausa.
 6. **Las claves nunca se ven.** Cifradas en reposo, enmascaradas en pantalla, ausentes de logs y respuestas.
 7. **Todo se audita.** Catálogo, precios, claves, recargas y consumos dejan rastro; el uso queda en un ledger append-only.
@@ -24,9 +24,9 @@ BOT-001 es **configuración y gobernanza**. El motor que ejecuta la conversació
 
 **Fases (D-07):**
 - **Día uno:** catálogo de proveedores/modelos/tonos/presets, configuración del bot, canales admisibles gestionados desde Mocter y BYOK.
-- **Fundaciones (propuesta de negocio por madurar):** billetera, precios con spread, claves de plataforma y ledger de consumo. Diseñadas y documentadas; su activación no bloquea el lanzamiento.
+- **Fundaciones aprobadas (pueden activarse por fases):** billetera, precios con spread, claves de plataforma y ledger de consumo. Sus decisiones O-01 a O-07 están cerradas; la activación operativa no bloquea el lanzamiento.
 
-Los canales del bot son integraciones de Chatwoot. Las **instancias** de canal (inboxes) las aprovisiona ADM-001 (CHW-001); BOT-001 aporta el **catálogo de tipos admisibles** y la habilitación del bot por canal (D-08).
+Los canales del bot son integraciones de Chatwoot. Las **instancias** de canal (inboxes) las aprovisiona ADM-001 (CHW-001); BOT-001 aporta el **catálogo de tipos admisibles** y la habilitación del bot por canal (D-09).
 
 ## 3. Arquitectura
 
@@ -65,14 +65,14 @@ Todas las tablas viven en el Router Global, schema `admin`, y llevan las columna
 
 | Tabla | Clave | Atributos |
 |---|---|---|
-| `ai_providers` | `id` | `code` único (openai, anthropic, google, deepseek, openrouter, together_ai), `name`, `is_active`, `docs_url`, `supported_modes` JSONB `{byok, mocter}` |
-| `ai_models` | `id` | `provider_id` FK, `model_id` (identificador del proveedor), `display_name`, `context_window`, `max_output_tokens`, `capabilities` JSONB (tools/vision/json), `recommended_use` JSONB `{es,en}`, `default_temperature`, `default_max_tokens`, `is_active`, `sort_order`, y precios (fundaciones): `cost_input_mtok_usd_cents`, `cost_output_mtok_usd_cents`, `retail_input_mtok_usd_cents`, `retail_output_mtok_usd_cents` (nullable = solo BYOK hasta fijar retail) |
+| `ai_providers` | `id` | `code` único (openai, anthropic, google, deepseek, openrouter, together_ai), `name`, `is_active`, `docs_url`, `supported_modes` JSONB `{byok, mocter}`, `sort_order` |
+| `ai_models` | `id` | `provider_id` FK, `model_id` (identificador del proveedor), `display_name`, `context_window`, `max_output_tokens`, `capabilities` JSONB (tools/vision/json), `recommended_use` JSONB `{es,en}`, `default_temperature`, `default_max_tokens`, `is_active`, `sort_order`, `spread_percent` (default 30), y precios: `cost_input_mtok_usd_cents`, `cost_output_mtok_usd_cents`, `retail_input_mtok_usd_cents`, `retail_output_mtok_usd_cents` (retail = costo × (1 + spread), nullable hasta configurar) |
 | `bot_tones` | `id` | `code` único, `labels` JSONB `{es,en}`, `description` JSONB `{es,en}`, `is_active`, `sort_order` |
 | `bot_presets` | `id` | `code` único, `labels` JSONB `{es,en}`, `model_id` FK, `temperature`, `max_tokens`, `recommended_for` JSONB `{es,en}`, `is_active`, `sort_order` |
 | `bot_defaults` | `id` (una sola fila) | `default_max_turns`, `default_answer_policy`, `default_handoff_triggers` JSONB, `default_response_language_behavior`, `greeting_message_key`, `fallback_message_key` (claves de diccionario i18n), `default_max_messages_per_contact`, `version` |
 | `chatwoot_channel_types` | `id` | `code` único (website, facebook, instagram, whatsapp_cloud, whatsapp_twilio, telegram, email, sms, api, line), `labels` JSONB `{es,en}`, `provisioning` (`api` o `oauth`), `notes` JSONB `{es,en}`, `is_admissible`, `sort_order` |
 
-- Los precios de `ai_models` son **por 1M de tokens**, en centavos de USD (fundaciones de la propuesta de negocio).
+- Los precios de `ai_models` son **por 1M de tokens**, en centavos de USD. `cost_*` se siembra con el precio vigente y se edita desde el backoffice; `spread_percent` es configurable por modelo (30% por defecto); `retail_*` se calcula y se versiona con auditoría.
 - `bot_defaults` es un singleton versionado (RF-03.3).
 - La baja lógica del catálogo es `is_active`/`is_admissible`; no se usa `deleted_at` para no romper FKs históricas.
 - `chatwoot_channel_types.provisioning` resume la viabilidad técnica: `api` = Chatwoot expone creación por API; `oauth` = el proveedor exige su flujo OAuth y Chatwoot lo media (ver §4.4).
@@ -93,23 +93,23 @@ Reglas:
 - `response_language` por defecto hereda `clients.locale` (RF-02.6).
 - Un cambio de bot incrementa `revision` y audita; el snapshot efectivo (con defaults resueltos) es lo que BOT-002 consume.
 
-### 4.3 Billetera y consumo — fundaciones de la propuesta de negocio (activación diferida, D-07)
+### 4.3 Billetera y consumo — fundaciones aprobadas (activación por fases, D-07)
 
 | Tabla | Clave | Atributos |
 |---|---|---|
 | `wallets` | `client_id` (1:1) | `balance_usd_cents` (≥ 0), `version` (bloqueo optimista), auditoría |
-| `wallet_transactions` | `id` | `client_id`, `type` (recharge/consumption/refund/adjustment), `amount_usd_cents` (con signo), `input_tokens`, `output_tokens` (solo consumption), `balance_after_usd_cents`, `reference` (id de pago de la pasarela o id del evento de uso; idempotente), `created_at`, auditoría. Append-only: no se edita ni se borra. |
-| `ai_usage_events` | `id` | `client_id`, `bot_id` nullable, `provider_id`, `model_id`, `mode` (byok/mocter), `purpose` (`bot`/`assist`), `input_tokens`, `output_tokens`, `cost_usd_cents` (0 en modo byok), `wallet_transaction_id` nullable, `created_at`. Append-only; partición mensual futura si el volumen lo exige (patrón DAT-001). |
+| `wallet_transactions` | `id` | `client_id`, `type` (recharge/consumption/refund/adjustment), `amount_usd_cents` (con signo), `currency` (`COP`/`USD`), `amount_local_cents` nullable, `fx_rate` nullable (solo recharge), `input_tokens`, `output_tokens` (solo consumption), `balance_after_usd_cents`, `reference` (id de pago de la pasarela o id del evento de uso; idempotente), `created_at`, auditoría. Append-only: no se edita ni se borra. |
+| `ai_usage_events` | `id` | `client_id`, `bot_id` nullable, `provider_id`, `model_id`, `mode` (byok/mocter), `purpose` (`bot`/`assist`/`trial`; `embedding`/`summary` futuros), `input_tokens`, `output_tokens`, `cost_usd_cents` (0 en modo byok), `wallet_transaction_id` nullable, `created_at`. Append-only; partición mensual futura si el volumen lo exige (patrón DAT-001). |
 | `ai_platform_keys` | `id` | `provider_id` FK, `key_id`, `api_key_ciphertext`, `api_key_key_id`, `api_key_last4`, `status` (active/retired), `purpose` (inference), auditoría. Una activa por proveedor; la rotación crea una nueva y retira la anterior sin borrar historia. |
 
-Flujo de consumo (modo Mocter, fase futura):
+Flujo de consumo (modo Mocter, activación por fases):
 
-1. BOT-002 solicita inferencia con `client_id`, `provider_id`, `model_id`.
-2. Se calcula el costo con el precio minorista vigente: `costo = input_tokens × retail_input + output_tokens × retail_output`.
-3. En una transacción: verificar `balance ≥ costo`, debitar `wallets.balance_usd_cents`, insertar `wallet_transactions` (type=consumption) e `ai_usage_events`. Si el saldo no alcanza, se rechaza sin debitar (RF-06.4) y BOT-002 aplica el fallback.
-4. La recarga (RF-06.2) entra por webhook de la pasarela con `reference` idempotente: la misma recarga nunca se acredita dos veces.
+1. BOT-002 solicita inferencia con `client_id`, `provider_id`, `model_id` y `purpose` (`bot`/`assist`).
+2. Se calcula el costo con el precio minorista vigente: `costo = input_tokens × retail_input + output_tokens × retail_output`; el retail incluye el `spread_percent` del modelo (30% por defecto).
+3. En una transacción: verificar `balance ≥ costo` y `balance ≥ 0`, debitar `wallets.balance_usd_cents`, insertar `wallet_transactions` (type=consumption) e `ai_usage_events`. Si el saldo no alcanza, se rechaza sin debitar (RF-06.4) y BOT-002 aplica el fallback BYOK o pausa.
+4. La recarga (RF-06.2) entra por webhook de **Wompi o Stripe** con `reference` idempotente; se registra `currency`, `amount_local_cents` y `fx_rate`, y se acredita el equivalente en `amount_usd_cents`. La misma recarga nunca se acredita dos veces.
 
-En el modo BYOK del día uno, `ai_usage_events` registra consumo con `cost_usd_cents = 0` para métricas y auditoría.
+En el modo BYOK del día uno, `ai_usage_events` registra consumo con `cost_usd_cents = 0` para métricas y auditoría. La billetera cubre bot y asistente AI (RF-06.6); embeddings y resúmenes quedan para una fase futura.
 
 ### 4.4 Recordatorios y seguimientos
 
@@ -180,13 +180,18 @@ Día uno:
 | Recordatorios | Una secuencia envía sus pasos en orden y en los intervalos configurados; la respuesta del prospecto cancela los pendientes; sin consentimiento comercial no se envía; en WhatsApp fuera de 24 h se exige plantilla |
 | i18n | La UI y las etiquetas del catálogo se muestran en es y en en |
 
-Fundaciones (fase futura):
+Fundaciones (activación por fases):
 
 | Control | Prueba |
 |---|---|
 | Consumo | Consumir 1.000 tokens descuenta el monto exacto del retail; saldo insuficiente rechaza sin debitar |
 | Idempotencia | Dos webhooks con la misma recarga acreditan una sola vez |
 | Fallback | Sin saldo, el bot usa el proveedor BYOK habilitado; sin BYOK, fallback + pausa |
+| Proveedores | Activar/desactivar un proveedor desde backoffice habilita o pausa sus modelos; los modelos se activan por proveedor |
+| Spread | El retail se calcula con 30% por defecto y respeta el override por modelo |
+| Moneda | Una recarga en COP por Wompi y una en USD por Stripe se acreditan en USD con FX y redondeo registrados |
+| Prepago estricto | El saldo nunca queda negativo; sin BYOK el modo Mocter se pausa con aviso |
+| Asistente | El consumo del asistente AI usa `purpose = assist` y la misma billetera del bot |
 
 ## 10. Riesgos
 
@@ -197,7 +202,7 @@ Fundaciones (fase futura):
 | Recordatorio sin consentimiento | Consulta de `prospect_consents` antes de cada paso comercial (CRM-001) |
 | Dependencia de los flujos OAuth de los proveedores de canal | Se mantienen dentro de Chatwoot; Mocter orquesta y refleja; validación por tipo en laboratorio (T-14) |
 | Volatilidad de precios de los proveedores (fase futura) | Repricing periódico auditado; el spread absorbe variación menor; saldo en fiat, no en tokens |
-| Abuso del modo Mocter (fase futura) | Solo dentro de capacidades de la plataforma (RF-05.5); límites por plan opcionales (O-04) |
+| Abuso del modo Mocter (fase futura) | Solo dentro de capacidades de la plataforma (RF-05.5); saldo prepago estricto y fallback BYOK, sin límites por plan |
 | Saldo prepago como pasivo contable | Saldos en fiat registrados en ledger append-only; conciliación con la pasarela |
 | Dependencia de claves de plataforma (fase futura) | Rotación por `key_id`, una activa por proveedor, retiro sin borrar historia |
 | Volumen de `ai_usage_events` | Append-only con índices por `(client_id, created_at)`; partición mensual cuando se mida |
@@ -206,7 +211,7 @@ Fundaciones (fase futura):
 
 | Spec | Punto de contacto |
 |---|---|
-| ADM-001 | Inboxes y canales aprovisionados por ADM-001 (CHW-001); BOT-001 consume el listado y gobierna los admisibles; `plan_limits` gana `ai_tokens_monthly` si se aprueba O-04 (reapertura de T-10) |
+| ADM-001 | Inboxes y canales aprovisionados por ADM-001 (CHW-001); BOT-001 consume el listado y gobierna los admisibles. No se usa `ai_tokens_monthly` en v1; el saldo prepago es el guardrail y no se reabre T-10. |
 | DAT-001 | RF-10.8 (todo en el Router, sin FK entre planos) y RF-10.9 (auditoría) |
 | AUTH-001 | Maquinaria de claves AUTH-D-04 reutilizada |
 | CHW-001 | Tipos de canal y endpoints de aprovisionamiento validados contra Chatwoot 4.19 |

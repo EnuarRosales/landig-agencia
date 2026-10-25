@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | DSN-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.2 (Aprobada — decisiones O-01 a O-04 cerradas) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 
@@ -19,15 +19,16 @@
 
 ## Fase 0 · Decisiones
 
-- [ ] **T-01 · [HUMANO] Cerrar las decisiones abiertas**
-  - Resolver O-01 (catálogo vivo: Storybook o página propia), O-02 (HUD sutil o cyber), O-03 (tipografía por capa del contrato) y O-04 (tema por defecto).
-  - Verificación: cada decisión queda registrada en `requirements.md` §6 con su resultado y fecha.
+- [x] **T-01 · [HUMANO] Cerrar las decisiones abiertas (2026-10-25)**
+  - Cerradas: O-01 (`/design-system` interno, sin Storybook), O-02 (HUD sutil + acentos de marca), O-03 (tipografía solo Top/Enterprise) y O-04 (seguir al sistema, fallback oscuro).
+  - Verificación: las decisiones quedaron registradas en `requirements.md` §6 y en la trazabilidad.
 
 ## Fase 1 · Tokens y tema base
 
 - [ ] **T-02 · Implementar los tokens en tres capas**
   - CSS variables (Tailwind v4 `@theme`) con primitivos, semánticos claro/oscuro y marca; paleta base de §3.1.
-  - Verificación: la paleta base pasa AA en claro y oscuro; cada token documentado en el catálogo.
+  - El tema sigue al sistema y usa oscuro como fallback del primer render, sin flash.
+  - Verificación: la paleta base pasa AA en claro y oscuro; cada token documentado en el catálogo; sin preferencia del sistema se renderiza oscuro.
 
 - [ ] **T-03 · Implementar las fuentes self-hosted**
   - Chakra Petch o Space Grotesk (display), Inter o Geist (texto), IBM Plex Mono (datos); subset es/en; `font-display: swap`.
@@ -35,9 +36,9 @@
 
 ## Fase 2 · Catálogo de componentes
 
-- [ ] **T-04 · Montar el catálogo vivo**
-  - Storybook o página propia con todos los componentes base (RF-07), variantes, tokens y guías de uso.
-  - Verificación: cada componente se exhibe en claro y oscuro con sus estados.
+- [ ] **T-04 · Montar el catálogo vivo en `/design-system`**
+  - Página interna protegida con todos los componentes base (RF-07), variantes, tokens y guías de uso; sin Storybook en v1.
+  - Verificación: cada componente se exhibe en claro y oscuro con sus estados; la ruta no se publica en la landing.
 
 - [ ] **T-05 · Implementar la tabla de datos estándar**
   - `DataTable` con paginación, filtros por columna, ordenamiento, header pegajoso, densidades y degradación a tarjetas en móvil.
@@ -64,8 +65,8 @@
   - Verificación: un valor sin contraste se rechaza sin persistir; el cambio de un inquilino no altera a otros ni el layout.
 
 - [ ] **T-10 · Implementar el contrato de marca blanca por capas**
-  - Capas 1–3 según plan (identidad, paleta, experiencia propia); en capa 3 el espacio del inquilino no muestra marca Mocter.
-  - Verificación: un inquilino sin plan no accede al editor; en capa 3 no queda ningún rastro de Mocter en su espacio.
+  - Capas 1–3 según plan (identidad, paleta, experiencia propia); la tipografía de marca queda solo en Top/Enterprise y en capa 3 el espacio del inquilino no muestra marca Mocter.
+  - Verificación: un inquilino sin plan no accede al editor; White-label no expone tipografía; en capa 3 no queda ningún rastro de Mocter en su espacio.
 
 ## Fase 5 · Accesibilidad y cierre
 

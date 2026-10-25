@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | DSN-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.2 (Aprobada — decisiones O-01 a O-04 cerradas) |
+| Fecha | 2026-10-25 |
 | Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [MIG-001](../mig-001-nextjs-migration/requirements.md) · [AI-001](../ai-001-asistente-ai-configuracion/requirements.md) |
 | Directivas | `.agents/AGENTS.md` (§4.8) · `.agents/rules/rules-for-i18n.md` |
 | Estado | Aprobada |
@@ -36,7 +36,7 @@ Definir el lenguaje visual de Mocter: tokens de diseño, paleta **parametrizable
 | ID | Requisito |
 |---|---|
 | RF-02.1 | Los tokens viven en **tres capas**: primitivos (fijos: espaciado, radios, sombras), semánticos (claro/oscuro) y marca (sobreescribibles). |
-| RF-02.2 | Claro y oscuro cubren todas las vistas; el tema por defecto sigue al sistema (ADM-001 RF-12). |
+| RF-02.2 | Claro y oscuro cubren todas las vistas; el tema por defecto sigue al sistema y usa **oscuro como fallback** del primer render (ADM-001 RF-12). |
 | RF-02.3 | Los cambios de paleta se validan contra **WCAG 2.2 AA** antes de aplicarse (4.5:1 texto, 3:1 UI). |
 
 ### RF-03 · Paleta parametrizable
@@ -92,7 +92,7 @@ Button, Input, Select, Checkbox, Switch, Textarea, Dialog, Drawer, Toast, Tabs, 
 | ID | Requisito |
 |---|---|
 | RF-09.1 | Nivel objetivo: WCAG 2.2 AA — contraste, foco visible, navegación por teclado y `prefers-reduced-motion` respetado en toda animación. |
-| RF-09.2 | El catálogo de componentes es vivo (Storybook u equivalente) con variantes, tokens y guías de uso por componente. |
+| RF-09.2 | El catálogo de componentes es vivo en la ruta interna `/design-system` del monorepo, con variantes, tokens y guías de uso por componente. No se usa Storybook en v1. |
 | RF-09.3 | La UI cumple la directiva de i18n (es/en, Español por defecto) y está preparada estructuralmente para RTL futuro. |
 
 ## 4. Decisiones del borrador
@@ -103,6 +103,10 @@ Button, Input, Select, Checkbox, Switch, Textarea, Dialog, Drawer, Toast, Tabs, 
 | D-02 | Stack confirmado: Tailwind CSS v4 (config CSS-first), Radix/Base UI (accesible), shadcn/ui como base de componentes, lucide para iconos; sin librerías propietarias. | Coherencia con MIG-001 y licencias abiertas. |
 | D-03 | Tokens en tres capas; la paleta parametrizable actúa en la capa de marca, nunca en primitivos. | El inquilino personaliza identidad, nunca rompe estructura ni accesibilidad. |
 | D-04 | El lenguaje visual (neutros zinc, acento cian, HUD hairline, mono para datos, glow sutil) es propio de Mocter; no se usan assets ni identidades de terceros. | Estética profesional de alto contraste sin riesgo de identidad ajena. |
+| D-05 | Catálogo vivo en la ruta interna `/design-system`; sin Storybook en v1. | Menos dependencias y despliegue; el catálogo vive cerca del producto. |
+| D-06 | HUD sutil en la operación diaria y acentos de marca solo en login, estados vacíos y piezas de marca. | Negocio primero, sin ruido ni fatiga visual. |
+| D-07 | Tipografía de marca solo en Top/Enterprise; White-label conserva logo, paleta y dominio. | Mantiene el diferenciador del plan superior y simplifica licencias. |
+| D-08 | Tema por defecto: sigue al sistema, con fallback oscuro en el primer render. | Coherente con ADM-001 RF-12 y con la identidad HUD. |
 
 ## 5. Contrato de marca blanca (asesoría)
 
@@ -119,10 +123,9 @@ La idea de fondo: un inquilino «top» siente la plataforma como suya cuando log
 
 | ID | Pregunta | Impacto |
 |---|---|---|
-| O-01 | ¿Catálogo vivo con Storybook o con una página propia en el monorepo? | Define la herramienta del catálogo (RF-09.2). |
-| O-02 | ¿Intensidad del estilo HUD: sutil (recomendado para negocio) o cyber total? | Define cuánto glow/grid/noise se usa en el admin. |
-| O-03 | ¿La paleta de marca blanca incluye tipografía solo en plan top, o también en white-label? | Ajusta el contrato §5. |
-| O-04 | ¿Tema por defecto claro u oscuro para la SaaS (el sistema sigue al usuario, ADM RF-12)? | Confirmar la apariencia del primer render. |
+No quedan decisiones abiertas en DSN-001.
+
+**Cerradas el 2026-10-25:** O-01 (`/design-system` interno, sin Storybook), O-02 (HUD sutil en admin + acentos en pantallas de marca), O-03 (tipografía solo Top/Enterprise) y O-04 (seguir al sistema, fallback oscuro).
 
 ## 7. Fuera de alcance
 
@@ -143,3 +146,4 @@ Ilustraciones 3D, motion complejo, realidad aumentada, rediseño de la interfaz 
 - L2 (2026-10-23): el usuario solicitó interfaces muy estilizadas de alto contraste con tipografía profesional para el dashboard, tomando como referencia un repositorio externo; por decisión posterior del usuario, esa referencia se retira de la spec.
 - L3 (2026-10-23): **DSN-001 aprobada.** Por decisión del usuario se retira toda referencia externa de la spec; el lenguaje visual queda como propio de Mocter.
 - L4 (2026-10-23): validación de tokens contra el CSS fuente de la referencia visual: se agregan `sidebar`, `input-bg`, `input-border`, `code-bg` y `border-subtle`; layout base 260px/720px con navegación activa de acento; se precisa el uso de la display font (marca, etiquetas HUD y KPI; títulos de página en la tipografía de texto).
+- L5 (2026-10-25): O-01 a O-04 cerradas — catálogo interno `/design-system`, HUD sutil + acentos de marca, tipografía solo Top/Enterprise y tema que sigue al sistema con fallback oscuro.

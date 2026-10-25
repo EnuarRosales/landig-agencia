@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.0 |
+| Versión | 1.1 |
 | Estado | Aprobada |
-| Fecha | 2026-10-21 · actualizado 2026-10-22 |
+| Fecha | 2026-10-21 · actualizado 2026-10-24 |
 | Documentos | `requirements.md` (este) · [`design.md`](design.md) · [`tasks.md`](tasks.md) |
 | Depende de | [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) · [CD-001](../cd-001-despliegue-continuo/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 | Directivas | `.agents/AGENTS.md` |
@@ -30,18 +30,18 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 
 1. Respaldo físico con archiving continuo de WAL hacia almacenamiento de objetos S3 compatible (Cloudflare R2).
 2. Restore completo y recuperación a un punto en el tiempo (PITR) por instancia.
-3. Continuidad: escenarios de pérdida, orden de recuperación, RPO/RTO y dependencias.
-4. Observabilidad: métricas de infraestructura, PostgreSQL, PgBouncer y respaldos, con retención y dashboards.
-5. Alertas: umbrales, severidades, canales, silencios y escalado.
-6. Costos: fórmula, estimación y control del gasto.
-7. Runbooks, glosario y verificación reproducible.
+3. Respaldo y restore de la multimedia de producto en SeaweedFS hacia R2.
+4. Continuidad: escenarios de pérdida, orden de recuperación, RPO/RTO y dependencias.
+5. Observabilidad: métricas de infraestructura, PostgreSQL, PgBouncer y respaldos, con retención y dashboards.
+6. Alertas: umbrales, severidades, canales, silencios y escalado.
+7. Costos: fórmula, estimación y control del gasto.
+8. Runbooks, glosario y verificación reproducible.
 
 ### Excluye
 
 - Código de aplicación, migraciones y cambios de esquema.
 - Alta disponibilidad, réplica en caliente y despliegue sin caída (blue/green).
 - Kubernetes y CloudNativePG, diferidos por DAT-001 D-12.
-- Respaldo del almacenamiento de objetos de media (SeaweedFS), que pertenece a la especificación de archivos.
 - Respaldo de N8N, fuera del alcance del programa.
 - Análisis forense y respuesta a incidentes de seguridad.
 
@@ -49,7 +49,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 
 | Actor | Rol |
 |---|---|
-| Operador único | Ejecuta respaldos, restore y atiende alertas. Es el dueño del producto mientras no exista un segundo respondedor |
+| Operador único | Ejecuta respaldos, restore y atiende alertas. Es el dueño del producto; no hay segundo respondedor en v1 |
 | Dueño del producto | Aprueba presupuesto, canales de alerta y ventana de la prueba trimestral |
 | Agente LLM | Ejecuta runbooks y verifica resultados siguiendo esta especificación; no decide por su cuenta (§4, RF-08.4) |
 | Cloudflare R2 | Destino offsite de los respaldos |
@@ -70,6 +70,8 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-01.7 | La verificación semanal del repositorio (`verify`) comprueba checksums e integridad sin restaurar. |
 | RF-01.8 | Si R2 no está disponible, la instancia sigue operando y acumula WAL localmente con un límite declarado; al superarlo, alerta crítica. |
 | RF-01.9 | El `pg_dump` previo al despliegue de CD-001 se conserva como respaldo de migración, no como estrategia de continuidad (D-10). |
+| RF-01.10 | SeaweedFS se respalda a R2 con snapshot/versionado y restore probado; el procedimiento y la retención se documentan en OPS-001 y no dependen de ADM-001. |
+| RF-01.11 | **No se exige WORM en v1.** R2 usa versionado, cifrado en cliente y credenciales de alcance mínimo; WORM se evalúa si aparece un requisito de cumplimiento. |
 
 ### RF-02 · Restore
 
@@ -112,7 +114,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-05.2 | Toda alerta enlaza el runbook que la resuelve. |
 | RF-05.3 | Los canales son correo electrónico y mensajería instantánea. Lo crítico requiere notificación push. |
 | RF-05.4 | Hay deduplicación, agrupación y silencios programados para ventanas de mantenimiento. |
-| RF-05.5 | Con operador único, una alerta crítica no acusada en 30 minutos se reenvía. El escalado a una segunda persona es una decisión abierta (O-02). |
+| RF-05.5 | Con operador único, una alerta crítica no acusada en 30 minutos se reenvía. **No hay segundo respondedor en v1**; el riesgo se documenta y se revisa cuando el SLA lo exija. |
 | RF-05.6 | Un respaldo fallido o ausente alerta en ≤ 5 minutos. |
 
 ### RF-06 · Seguridad
@@ -130,7 +132,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | ID | Requisito |
 |---|---|
 | RF-07.1 | Existe una fórmula de costo mensual: almacenamiento (GB-mes) más operaciones de clase A y B, con el egress de R2 en cero. |
-| RF-07.2 | Se define un presupuesto mensual y una alerta al 80 % del consumo. |
+| RF-07.2 | El presupuesto mensual máximo es **≤ USD 50/mes** para R2 + observabilidad; se alerta al 80 % del consumo. |
 | RF-07.3 | El costo se revisa en cada prueba trimestral junto con el tamaño real de los respaldos. |
 
 ### RF-08 · Documentación para humanos y para LLM
@@ -156,6 +158,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 9. Ningún secreto de R2 ni la passphrase aparecen en el repositorio.
 10. Un operador sin contexto previo puede ejecutar el runbook de restore siguiendo solo la spec.
 11. La indisponibilidad del Redis del plano de control se detecta y no degrada a sesiones locales; el auth usa Postgres como fallback y, si tampoco responde, falla cerrado.
+12. SeaweedFS tiene respaldo en R2 y restore probado; la pérdida del VPS no deja la multimedia de los inquilinos sin recuperación.
 
 ## 6. Decisiones
 
@@ -168,25 +171,25 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | D-05 | Un repositorio y una *stanza* por instancia. | Aísla el fallo, permite retención distinta y evita mezclar el catálogo global con las celdas. |
 | D-06 | Observabilidad off-host con Grafana Cloud. | Si el VPS cae, el monitoreo local cae con él. No hay VPS alterno disponible (CD-001, staging diferido). |
 | D-07 | Alertas por correo y mensajería, con push para lo crítico. | El operador es una sola persona y no hay guardia 24/7 contratada. |
-| D-08 | Operador único con guardia *best-effort*. | Refleja la realidad actual; el escalado a un segundo respondedor queda abierto (O-02). |
+| D-08 | Operador único con guardia *best-effort*. | Refleja la realidad actual; no hay segundo respondedor en v1 y el riesgo se revisa cuando el SLA lo exija. |
 | D-09 | Prueba de restore trimestral con evidencia. | Un respaldo no probado no es un respaldo; el ensayo mide el RTO real. |
 | D-10 | El `pg_dump` de `deploy.sh` se conserva como respaldo de migración. | Protege el despliegue, pero no cumple RPO/RTO ni es offsite. No se elimina para no romper CD-001. |
+| D-11 | Presupuesto ≤ USD 50/mes; full semanal, diff diario, logs de 14 días. | Mantiene el costo bajo y cubre el RPO con WAL continuo. |
+| D-12 | Sin WORM en v1; R2 con versionado y cifrado. | Cubre borrado accidental sin el costo y la complejidad de object lock. |
+| D-13 | Operador único con guardia best-effort; sin segundo respondedor en v1. | Refleja la realidad actual; el riesgo se revisa cuando el SLA lo exija. |
+| D-14 | El respaldo de SeaweedFS entra en OPS-001. | Centraliza backup/restore y evita que la multimedia quede sin protección. |
 
 ## 7. Decisiones abiertas
 
 | ID | Pregunta | Impacto |
 |---|---|---|
-| O-01 | ¿Cuál es el presupuesto mensual máximo para R2 y monitoreo? | Define retención, frecuencia de full y si se contrata un plan pago de observabilidad. |
-| O-02 | ¿Hay un segundo respondedor o la guardia es solo del dueño del producto? | Cambia el escalado de RF-05.5 y el RTO real fuera del horario laboral. |
-| O-03 | ¿Se exige inmutabilidad tipo WORM además del versionado? | Si se exige, hay que evaluar un destino adicional con object lock. R2 ofrece versionado, no WORM. |
-| O-04 | ¿La frecuencia de full es semanal o diaria? | Más full mejora el RTO y aumenta el costo y la ventana de I/O. |
-| O-05 | ¿Qué retención de logs se necesita: 14, 30 o 90 días? | Afecta el plan y el costo de Grafana Cloud. |
-| O-06 | ¿El respaldo de SeaweedFS entra en esta spec o en la de archivos? | Define el alcance del respaldo de multimedia; hoy queda fuera. |
+No quedan decisiones abiertas en OPS-001.
 
-Aprobada el 2026-10-22 con estas seis decisiones diferidas a la implementación; se ajustan antes de producción.
+**Cerradas el 2026-10-24:** O-01 (presupuesto ≤ USD 50/mes), O-02 (operador único best-effort, sin segundo respondedor), O-03 (sin WORM; versionado y cifrado), O-04 (full semanal + diff diario), O-05 (logs de 14 días) y O-06 (SeaweedFS entra en OPS-001).
 
 ## 8. Trazabilidad
 
 - 2026-10-21: se crea OPS-001 por contradicción entre DAT-001 §9.1 y el alcance excluido de CD-001. Decisiones D-01 (R2) y D-02 (RPO/RTO) aprobadas por el dueño del producto; alcance ampliado a observabilidad y alertas por la misma exclusión de CD-001.
 - 2026-10-22: **OPS-001 aprobada** por el dueño del producto. Las decisiones O-01 a O-06 quedan diferidas a la implementación y las tareas de laboratorio T-02, T-03, T-08 y T-18 se ejecutan antes de producción. El planeamiento global del SDD queda cerrado; la implementación y RDD requieren autorización explícita aparte.
 - 2026-10-22: alineación con AUTH-D-06; Redis es dependencia de runtime con fallback a Postgres y fallo cerrado. Se agrega guardia de backup cada 5 minutos, alerta de fallo/ausencia, alerta de presupuesto al 80 % y se corrige la retención de WAL para que cubra el full más antiguo. La passphrase de cifrado queda en un archivo separado de las credenciales R2 y se inyecta con el wrapper `pgbackrest-secure`.
+- 2026-10-24: O-01 a O-06 cerradas — presupuesto ≤ USD 50/mes, operador único best-effort, sin WORM, full semanal + diff diario, logs 14 días y SeaweedFS incluido en OPS-001. Se agregan RF-01.10, RF-01.11 y el criterio 12.

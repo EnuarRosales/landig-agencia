@@ -3,7 +3,7 @@
 | Atributo | Valor |
 |---|---|
 | ID | BILL-001 |
-| Versión | 1.0 (Aprobada) |
+| Versión | 1.1 (Aprobada — integración de créditos de referidos) |
 | Fecha | 2026-10-24 |
 | Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/design.md) · [REP-001](../rep-001-informes-dashboards/design.md) |
 | Estado | Aprobada |
@@ -81,7 +81,9 @@ flowchart TD
 | `status` | `varchar(32)` | `draft`, `issued`, `paid`, `past_due`, `void` |
 | `subtotal_cents` | `bigint` | Monto neto en centavos |
 | `tax_cents` | `bigint` | 0 en v1 (sin retenciones ni IVA) |
-| `total_cents` | `bigint` | Monto total a pagar |
+| `credit_cents` | `bigint` | Créditos de referidos aplicados; default 0 |
+| `applied_referral_credit_id` | `uuid` | FK nullable a `referral_rewards.id`; crédito redimido en esta factura |
+| `total_cents` | `bigint` | `subtotal_cents + tax_cents - credit_cents`; nunca negativo |
 | `currency` | `varchar(3)` | `COP` o `USD` |
 | `due_at` | `timestamptz` | Fecha límite de pago |
 | `paid_at` | `timestamptz` | Fecha de pago efectivo |
@@ -130,6 +132,13 @@ flowchart TD
 3. **Transición:**
    En el evento `payment_intent.succeeded`, se actualiza la factura a `paid`, se asocia el comprobante y se reactiva el servicio.
 
+### 4.3 Aplicación de créditos de referidos
+1. Al emitir la factura, se consultan en REF-001 los créditos `available`/`partially_redeemed` del `client_id`, ordenados por `expires_at` ascendente.
+2. Se imputan hasta cubrir `subtotal_cents + tax_cents`; se guarda `credit_cents` y el `applied_referral_credit_id` del último crédito aplicado (si hay varios, se registra cada aplicación en REF-001).
+3. Cada aplicación descuenta `remaining_cents` en REF-001. Si llega a cero, el crédito pasa a `redeemed`; si queda saldo, pasa a `partially_redeemed` hasta `expires_at`.
+4. Si `total_cents` queda en cero, la factura se marca `pagada` sin llamar a la pasarela y se emite el comprobante con la referencia del crédito.
+5. La aplicación es idempotente: reintentos de emisión no consumen dos veces el mismo crédito.
+
 ---
 
 ## 5. Módulo de Exportación en Excel y PDF
@@ -156,6 +165,8 @@ flowchart TD
 | Firma Wompi | Payload con checksum inválido retorna HTTP 401; checksum válido procesa el cobro. |
 | Firma Stripe | Webhook sin firma o con secreto erróneo es rechazado con HTTP 400. |
 | Idempotencia | Reenvío del mismo webhook 5 veces produce exactamente 1 pago y 1 comprobante. |
-| Sin Impuestos | La factura generada tiene `tax_cents = 0` y `total_cents = subtotal_cents`. |
+| Sin Impuestos | La factura generada tiene `tax_cents = 0` y `total_cents = subtotal_cents - credit_cents`. |
+| Crédito de referidos | Un crédito de 50,000 sobre una factura de 150,000 deja `total_cents = 100,000` y el crédito pasa a `redeemed`. |
+| Crédito mayor al total | Si el crédito supera el total, `total_cents = 0`, la factura queda `pagada` sin pasarela y el remanente sigue `partially_redeemed`. |
 | Exportación Excel | Endpoint `/api/billing/export?format=xlsx&period=monthly` descarga un archivo `.xlsx` válido y legible. |
 | Exportación PDF | Endpoint `/api/billing/export?format=pdf&period=monthly` descarga un documento `.pdf` con tabla estructurada. |

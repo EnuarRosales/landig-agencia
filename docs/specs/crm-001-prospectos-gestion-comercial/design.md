@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | CRM-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.2 (Aprobada — decisiones O-01 a O-03 cerradas) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/design.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) |
 | Estado | Aprobada |
 
@@ -58,11 +58,12 @@ Ambas tablas llevan las columnas de auditoría de la directiva (RF-10.9) y viven
 |---|---|
 | `id` | PK |
 | `client_id` + `prospect_id` | RLS y FK local |
-| `purpose` | `data_treatment`, `commercial_comms` (O-01) |
-| `policy_version` | Versión del aviso de privacidad aceptado |
+| `purpose` | `data_treatment` (incluye Chatwoot como encargado) o `commercial_comms` |
+| `policy_version` | Versión exacta del aviso de privacidad aceptado |
 | `status` | `granted` / `revoked` |
 | `granted_at` · `revoked_at` | Fechas del otorgamiento y de la revocación |
-| `channel` · `evidence_ref` | Canal de captura y referencia de la evidencia (mensaje interactivo o formulario) |
+| `channel` | `whatsapp_buttons`, `web_form`, `manual` o `import` |
+| `evidence_ref` | `message_id` de Chatwoot, id de envío del formulario o referencia manual |
 | Auditoría | `created_by` registra quién capturó el consentimiento (agente o bot) |
 
 Reglas:
@@ -70,6 +71,23 @@ Reglas:
 - Append-only: cada otorgamiento es una fila nueva; la revocación marca `revoked_at` en la fila vigente. Las consultas usan la fila vigente por propósito.
 - Sin consentimiento de `commercial_comms`, el bot y el agente no envían comunicación comercial por ese canal (RF-03.2); la atención transaccional en curso no se interrumpe.
 - La supresión (RF-03.5/D-04) anonimiza `prospects` y conserva `prospect_consents` sin dato personal identificable, para trazabilidad ante la autoridad.
+- El aviso se captura con botones interactivos + enlace; `channel = whatsapp_buttons` y `evidence_ref` guarda el `message_id` de Chatwoot. La captura se valida en laboratorio contra 4.19 (T-08).
+
+### 3.3 `privacy_notices`
+
+| Atributo | Regla |
+|---|---|
+| `id` | PK |
+| `client_id` | Nullable: `null` = template de plataforma; UUID = aviso propio del inquilino |
+| `version` | Versión semántica o consecutiva, única por `(client_id, version)` |
+| `locale` | `es` / `en` |
+| `body_markdown` | Texto del aviso, editable por el inquilino |
+| `status` | `draft` / `in_review` / `published` / `retired` |
+| `reviewed_by` · `reviewed_at` | Revisión legal antes de publicar |
+| `published_at` | Fecha de publicación |
+| Auditoría | `created_by`, `updated_by` (DAT-001 RF-10.9) |
+
+Reglas: el template de plataforma nace en `draft`; el inquilino lo copia/edita, pasa por `in_review` y solo se usa cuando está `published`. Un cambio de aviso crea una versión nueva; los consentimientos viejos conservan su `policy_version`.
 
 ## 4. Calidad de datos (medible)
 
@@ -106,6 +124,9 @@ La UI de prospectos y consentimientos cumple la directiva de i18n (es/en, Españ
 | Ingesta | Dos webhooks con el mismo `chatwoot_contact_id` crean un solo prospecto |
 | Calidad | Un email inválido o un teléfono no E.164 se rechaza con mensaje; un email duplicado por inquilino no crea un prospecto nuevo |
 | Consentimiento | Sin `commercial_comms` vigente, la acción comercial se bloquea; la revocación es inmediata y fechada |
+| Dos propósitos | `data_treatment` cubre a Chatwoot como encargado; no se exige un tercer consentimiento separado |
+| Aviso versionado | El template editable pasa por `in_review` y solo se usa `published`; el consentimiento referencia la versión exacta |
+| Captura WhatsApp | Los botones interactivos + enlace registran `message_id`, fecha y versión; sin aceptación explícita no hay consentimiento |
 | Supresión | Tras suprimir, los campos personales quedan anonimizados y el consentimiento conserva trazabilidad |
 | Chatwoot | Sincronización validada en laboratorio contra 4.19 |
 

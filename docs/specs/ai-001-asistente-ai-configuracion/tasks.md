@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | AI-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.2 (Aprobada — decisiones O-01 y O-02 cerradas) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 
@@ -36,16 +36,17 @@
 ## Fase 2 · Flujo «Mejorar con AI»
 
 - [ ] **T-04 · Implementar el endpoint del asistente**
-  - Ensamblado `master_prompt` + borrador + `output_rules` con el locale; inferencia por BYOK (BOT-001); sin proveedor, 409 con aviso.
-  - Verificación: la sugerencia llega en el idioma del inquilino; sin BYOK configurado el endpoint rechaza; el consumo queda en `ai_usage_events` con `purpose = 'assist'`.
+  - Ensamblado `master_prompt` + borrador + `output_rules` con el locale; inferencia por BYOK (BOT-001) o por la billetera Mocter cuando esté activa; sin proveedor, 409 con aviso.
+  - El modelo por defecto es propio del asistente, configurable por plataforma y distinto del modelo del bot.
+  - Verificación: la sugerencia llega en el idioma del inquilino; sin BYOK ni saldo el endpoint rechaza; el consumo queda en `ai_usage_events` con `purpose = 'assist'`.
 
 - [ ] **T-05 · Implementar la UI del botón**
   - «Mejorar con AI» en cada campo asistido con `input_hint`; comparación borrador/sugerencia; editar, aceptar o descartar.
   - Verificación: la sugerencia no se guarda sin aceptar; al aceptar, el campo pasa sus validaciones normales y se registra `source = ai_suggested` en `audit_log`.
 
 - [ ] **T-06 · Rate limiting y estados**
-  - Límite por inquilino para el botón; aviso cuando no hay proveedor configurado.
-  - Verificación: pasando el límite, el botón responde con `Retry-After`; el aviso explica cómo habilitar BYOK.
+  - Límite por inquilino para el botón; aviso cuando no hay proveedor ni saldo. No hay límite mensual separado: BYOK es libre y Mocter consume la billetera del bot.
+  - Verificación: pasando el límite, el botón responde con `Retry-After`; el aviso explica cómo habilitar BYOK o recargar.
 
 ## Fase 3 · Calidad y cierre
 
@@ -53,9 +54,9 @@
   - Tasa de aceptación por campo y batería de ejemplos de evaluación en cada cambio de prompt o modelo.
   - Verificación: un cambio de prompt se evalúa antes de activarse; la métrica de aceptación está en el panel de plataforma.
 
-- [ ] **T-08 · [LAB] Evaluar los prompts maestros con los modelos del catálogo**
-  - Correr la batería de ejemplos contra los presets recomendados y registrar calidad por modelo.
-  - Verificación: cada campo tiene un resultado por modelo; el modelo por defecto del asistente queda justificado.
+- [ ] **T-08 · [LAB] Evaluar los prompts maestros y fijar el modelo del asistente**
+  - Correr la batería de ejemplos contra los modelos candidatos y registrar calidad/costo por modelo.
+  - Verificación: cada campo tiene un resultado por modelo; el modelo propio por defecto del asistente queda justificado y configurable por plataforma.
 
 - [ ] **T-09 · Verificar los criterios de aceptación**
   - Recorrer `requirements.md` RF-01 a RF-05 y registrar evidencia por requisito.

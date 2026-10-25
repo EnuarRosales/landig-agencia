@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | CRM-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.2 (Aprobada — decisiones O-01 a O-03 cerradas) |
+| Fecha | 2026-10-25 |
 | Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) · [BOT-001](../bot-001-atencion-automatizada-llm/requirements.md) |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` · `.agents/rules/rules-for-i18n.md` |
 | Estado | Aprobada |
@@ -44,11 +44,14 @@ Definir el maestro de prospectos de cada inquilino —la primera etapa del ciclo
 
 | ID | Requisito |
 |---|---|
-| RF-03.1 | Todo prospecto con datos personales tiene un registro de consentimiento (`prospect_consents`): propósito, versión de la política aceptada, canal y evidencia (interacción o formulario), fecha de otorgamiento y de revocación. |
+| RF-03.1 | Todo prospecto con datos personales tiene un registro de consentimiento (`prospect_consents`) con **dos propósitos**: `data_treatment` (incluye a Chatwoot como encargado, declarado en el aviso) y `commercial_comms`. Guarda versión de la política, canal, evidencia, fecha de otorgamiento y de revocación. |
 | RF-03.2 | El envío de comunicaciones comerciales exige consentimiento previo, expreso e informado; sin él no se contacta al prospecto por esa vía. |
 | RF-03.3 | El prospecto puede revocar en cualquier momento; la revocación es inmediata y queda registrada con fecha y canal. |
 | RF-03.4 | Se garantizan los derechos del titular: acceso, corrección, supresión y revocación, con procedimiento documentado y auditado. |
 | RF-03.5 | La supresión se implementa como baja lógica con anonimización del registro (conserva correlación de negocio sin dato personal). |
+| RF-03.6 | **Aviso de privacidad:** Mocter provee un template versionado en es/en, editable por el inquilino y sujeto a revisión legal antes de publicar. Cada `prospect_consents` referencia la versión exacta aceptada. |
+| RF-03.7 | **Captura inicial por WhatsApp:** botones interactivos con aceptación explícita + enlace al aviso completo. Se registra `channel = whatsapp_buttons`, el `message_id` de Chatwoot, la fecha y la versión del aviso. |
+| RF-03.8 | **Chatwoot es encargado, no destinatario:** la proyección de contactos se cubre con `data_treatment` y el aviso; no se exige un tercer consentimiento separado. |
 
 ### RF-04 · Integración con Chatwoot y el bot
 
@@ -74,14 +77,17 @@ Definir el maestro de prospectos de cada inquilino —la primera etapa del ciclo
 | D-02 | La ingesta de Chatwoot es «Chatwoot propone, Mocter decide»: webhook con upsert idempotente por `chatwoot_contact_id`. | Un contacto que llega por WhatsApp nace como prospecto sin acción manual del inquilino. |
 | D-03 | El consentimiento es un registro aparte (`prospect_consents`), no un booleano en el prospecto: guarda versión de política, canal, evidencia y revocación. | Auditable ante la SIC; un cambio de política se distingue de un otorgamiento viejo. |
 | D-04 | La supresión es lógica con anonimización (nombre, documento, email y teléfonos se reemplazan por tokens irreversibles); la correlación de negocio se conserva. | Cumple el derecho de supresión sin romper métricas ni conversaciones históricas. |
+| D-05 | **Dos propósitos:** `data_treatment` (incluye Chatwoot como encargado) y `commercial_comms`. | Menos fricción y una base legal clara; no se crea un tercer consentimiento para Chatwoot. |
+| D-06 | **Aviso de privacidad:** template de plataforma editable, versionado en es/en y con revisión legal antes de publicar. | Escala con el inquilino sin perder control de cumplimiento. |
+| D-07 | **Captura por WhatsApp:** botones interactivos + enlace al aviso; se registran mensaje, fecha y versión. | Baja fricción con evidencia razonable; se valida en Chatwoot 4.19. |
 
 ## 5. Decisiones abiertas
 
 | ID | Pregunta | Impacto |
 |---|---|---|
-| O-01 | ¿Qué propósitos de consentimiento se distinguen (tratamiento de datos, comunicaciones comerciales, transferencia a Chatwoot)? | Define las filas de `prospect_consents` y los textos del aviso de privacidad. |
-| O-02 | ¿La versión del aviso de privacidad la redacta el equipo legal o un template de la plataforma? | El inquilino puede necesitar su propio aviso; hoy se propone el template de plataforma. |
-| O-03 | ¿La captura inicial de consentimiento por WhatsApp se hace con mensaje interactivo de Chatwoot o con enlace a formulario? | Define la evidencia del consentimiento en el canal más usado. |
+No quedan decisiones abiertas en CRM-001.
+
+**Cerradas el 2026-10-25:** O-01 (dos propósitos: tratamiento + comercial; Chatwoot como encargado), O-02 (template de plataforma editable con revisión legal) y O-03 (botones interactivos + enlace al aviso).
 
 ## 6. Fuera de alcance
 
@@ -102,3 +108,4 @@ La facturación y cobranza a clientes finales, los pipelines de venta avanzados 
 - L1 (2026-10-23): «me queda la duda la tabla equivalente pero para guardar los prospectos del inquilino esta contemplada?»
 - L2 (2026-10-23): «Claro es totalmente necesaria, no me queda claro es la fuente de verdad seria Chatwoot o mocter, por lo que indicas el tema del consentimiento de Habeas Data, esto de habeas data tambien debe aplicarse al cliente de la SaaS es decir a los usuarios del inquilino.»
 - L3 (2026-10-23): **CRM-001 aprobada.** Quedan abiertas O-01 (propósitos de consentimiento), O-02 (aviso de privacidad: template de plataforma o del inquilino) y O-03 (captura inicial por WhatsApp) para resolver en la fase 0 de implementación.
+- L4 (2026-10-25): O-01 a O-03 cerradas — dos propósitos (`data_treatment` + `commercial_comms`, Chatwoot como encargado), template de aviso editable con revisión legal, y captura por botones interactivos + enlace al aviso con evidencia de mensaje/fecha/versión.

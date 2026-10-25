@@ -3,7 +3,7 @@
 | Atributo | Valor |
 |---|---|
 | ID | BILL-001 |
-| Versión | 1.0 (Aprobada) |
+| Versión | 1.1 (Aprobada — integración de créditos de referidos) |
 | Fecha | 2026-10-24 |
 | Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [REP-001](../rep-001-informes-dashboards/requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` · `.agents/rules/rules-for-i18n.md` |
@@ -11,7 +11,7 @@
 
 ## 1. Propósito
 
-Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pagos dual (**Wompi** para Colombia y **Stripe** para pagos internacionales), cobros recurrentes, dunning, conciliación, captura de datos fiscales para facturación electrónica futura (bajo estándar de **Matías API**) y emisión de comprobantes de pago internos descargables en Excel y PDF tanto para el inquilino como para la SaaS.
+Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pagos dual (**Wompi** para Colombia y **Stripe** para pagos internacionales), cobros recurrentes, dunning, conciliación, aplicación de **créditos de referidos** en factura, captura de datos fiscales para facturación electrónica futura (bajo estándar de **Matías API**) y emisión de comprobantes de pago internos descargables en Excel y PDF tanto para el inquilino como para la SaaS.
 
 ## 2. Requisitos de origen (decisión del usuario, verbatim)
 
@@ -43,9 +43,10 @@ Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pag
 | ID | Requisito |
 |---|---|
 | RF-03.1 | Cada ciclo genera una factura interna en la entidad `invoices` con la máquina de estados: `borrador` → `emitida` → `pagada` \| `vencida` \| `anulada`. |
-| RF-03.2 | En esta fase inicial **no se aplican retenciones ni cobros de IVA/impuestos**; el subtotal es igual al total. |
+| RF-03.2 | En esta fase inicial **no se aplican retenciones ni cobros de IVA/impuestos**: `tax_cents = 0`. El total es `subtotal_cents - credit_cents` y nunca puede ser negativo. |
 | RF-03.3 | Un pago fallido dispara reintentos automáticos (días 3, 5 y 7); durante este lapso la suscripción pasa a `past_due`. Agotados los reintentos, el inquilino pasa a `suspended` (afectando `clients.lifecycle_status`). |
 | RF-03.4 | Un pago regularizado devuelve la suscripción y el inquilino al estado `active` de forma inmediata. |
+| RF-03.5 | **Créditos de referidos:** al emitir una factura, BILL-001 consulta los créditos `available`/`partially_redeemed` de REF-001 del inquilino, los imputa por orden de vencimiento y reduce `total_cents`. Registra `credit_cents` y `applied_referral_credit_id`; descuenta `remaining_cents` en REF-001: si llega a cero pasa a `redeemed`, si queda saldo pasa a `partially_redeemed`. Si el total queda en cero, la factura se marca `pagada` sin llamar a la pasarela. |
 
 ### RF-04 · Captura de datos fiscales (Matías API) y comprobantes de pago
 | ID | Requisito |
@@ -107,6 +108,12 @@ Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pag
 - **Entonces** la factura pasa a `vencida`, la suscripción a `past_due`, se agenda el segundo intento a los 3 días y se envía un correo de alerta al inquilino;
 - **Y si** tras el intento del día 7 no hay pago, la suscripción pasa a `suspended` y el inquilino se suspende en la plataforma.
 
+### CA-BILL-06 · Aplicación de créditos de referidos
+- **Dado** un inquilino con un crédito `available` de 50,000 COP y una factura emitida de 150,000 COP,
+- **Cuando** BILL-001 genera la factura,
+- **Entonces** registra `credit_cents = 50,000`, `total_cents = 100,000` y descuenta `remaining_cents` en REF-001 hasta cero, dejando el crédito `redeemed`;
+- **Y si** el crédito supera el total de la factura, el total queda en cero, la factura se marca `pagada` sin pasarela y el remanente queda `partially_redeemed` hasta su vencimiento.
+
 ---
 
 ## 6. Decisiones del documento
@@ -119,6 +126,7 @@ Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pag
 | D-04 | Emisión de comprobantes internos descargables en Excel y PDF y enviados por email. | Transparencia contable inmediata para inquilino y SaaS. |
 | D-05 | Sin retenciones ni cobro de impuestos en v1. | Modelo financiero simplificado para el lanzamiento. |
 | D-06 | Máquina de estados: `borrador` → `emitida` → `pagada` \| `vencida` \| `anulada`. | Consistencia de estados en todo el ciclo de vida de cobro. |
+| D-07 | Los créditos de referidos se aplican a la próxima factura, por orden de vencimiento y sin reembolso en efectivo. | Reduce el total a pagar y evita payout; el remanente se conserva hasta vencer. |
 
 ## 7. Decisiones abiertas
 

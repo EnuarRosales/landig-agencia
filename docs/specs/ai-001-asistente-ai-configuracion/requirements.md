@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | AI-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.2 (Aprobada — decisiones O-01 y O-02 cerradas) |
+| Fecha | 2026-10-25 |
 | Depende de | [BOT-001](../bot-001-atencion-automatizada-llm/requirements.md) · [ADM-001](../adm-001-mocter-admin/requirements.md) · [CRM-001](../crm-001-prospectos-gestion-comercial/requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) |
 | Directivas | `.agents/AGENTS.md` (§4.7) · `.agents/rules/rules-for-database-postgres-drizzle.md` · `.agents/rules/rules-for-i18n.md` |
 | Estado | Aprobada |
@@ -56,6 +56,8 @@ Todo atributo de texto que el inquilino deba llenar y que admita asistencia tien
 | RF-04.2 | Cuando la propuesta de agregador madure (BOT-001 D-07), el asistente también usa la inferencia Mocter con el saldo de la billetera; ambos modos conviven. |
 | RF-04.3 | El consumo se registra en `ai_usage_events` (BOT-001) con propósito `assist` para métricas y, en modo Mocter, costo. |
 | RF-04.4 | Se aplica rate limiting por inquilino para el asistente. |
+| RF-04.5 | El asistente usa un **modelo propio por defecto**, distinto del modelo del bot, configurable por `platform_owner`/`platform_admin` desde el catálogo. |
+| RF-04.6 | **No hay límite mensual separado:** en BYOK el inquilino paga su proveedor; en modo Mocter el asistente consume la misma billetera del bot. No se usa `ai_tokens_monthly`. |
 
 ### RF-05 · Calidad, seguridad y auditoría
 
@@ -75,15 +77,16 @@ Todo atributo de texto que el inquilino deba llenar y que admita asistencia tien
 | D-03 | Día uno = BYOK; sin proveedor, el botón se deshabilita. | El asistente no depende de que la propuesta de inferencia Mocter madure. |
 | D-04 | La biblioteca es versionada y con ejemplos de evaluación por campo. | Un cambio de prompt o modelo se puede medir antes y después. |
 | D-05 | La asistencia AI es **transversal a todos los planes**; no se gatea por plan. | Todos los inquilinos acceden a «Mejorar con AI»; el costo se controla con rate limit, no con el plan. |
+| D-06 | **Modelo propio del asistente por defecto**, configurable por la plataforma y distinto del modelo del bot. | Equilibra costo y calidad para tareas de redacción; no ata el asistente al modelo de atención. |
+| D-07 | **Sin límite mensual separado:** BYOK es libre (paga el inquilino) y Mocter consume la billetera compartida del bot. | Un solo guardrail de costo y sin reabrir `plan_limits`. |
 
 ## 5. Decisiones abiertas
 
 | ID | Pregunta | Impacto |
 |---|---|---|
-| O-01 | ¿El asistente usa el mismo modelo del bot o un modelo propio por defecto (p. ej. el más barato del preset)? | Define costo y calidad; propuesta: modelo propio por defecto, configurable por plataforma. |
-| O-02 | ¿El asistente tiene límite de uso mensual por inquilino o es libre? | Define guardrails de costo; propuesta: libre en BYOK, sujeto a la billetera en modo Mocter. |
+No quedan decisiones abiertas en AI-001.
 
-O-03 quedó resuelta por **D-05**: la asistencia AI es transversal a todos los planes.
+**Cerradas el 2026-10-25:** O-01 (modelo propio por defecto, configurable por plataforma), O-02 (sin límite mensual separado; BYOK libre y Mocter con la billetera del bot) y O-03 (transversal a todos los planes, D-05).
 
 ## 6. Fuera de alcance
 
@@ -104,3 +107,4 @@ El motor de inferencia y su orquestación (BOT-002). La generación automática 
 - L1 (2026-10-23): «Regla que no hemos tratado, todos los atributos que deba llenar el inquilino y que puedan ser asistido por AI deben tener dicha capacidad para ayudar a nuevos usuarios a configurar su entorno en el menor tiempo posible pero con la mayor calidad tambien. Por ello a nivel de la SaaS debe existir una zona en la que se generen prompt especializados que ayuden a ayudar a los inquilinos a configurar esas partes del sistema por ejemplo cuando esta configurando el objetivo del bot, el inquilino con inferencia propia de mocter o con su propio proveedor de inferencia si ya configuro el proveedor de inferencia escribe algo de contexto y luego da clic en mejorar con AI el sistema toma ese texto y lo une con el prompt maestro del sistema diseñado exactamente para ese campo y lo mejora.»
 - L2 (2026-10-23): **AI-001 aprobada.** Quedan abiertas O-01 (modelo por defecto del asistente), O-02 (límite de uso) y O-03 (transversal o por plan) para resolver en la fase 0 de implementación.
 - L3 (2026-10-24): **O-03 resuelta:** la asistencia AI es transversal a todos los planes (D-05); no se gatea por plan.
+- L4 (2026-10-25): O-01 y O-02 cerradas — modelo propio por defecto configurable por la plataforma; sin límite mensual separado (BYOK libre, Mocter con la billetera compartida del bot).

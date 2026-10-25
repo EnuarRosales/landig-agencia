@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | BOT-001 |
-| Versión | 0.2 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.3 (Aprobada — decisiones O-01 a O-07 cerradas) |
+| Fecha | 2026-10-24 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 
@@ -31,12 +31,12 @@
   - Verificación: `drizzle-kit check` pasa; la migración aplica desde cero; `bot_defaults` admite una sola fila.
 
 - [ ] **T-03 · Cargar el catálogo con recomendaciones**
-  - Seed versionado con etiquetas JSONB `{es,en}` para modelos, tonos y presets; precios de costo y retail como fundaciones.
-  - Verificación: los 6 proveedores y sus modelos se listan con recomendación; un modelo sin retail queda marcado solo-BYOK.
+  - Seed versionado con etiquetas JSONB `{es,en}` para modelos, tonos y presets; precios de costo vigentes y `spread_percent` por modelo (30% por defecto).
+  - Verificación: los 6 proveedores y sus modelos se listan con recomendación; el retail se calcula desde costo + spread; un modelo sin retail queda marcado solo-BYOK.
 
-- [ ] **T-04 · Crear permisos del catálogo**
-  - `platform_admin`/`platform_owner` escriben; los inquilinos solo leen la whitelist activa.
-  - Verificación: un inquilino no puede crear ni modificar proveedores, modelos, tonos, presets, canales ni precios; solo ve lo admisible.
+- [ ] **T-04 · Implementar el backoffice y permisos del catálogo**
+  - `platform_admin`/`platform_owner` registran proveedores, los activan/desactivan, habilitan modelos por proveedor y editan costo y spread por modelo desde la SaaS; los inquilinos solo leen la whitelist activa.
+  - Verificación: un inquilino no puede crear ni modificar proveedores, modelos, tonos, presets, canales, precios ni spread; cada cambio de proveedor/modelo/spread queda auditado y versionado.
 
 ## Fase 2 · Canales e integraciones
 
@@ -72,26 +72,27 @@
   - AES-256-GCM con AAD `client_id:provider_id` y maquinaria de AUTH-D-04; máscara `last4`; rotación y desactivación.
   - Verificación: la clave no aparece en logs, respuestas ni respaldos en claro; una clave rotada deja la anterior retirada sin borrar la historia; el consumo BYOK queda en `ai_usage_events` con costo 0.
 
-## Fase 5 · Fundaciones de la propuesta de negocio (activación diferida, D-07)
+## Fase 5 · Fundaciones de la propuesta de negocio (activación por fases, D-07)
 
 - [ ] **T-12 · Crear las migraciones de billetera y consumo**
   - `wallets`, `wallet_transactions`, `ai_usage_events`, `ai_platform_keys` append-only con índices por `(client_id, created_at)`.
+  - `wallet_transactions` con `currency`, `amount_local_cents`, `fx_rate`; `ai_usage_events.purpose` con `bot`/`assist`/`trial`.
   - Verificación: `wallet_transactions` y `ai_usage_events` no admiten UPDATE ni DELETE por el rol de aplicación.
 
 - [ ] **T-13 · Implementar la recarga idempotente**
-  - Webhook de la pasarela (O-01, cuando el equipo la elija) con `reference` único; una recarga acredita una sola vez.
-  - Verificación: dos notificaciones con la misma referencia producen una sola transacción y un solo aumento de saldo.
+  - Reusar Wompi + Stripe de BILL-001; webhook con `reference` único, moneda local y FX registrados; una recarga acredita una sola vez.
+  - Verificación: dos notificaciones con la misma referencia producen una sola transacción y un solo aumento de saldo; COP y USD se acreditan en USD.
 
 - [ ] **T-14 · Implementar el consumo con débito atómico**
-  - Costo = tokens × precio minorista del modelo; débito y ledger en una transacción.
+  - Costo = tokens × retail del modelo (costo + spread, 30% por defecto); débito y ledger en una transacción; el saldo nunca queda negativo.
   - Verificación: 1.000 tokens descuentan el monto exacto; saldo insuficiente rechaza sin debitar ni registrar consumo.
 
 - [ ] **T-15 · Implementar el fallback y el historial**
-  - Sin saldo: proveedor BYOK habilitado; si no hay, fallback configurado y pausa del modo Mocter.
-  - Verificación: el inquilino ve recargas, consumos con tokens y costo, y el estado de sus modos.
+  - Prepago estricto: sin saldo, proveedor BYOK habilitado; si no hay, fallback configurado y pausa del modo Mocter. La billetera cubre bot y asistente.
+  - Verificación: el inquilino ve recargas, consumos con tokens/costo y el estado de sus modos; el consumo del asistente usa `purpose = assist`.
 
 - [ ] **T-16 · Auditar precios, claves y saldos; monitorear recaudación**
-  - Cambios de catálogo/precio, registro/rotación de claves, recargas y ajustes en `audit_log`; métricas de consumo y recaudación (OPS-001).
+  - Cambios de proveedor/modelo/spread, registro/rotación de claves, recargas y ajustes en `audit_log`; métricas de consumo y recaudación (OPS-001).
   - Verificación: cada evento sensible tiene actor, entidad y fecha; el dashboard muestra consumo y costo con el desglose declarado.
 
 ## Fase 6 · Cierre
@@ -101,7 +102,7 @@
   - Verificación: cada proveedor responde con la versión configurada; los tokens y el costo registrados coinciden con lo reportado por el proveedor.
 
 - [ ] **T-18 · Verificar los criterios de aceptación**
-  - Recorrer `requirements.md` RF-01 a RF-10 y registrar evidencia por requisito, separando día uno de fundaciones.
+  - Recorrer `requirements.md` RF-01 a RF-12 y registrar evidencia por requisito, separando día uno de fundaciones.
   - Verificación: cada requisito tiene prueba o evidencia de laboratorio; ninguno queda «asumido».
 
 - [x] **T-19 · [HUMANO] Aprobar BOT-001**

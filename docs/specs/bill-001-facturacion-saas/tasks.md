@@ -3,7 +3,7 @@
 | Atributo | Valor |
 |---|---|
 | ID | BILL-001 |
-| Versión | 1.0 (Aprobada) |
+| Versión | 1.1 (Aprobada — integración de créditos de referidos) |
 | Fecha | 2026-10-24 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
@@ -94,13 +94,20 @@
 
 ## Fase 4 · Verificación de Criterios BDD y Cierre
 
-- [ ] **T-10 · Ejecutar pruebas automatizadas BDD**
+- [ ] **T-10 · Implementar aplicación de créditos de referidos**
+  - Consultar créditos `available`/`partially_redeemed` de REF-001 al emitir la factura, imputarlos por `expires_at` y registrar `credit_cents`/`applied_referral_credit_id`.
+  - Descontar `remaining_cents` en REF-001; dejar `redeemed` si llega a cero o `partially_redeemed` si queda saldo.
+  - Si `total_cents = 0`, marcar la factura `pagada` sin pasarela y emitir comprobante.
+  - Verificación: CA-BILL-06 pasa; un reintento no consume dos veces el mismo crédito.
+
+- [ ] **T-11 · Ejecutar pruebas automatizadas BDD**
   - Validar CA-BILL-01 (Idempotencia Wompi).
   - Validar CA-BILL-02 (Stripe USD).
   - Validar CA-BILL-03 (Datos fiscales Matías API).
   - Validar CA-BILL-04 (Exportación Excel y PDF).
   - Validar CA-BILL-05 (Dunning y gracia).
+  - Validar CA-BILL-06 (Créditos de referidos).
   - Verificación: Suite de tests automatizados pasa al 100%.
 
-- [ ] **T-11 · [HUMANO] Aprobación final y pase a codificación**
+- [ ] **T-12 · [HUMANO] Aprobación final y pase a codificación**
   - Certificación de especificación lista para desarrollo.

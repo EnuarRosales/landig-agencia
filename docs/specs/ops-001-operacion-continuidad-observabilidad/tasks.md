@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.0 |
-| Fecha | 2026-10-21 · actualizado 2026-10-22 |
+| Versión | 1.1 |
+| Fecha | 2026-10-21 · actualizado 2026-10-24 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 
@@ -53,12 +53,12 @@
   - Bucket `mocter-backups` con versionado; token limitado al bucket.
   - Verificación: el token no puede listar ni escribir en otros buckets ni administrar la cuenta.
 
-- [ ] **T-08 · Fijar presupuesto y alerta de costo (O-01)**
-  - Registrar precios vigentes de R2 y del plan de Grafana Cloud elegido.
+- [ ] **T-08 · Fijar presupuesto y alerta de costo**
+  - Registrar precios vigentes de R2 y del plan gratuito/entry de Grafana Cloud; presupuesto ≤ USD 50/mes.
   - Verificación: la fórmula de `design.md` §11 queda con valores reales, el presupuesto aprobado y la alerta al 80 % configurada.
 
-- [ ] **T-09 · Medir tamaño real y ajustar la política (O-04)**
-  - Medir base, WAL diario y tamaño del repositorio tras la primera semana.
+- [ ] **T-09 · Medir tamaño real y ajustar la política**
+  - Medir base, WAL diario y tamaño del repositorio tras la primera semana; confirmar full semanal + diff diario.
   - Verificación: la retención y la frecuencia de full caben en el presupuesto y cumplen RPO/RTO.
 
 - [ ] **T-10 · Programar los timers de systemd**
@@ -97,29 +97,34 @@
   - `node_exporter`, `postgres_exporter` por instancia, `pgbouncer_exporter` y Alloy.
   - Verificación: las métricas de `design.md` §9.2 llegan a Grafana Cloud.
 
-- [ ] **T-18 · Configurar Grafana Cloud y confirmar límites (O-05)**
-  - Plan, retención de métricas y logs, y límites de series.
+- [ ] **T-18 · Configurar Grafana Cloud y confirmar límites**
+  - Plan gratuito/entry, retención de métricas 30 días y logs 14 días, y límites de series.
   - Verificación: la retención configurada coincide con la contratada y está registrada en la spec.
 
 - [ ] **T-19 · Crear los dashboards**
   - Control, celda, Chatwoot y respaldos.
   - Verificación: los cuatro dashboards muestran datos reales y el de respaldos muestra último full, último WAL y `verify`.
 
-- [ ] **T-20 · Configurar reglas y canales de alerta (O-02)**
-  - Reglas de `design.md` §10 con severidades, deduplicación y silencios.
-  - Verificación: cada alerta crítica enlaza un runbook y el canal elegido recibe la notificación.
+- [ ] **T-20 · Configurar reglas y canales de alerta**
+  - Reglas de `design.md` §10 con severidades, deduplicación y silencios; operador único con correo, mensajería y push para lo crítico.
+  - Verificación: cada alerta crítica enlaza un runbook y el canal del dueño recibe la notificación.
 
 - [ ] **T-21 · Probar la alerta de respaldo fallido**
   - Simular un fallo de `pgbackrest-secure` y un timer que no se ejecuta a la hora programada.
   - Verificación: la alerta llega en ≤ 5 minutos y el reenvío a los 30 minutos funciona.
 
+- [ ] **T-22 · Implementar el respaldo y restore de SeaweedFS**
+  - Snapshot semanal + incremental diario del volumen, cifrado en cliente, sync a R2 y manifiesto con hashes.
+  - Restore en una instancia aislada y verificación de una imagen, un audio, un video y un PDF por hash.
+  - Verificación: el RPO de multimedia ≤ 24 h, el RTO ≤ 4 h y la alerta de antigüedad > 24 h funciona.
+
 ## Fase 4 · Cierre
 
-- [ ] **T-22 · Verificar los criterios de aceptación**
+- [ ] **T-23 · Verificar los criterios de aceptación**
   - Recorrer todos los criterios de `requirements.md` §5 con evidencia.
   - Verificación: cada criterio tiene su archivo o salida asociada; ninguno queda en supuesto.
 
-- [x] **T-23 · [HUMANO] Aprobar OPS-001**
+- [x] **T-24 · [HUMANO] Aprobar OPS-001**
   - Revisar `requirements.md`, `design.md` y `tasks.md`.
   - Cambiar el estado de `requirements.md` de `Borrador` a `Aprobada`.
   - Responsable: dueño del producto.

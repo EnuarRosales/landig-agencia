@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | BOT-001 |
-| Versión | 0.2 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 0.3 (Aprobada — decisiones O-01 a O-07 cerradas) |
+| Fecha | 2026-10-24 |
 | Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/requirements.md) |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` · `.agents/rules/rules-for-i18n.md` |
 | Estado | Aprobada |
@@ -36,6 +36,7 @@ Configurar y gobernar el bot de atención automatizada de cada inquilino: objeti
 | RF-01.2 | Por proveedor se registran modelos con recomendación de uso, ventana de contexto, máximo de salida, capacidades (tools/vision/json), temperatura y tokens por defecto. |
 | RF-01.3 | El catálogo lo administra la plataforma (`platform_admin`/`platform_owner`); el inquilino no crea proveedores ni modelos. |
 | RF-01.4 | Un proveedor o modelo deshabilitado no puede usarse en configuraciones nuevas y pausa las vigentes con aviso. |
+| RF-01.5 | La SaaS administra desde su backoffice el registro de múltiples proveedores, su activación/desactivación y la habilitación de modelos por proveedor. Los cambios se auditan. |
 
 ### RF-02 · Configuración del bot (inquilino)
 
@@ -66,32 +67,33 @@ Configurar y gobernar el bot de atención automatizada de cada inquilino: objeti
 | RF-04.3 | El inquilino rota y desactiva sus claves. |
 | RF-04.4 | El modo BYOK no consume saldo de la billetera; el inquilino le paga directo a su proveedor. |
 
-### RF-05 · Inferencia como servicio (Mocter) — propuesta de negocio, activación diferida
+### RF-05 · Inferencia como servicio (Mocter) — fundaciones aprobadas, activación por fases
 
 | ID | Requisito |
 |---|---|
 | RF-05.1 | Mocter ofrece inferencia provisionada con claves de plataforma por proveedor. |
-| RF-05.2 | El precio minorista por modelo es costo del proveedor + spread, publicado en el catálogo por 1M de tokens de entrada y de salida, en USD. |
-| RF-05.3 | El spread lo fija la plataforma; su cambio es auditado y aplica solo a consumos futuros, nunca al saldo ya recargado. |
+| RF-05.2 | El precio minorista por modelo es costo del proveedor + spread, publicado en el catálogo por 1M de tokens de entrada y de salida, en centavos de USD. El spread por defecto es **30%** y puede configurarse por modelo. |
+| RF-05.3 | El spread se administra por modelo desde el backoffice SaaS; su cambio es auditado y aplica solo a consumos futuros, nunca al saldo ya recargado. |
 | RF-05.4 | Un inquilino con BYOK también puede comprar inferencia Mocter; ambos modos conviven por proveedor. |
-| RF-05.5 | La inferencia Mocter solo se usa en las capacidades de la plataforma (el bot de atención); no es una API abierta al inquilino. |
+| RF-05.5 | La inferencia Mocter cubre el bot de atención y el asistente AI de configuración (AI-001); no es una API abierta al inquilino. Embeddings y resúmenes quedan para una fase futura. |
 
-### RF-06 · Billetera y consumo — propuesta de negocio, activación diferida
+### RF-06 · Billetera y consumo — fundaciones aprobadas, activación por fases
 
 | ID | Requisito |
 |---|---|
-| RF-06.1 | Cada inquilino tiene una billetera con saldo en USD en centavos enteros (sin decimales flotantes). |
-| RF-06.2 | La recarga se hace por la pasarela aprobada con transacciones idempotentes. |
+| RF-06.1 | Cada inquilino tiene una billetera con saldo interno en centavos de USD (enteros, sin flotantes). El checkout muestra y cobra en la moneda del inquilino (`clients.currency`): COP por Wompi y USD por Stripe, con tipo de cambio y redondeo controlados. |
+| RF-06.2 | La recarga se hace con **Wompi + Stripe**, reusando la integración, webhooks e idempotencia de BILL-001. |
 | RF-06.3 | El consumo debita saldo por tokens usados al precio minorista del modelo. |
-| RF-06.4 | Sin saldo suficiente, el bot degrada: usa un proveedor BYOK habilitado del inquilino; si no hay, responde el fallback configurado y pausa el modo Mocter. |
+| RF-06.4 | **Prepago estricto:** el saldo nunca es negativo. Sin saldo suficiente, el bot usa un proveedor BYOK habilitado del inquilino; si no hay, responde el fallback configurado y pausa el modo Mocter. |
 | RF-06.5 | El inquilino ve el historial de su billetera: recargas, consumos (con tokens y costo) y ajustes. |
+| RF-06.6 | La billetera cubre el bot y el asistente AI de configuración; el modo BYOK no consume saldo. Embeddings y resúmenes quedan para una fase futura. |
 
 ### RF-07 · Límites
 
 | ID | Requisito |
 |---|---|
-| RF-07.1 | El límite del modo Mocter es por tokens, vía saldo prepago (aplica cuando se active la propuesta de negocio). |
-| RF-07.2 | Guardrail opcional por plan: dimensión `ai_tokens_monthly` en `plan_limits` de ADM-001 (propuesta para el modo BYOK). |
+| RF-07.1 | El límite del modo Mocter es el saldo prepago por tokens; no existe saldo negativo ni período de gracia. |
+| RF-07.2 | **No se usa `ai_tokens_monthly` por plan en v1.** El saldo es el único guardrail; si el negocio lo incorpora después, se reabre ADM-001 `plan_limits`. |
 
 ### RF-08 · Canales e integraciones admisibles
 
@@ -154,35 +156,35 @@ Configurar y gobernar el bot de atención automatizada de cada inquilino: objeti
 | D-06 | El catálogo es una whitelist: el inquilino solo puede registrar proveedores y modelos admisibles. | La plataforma gobierna qué entra a su ecosistema. |
 | D-07 | **Fases del negocio:** el día uno sale BYOK (cada inquilino registra su proveedor); la billetera, el spread y la inferencia Mocter quedan diseñados como fundaciones y se activan cuando el equipo madure la propuesta de agregador de inferencia. | El modelo de datos y los contratos ya existen; la activación no bloquea el lanzamiento. |
 | D-08 | **Trial de inferencia de onboarding:** 5 días por inquilino, informado explícitamente, desactivable manualmente desde la zona admin de Mocter; al vencer, se exige BYOK o saldo. | Permite operar sin fricción en el alta mientras el inquilino configura su proveedor, con un costo acotado y controlable. |
-| D-08 | Las instancias de canal las aprovisiona ADM-001 (ya documentado en CHW-001); BOT-001 aporta el catálogo de admisibles y la habilitación del bot por canal. La gestión del inquilino ocurre en Mocter. | No se duplica el aprovisionamiento de Chatwoot entre specs. |
+| D-09 | Las instancias de canal las aprovisiona ADM-001 (ya documentado en CHW-001); BOT-001 aporta el catálogo de admisibles y la habilitación del bot por canal. La gestión del inquilino ocurre en Mocter. | No se duplica el aprovisionamiento de Chatwoot entre specs. |
 
-## 5. Propuesta de negocio por madurar (para el equipo)
+## 5. Decisiones de la propuesta de negocio (cerradas)
 
-Decisión registrada (D-07): **día uno = BYOK**; **el agregador de inferencia es una línea de negocio a madurar**, con las fundaciones ya diseñadas en esta spec. El equipo debe responder en el tiempo:
+Las decisiones **O-01 a O-07 quedaron cerradas el 2026-10-24**. La billetera, el spread y la inferencia Mocter siguen diseñados como fundaciones; su activación operativa puede ser posterior, sin bloquear el día uno BYOK.
 
-| ID | Pregunta | Impacto |
+| ID | Decisión | Consecuencia |
 |---|---|---|
-| O-01 | ¿Qué pasarela de pago para las recargas (Stripe, MercadoPago, otra)? | Define el proveedor de pago, comisiones y el flujo de recarga. |
-| O-02 | ¿Spread por defecto? (p. ej. 30 % sobre el costo del proveedor) | Define el margen del servicio; se fija por modelo al sembrar el catálogo. |
-| O-03 | Precios de costo por modelo al sembrar el catálogo (precios vigentes del proveedor). | Se fijan en la tarea de seed, no en papel. |
-| O-04 | ¿Guardrail por plan (`ai_tokens_monthly`) o solo saldo prepago? | Si se activa, hay que reabrir ADM-001 T-10 (`plan_limits`). |
-| O-05 | ¿Prepago estricto (saldo ≥ costo estimado) o saldo negativo controlado? | Propuesta del borrador: prepago estricto con fallback BYOK. |
-| O-06 | ¿El saldo cubre solo el bot o también futuras capacidades IA (embeddings, resúmenes)? | El diseño de la billetera es neutral a la capacidad; hoy solo el bot la consume. |
-| O-07 | ¿La billetera y los precios de inferencia se expresan en USD o en la moneda del inquilino (`clients.currency`, inicialmente COP)? | El borrador usa USD como unidad de cuenta; al madurar la propuesta se decide la moneda de exhibición y conversión en la recarga. |
+| O-01 | **Wompi + Stripe**, reusando la integración de BILL-001. | Misma pasarela, webhooks e idempotencia; COP local y USD internacional. |
+| O-02 | **Spread por defecto 30%**, configurable por modelo desde el backoffice SaaS. | La SaaS registra múltiples proveedores, los activa/desactiva y habilita modelos por proveedor. |
+| O-03 | **Seed inicial + edición en backoffice** de los precios de costo por modelo, con auditoría y versión. | No se requiere redesplegar cuando cambie el proveedor. |
+| O-04 | **Solo saldo prepago**; sin `ai_tokens_monthly` por plan en v1. | No se reabre ADM-001 `plan_limits`; el saldo es el guardrail. |
+| O-05 | **Prepago estricto + fallback BYOK**; sin saldo negativo. | Si no hay BYOK, el bot se pausa con aviso. |
+| O-06 | La billetera cubre **bot + asistente AI**; embeddings y resúmenes quedan para una fase futura. | `ai_usage_events.purpose` distingue `bot` y `assist`. |
+| O-07 | **USD interno + cobro en moneda del inquilino**: COP por Wompi, USD por Stripe, con FX y redondeo controlados. | Saldo y costos en centavos de USD; el checkout es local. |
 
-O-08 quedó resuelta por **D-08**: trial de inferencia de 5 días, informado y desactivable desde la zona admin.
+**O-08** quedó resuelta por **D-08**: trial de inferencia de 5 días, informado y desactivable desde la zona admin.
 
 La propuesta de valor para el equipo: Mocter como agregador de inferencia — el inquilino técnico trae su llave (BYOK, sin costo para Mocter) y el inquilino sin fricción compra tokens prepagos con spread; ingreso por uso, sin riesgo crediticio, diferenciado de la competencia.
 
 ## 6. Fuera de alcance
 
-El motor de inferencia en sí (orquestación de la conversación, memoria, herramientas, conexión webhook con Chatwoot) → BOT-002. La pasarela de pago (propuesta O-01). El fine-tuning de modelos. La interfaz de Chatwoot. Los contactos finales (dueño: `mocter-core`). La activación de la billetera y el spread queda diferida por D-07, no fuera de diseño.
+El motor de inferencia en sí (orquestación de la conversación, memoria, herramientas, conexión webhook con Chatwoot) → BOT-002. La pasarela de pago ya está decidida (Wompi + Stripe, reusando BILL-001). El fine-tuning de modelos. La interfaz de Chatwoot. Los contactos finales (dueño: `mocter-core`). La billetera y el spread pueden activarse por fases (D-07); no están fuera de diseño.
 
 ## 7. Impactos en otras especificaciones
 
 | Spec | Impacto |
 |---|---|
-| ADM-001 | Las instancias de canal las aprovisiona ADM-001 (inboxes, CHW-001); BOT-001 consume el listado. Posible reapertura de T-10: dimensiones `ai_tokens_monthly` (O-04). |
+| ADM-001 | Las instancias de canal las aprovisiona ADM-001 (inboxes, CHW-001); BOT-001 consume el listado. No se reabre T-10: no se usa `ai_tokens_monthly` en v1; el saldo prepago es el guardrail. |
 | DAT-001 | Se cumplen RF-10.8 y RF-10.9; `ai_usage_events` es append-only con partición mensual futura. |
 | AUTH-001 | Reutiliza la maquinaria de claves de AUTH-D-04 para las API keys BYOK y las claves de plataforma. |
 | CHW-001 | La viabilidad de aprovisionamiento de canales por tipo se valida en laboratorio contra Chatwoot 4.19. |
@@ -202,3 +204,4 @@ El motor de inferencia en sí (orquestación de la conversación, memoria, herra
 - L9 (2026-10-23): **O-08 resuelta por D-08:** trial de inferencia de **60 minutos** por inquilino, informado explícitamente, desactivable manualmente desde la zona admin de Mocter; al vencer, el inquilino conecta BYOK o compra saldo. Consumo en `ai_usage_events` con `purpose = 'trial'`, sin deuda.
 - L10 (2026-10-24): corrección del usuario: el trial pasa de 60 minutos a **5 días** de inferencia mientras el inquilino configura su proveedor. D-08 y RF-12.1 actualizados; el resto de las reglas (informado, desactivable, sin deuda) se mantiene.
 - L8 (2026-10-23): corrección del usuario — «No estoy de acuerdo con el planteamiento, en cuanto a que no son flujos fijos, la imagen era un ejemplo no debe tomarse literal, debemos es generar el objeto y sus atributos para que el inquilino pueda configurar su recordatorios personalizados, podemos es ofrecer una inicializacion por defecto.» RF-11.1/11.2 se reformulan como motor personalizable y se agrega RF-11.8 (inicialización por defecto editable con `origin = platform_default`).
+- L11 (2026-10-24): O-01 a O-07 cerradas — O-01 Wompi + Stripe reusando BILL-001; O-02 spread 30% configurable por modelo y registro de proveedores/modelos desde backoffice; O-03 seed + edición en backoffice; O-04 solo saldo prepago, sin `ai_tokens_monthly`; O-05 prepago estricto + fallback BYOK; O-06 billetera para bot + asistente AI; O-07 USD interno y cobro en moneda del inquilino.
