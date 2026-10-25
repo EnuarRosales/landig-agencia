@@ -3,66 +3,98 @@
 | Atributo | Valor |
 |---|---|
 | ID | REP-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 1.0 (Aprobada) |
+| Fecha | 2026-10-24 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
-| Estado | Borrador |
+| Estado | Aprobada |
 
 ## Convenciones
 
-- **No ejecutar estas tareas hasta que REP-001 esté aprobada y el usuario autorice la implementación.** Crear este archivo no inicia código ni RDD.
-- Ejecutar en orden; una tarea no se marca `[x]` hasta que su verificación pase.
-- Las tareas **[HUMANO]** requieren decisión o aprobación; no se ejecutan solas.
-- Las tareas **[LAB]** se validan fuera de producción y no tocan datos reales.
-- Toda tarea de código incluye su prueba. Ningún cambio se cierra sin la verificación indicada.
-- Dependencias de entrada: ADM-001 (chatwoot_accounts, client_usage), CRM-001 (prospectos), BOT-001 (ai_usage_events) y CHW-001 (conversaciones por API).
+- Ejecutar en estricto orden; una tarea se marca `[x]` únicamente cuando su verificación automatizada o manual haya pasado.
+- Las tareas **[HUMANO]** requieren validación del Product Owner.
+- Comandos base de verificación:
+  ```bash
+  pnpm --filter @mocter/domain exec drizzle-kit check
+  pnpm lint
+  pnpm test
+  ```
 
-## Fase 0 · Decisiones
+---
 
-- [ ] **T-01 · [HUMANO] Cerrar las decisiones abiertas**
-  - Resolver O-01 (retención de snapshots, 12 meses por defecto), O-02 (PDF: archivo o vista de impresión) y O-03 (job nocturno y/o bajo demanda).
-  - Verificación: cada decisión queda registrada en `requirements.md` §5 con su resultado y fecha.
+## Fase 0 · Decisiones (Cerradas)
 
-## Fase 1 · Motor de períodos y snapshots
+- [x] **T-01 · [HUMANO] Cerrar las decisiones abiertas** (2026-10-24)
+  - Resuelto: Se eliminan los snapshots y los jobs de materialización nocturna; el cálculo se realiza en caliente con índices compuestos.
+  - Resuelto: Exportación nativa exclusiva en formatos Excel (`.xlsx`) y PDF (`.pdf`) (sin CSV).
+  - Resuelto: Paquete de 5 criterios BDD aprobado para validación formal.
+  - Verificación: Registrado en `requirements.md` §6 y `design.md`.
 
-- [ ] **T-02 · Crear las migraciones de snapshots**
-  - `report_snapshots` (celda, RLS) y `platform_snapshots` (Router) con auditoría, único `(client_id, period_start, metric_key)` y comentarios.
-  - Verificación: `drizzle-kit check` pasa; no se admiten dos filas de la misma métrica y día por inquilino.
+---
 
-- [ ] **T-03 · Implementar el motor de períodos**
-  - Día, semana, mes, trimestre, semestre, año y rango personalizado, compuestos desde snapshots diarios en `clients.timezone`, con delta contra el período anterior.
-  - Verificación: una métrica en `America/Bogota` no arrastra el día siguiente en UTC; un rango personalizado compone los días exactos del rango.
+## Fase 1 · Motor de Períodos e Índices de Consulta
 
-- [ ] **T-04 · Implementar el job nocturno de materialización**
-  - Agregación diaria por inquilino (conversaciones por API de Chatwoot, prospectos, bot, productos, etiquetas, agentes y cuota) sin PII, con reescritura idempotente del día en curso.
-  - Verificación: el snapshot del día coincide con la fuente; dos corridas del mismo día no duplican filas.
+- [ ] **T-02 · Asegurar índices compuestos de rango temporal en packages/domain**
+  - Verificar y agregar los índices compuestos en esquemas de Drizzle:
+    - `conversations`: `(client_id, created_at)`
+    - `prospects`: `(client_id, created_at)`
+    - `ai_usage_events`: `(client_id, created_at)`
+    - `orders`: `(client_id, created_at)`
+    - `invoices`: `(client_id, created_at)`
+  - Verificación: `pnpm --filter @mocter/domain exec drizzle-kit check` pasa; plan `EXPLAIN ANALYZE` confirma uso de `Index Scan`.
 
-## Fase 2 · Dashboard del inquilino
+- [ ] **T-03 · Implementar utilidad PeriodResolver con soporte de zonas horarias**
+  - Implementar la función de cálculo de rangos `resolvePeriod(periodType, customRange, timezone)` en `apps/web/lib/reports/periods.ts`.
+  - Soportar: `daily`, `weekly`, `monthly`, `quarterly`, `semiannual`, `annual`, `custom`.
+  - Calcular automáticamente el rango del período anterior equivalente para el delta.
+  - Verificación: Test unitario confirma límites exactos en zona horaria `America/Bogota` y rechazo si `start_date > end_date`.
 
-- [ ] **T-05 · Implementar el dashboard del inquilino**
-  - Vistas por grupo de métricas con selector de período y comparación con el período anterior; `tenant_owner` ve todo y `tenant_agent` solo lo propio.
-  - Verificación: un agente no ve métricas de otro agente ni agregados del inquilino; los siete períodos y el rango personalizado responden.
+---
 
-## Fase 3 · Dashboard de la SaaS
+## Fase 2 · Servicios de Métricas en Caliente
 
-- [ ] **T-06 · Implementar la agregación de plataforma**
-  - Job del Router que agrega los snapshots de todas las celdas por API en `platform_snapshots`.
-  - Verificación: `platform_snapshots` coincide con la suma de las celdas; una celda caída no bloquea la agregación del resto.
+- [ ] **T-04 · Implementar servicio de métricas del inquilino**
+  - Crear queries agregadas en `apps/web/server/services/tenant-reports.service.ts`:
+    - Métricas de conversaciones (Chatwoot API + celda).
+    - Métricas de prospectos (volumen, etapas, conversión y consentimiento).
+    - Métricas de bot e IA (mensajes, handoffs, tokens).
+    - Consumo de almacenamiento vs cuota.
+  - Inyección estricta de `client_id` y filtro por `agent_id` cuando aplique el rol `tenant_agent`.
+  - Verificación: Endpoint `GET /api/reports/tenant/metrics` responde en ≤ 800 ms.
 
-- [ ] **T-07 · Implementar el dashboard de la SaaS**
-  - Inquilinos, almacenamiento con ratio de deduplicación, IA con recaudación proyectada, comunidades, Chatwoot, calidad de datos y salud de backups, con roles de plataforma.
-  - Verificación: `platform_sales` no ve datos operativos de conversaciones; el ratio de dedup refleja bytes físicos vs referenciados.
+- [ ] **T-05 · Implementar servicio de métricas de la SaaS**
+  - Crear queries consolidadas en `apps/web/server/services/platform-reports.service.ts`:
+    - Inquilinos por plan, estado y vertical.
+    - Crecimiento de almacenamiento y ratio de deduplicación de multimedia.
+    - Consumo global de IA y salud de copias de seguridad (OPS-001).
+  - Acceso restringido a roles `platform_owner`, `platform_admin` y `platform_sales`.
+  - Verificación: Endpoint `GET /api/reports/platform/metrics` responde con datos agregados sin exponer PII.
 
-## Fase 4 · Export y cierre
+---
 
-- [ ] **T-08 · Implementar el export**
-  - CSV por vista y resumen PDF del período (O-02), en es/en.
-  - Verificación: ambos formatos se generan para cualquier período y en ambos idiomas.
+## Fase 3 · Exportadores Nativos (Excel y PDF)
 
-- [ ] **T-09 · Verificar los criterios de aceptación**
-  - Recorrer `requirements.md` RF-01 a RF-05 y registrar evidencia por requisito.
-  - Verificación: cada requisito tiene prueba o evidencia de laboratorio; ninguno queda «asumido».
+- [ ] **T-06 · Implementar exportador a Excel (.xlsx)**
+  - Implementar `apps/web/server/services/excel-exporter.service.ts` usando `exceljs`.
+  - Hoja 1: Resumen de KPIs y variaciones.
+  - Hoja 2: Tabla detallada de transacciones formateada con colores HUD de `DSN-001`.
+  - Verificación: Descarga de archivo `.xlsx` funcional y validación de tipos de celda numéricos.
 
-- [ ] **T-10 · [HUMANO] Aprobar REP-001**
-  - Revisar `requirements.md`, `design.md` y `tasks.md`; decidir si se aprueba la spec.
-  - Verificación: el estado pasa a `Aprobada` solo con decisión explícita; no se inicia implementación antes.
+- [ ] **T-07 · Implementar exportador a PDF (.pdf)**
+  - Implementar `apps/web/server/services/pdf-exporter.service.ts`.
+  - Generación de PDF con membrete institucional, tarjetas resumen y tabla paginada.
+  - Verificación: Descarga de archivo `.pdf` con cabeceras limpias y paginación correcta.
+
+---
+
+## Fase 4 · Verificación de Criterios BDD y Cierre
+
+- [ ] **T-08 · Ejecutar suite de pruebas BDD para REP-001**
+  - Validar CA-REP-01 (Cálculo en caliente períodos predefinidos).
+  - Validar CA-REP-02 (Rango libre y validación temporal).
+  - Validar CA-REP-03 (Exportación Excel).
+  - Validar CA-REP-04 (Exportación PDF).
+  - Validar CA-REP-05 (Aislamiento por `client_id` y scopes D-31).
+  - Verificación: Suite de tests automatizados pasa al 100%.
+
+- [ ] **T-09 · [HUMANO] Aprobación final y pase a codificación**
+  - Certificación de especificación lista para desarrollo.

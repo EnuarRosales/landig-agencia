@@ -5,9 +5,9 @@
 | ID | CHW-001 |
 | Versión | 1.0 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 · actualizado 2026-10-22 |
+| Fecha | 2026-10-20 · actualizado 2026-10-24 |
 | Documentos | `requirements.md` (este) · [`design.md`](design.md) · [`tasks.md`](tasks.md) |
-| Fuente fijada | `chatwoot/chatwoot` · commit `042b438fe31d2a2ef00c396379b7064ab6d0034f` · release `4.19.0` (2026-10-20) |
+| Fuente fijada | `chatwoot/chatwoot:v4.19.1` · contenedor Docker gestionado bajo Traefik en todos los ambientes |
 | Depende de | [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) (arquitectura de datos multi-inquilino) |
 
 ## 1. Propósito
@@ -50,10 +50,10 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 | ID | Requisito |
 |---|---|
 | RF-01.1 | Documentar el límite de tenencia: `Account` como raíz del grafo operativo, con evidencia en `app/models/account.rb`. |
-| RF-01.2 | Documentar las dependencias de ejecución verificadas (Rails 7.2.3.1, PostgreSQL, Redis, Sidekiq) y su impacto en el despliegue del fork. La instancia de Chatwoot corre en el plano de soporte de DAT-001, con PostgreSQL 18 + pgvector (`pgvector/pgvector:pg18`) y Redis 7+. |
+| RF-01.2 | Documentar las dependencias de ejecución verificadas (Rails 7.2.3.1, PostgreSQL, Redis, Sidekiq) y su despliegue en contenedor Docker Compose (`chatwoot/chatwoot:v4.19.1`). La instancia de Chatwoot corre en el plano de soporte de DAT-001, con PostgreSQL 18 + pgvector (`pgvector/pgvector:pg18`), Redis 7+ y exposición de tráfico HTTP/WS exclusivamente a través del reverse proxy Traefik (sin publicar puertos en el host, R-10). |
 | RF-01.3 | Documentar la separación `app/` vs `enterprise/` y el mecanismo `prepend_mod_with` / `ChatwootApp.enterprise?`. |
 | RF-01.4 | El esquema de Chatwoot es propiedad de Chatwoot y se sincroniza con upstream: no se le aplica la directiva de base de datos de Mocter, ni el particionado por `client_id`, ni RLS. |
-| RF-01.5 | La ejecución de Chatwoot 4.19.0 sobre PostgreSQL 18 + pgvector está validada en laboratorio. El rollback a PostgreSQL 16 se documenta como precaución operativa en DAT-001 §9.7 y no contradice la decisión de versión. |
+| RF-01.5 | La ejecución de Chatwoot v4.19.1 sobre PostgreSQL 18 + pgvector está validada en contenedor Docker en todos los ambientes. El rollback a PostgreSQL 16 se documenta como precaución operativa en DAT-001 §9.7 y no contradice la decisión de versión. |
 
 ### RF-02 · Autenticación y autorización
 

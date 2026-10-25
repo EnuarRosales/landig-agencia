@@ -138,11 +138,12 @@ Al terminar una especificación, entrega:
 | BOT-001 | [Bot de atención automatizada con LLM e inferencia como servicio](docs/specs/bot-001-atencion-automatizada-llm/requirements.md) | Aprobada · 2026-10-23; día uno: bot, canales desde Mocter y BYOK; propuesta de negocio por madurar: agregador de inferencia (billetera + spread) |
 | BOT-002 | [Motor de atención y composición dinámica de prompts](docs/specs/bot-002-motor-atencion-prompts/requirements.md) | Borrador · 2026-10-23; prompt compuesto en runtime, clasificación de leads y captura de pedido |
 | ORD-001 | [Pedidos y fulfillment](docs/specs/ord-001-pedidos-fulfillment/requirements.md) | Borrador · 2026-10-23; pedido desde bot y manual, estados, pago, envío y devoluciones |
-| BILL-001 | [Facturación SaaS, pagos y facturación electrónica](docs/specs/bill-001-facturacion-saas/requirements.md) | Borrador · 2026-10-23; suscripciones, pasarela de pagos, dunning y facturación electrónica DIAN vía proveedor autorizado |
+| BILL-001 | [Facturación SaaS, pagos y comprobantes](docs/specs/bill-001-facturacion-saas/requirements.md) | Aprobada · 2026-10-24; pasarela dual Wompi/Stripe, datos Matías API, comprobantes Excel/PDF y sin retenciones v1 |
 | REF-001 | [Programa de referidos](docs/specs/ref-001-programa-referidos/requirements.md) | Borrador · 2026-10-24; atribución y recompensas (crédito o comisión + descuento); pendiente de decisión comercial |
 | CRM-001 | [Prospectos y gestión comercial](docs/specs/crm-001-prospectos-gestion-comercial/requirements.md) | Aprobada · 2026-10-23; maestro de prospectos en Mocter, Chatwoot como proyección, Habeas Data (Ley 1581 de 2012) para prospectos y usuarios; abiertas O-01 a O-03 |
 | AI-001 | [Asistente AI de configuración](docs/specs/ai-001-asistente-ai-configuracion/requirements.md) | Aprobada · 2026-10-23; prompts maestros por campo y «Mejorar con AI» con BYOK o inferencia Mocter |
-| REP-001 | [Informes y dashboards](docs/specs/rep-001-informes-dashboards/requirements.md) | Borrador · 2026-10-23; dashboard del inquilino y de la SaaS con períodos día/semana/mes/trimestre/semestre/año y rango personalizado |
+| REP-001 | [Informes y dashboards](docs/specs/rep-001-informes-dashboards/requirements.md) | Aprobada · 2026-10-24; cálculo en caliente sin snapshots, 5 criterios BDD aprobados y exportación nativa Excel/PDF |
 | DSN-001 | [Sistema de diseño y look & feel](docs/specs/dsn-001-sistema-diseno/requirements.md) | Aprobada · 2026-10-23; Mobile First, paleta parametrizable, estilo HUD de alto contraste y contrato de marca blanca por capas |
+| LND-001 | [Landing page, planes comerciales y accesos](docs/specs/lnd-001-landing-planes-comerciales/requirements.md) | Aprobada · 2026-10-24; planes dinámicos condicionales, botón acceso header, login/register interconectados y upgrade en backoffice |
 
 

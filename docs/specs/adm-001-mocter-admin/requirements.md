@@ -38,7 +38,7 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 - Código y capacidades enterprise de Chatwoot.
 - Modificación del esquema o de la base de datos de Chatwoot.
 - Mensajería privada entre miembros: el feed es el único canal de interacción de esta versión.
-- La landing page y su tráfico orgánico.
+- La landing page y su tráfico orgánico. El acceso a `mocter-admin` (para SaaS e inquilinos) se realiza desde un nuevo botón en el header de la landing contiguo a «Solicitar demo».
 
 ## 3. Actores
 
@@ -145,7 +145,7 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | RF-07.6 | El vínculo entre un producto y un archivo vive en la celda del producto. |
 | RF-07.7 | La verificación de referencias previa a un borrado consulta todas las celdas que puedan referenciar el archivo. Ninguna celda decide sola el borrado de un archivo compartido. |
 | RF-07.8 | El borrado no es inmediato: se ejecuta solo cuando la verificación global confirma que no queda ninguna referencia. |
-| RF-07.9 | Existen dos dominios de archivos: multimedia de producto, propiedad de Mocter, con catálogo global, SeaweedFS, deduplicación por hash, cuota y borrado por ausencia de referencias; y adjuntos de conversación, propiedad de Chatwoot ActiveStorage, sin deduplicación, sin cuota de producto y con política propia. |
+| RF-07.9 | Existen dos dominios de archivos: multimedia de producto, propiedad de Mocter, con catálogo global, SeaweedFS (contenedor Docker `seaweedfs/seaweedfs:4.49` gestionado exclusivamente por Traefik en todos los ambientes bajo Docker Compose sin publicar puertos en el host, R-10), deduplicación por hash, cuota y borrado por ausencia de referencias; y adjuntos de conversación, propiedad de Chatwoot ActiveStorage (contenedor `chatwoot/chatwoot:v4.19.1` también bajo Traefik), sin deduplicación, sin cuota de producto y con política propia. |
 | RF-07.10 | Los adjuntos de Chatwoot no se cuentan en la cuota de producto y no se eliminan desde el GC de producto. |
 | RF-07.11 | Los adjuntos de Chatwoot siguen la retención de su conversación y no tienen plazo propio. Al borrarse la conversación se purgan sus blobs de ActiveStorage; si Chatwoot no los elimina, `mocter-admin` completa la limpieza. |
 | RF-07.12 | Los formatos de archivo admitidos como **ingreso** son restrictivos por tipo de medio: imágenes `webp`, `avif`, `png`, `jpeg`; audio `opus`, `aac`, `mp3`; video `mp4` (H.264 + AAC) y `webm` (VP9/AV1 + Opus); documentos `pdf`. Todo otro formato se rechaza al subir con mensaje explícito; la validación es por contenido, no por extensión. |

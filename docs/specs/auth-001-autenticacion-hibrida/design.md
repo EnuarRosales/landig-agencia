@@ -91,8 +91,9 @@ Traefik ──► apps/admin (módulo identity)
 | `email_verification_tokens` | `id` | `user_id`, `token_hash` único, `expires_at`, `consumed_at`, `created_at`, `requested_ip_hash` |
 | `password_reset_tokens` | `id` | `user_id`, `token_hash` único, `purpose` (`reset` o `setup`), `expires_at`, `consumed_at`, `created_at`, `requested_ip_hash` |
 | `user_consents` | `id` | `user_id`, `purpose` (`data_treatment`, `commercial_comms`), `policy_version`, `status` (`granted`/`revoked`), `granted_at`, `revoked_at`, `channel`, `evidence_ref` |
+| `auth_providers_config` | `id` | Configuración dinámica de proveedores OAuth en SaaS backoffice: `id` (`google`, `facebook`, `microsoft`, etc.), `display_name`, `is_enabled`, `client_id`, `client_secret_encrypted` (AES-256-GCM), `scopes` JSONB, `auth_url`, `token_url`, `user_info_url`, auditoría |
 
-`users` no tiene `client_id` y no usa RLS. `sessions` puede llevar `client_id`, pero no es una tabla de tenencia. `identities` no lleva tenencia. Estas seis tablas (identidad, sesión, tokens y `user_consents`) se protegen con el rol `mocter_auth` y filtros de aplicación. Todas siguen la convención global de auditoría (DAT-001 RF-10.9): `created_at`, `updated_at`, `created_by`, `updated_by`; `sessions` usa `revoked_at` y los tokens `consumed_at` como su baja lógica, sin duplicar `deleted_at`.
+`users` no tiene `client_id` y no usa RLS. `sessions` puede llevar `client_id`, pero no es una tabla de tenencia. `identities` y `auth_providers_config` no llevan tenencia. Estas tablas (identidad, sesión, tokens, `user_consents` y `auth_providers_config`) se protegen con el rol `mocter_auth` y filtros de aplicación. Todas siguen la convención global de auditoría (DAT-001 RF-10.9): `created_at`, `updated_at`, `created_by`, `updated_by`; `sessions` usa `revoked_at` y los tokens `consumed_at` como su baja lógica, sin duplicar `deleted_at`.
 
 Columnas de `users`:
 

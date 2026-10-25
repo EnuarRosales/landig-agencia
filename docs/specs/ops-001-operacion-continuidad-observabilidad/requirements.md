@@ -18,6 +18,8 @@ Definir cómo Mocter **protege los datos, los recupera y sabe que la plataforma 
 2. Celdas (`pg-cell-*`), una por grupo de inquilinos.
 3. Chatwoot (`pg-chatwoot`), en el plano de soporte.
 
+El sistema se despliega en todos sus ambientes en Docker con **Docker Compose**, donde **Traefik** actúa como reverse proxy único para todo el tráfico de la plataforma. Bajo esta misma topología, **Chatwoot (`chatwoot/chatwoot:v4.19.1`)** y **SeaweedFS (`seaweedfs/seaweedfs:4.49`)** corren como contenedores administrados por Traefik (sin publicar puertos en el host, cumpliendo R-10), proveyendo la bandeja de atención omnicanal y el almacenamiento de archivos multimedia de los inquilinos respectivamente.
+
 La necesidad nace de una contradicción documental: DAT-001 §9.1 delega destino, retención y prueba de restore en CD-001, y CD-001 excluye de su alcance las copias fuera del host y el monitoreo externo. Hoy el único respaldo es un `pg_dump` previo al despliegue, guardado en el mismo VPS (`deploy/server/deploy.sh`, retención 10). Si el VPS se pierde, se pierde el respaldo con él.
 
 Esta especificación también es material de aprendizaje: el respaldo y la observabilidad son campos nuevos para el equipo, así que cada decisión se explica y cada procedimiento se puede ejecutar sin contexto previo (§4, RF-08).

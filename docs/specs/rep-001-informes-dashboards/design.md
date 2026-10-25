@@ -3,129 +3,110 @@
 | Atributo | Valor |
 |---|---|
 | ID | REP-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 1.0 (Aprobada) |
+| Fecha | 2026-10-24 |
 | Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [CRM-001](../crm-001-prospectos-gestion-comercial/design.md) · [BOT-001](../bot-001-atencion-automatizada-llm/design.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) |
-| Estado | Borrador |
+| Estado | Aprobada |
 
-## 1. Principios
+## 1. Principios de Diseño
 
-1. **Una mecánica de períodos, dos superficies.** Día, semana, mes, trimestre, semestre, año y rango personalizado, siempre en la zona horaria del negocio.
-2. **Sin SQL entre planos.** La agregación respeta D-19 de ADM-001 y RF-10.8 de DAT-001.
-3. **Agregados sin PII.** Los dashboards muestran números, no personas.
-4. **El pasado no se recalcula.** Los períodos mayores se componen desde snapshots diarios.
-5. **Cada rol ve lo suyo.** El agente ve sus métricas; el dueño y la plataforma, el todo.
+1. **Cálculo en caliente sin sobrecarga:** Se eliminan tablas y jobs de snapshots materializados. Las consultas se calculan en caliente contra PostgreSQL aprovechando índices compuestos por `(client_id, created_at)`.
+2. **Una sola mecánica de períodos:** Día, semana, mes, trimestre, semestre, año y rango libre, computados con precisión en la zona horaria del negocio (`clients.timezone`).
+3. **Exportación nativa de alta fidelidad:** Formatos ejecutivos directos en **Excel (`.xlsx`) y PDF (`.pdf`)**, sin CSV plano.
+4. **Agregados sin PII y RLS estricto:** Ninguna métrica expone datos personales; el aislamiento por `client_id` es no negociable.
 
-## 2. Arquitectura
+## 2. Arquitectura del Motor Analítico
 
-```text
-Celda del inquilino                         Router Global
-┌──────────────────────────┐   API   ┌──────────────────────────────┐
-│ job nocturno (mocter-    │────────►│ job de plataforma            │
-│ admin)                   │         │ agrega por API               │
-│  └► report_snapshots     │         │  └► platform_snapshots       │
-│     (día, metric_key,    │         │                                │
-│      valor)              │         │ Dashboard SaaS: inquilinos,   │
-│                          │         │ almacenamiento+dedup, IA,     │
-│ Dashboard inquilino:     │         │ comunidades, Chatwoot,        │
-│ conversaciones,          │         │ calidad de datos, backups     │
-│ prospectos, bot,         │         │                                │
-│ productos, etiquetas,    │         └──────────────────────────────┘
-│ agentes, cuota           │
-└──────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Frontend / UI
+        DashboardUI[Vistas de Dashboard & Reportes] -->|GET /api/reports/metrics?period=...| MetricsAPI[/api/reports/metrics]
+        DashboardUI -->|GET /api/reports/export?format=xlsx| ExportAPI[/api/reports/export]
+    end
+
+    subgraph Backend / mocter-admin
+        MetricsAPI --> PeriodResolver[Calculador de Fechas por Timezone]
+        PeriodResolver --> QueryEngine[Motor de Consultas en Caliente Drizzle]
+
+        ExportAPI --> PeriodResolver
+        ExportAPI --> QueryEngine
+
+        QueryEngine --> DB[(PostgreSQL Celda / Router)]
+
+        QueryEngine --> MetricsFormatter[Formateador de KPIs y Deltas]
+        MetricsFormatter --> MetricsAPI
+
+        QueryEngine --> Exporters[Servicio de Exportación]
+        Exporters --> ExcelGen[Generador Excel .xlsx - exceljs]
+        Exporters --> PDFGen[Generador PDF .pdf - Document Service]
+    end
 ```
 
-## 3. Modelo de datos
+## 3. Estrategia de Indexación en Base de Datos
 
-### 3.1 `report_snapshots` (celda, RLS)
+Para garantizar tiempos de respuesta P95 ≤ 800 ms sin requerir materialización nocturna, las tablas transaccionales de dominio en `packages/domain` incorporan los siguientes índices compuestos:
 
-| Atributo | Regla |
-|---|---|
-| `client_id` + `id` | PK compuesta, RLS |
-| `period_type` | `day` (la única fila materializada; el resto se compone) |
-| `period_start` · `period_end` | Fechas en la zona del inquilino |
-| `metric_key` | Clave estable de la métrica (§4) |
-| `value` JSONB | Valor escalar u objeto por dimensión (canal, origen, etapa…) |
-| Auditoría | `created_at`, `created_by = 'mocter-admin'` (job) |
+```typescript
+// Ejemplo de índices en Drizzle ORM
+index('idx_conversations_client_created').on(conversations.clientId, conversations.createdAt),
+index('idx_prospects_client_created').on(prospects.clientId, prospects.createdAt),
+index('idx_ai_events_client_created').on(aiUsageEvents.clientId, aiUsageEvents.createdAt),
+index('idx_orders_client_created').on(orders.clientId, orders.createdAt),
+index('idx_invoices_client_created').on(invoices.clientId, invoices.createdAt)
+```
 
-Único `(client_id, period_start, metric_key)`; append-only por día (se reescribe el día en curso hasta su cierre).
+Estos índices permiten que el optimizador de PostgreSQL ejecute búsquedas de rango por índice (`Index Scan` o `Bitmap Index Scan`), descartando de inmediato las filas de otros inquilinos y aquellas fuera de la ventana de fechas.
 
-### 3.2 `platform_snapshots` (Router Global)
+---
 
-| Atributo | Regla |
-|---|---|
-| `id` | PK |
-| `period_start` · `metric_key` | Único `(period_start, metric_key)` |
-| `value` JSONB | Agregado de todas las celdas vía API |
-| Auditoría | `created_by = 'mocter-admin'` (job) |
+## 4. Resolución de Períodos y Zonas Horarias
 
-## 4. Métricas
+El módulo `PeriodResolver` convierte la selección del usuario en límites exactos `[period_start, period_end]` y calcula el período anterior equivalente para la comparación de deltas:
 
-### 4.1 Inquilino (`metric_key`)
+| Período | Definición de Inicio | Definición de Fin | Período de Comparación (Delta) |
+|---|---|---|---|
+| `daily` | 00:00:00 del día en `timezone` | 23:59:59 del día en `timezone` | Mismo horario del día anterior |
+| `weekly` | Lunes 00:00:00 de la semana activa | Domingo 23:59:59 de la semana activa | 7 días inmediatamente anteriores |
+| `monthly` | Primer día del mes 00:00:00 | Último día del mes 23:59:59 | Mes calendario anterior completo |
+| `quarterly` | Inicio del trimestre (Q1..Q4) | Fin del trimestre (Q1..Q4) | Trimestre calendario anterior |
+| `semiannual` | Inicio del semestre (S1/S2) | Fin del semestre (S1/S2) | Semestre calendario anterior |
+| `annual` | 1 de enero 00:00:00 | 31 de diciembre 23:59:59 | Año calendario anterior |
+| `custom` | `start_date` 00:00:00 | `end_date` 23:59:59 | Ventana de igual duración previa |
 
-| Grupo | Claves |
-|---|---|
-| Conversaciones | `conversations_new`, `conversations_closed`, `conversations_open_eod`, `conversations_resolved`, `first_response_avg_minutes`, `resolution_avg_minutes`, `csat_avg`, `conversations_by_channel` |
-| Prospectos | `prospects_new`, `prospects_by_source`, `prospects_by_stage`, `conversion_rate`, `consent_rate` |
-| Bot | `bot_messages`, `bot_handoffs`, `bot_self_resolution_rate`, `followups_sent`, `followups_replied`, `tokens_in`, `tokens_out`, `tokens_cost_cents` |
-| Productos | `products_active`, `products_top_consulted`, `shares_published`, `adoptions_received` |
-| Etiquetas y agentes | `labels_top`, `agents_workload`, `resolutions_by_agent` |
-| Almacenamiento | `storage_used_bytes`, `storage_limit_bytes`, `files_uploaded`, `external_links` |
+---
 
-### 4.2 SaaS (`metric_key`)
+## 5. Servicio de Exportación (Excel y PDF)
 
-| Grupo | Claves |
-|---|---|
-| Inquilinos | `clients_total`, `clients_new`, `clients_active`, `clients_suspended`, `clients_churned`, `clients_by_plan`, `clients_by_region`, `clients_by_industry` |
-| Almacenamiento | `storage_total_bytes`, `storage_growth`, `storage_top_clients`, `dedup_ratio`, `external_links_total` |
-| IA | `ai_tokens_by_mode`, `bots_active`, `providers_usage`, `presets_usage`, `projected_spread_cents` |
-| Comunidades | `orgs_active`, `shares_published`, `adoptions_total` |
-| Chatwoot | `chatwoot_accounts_by_state`, `sync_errors` |
-| Calidad de datos | `prospects_without_consent_pct`, `invalid_emails_pct`, `duplicates_pct` |
-| Operación | `backup_health` (OPS-001) |
+### 5.1 Motor Excel (`exceljs`)
+- **Estructura del libro:**
+  - Pestaña 1: `Resumen de KPIs` (Tarjetas de métricas con valor actual, valor anterior y variación porcentual).
+  - Pestaña 2: `Detalle Transaccional` (Tabla completa filtrada por período con formato de cabeceras, bordes y tipos de celda específicos).
+- **Estilo:** Paleta HUD de alto contraste alineada con `DSN-001` (encabezados oscuros, fuentes legibles).
 
-## 5. Motor de períodos
+### 5.2 Motor PDF
+- **Estructura del documento:**
+  - Membrete con logo institucional, nombre del inquilino, período consultado y fecha de generación.
+  - Sección superior: Grid de tarjetas con métricas principales (conversaciones, prospectos, ventas, uso de almacenamiento).
+  - Sección media: Gráficos de barra o serie de tiempo renderizados como SVG vectorial.
+  - Sección inferior: Tabla de desglose paginada con numeración `Página X de Y`.
 
-- El snapshot diario cierra en la zona horaria del inquilino (`clients.timezone`).
-- Semana, mes, trimestre, semestre y año se **componen sumando los snapshots diarios** del rango; el rango personalizado usa la misma composición con fecha de inicio y fin libres.
-- Cada vista muestra el delta contra el período anterior equivalente (RF-01.3).
+---
 
-## 6. Roles y export
+## 6. Roles y Seguridad (Alineación D-31)
 
-- `tenant_owner`: dashboard completo; `tenant_agent`: solo sus claves (`agents_workload`, `resolutions_by_agent`, sus conversaciones y sus prospectos).
-- SaaS: `platform_admin`/`platform_owner` completo; `platform_sales` ve inquilinos, planes, IA y recaudación proyectada, sin datos operativos de conversaciones.
-- Export: CSV por vista y resumen PDF del período (O-02 define archivo vs vista de impresión).
+- **`tenant_owner` / `tenant_admin`:** Acceso irrestricto a todas las métricas del inquilino.
+- **`tenant_agent`:** Acceso restringido; la capa de servicio inyecta `agent_id = session.user_id` para filtrar únicamente sus conversaciones y prospectos atendidos.
+- **`platform_owner` / `platform_admin`:** Dashboard consolidado de la SaaS (todos los inquilinos, almacenamiento global, facturación global).
+- **`platform_sales`:** Métricas comerciales globales (planes, inquilinos, MRR); sin acceso a conversaciones de soporte ni prospectos de inquilinos.
 
-## 7. i18n
+---
 
-Ambas superficies en es/en (Español por defecto); las etiquetas de las métricas viven en los diccionarios.
-
-## 8. Verificación
+## 7. Verificación Técnica
 
 | Control | Prueba |
 |---|---|
-| Períodos | Una métrica en `America/Bogota` no cuenta interacciones del día siguiente en UTC; semana/mes se componen desde snapshots diarios y coinciden con el rango |
-| Sin PII | Ningún agregado contiene email, teléfono ni contenido de conversación |
-| Roles | Un `tenant_agent` no ve métricas de otro agente ni las agregadas del inquilino |
-| Agregación SaaS | `platform_snapshots` coincide con la suma de las celdas por API |
-| Export | CSV y PDF se generan para cada período y en ambos idiomas |
-
-## 9. Riesgos
-
-| Riesgo | Mitigación |
-|---|---|
-| Carga de agregación nocturna | Job acotado por lote; reescritura del día en curso idempotente |
-| Tamaño de snapshots | Una fila por métrica y día; retención configurable (O-01) |
-| Divergencia celda vs Chatwoot | La fuente conversacional es la API de Chatwoot en el momento del snapshot |
-| Exposición de datos | Roles + agregados sin PII + auditoría de accesos |
-
-## 10. Alineación con otras especificaciones
-
-| Spec | Punto de contacto |
-|---|---|
-| ADM-001 | `clients` (timezone, plan, industria), `client_usage`, `chatwoot_accounts`, `tenant_labels`, D-19 |
-| CRM-001 | Prospectos y consentimientos en agregado |
-| BOT-001 | `ai_usage_events` (tokens, propósito), bots, recordatorios |
-| CHW-001 | Conversaciones, CSAT y etiquetas por API |
-| OPS-001 | Salud de backups y alertas |
-| DAT-001 | RLS, RF-10.9, sin FK entre planos |
+| Tiempo de Respuesta | Consulta de rango anual en base con 50,000 registros responde en ≤ 800 ms. |
+| Timezone | Un evento ocurrido a las 23:30 COT del 31 de marzo no computa en el mes de abril. |
+| Integridad Excel | Archivo `.xlsx` generado se abre en Microsoft Excel y LibreOffice Calc sin advertencias de corrupción. |
+| Integridad PDF | Archivo `.pdf` contiene encabezados legibles y tabla paginada sin solapamientos. |
+| RLS y Scopes | Intentos de consulta con `client_id` ajeno son bloqueados con HTTP 403. |

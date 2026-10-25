@@ -28,11 +28,11 @@ El objetivo de este documento es especificar los requerimientos técnicos y func
 
 #### 2. Requerimientos Funcionales (RF)
 
-**RF-01: Autenticación Delegada (Federada)**
+**RF-01: Autenticación Delegada (Federada y Parametrizable)**
 
-- Proveedores Soportados: Google y Facebook.
+- Proveedores Soportados y Administrables: Arquitectura multi-proveedor gestionada dinámicamente desde el backoffice de la SaaS (Google, Facebook, Microsoft y futuros proveedores OIDC). Cada proveedor cuenta con switch de activación/desactivación y parametrización de credenciales.
 - Protocolo: Implementación estricta de OAuth 2.0 y OpenID Connect (OIDC).
-- Flujo de Registro/Inicio de Sesión: Si el usuario no existe en la base de datos interna, el sistema debe crear un perfil automáticamente utilizando el ID único del proveedor (provider_id), el correo electrónico verificado, el nombre y la foto de perfil. Si ya existe, se inicia sesión directamente.
+- Flujo de Registro/Inicio de Sesión: Si el usuario no existe en la base de datos interna, el sistema debe crear un perfil automáticamente utilizando el ID único del proveedor (`provider_id`), el correo electrónico verificado, el nombre y la foto de perfil. Si ya existe, se inicia sesión directamente. En la interfaz de login solo se renderizan los proveedores marcados como activos en la configuración de la SaaS.
 
 **RF-02: Registro y Autenticación Nativa (Correo y Contraseña)**
 
@@ -136,6 +136,10 @@ Ver DAT-001 RF-05.5 y [`design.md`](../dat-001-arquitectura-datos-multiinquilino
 
 La Ley 1581 de 2012 (Colombia) no alcanza solo a los contactos finales: también a los **usuarios del SaaS** (dueño y agentes del inquilino). El registro exige aceptación del aviso de privacidad y autorización de tratamiento (`user_consents`, `purpose = data_treatment`) y sin ella no se crea la cuenta; el consentimiento comercial (`commercial_comms`) es opcional y puede capturarse en el onboarding (ADM-001). Los derechos del titular (acceso, corrección, supresión con anonimización y revocación) se ejercen por procedimiento de soporte auditado. La supresión de un usuario es lógica y anonimizada, preservando las reglas de negocio (1:0..1, historial de `tenant_users`).
 
+### 2.7 Punto de entrada y acceso unificado a la plataforma
+
+El acceso a la zona administrativa `mocter-admin` (tanto para los operadores de la SaaS como para los inquilinos) se realiza desde la landing page pública mediante un botón en el header principal posicionado inmediatamente a continuación del botón «Solicitar demo». Dicho botón redirige al flujo de autenticación unificada (`/login`), permitiendo el ingreso mediante credenciales nativas o mediante los proveedores federados habilitados.
+
 ## 3. Decisiones
 
 ### Tomadas
@@ -149,6 +153,7 @@ La Ley 1581 de 2012 (Colombia) no alcanza solo a los contactos finales: también
 | AUTH-D-05 | El vínculo usuario-inquilino vive en un objeto propio del inquilino (`tenant_users`), separado de `users` global. `tenant_owner` es único por inquilino y `tenant_agent` se limita por plan; el alta manual crea el `tenant_owner` inicial y este asigna los `tenant_agent`. Un usuario tiene como máximo una membresía activa: puede tener roles de plataforma globales y ser `tenant_owner` de un único inquilino (por ejemplo, el #1); no puede ser miembro de dos inquilinos. `users.active_client_id` es el guardián global de esa regla. | Cierra A-04. El rol del invitado es `tenant_agent`; el `tenant_owner` no se invita ni se duplica. El límite de asientos es del plan (ADM-001 RF-04.7, D-31). La separación evita mezclar identidad global con membresía y permite el caso del inquilino #1. Una invitación a un usuario con membresía activa en otro inquilino se rechaza; si una persona quiere operar otro negocio, necesita otra identidad. |
 | AUTH-D-06 | El panel `mocter-admin` usa una sesión opaca de servidor, no JWT en el navegador. La cookie `HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/`, host-only y con prefijo `__Host-` cuando no se comparte con subdominios transporta un `sid` aleatorio. El servidor guarda el hash SHA-256 del `sid` en `sessions` del Router Global y usa el Redis 7+ del plano de control para lookup y revocación. TTL: 30 minutos de inactividad y 12 horas absolutas. El `sid` rota en login, 2FA, cambio de contraseña y elevación de privilegios; la revocación es inmediata por usuario, rol o `client_id`. Los pods no guardan sesión local: cualquier réplica valida contra el store compartido y no se usan sticky sessions. JWT queda reservado para APIs públicas o máquina-a-máquina futuras, con access token corto, refresh opaco rotativo y revocación; el panel no usa JWT en el navegador. | Cierra A-05. La revocación inmediata y el escalado horizontal no compiten: el pod es stateless y el estado vive en Postgres/Redis. Redis es una dependencia del plano de control; si cae, las sesiones existentes se validan contra Postgres y las nuevas autenticaciones fallan cerrado. La cookie de sesión no se relaja para OAuth: los flujos de login y vinculación usan cookies de `state` separadas, `SameSite=Lax`, de corta vida y alcance acotado a `/auth/google`, `/auth/facebook` y `/auth/link`. Se mantiene token CSRF y validación de `Origin`. La sesión guarda `client_id` y `routing_version`; la cookie solo lleva el `sid`. |
 | AUTH-D-07 | El SSO a Chatwoot se entrega **dentro del iframe** mediante `GET /auth/chatwoot/embed?client_id=<uuid>`, que devuelve una página mínima con auto-POST del JWT al endpoint SSO de Chatwoot. El nivel superior no navega; el token no viaja en el `src` del iframe, en el historial del top-level ni en logs. | ADM-001 D-32 exige una sola plataforma sin redirección. El handoff embebido conserva el JWT de 5 minutos y un solo uso; la sesión de Chatwoot vive en su subdominio same-site. La ruta y el método se validan en T-39. |
+| AUTH-D-08 | Proveedores OAuth federados dinámicos y parametrizables desde el backoffice de la SaaS. Los proveedores activos (Google, Facebook, Microsoft, etc.) se gestionan en base de datos (`auth_providers_config`) con banderas de habilitación y credenciales cifradas, permitiendo activar o desactivar proveedores sin redespliegue de código. | Flexibilidad comercial y operativa para la plataforma. El login renderiza dinámicamente los botones sociales habilitados en runtime. |
 
 ### Abiertas
 
@@ -167,3 +172,4 @@ No quedan decisiones abiertas. A-05 se cerró con AUTH-D-06.
 - 2026-10-23: alineación con DAT-001 RF-10.9: las tablas de identidad siguen la convención global de auditoría (`created_at`, `updated_at`, `created_by`, `updated_by`); `sessions` usa `revoked_at` y los tokens `consumed_at` como baja lógica, sin duplicar `deleted_at`.
 - 2026-10-23: Habeas Data para usuarios de la plataforma (con CRM-001): nueva tabla `user_consents` en el Router, consentimiento obligatorio de tratamiento en el registro (Ley 1581 de 2012), consentimiento comercial opcional en el onboarding y derechos del titular por soporte auditado (§2.6, design §4.1 y §5.1).
 - 2026-10-24: AUTH-D-07: el SSO a Chatwoot se entrega dentro de un iframe mediante `/auth/chatwoot/embed`; el nivel superior no navega y el token no se expone en el `src` ni en logs. Alineado con ADM-001 D-32.
+- 2026-10-24: AUTH-D-08: proveedores OAuth dinámicos y parametrizables desde el backoffice de la SaaS (`auth_providers_config`); acceso unificado a `mocter-admin` desde el botón del header de la landing contiguo a «Solicitar demo» (§2.7).
