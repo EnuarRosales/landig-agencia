@@ -4,8 +4,8 @@
 |---|---|
 | ID | CD-001 |
 | Versión | 1.1 |
-| Estado | Aprobada |
-| Fecha | 2026-10-18 |
+| Estado | Aprobada · Implementada y desplegada |
+| Fecha | 2026-10-18 · actualizado 2026-10-24 |
 | Documentos | `requirements.md` (este) · [`design.md`](design.md) · [`tasks.md`](tasks.md) |
 
 ## 1. Propósito

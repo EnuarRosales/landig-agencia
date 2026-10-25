@@ -66,6 +66,7 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 | RF-02.5 | Documentar los roles disponibles sin enterprise (`agent`, `administrator`). |
 | RF-02.6 | Documentar el modelo multi-cuenta (`account_users`): un `User` global puede pertenecer a N cuentas y no existe lectura cross-account fuera de esa membresía. |
 | RF-02.7 | La integración de Mocter no crea un segundo `account_user` para un usuario con membresía activa en otro inquilino. Chatwoot puede permitir la multi-cuenta técnica; la capa de sincronización de Mocter rechaza la operación y no reutiliza el `User` global para dos inquilinos. |
+| RF-02.8 | Documentar las restricciones de embebido de la interfaz de Chatwoot: `X-Frame-Options`/CSP `frame-ancestors`, cookies de sesión, same-site, navegación interna y comportamiento del SSO dentro de un iframe. La validación en 4.19.0 es evidencia obligatoria para la decisión de ADM-001 D-32. |
 
 ### RF-03 · Superficie de API
 
@@ -120,6 +121,7 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 7. Ningún documento propone escribir en la base de datos de Chatwoot.
 8. La referencia declara el commit `042b438` y la versión `4.19.0`.
 9. Chatwoot 4.19.0 corre sobre PostgreSQL 18 + pgvector, con Redis 7+ y Sidekiq en el plano de soporte de DAT-001, y su esquema permanece intacto y sincronizado con upstream.
+10. Las restricciones de embebido (framing, cookies y SSO en iframe) están documentadas con evidencia `archivo:línea` y una prueba de laboratorio en 4.19.0.
 
 ## 6. Decisiones y supuestos
 
@@ -135,6 +137,7 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 | D-08 | Cada aplicación mantiene su propia instancia PostgreSQL. | No hay FK cruzada ni acceso directo a la base del otro sistema. |
 | D-09 | La lógica de comunidades, propuestas y clonación vive exclusivamente en `mocter-admin`. | Hacia Chatwoot solo se materializan cuentas y usuarios; Chatwoot no conoce organizaciones ni propuestas. |
 | D-10 | Chatwoot 4.19.0 se ejecuta sobre PostgreSQL 18 + pgvector, con Redis 7+ y Sidekiq, en el plano de soporte de DAT-001. Su instancia PostgreSQL y su Redis son propios: no se comparten con el plano de control ni se les aplica particionado por `client_id` ni RLS. | DAT-001 RF-11 fija PostgreSQL 18 para toda la plataforma, incluida Chatwoot; RF-01.7 separa el Redis de Chatwoot del dedicado del plano de control. La ejecución está validada en laboratorio y el rollback se documenta en DAT-001 §9.7. |
+| D-11 | La interfaz de Chatwoot se consume embebida en un iframe same-site desde `mocter-admin`; CHW-001 documenta las restricciones y no modifica Chatwoot. | ADM-001 D-32 fija la modalidad; el inventario debe probar si 4.19 permite framing, cookies y SSO dentro del iframe antes de implementar. |
 
 ## 7. Decisiones abiertas
 
@@ -148,3 +151,4 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 - 2026-10-20: alineación con DAT-001 (T-14): PostgreSQL 18 + pgvector, Redis 7+ y Sidekiq en el plano de soporte; esquema de Chatwoot fuera de la directiva de base de datos y del particionado de Mocter; D-10 agregada; criterio de aceptación 9 agregado.
 - 2026-10-21: O-04 cerrada por ADM-001 D-19: el liderazgo no recibe `AccountUser` en cuentas subordinadas; la lectura se agrega en `mocter-admin` y se limita a métricas y datos compartidos por el inquilino.
 - 2026-10-22: corrección de tenencia 1:0..1 (AUTH-D-06). Chatwoot puede permitir multi-cuenta técnica, pero la sincronización de Mocter rechaza un segundo `account_user` para un usuario con membresía activa en otro inquilino.
+- 2026-10-24: restricciones de embebido (RF-02.8, D-11): ADM-001 D-32 fija el iframe same-site como única modalidad. Se agregan T-17 (framing/cookies) y T-18 (SSO en iframe) como validación de laboratorio pendiente; CHW-001 no modifica Chatwoot.

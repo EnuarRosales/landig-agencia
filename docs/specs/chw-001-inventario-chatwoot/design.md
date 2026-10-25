@@ -142,6 +142,21 @@ Consecuencias:
 - La membresía en cada cuenta subordinada se descarta: daría lectura total de la conversación y de la cartera de clientes, y cruzaría celdas. Contradice D-09 y el aislamiento de DAT-001.
 - La integración de Mocter no crea un segundo `AccountUser` para un usuario con membresía activa en otro inquilino. Chatwoot permite multi-cuenta técnica, pero la capa de sincronización rechaza la operación y no reutiliza el `User` global para dos inquilinos.
 
+### 6.2 Restricciones de embebido
+
+ADM-001 D-32 exige que la bandeja de Chatwoot se presente en un iframe same-site. CHW-001 no modifica Chatwoot; documenta y valida las restricciones que condicionan esa decisión.
+
+| Restricción | Qué verificar en 4.19.0 | Evidencia |
+|---|---|---|
+| Framing | `X-Frame-Options` y `Content-Security-Policy: frame-ancestors` en la respuesta del dashboard; si existe configuración (`FRAME_ANCESTORS` o equivalente) y qué orígenes admite | `config/`, `app/controllers/`, cabeceras |
+| Cookies | Nombre, `Domain`, `SameSite`, `Secure` y `HttpOnly` de la cookie de sesión; si se envía en un iframe same-site y en uno cross-site | `config/initializers/session_store.rb`, controladores |
+| SSO en iframe | `generate_sso_link` y `consume_sso_auth_token`: método (GET/POST), parámetro, redirección y si el token se consume dentro del iframe; si no admite POST, código de un solo uso canjeado server-side | `app/controllers/`, `app/models/` |
+| Navegación interna | Rutas, Turbo/ActionCable, websockets y `connect-src` necesarios dentro del iframe | `app/javascript/`, `config/` |
+| UI responsive | Barra lateral, encabezado, scroll y teclado en un contenedor de altura fija; comportamiento móvil | prueba manual |
+| Aislamiento | Que el iframe no requiera enterprise ni cambios de esquema; que el fork solo ajuste cabeceras si hace falta | `enterprise/`, `db/schema.rb` |
+
+**Resultado esperado:** una tabla de evidencia con `archivo:línea` y un veredicto por restricción. Si el framing no se puede habilitar sin un cambio de lógica, la decisión D-32 queda bloqueada y se reporta; no se sustituye por redirección.
+
 ## 7. ERD
 
 Dos diagramas en `erd.mmd`, porque mezclan escalas distintas:

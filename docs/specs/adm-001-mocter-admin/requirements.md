@@ -34,7 +34,7 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 
 ### Excluye
 
-- La operación de conversaciones de Chatwoot (bandeja, mensajes, contactos operativos).
+- La operación de conversaciones de Chatwoot (bandeja, mensajes, contactos operativos); Mocter la presenta embebida en un iframe, no la implementa.
 - Código y capacidades enterprise de Chatwoot.
 - Modificación del esquema o de la base de datos de Chatwoot.
 - Mensajería privada entre miembros: el feed es el único canal de interacción de esta versión.
@@ -74,8 +74,10 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | ID | Requisito |
 |---|---|
 | RF-02.1 | El usuario inicia sesión una sola vez en `mocter-admin` y accede desde un menú a todas las capacidades que le corresponden, incluidas las de Chatwoot. |
-| RF-02.2 | El tránsito hacia Chatwoot se realiza por SSO nativo, sin compartir credenciales entre sistemas. |
+| RF-02.2 | El tránsito hacia Chatwoot se realiza por SSO nativo, sin compartir credenciales entre sistemas. Chatwoot se presenta **embebido en un iframe** dentro de la shell de `mocter-admin`; el usuario nunca abandona el dominio de Mocter y no existe redirección de nivel superior. |
 | RF-02.3 | La zona del inquilino expone solo las capacidades habilitadas por su plan; no reproduce la densidad de opciones de la interfaz de Chatwoot. |
+| RF-02.4 | La modalidad de acceso es **iframe same-site**: Chatwoot se publica en un subdominio del mismo dominio de la plataforma (por ejemplo, `chat.mocter.co`) y la shell lo embebe. Se prohíbe abrir Chatwoot en pestaña nueva, redirigir el nivel superior o reconstruir su bandeja. La UI embebida conserva la operación de Chatwoot; Mocter no la replica. |
+| RF-02.5 | El iframe solo es admisible si Chatwoot 4.19 permite ser enmarcado por los orígenes de Mocter y la sesión SSO se establece dentro del iframe. La validación de cabeceras, cookies y SSO es condición de aceptación (CHW-001 T-17/T-18, AUTH-001 T-38/T-39). |
 
 ### RF-03 · Aprovisionamiento y sincronización con Chatwoot
 
@@ -235,7 +237,7 @@ Primera ley para el desarrollo de componentes visuales.
 |---|---|
 | RF-13.1 | Toda vista se diseña partiendo de la acción principal del usuario. Lo que no la sirve no se muestra. |
 | RF-13.2 | Un componente no se aprueba si exige explicación externa, ayuda contextual permanente o más de un concepto nuevo por pantalla. |
-| RF-13.3 | Se prohíbe reproducir la densidad de opciones de Chatwoot. Sus capacidades se exponen como entradas de menú y la operación ocurre en su interfaz. |
+| RF-13.3 | Se prohíbe reproducir la densidad de opciones de Chatwoot. Sus capacidades se exponen como entradas de menú y la operación ocurre en su interfaz **embebida**; la shell no reimplementa la bandeja. |
 | RF-13.4 | Toda pantalla declara estado vacío, estado de carga y estado de error con acción de recuperación. |
 
 ### RF-14 · Onboarding guiado
@@ -336,6 +338,7 @@ Rigen las decisiones D-01 a D-09: doble autoridad de tenencia, correlación en t
 | D-29 | El inquilino hereda como atributo obligatorio el ID del usuario dueño (`owner_user_id`). La relación permite recuperar correo, roles y permisos sin un índice adicional. El alta manual por un administrativo de la SaaS exige crear y vincular el usuario en la misma operación. | Evita complejizar el modelo con un índice HMAC separado y elimina el inquilino huérfano: todo inquilino tiene un responsable identificable. El correo y el puntero de ubicación del usuario permiten resolver la identidad antes del login; las credenciales siguen en el almacén que define AUTH-D-01. Cierra O-15. |
 | D-30 | El Router Global aloja las comunidades, el feed y las publicaciones de producto compartido. Las celdas conservan los productos, los embeddings, los vínculos de archivos y los usuarios del inquilino. | La comunidad cruza inquilinos y celdas; RF-10.2 asigna al Router los objetos de dominio global y RF-10.4 deja al inquilino como dueño de sus datos. Una comunidad en la celda del originador obligaría a consultas cross-cell (RF-10.7, RF-10.8) y ataría la disponibilidad de la comunidad a una celda. Aprobada por el usuario el 2026-10-21. |
 | D-31 | Los roles se separan en tres scopes independientes: plataforma (`platform_owner`, `platform_admin`, `platform_sales`), inquilino (`tenant_owner` único y `tenant_agent` según plan) y comunidad (`originator`, `co_leader`, `member`). Un usuario puede tener roles en varios scopes, pero como máximo en un inquilino; los permisos se evalúan contra el vínculo activo. El inquilino #1 es la SaaS y puede estar administrado por un usuario con rol de plataforma. | Cierra A-04: el `tenant_owner` es único y `tenant_agent` es el rol operativo del inquilino; el límite de asientos es una característica del plan. La separación impide que un rol de plataforma otorgue acceso rutinario a chats o datos de negocio: ese acceso es break-glass auditado. El caso del inquilino #1 valida el modelo multi-scope sin excepciones. |
+| D-32 | Chatwoot se embebe en un **iframe same-site** dentro de `mocter-admin`; es la única modalidad de acceso. No hay redirección de nivel superior, pestaña nueva ni reimplementación de la bandeja. | El requisito del usuario es que el inquilino trabaje en una sola plataforma. El iframe conserva la operación nativa de Chatwoot (RF-13.3) y evita duplicar su UI; el SSO se completa dentro del iframe. La condición técnica es publicar Chatwoot en un subdominio del mismo dominio y validar framing, cookies y SSO en 4.19 (CHW-001 T-17/T-18, AUTH-001 T-38/T-39). |
 
 ## 7. Decisiones abiertas
 
@@ -378,3 +381,4 @@ Cerradas:
 - 2026-10-23: regla de envío (ORD-001 D-08). `client_business_info.shipping_policy` guarda la política (gratis y costo por defecto) y `products.free_shipping` / `products.shipping_cost_cents` el indicador y costo por producto. El envío es gratis solo cuando ambas condiciones coinciden.
 - 2026-10-24: modelo de planes en dos capas (RF-04.8/RF-04.9): límites numéricos (`plan_limits`) + capacidades (`plan_features`) con catálogos (`plan_dimensions`, `plan_feature_catalog`), metadata de plan (trial, gracia, estado, orden, ciclos) y overrides de capacidades por inquilino. La asistencia AI queda transversal a todos los planes (AI-001 D-05).
 - 2026-10-23: la internacionalización se eleva a **regla general del sistema** (directiva `rules/rules-for-i18n.md`, registrada en la constitución §4.6): Español e Inglés en toda interfaz, correos y notificaciones, con Español por defecto. `clients.locale` sigue siendo el atributo por inquilino dentro de esa regla.
+- 2026-10-24: acceso a Chatwoot en iframe (D-32, RF-02.4/RF-02.5). El usuario nunca abandona la shell; Chatwoot se publica en un subdominio same-site y se embebe. Se prohíben la pestaña nueva, el redirect de nivel superior y la reimplementación de la bandeja. La validación de framing, cookies y SSO en 4.19 queda como condición de aceptación en CHW-001 y AUTH-001.

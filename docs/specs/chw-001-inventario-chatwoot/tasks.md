@@ -79,6 +79,16 @@
   - Verificación: se cita el índice único `(account_id, user_id)` y la consecuencia de O-04.
   - Evidencia: `design.md` §6.1; la unicidad por par cuenta–usuario se cita en `auth.md` §6 con `db/schema.rb:55`.
 
+- [ ] **T-17 · [LAB] Validar framing y cookies de la UI en 4.19.0**
+  - Medir `X-Frame-Options`/CSP `frame-ancestors`, la configuración disponible y la cookie de sesión en un iframe same-site y cross-site.
+  - Verificación: la UI carga en un iframe same-site sin bloquearse; la cookie se envía; se documenta el ajuste mínimo si 4.19 no lo permite.
+  - Evidencia: `design.md` §6.2 con `archivo:línea` y resultado de laboratorio.
+
+- [ ] **T-18 · [LAB] Validar SSO y navegación dentro del iframe**
+  - Probar `generate_sso_link`/`consume_sso_auth_token` dentro del iframe, re-auth tras 401, navegación interna, websockets y móvil.
+  - Verificación: el usuario entra sin ver el login de Chatwoot; el top-level no navega; el token no se reutiliza; la bandeja funciona en móvil.
+  - Evidencia: `design.md` §6.2 y AUTH-001 T-39.
+
 - [x] **[HUMANO] T-14 · Aprobar la especificación**
   - Cambiar el estado de `requirements.md` de `Borrador` a `Aprobada`.
   - Responsable: dueño del producto.

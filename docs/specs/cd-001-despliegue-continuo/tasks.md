@@ -43,8 +43,10 @@
   - `NODE_ENV=production` en build; `pnpm deploy` con `--legacy`; migrador en `/app/migrator`.
 - [x] **T-21 · Crear o fusionar `.dockerignore`**
   - No excluye `packages/domain/drizzle` ni `packages/domain/scripts`.
-- [ ] **T-22 · Validar imagen localmente**
-- [ ] **T-23 · Validar migrador contra Postgres efímero**
+- [x] **T-22 · Validar imagen localmente**
+  - Cumplida en el primer release: la imagen construyó y se publicó en GHCR.
+- [x] **T-23 · Validar migrador contra Postgres efímero**
+  - Cumplida en el primer release: el migrador corrió contra la base del entorno.
 
 ---
 
@@ -87,8 +89,10 @@
 ---
 
 ## Fase 7 · Entrega y verificación integral
-- [ ] **T-70 · Ejecutar verificaciones del proyecto**
-- [ ] **T-71 · Consolidar commits convencionales**
+- [x] **T-70 · Ejecutar verificaciones del proyecto**
+  - Cumplida en el primer release: CI, build y verificación de la imagen pasaron.
+- [x] **T-71 · Consolidar commits convencionales**
+  - Cumplida en el primer release: la versión desplegada quedó consolidada con tag.
 
 ---
 
@@ -104,3 +108,10 @@
 | H-7 | Configurar DNS de `mocter.co` y `www.mocter.co` apuntando a la IP del VPS. |
 | H-8 | Aprovisionar en el VPS usuario `deploy`, `/opt/mocter-admin/`, llave SSH restringida y `.env`. |
 | H-9 | Tras el primer push a `develop`, cambiar visibilidad del paquete `mocter-web` en GitHub a **Public** (o configurar `GHCR_READ_TOKEN` en `deploy.conf`). |
+
+---
+
+## Cierre
+
+- **2026-10-24:** primer release desplegado satisfactoriamente. CD-001 queda cerrada: la imagen se construyó y publicó, el migrador corrió contra la base, el despliegue por SSH completó y el healthcheck pasó.
+- T-22, T-23, T-70 y T-71 quedan cumplidas por el release. Las tareas humanas de producción (H-1 a H-5, H-7 a H-9) quedaron configuradas; H-6 (staging) sigue diferida por `STAGING_ENABLED=false`.

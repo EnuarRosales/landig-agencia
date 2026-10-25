@@ -321,6 +321,10 @@ Un usuario con membresía activa en un inquilino no puede aceptar una invitació
 
 El módulo emite un JWT HS256 firmado con `CHATWOOT_SSO_SECRET`, con `email`, `name`, `identifier` (el `user_id`), `iat` y `exp` a 5 minutos. El token es de un solo uso: Chatwoot lo consume con `consume_sso_auth_token` (CHW-001 RF-02.3), no se guarda en la base, no se escribe en logs y se entrega a Chatwoot por HTTPS. El secreto se comparte solo entre `apps/admin` y Chatwoot; no se usa la contraseña del usuario. La ruta exacta y el nombre del parámetro se validan contra Chatwoot 4.19.0 en T-33.
 
+**Handoff embebido (ADM-001 D-32).** El flujo de producto no navega el nivel superior. La shell carga `GET /auth/chatwoot/embed?client_id=<uuid>` en un iframe; el endpoint valida sesión, membresía y cuenta `active`, emite el mismo JWT de 5 minutos y devuelve una página HTML mínima que auto-envía el token por `POST` al endpoint SSO de Chatwoot dentro del iframe. Chatwoot consume el token, crea su cookie de sesión en `chat.mocter.co` y navega a la bandeja. La página se sirve con `Cache-Control: no-store`, CSP restrictiva y sin token en el `src`, en el historial del top-level ni en logs. Si 4.19 no admite `POST`, se usa un código de un solo uso canjeado server-side; el iframe navega a la URL de canje y el token nunca aparece en el nivel superior. `/auth/chatwoot/sso` se conserva para pruebas y para un flujo no embebido de soporte; el producto usa `/embed`.
+
+**Re-auth y cookies.** Si Chatwoot responde 401 o muestra su login, la shell recarga `/embed`; el usuario no ve el login de Chatwoot. La cookie de sesión de Chatwoot debe ser same-site (subdominio `chat.mocter.co`); con dominio custom se requiere un subdominio de chat del mismo dominio o `SameSite=None; Secure`, que se valida en T-39. El token no se persiste.
+
 No se crea ni se reutiliza un `AccountUser` para un usuario con membresía en otro inquilino. Chatwoot puede ser multi-cuenta a nivel técnico, pero la capa de sincronización de Mocter rechaza esa operación (CHW-001 RF-02.7).
 
 ### 5.11 JWT de API (reservado)
@@ -368,6 +372,7 @@ Mientras la celda no responda, el login de ese usuario devuelve `503`; no se int
 | `GET` | `/auth/link/:provider/callback` | State | State | 10/15 min por usuario |
 | `DELETE` | `/auth/identities/:provider` | Sesión | Sí | 5/15 min por usuario |
 | `GET` | `/auth/chatwoot/sso` | Sesión | — | 30/15 min por usuario |
+| `GET` | `/auth/chatwoot/embed` | Sesión | — | 30/15 min por usuario |
 
 Los `GET` que redirigen a un proveedor no requieren CSRF porque el `state` es el control; el callback lo valida. La cookie CSRF se setea al crear o rotar la sesión y solo es válida junto con una sesión activa; no se emite para una cookie anónima.
 
@@ -552,7 +557,7 @@ Un job diario purga sesiones vencidas hace más de 30 días, tokens vencidos y c
 | Rate limit | Límite por cuenta+IP, por IP y por cuenta; `Retry-After`; Redis caído falla cerrado |
 | Aislamiento | `mocter_auth` no lee `tenant_users`, `clients` ni datos de negocio, y no escribe `audit_log` |
 | Celda dedicada | Login resuelto por `identity_location`, 2FA en la celda, migración sin identidad dividida y sin fallback al Router |
-| SSO Chatwoot | Token de 5 minutos, un solo uso, `client_id` correcto y sin `AccountUser` cruzado |
+| SSO Chatwoot | Token de 5 minutos, un solo uso, `client_id` correcto y sin `AccountUser` cruzado; handoff dentro del iframe sin navegar el nivel superior |
 
 ### 9.2 Laboratorio
 
@@ -562,6 +567,7 @@ Un job diario purga sesiones vencidas hace más de 30 días, tokens vencidos y c
 - T-33: SSO contra Chatwoot 4.19.0, TTL, single-use y cuenta inexistente.
 - T-34: dos réplicas, Redis caído, Postgres caído, 1000 sesiones y 100 logins/minuto.
 - T-35: restore de Router y celda dedicada; revocación de sesiones y clave TOTP.
+- T-39: SSO y cookies de Chatwoot dentro del iframe; same-site, dominio custom, re-auth y expiración.
 
 ### 9.3 Criterios de aceptación
 

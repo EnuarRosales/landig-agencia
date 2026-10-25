@@ -108,6 +108,10 @@ Toda vista de Mocter se diseña **Mobile First**: la versión móvil se define p
 
 Un inquilino nuevo debe quedar **operativo en una sesión corta** (5 minutos como guía de diseño, no como SLA): onboarding guiado con defaults de plataforma, un producto, bot con preset y canal de atención activo. **WhatsApp es el canal preferido** y su conexión puede extenderse sin bloquear la operación; el widget web permite operar de inmediato. Todo lo demás (políticas, FAQs, catálogo completo) es opcional, se completa después y nunca bloquea. La configuración avanzada no es requisito del alta.
 
+### 4.10 Plataforma única y Chatwoot embebido
+
+El usuario del inquilino trabaja en **una sola plataforma**: `mocter-admin` es el único nivel superior y Chatwoot se presenta **embebido en un iframe same-site**. No se abre en pestaña nueva, no se redirige el nivel superior y no se reimplementa la bandeja; la operación ocurre en la interfaz de Chatwoot (ADM-001 D-32, CHW-001 §6.2). La marca blanca aplica a la shell; la personalización visual del contenido embebido es un alcance separado.
+
 ## 5. Formato del reporte del agente
 
 Al terminar una especificación, entrega:
@@ -123,12 +127,12 @@ Al terminar una especificación, entrega:
 | ID | Nombre | Estado |
 |---|---|---|
 | MIG-001 | [Migración Next.js 16](docs/specs/mig-001-nextjs-migration/requirements.md) | Implementada · Estable |
-| CD-001 | [Despliegue continuo](docs/specs/cd-001-despliegue-continuo/requirements.md) | Implementada · Pendiente de primer release |
+| CD-001 | [Despliegue continuo](docs/specs/cd-001-despliegue-continuo/requirements.md) | Implementada · Primer release desplegado (2026-10-24) |
 | CORE-002 | [Optimización del cascarón](docs/specs/core-002-optimizacion-cascaron/requirements.md) | Implementada · Estable |
 | API-001 | [Documentación OpenAPI (Swagger)](docs/specs/api-001-openapi-swagger/requirements.md) | Implementada · Estable |
-| ADM-001 | [mocter-admin — núcleo administrativo de inquilinos](docs/specs/adm-001-mocter-admin/requirements.md) | Aprobada · 2026-10-22; D-15 (membresía 1:0..1), D-30 (Router Global) y D-31 (roles/scopes) aprobadas |
-| AUTH-001 | [Sistema híbrido de autenticación y autorización](docs/specs/auth-001-autenticacion-hibrida/requirements.md) | Aprobada · 2026-10-22; AUTH-D-01 a AUTH-D-06 cerradas |
-| CHW-001 | [Inventario técnico de Chatwoot](docs/specs/chw-001-inventario-chatwoot/requirements.md) | Aprobada · Sincronización alineada con membresía 1:0..1 |
+| ADM-001 | [mocter-admin — núcleo administrativo de inquilinos](docs/specs/adm-001-mocter-admin/requirements.md) | Aprobada · 2026-10-22; D-15 (membresía 1:0..1), D-30 (Router Global), D-31 (roles/scopes) y D-32 (Chatwoot embebido en iframe) aprobadas |
+| AUTH-001 | [Sistema híbrido de autenticación y autorización](docs/specs/auth-001-autenticacion-hibrida/requirements.md) | Aprobada · 2026-10-22; AUTH-D-01 a AUTH-D-07 cerradas |
+| CHW-001 | [Inventario técnico de Chatwoot](docs/specs/chw-001-inventario-chatwoot/requirements.md) | Aprobada · Sincronización alineada con membresía 1:0..1; embedding iframe pendiente de laboratorio (T-17/T-18) |
 | DAT-001 | [Arquitectura de datos multi-inquilino basada en celdas](docs/specs/dat-001-arquitectura-datos-multiinquilino/requirements.md) | Aprobada · Alineada con AUTH-D-06 y membresía 1:0..1 |
 | OPS-001 | [Operación, continuidad y observabilidad](docs/specs/ops-001-operacion-continuidad-observabilidad/requirements.md) | Aprobada · 2026-10-22; decisiones O-01 a O-06 diferidas a implementación; lab T-02, T-03, T-08 y T-18 pendientes |
 | BOT-001 | [Bot de atención automatizada con LLM e inferencia como servicio](docs/specs/bot-001-atencion-automatizada-llm/requirements.md) | Aprobada · 2026-10-23; día uno: bot, canales desde Mocter y BYOK; propuesta de negocio por madurar: agregador de inferencia (billetera + spread) |

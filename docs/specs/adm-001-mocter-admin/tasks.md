@@ -182,6 +182,12 @@
   - Verificación: revisión de cada pantalla contra RF-13; ninguna reproduce la densidad de Chatwoot.
   - RF-13.
 
+- [ ] **T-36 · Implementar el acceso embebido a Chatwoot**
+  - Shell con iframe same-site (`chat.mocter.co`), `frame-src`/`frame-ancestors`, handoff `/auth/chatwoot/embed`, estados de carga/error/reconexión y altura responsive.
+  - Verificación: el usuario entra a la bandeja sin abandonar `admin.mocter.co`; no hay pestaña nueva ni redirect de nivel superior; un fallo de framing muestra error con reintento; móvil validado.
+  - Evidencia: ADM-001 §8.3, AUTH-001 T-38/T-39, CHW-001 T-17/T-18.
+  - RF-02.2, RF-02.4, RF-02.5, D-32.
+
 ## Fase 7 · Verificación y aceptación
 
 - [ ] **T-30 · Verificar seguridad de roles y RLS**

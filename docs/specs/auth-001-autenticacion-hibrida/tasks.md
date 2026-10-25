@@ -184,6 +184,16 @@
   - Restaurar Router y una celda dedicada; ejecutar la revocación de sesiones; verificar la clave TOTP y el re-enrolamiento.
   - Verificación: ninguna sesión anterior sigue válida; los 2FA sin clave se marcan para re-enrolar; las claves de Redis se reconstruyen vacías.
 
+- [ ] **T-38 · Implementar el handoff embebido del SSO**
+  - `GET /auth/chatwoot/embed`: validar sesión, membresía y cuenta `active`; emitir el JWT de 5 minutos y devolver una página de auto-POST al endpoint SSO de Chatwoot; `Cache-Control: no-store`; sin token en el `src` del iframe ni en el historial del top-level.
+  - Verificación: el iframe entra a Chatwoot sin navegar el nivel superior; el token no aparece en el `src` ni en logs; un 401 recarga el embed; el segundo uso falla.
+  - Evidencia: `design.md` §5.10 y ADM-001 §8.3.
+
+- [ ] **T-39 · [LAB] Validar SSO y cookies dentro del iframe**
+  - Probar same-site (`chat.mocter.co`), dominio custom, re-auth, expiración y bloqueo de cookies de terceros.
+  - Verificación: la bandeja carga en el iframe; el usuario no ve el login de Chatwoot; el comportamiento cross-site queda documentado.
+  - Evidencia: `design.md` §5.10 y CHW-001 T-18.
+
 - [ ] **T-36 · Verificar los criterios de aceptación**
   - Recorrer los criterios de aceptación del documento de origen y `design.md` §9.3; registrar evidencia por criterio.
   - Verificación: cada criterio tiene prueba o evidencia de laboratorio; ninguno queda “asumido”.

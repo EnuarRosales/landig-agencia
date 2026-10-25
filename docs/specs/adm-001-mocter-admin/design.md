@@ -10,7 +10,7 @@
 
 ## 1. Principios
 
-1. **Una sola puerta de entrada.** El inquilino inicia sesión en `mocter-admin` y desde ahí accede a todo, incluido Chatwoot. Chatwoot es el motor de conversaciones, no el panel administrativo.
+1. **Una sola puerta de entrada.** El inquilino inicia sesión en `mocter-admin` y desde ahí accede a todo, incluido Chatwoot, que se presenta **embebido en un iframe**; el usuario nunca abandona la shell. Chatwoot es el motor de conversaciones, no el panel administrativo.
 2. **El plano de control no conoce el negocio.** El Router Global sabe quién es el inquilino, dónde vive y qué plan tiene; no sabe cuántos productos vende ni qué conversaciones tiene.
 3. **La comunidad es global; el negocio es local.** Organizaciones, feed y publicaciones de productos compartidos cruzan celdas y viven en el Router Global. Productos, archivos vinculados y usuarios del inquilino viven en su celda.
 4. **Todo inquilino tiene dueño.** No existe inquilino sin `owner_user_id`; el alta manual no puede dejar un tenant huérfano.
@@ -314,6 +314,49 @@ El inquilino configura en su celda el contexto que el bot usa en cada atención 
 - **Gestión desde Mocter:** el inquilino crea, edita (título, descripción, color, visibilidad) y archiva etiquetas; el sistema ejecuta la configuración en Chatwoot con idempotencia. Una etiqueta borrada en Chatwoot queda archivada en el espejo (`state = archived`), sin perder correlación histórica.
 - Las etiquetas sirven luego para flujos del bot (BOT-001) y para mapear `tags` de prospectos (CRM-001); ese consumo se define en cada spec.
 
+### 8.3 Acceso embebido a Chatwoot (iframe)
+
+**Decisión (D-32).** El usuario del inquilino trabaja en una sola plataforma: `mocter-admin` es el único nivel superior y Chatwoot se presenta en un `<iframe>` dentro de su área de contenido. No hay pestaña nueva, redirección de nivel superior ni reimplementación de la bandeja. La operación sigue ocurriendo en la interfaz de Chatwoot (RF-13.3).
+
+**Requisitos de despliegue.**
+
+- **Same-site:** Chatwoot se publica en un subdominio del mismo dominio de la plataforma (`chat.mocter.co` para `admin.mocter.co`). Así la cookie de sesión de Chatwoot es same-site y el iframe no depende de cookies de terceros. Con dominio custom, el chat debe publicarse en un subdominio del mismo dominio del inquilino (`chat.<dominio-del-inquilino>`) o el admin permanece en `mocter.co`; si no hay same-site, el iframe no es admisible.
+- **Framing:** Chatwoot debe permitir ser enmarcado por los orígenes de Mocter. Se configura `Content-Security-Policy: frame-ancestors` con la lista de orígenes y se elimina o ajusta `X-Frame-Options` si bloquea. La disponibilidad de esta configuración en 4.19 se valida en CHW-001 T-17; si el fork requiere un cambio mínimo de cabeceras, no toca esquema ni lógica de negocio.
+- **CSP de la shell:** `frame-src` limitado a `https://chat.mocter.co` y a los subdominios de chat de los dominios custom; nunca `*`.
+- **Cookies:** `Secure`, `HttpOnly`, `SameSite=Lax` para same-site. Para un dominio custom cross-site se requiere `SameSite=None; Secure` y el navegador puede bloquear cookies de terceros; por eso se prefiere el subdominio same-site.
+
+**Handoff del SSO (AUTH-001 §5.10).**
+
+```text
+Shell (admin.mocter.co)
+  └─ <iframe src="/auth/chatwoot/embed?client_id=...">
+        └─ Mocter auth: valida sesión + membresía + cuenta active
+              └─ HTML auto-POST (JWT 5 min) → Chatwoot SSO (chat.mocter.co)
+                    └─ cookie de sesión + bandeja (el top-level no navega)
+```
+
+1. La shell renderiza `<iframe src="/auth/chatwoot/embed?client_id=<uuid>">`.
+2. El endpoint valida sesión, membresía y cuenta `active`; emite el JWT de 5 minutos y devuelve una página mínima que auto-envía el token por `POST` al endpoint SSO de Chatwoot **dentro del iframe**. Si 4.19 no admite `POST`, se usa un código de un solo uso canjeado server-side; el iframe navega a la URL de canje y el token nunca aparece en el nivel superior.
+3. Chatwoot consume el token de un solo uso, crea su cookie de sesión en `chat.mocter.co` y navega a la bandeja. El nivel superior no cambia de URL.
+4. El token no viaja en el `src` del iframe, en el historial del top-level ni en logs; la página se sirve con `Cache-Control: no-store`.
+5. Si Chatwoot responde 401 o muestra su login, la shell recarga `/auth/chatwoot/embed`; el usuario nunca ve el login de Chatwoot.
+
+**Interfaz.**
+
+- El iframe ocupa el área de contenido bajo el encabezado de Mocter, con altura `100dvh` menos el encabezado; sin doble scroll.
+- Los estados de carga (skeleton), error (reintentar) y sesión vencida (reconectar) son de la shell (RF-13.4).
+- La UI interna de Chatwoot conserva su barra lateral y su encabezado; no se inyecta CSS ni se replica la bandeja. La marca blanca de Mocter aplica a la shell; una personalización visual del contenido embebido es un alcance separado.
+- En móvil se valida el teclado, el scroll y la navegación interna del iframe; si Chatwoot no responde bien, se documenta la limitación y se ajusta el contenedor, no se cambia la modalidad.
+
+**Seguridad.**
+
+- `frame-ancestors` restringido a los orígenes de Mocter; `frame-src` restringido a los orígenes de Chatwoot.
+- Sin `sandbox` restrictivo que rompa cookies o JavaScript; si se usa, `allow-same-origin allow-scripts allow-forms allow-popups`.
+- El iframe no recibe tokens de Mocter; solo la sesión de Chatwoot emitida por SSO.
+- El acceso sigue los roles: `tenant_owner` → `administrator`, `tenant_agent` → `agent`; la plataforma no accede rutinariamente (D-31).
+
+**Observabilidad.** Métricas `chatwoot_embed_load_total{result}` y `chatwoot_sso_total{result}`; alerta si la carga del iframe o el handoff fallan de forma sostenida.
+
 ## 9. Productos, publicaciones y sincronización
 
 ### 9.0 Atributos del producto
@@ -575,6 +618,7 @@ No hay archivo por defecto. Un plan con archivo legal exporta cifrado a R2 con r
 - **i18n desde el inicio:** ningún texto visible incrustado; idioma por usuario y, en su ausencia, por el idioma del inquilino (`clients.locale`) y la configuración regional (RF-11).
 - **Tema claro y oscuro:** por defecto sigue al sistema; la preferencia se conserva; ambos cumplen contraste (RF-12).
 - **Marca blanca:** solo tokens de identidad visual, habilitada por plan; validación de contraste antes de aplicar; restauración en una acción (RF-15).
+- **Chatwoot embebido:** la bandeja se presenta en un iframe same-site; la shell no replica su interfaz y el usuario no abandona `mocter-admin` (D-32, RF-02.4).
 - **Simplicidad:** una acción principal por vista; sin explicación externa ni más de un concepto nuevo por pantalla; estados vacío, carga y error con recuperación (RF-13).
 - **Onboarding:** asistente de menos de 5 minutos, interrumpible, reejecutable; crea el inquilino al completar los datos del negocio (RF-14).
 
@@ -620,6 +664,10 @@ El schema `admin` es la unidad de privilegios; la landing no accede a él (D-25,
 | Ancla de correo en el Router para celda dedicada | Decisión | El Router guarda correo y puntero, no credenciales; revisar con requisito normativo concreto |
 | Rendimiento de RLS y particiones | **No verificado** | Prueba de carga con 100 inquilinos por celda |
 | Coordinación de migraciones entre Router y celdas | Diseño | Líneas separadas; despliegue ordenado y compatible hacia atrás |
+| Framing bloqueado por Chatwoot 4.19 | **No verificado** | CHW-001 T-17: validar `X-Frame-Options`/CSP y configuración; si el fork requiere un ajuste mínimo de cabeceras, se documenta y se aplica sin tocar esquema |
+| Cookies de sesión en iframe con dominio custom | **No verificado** | Same-site por subdominio de chat; `SameSite=None; Secure` solo si el dominio es cross-site, con prueba en navegadores |
+| UI de Chatwoot y marca blanca | Decisión | La shell conserva la marca; el contenido embebido es de Chatwoot. Personalizarlo es un alcance separado |
+| Teclado y scroll del iframe en móvil | **No verificado** | Prueba en iOS/Android; ajuste del contenedor, sin cambiar la modalidad |
 
 ## 17. Trazabilidad
 
@@ -628,7 +676,7 @@ El schema `admin` es la unidad de privilegios; la landing no accede a él (D-25,
 | §5 Modelo de datos | RF-01, RF-05, RF-07, RF-08, RF-10 | D-11 a D-13, D-15, D-19, D-25, D-29, D-30, D-31 |
 | §6 Identidad y alta | RF-01, RF-04, RF-14 | D-12, D-24, D-26, D-29, D-31 |
 | §7 Tenencia y celdas | RF-10 | D-11, D-12 |
-| §8 Chatwoot | RF-02, RF-03 | D-01 a D-09 de CHW-001 |
+| §8 Chatwoot | RF-02, RF-03 | D-01 a D-09 de CHW-001, D-32 |
 | §9 Productos y sincronización | RF-05, RF-06, RF-08 | D-18, D-21, D-22, D-23, D-30 |
 | §10 Comunidades y feed | RF-08 | D-14 a D-20, D-30, D-31 |
 | §11 Archivos | RF-07 | D-13, D-23, D-28 |
