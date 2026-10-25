@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | REP-001 |
-| Versión | 1.0 (Aprobada) |
-| Fecha | 2026-10-24 |
+| Versión | 1.1 (Aprobada — roles D-31 sin tenant_admin) |
+| Fecha | 2026-10-25 |
 | Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [CRM-001](../crm-001-prospectos-gestion-comercial/requirements.md) · [BOT-001](../bot-001-atencion-automatizada-llm/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` · `.agents/rules/rules-for-i18n.md` |
 | Estado | Aprobada |
@@ -60,7 +60,7 @@ Dos superficies de informes analíticos calculados **en caliente** sobre la base
 ### RF-05 · Roles, seguridad e i18n
 | ID | Requisito |
 |---|---|
-| RF-05.1 | En el inquilino: `tenant_owner` y `tenant_admin` visualizan todas las métricas operativas; `tenant_agent` accede únicamente a sus propias estadísticas de conversaciones y prospectos asignados (D-31). |
+| RF-05.1 | En el inquilino: `tenant_owner` visualiza todas las métricas operativas; `tenant_agent` accede únicamente a sus propias estadísticas de conversaciones y prospectos asignados (D-31). No existe `tenant_admin` en v1. |
 | RF-05.2 | En la SaaS: `platform_owner` y `platform_admin` acceden al dashboard global completo; `platform_sales` accede a métricas de inquilinos y facturación, sin datos operativos internos. |
 | RF-05.3 | Todas las consultas y exportaciones filtran obligatoriamente por el `client_id` de la sesión activa, garantizando aislamiento multi-inquilino estricto. |
 | RF-05.4 | La interfaz y los archivos generados están internacionalizados (es/en, Español por defecto). |
@@ -82,7 +82,7 @@ Dos superficies de informes analíticos calculados **en caliente** sobre la base
 ## 5. Criterios de Aceptación (BDD)
 
 ### CA-REP-01 · Cálculo en caliente por períodos predefinidos
-- **Dado** un usuario autenticado con rol `tenant_owner` o `tenant_admin`,
+- **Dado** un usuario autenticado con rol `tenant_owner`,
 - **Cuando** consulta el dashboard operativo seleccionando cualquiera de los períodos predefinidos (`diario`, `semanal`, `mensual`, `trimestral`, `semestral`, `anual`),
 - **Entonces** el sistema ejecuta las consultas en caliente contra PostgreSQL filtrando las transacciones del intervalo en su zona horaria (`clients.timezone`),
 - **Y** retorna las métricas consolidadas y el delta contra el período anterior en menos de 800 ms sin consultar tablas de snapshots precalculados.
@@ -120,6 +120,7 @@ Dos superficies de informes analíticos calculados **en caliente** sobre la base
 | D-03 | Los períodos se computan en la zona horaria del cliente (`clients.timezone`). | Las métricas reflejan el día comercial exacto del inquilino. |
 | D-04 | Exportación exclusiva en Excel (`.xlsx`) y PDF (`.pdf`). | Se elimina CSV; se ofrecen formatos ejecutivos listos para uso administrativo. |
 | D-05 | Agregados analíticos sin PII. | Los dashboards y exportables protegen la privacidad de datos personales. |
+| D-06 | **Sin `tenant_admin` en v1:** el acceso completo es de `tenant_owner` y el restringido de `tenant_agent`. | Se mantiene D-31 y no se agregan roles, asientos ni mapeos nuevos a Chatwoot. |
 
 ## 7. Decisiones abiertas
 

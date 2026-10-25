@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | AUTH-001 |
-| Versión | 1.0 |
+| Versión | 1.1 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 · actualizado 2026-10-22 |
+| Fecha | 2026-10-20 · actualizado 2026-10-25 |
 | Documento de origen | Especificación de Requerimientos Técnicos v3.0 · Octubre 2026 · Estado: Aprobado |
 | Depende de | DAT-001 (arquitectura de datos multi-inquilino) |
 | Alcance | Módulo de accesos de `mocter-admin` |
@@ -173,3 +173,50 @@ No quedan decisiones abiertas. A-05 se cerró con AUTH-D-06.
 - 2026-10-23: Habeas Data para usuarios de la plataforma (con CRM-001): nueva tabla `user_consents` en el Router, consentimiento obligatorio de tratamiento en el registro (Ley 1581 de 2012), consentimiento comercial opcional en el onboarding y derechos del titular por soporte auditado (§2.6, design §4.1 y §5.1).
 - 2026-10-24: AUTH-D-07: el SSO a Chatwoot se entrega dentro de un iframe mediante `/auth/chatwoot/embed`; el nivel superior no navega y el token no se expone en el `src` ni en logs. Alineado con ADM-001 D-32.
 - 2026-10-24: AUTH-D-08: proveedores OAuth dinámicos y parametrizables desde el backoffice de la SaaS (`auth_providers_config`); acceso unificado a `mocter-admin` desde el botón del header de la landing contiguo a «Solicitar demo» (§2.7).
+- 2026-10-25: **AUTH-001 1.1 (Fase 1):** se agregan criterios BDD y anexo i18n; se mantienen RNF-01 a RNF-03 del documento de origen.
+
+## 5. Criterios de Aceptación (BDD)
+
+### CA-AUTH-01 · Login nativo y sesión
+- **Dado** un usuario verificado con correo y contraseña,
+- **Cuando** inicia sesión,
+- **Entonces** recibe la cookie `__Host-mocter_sid` (`HttpOnly`, `Secure`, `SameSite=Strict`) y la sesión se valida contra el store compartido.
+
+### CA-AUTH-02 · OAuth parametrizable
+- **Dado** Google habilitado y Facebook deshabilitado en `auth_providers_config`,
+- **Cuando** se renderiza el login,
+- **Entonces** solo aparece Google y el callback valida `state`/PKCE.
+
+### CA-AUTH-03 · 2FA TOTP
+- **Dado** un usuario con 2FA activo,
+- **Cuando** ingresa su código TOTP válido,
+- **Entonces** se crea la sesión con `mfa_at`; un código inválido no crea sesión.
+
+### CA-AUTH-04 · Revocación inmediata
+- **Dado** un usuario con sesiones activas,
+- **Cuando** se revoca su acceso o cambia de membresía,
+- **Entonces** las réplicas rechazan la sesión en ≤ 1 s y Redis/Postgres fallan cerrado si no responden.
+
+### CA-AUTH-05 · SSO Chatwoot embebido
+- **Dado** un usuario con membresía activa y cuenta Chatwoot `active`,
+- **Cuando** carga `/auth/chatwoot/embed?client_id=...` en el iframe,
+- **Entonces** se emite un JWT de 5 min de un solo uso, sin exponerlo en el `src`, el historial o logs.
+
+### CA-AUTH-06 · Rate limiting
+- **Dado** intentos repetidos de login o registro,
+- **Cuando** se supera la cuota configurada,
+- **Entonces** el endpoint responde `429` con `Retry-After`.
+
+## 6. Anexo i18n · Catálogo de Cadenas
+
+| Clave | Español | Inglés |
+|---|---|---|
+| `auth.login.title` | Iniciar sesión | Sign in |
+| `auth.register.title` | Crear cuenta | Create account |
+| `auth.email` | Correo electrónico | Email |
+| `auth.password` | Contraseña | Password |
+| `auth.2fa.title` | Verificación en dos pasos | Two-step verification |
+| `auth.2fa.code` | Código de 6 dígitos | 6-digit code |
+| `auth.error.invalid_credentials` | Correo o contraseña incorrectos | Invalid email or password |
+| `auth.error.rate_limited` | Demasiados intentos; intenta más tarde | Too many attempts; try again later |
+| `auth.error.session_expired` | Tu sesión expiró | Your session expired |

@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | DAT-001 |
-| Versión | 1.0 |
+| Versión | 1.1 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 · actualizado 2026-10-22 |
+| Fecha | 2026-10-20 · actualizado 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) |
 | Relacionado | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 
@@ -75,11 +75,11 @@ Reglas del principio rector:
 |---|---|---|
 | PostgreSQL | 18 | Todas las instancias, incluida Chatwoot |
 | pgvector | 0.8+ | Versión incluida en `pgvector/pgvector:pg18`, validada en laboratorio |
-| Chatwoot | 4.19.0 | Fijado por CHW-001 |
+| Chatwoot | 4.19.1 | Fijado por CHW-001 |
 | Redis | 7+ | Chatwoot y plano de control (instancias separadas) |
 | Node.js | 24 | Runtime de `mocter-admin` y la landing |
 
-> **Validado en laboratorio.** Chatwoot 4.19.0 funciona sobre PostgreSQL 18 + pgvector y las migraciones pasaron satisfactoriamente. Se mantiene el rollback como precaución operativa; su procedimiento está en §9.7.
+> **Versión canónica 4.19.1.** La validación de laboratorio de 4.19.1 se registra en T-01A/T-17/T-18; la evidencia previa de 4.19.0 se conserva. Se mantiene el rollback como precaución operativa; su procedimiento está en §9.7.
 
 ## 3. Plano de control: Router Global
 
@@ -103,7 +103,7 @@ Todas las tablas siguen la directiva: nombre plural, PK `id`, FK `<entidad>_id`,
 | `clients` | Inquilinos | `id` (UUIDv7), `slug`, `display_name`, `lifecycle_status`, `plan_id`, `quota_version`, `created_at`, `updated_at` |
 | `client_routing` | Enrutamiento vigente | `id`, `client_id`, `cell_id`, `routing_status`, `routing_version`, `updated_at` |
 | `client_migrations` | Auditoría de migraciones | `id`, `client_id`, `source_cell_id`, `target_cell_id`, `state`, `started_at`, `completed_at` |
-| `plans` | Catálogo de planes | `id`, `code`, `name`, `is_public`, `price`, `currency`, `created_at` |
+| `plans` | Catálogo de planes | `id` (uuidv7), `code`, `name` JSONB `{es,en}`, `description` JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles` JSONB, `price_monthly_cents`, `price_annual_cents`, `currency`, `marketing_features` JSONB `{es,en}`, `created_at`, `updated_at` |
 | `plan_limits` | Topes por plan | `id`, `plan_id`, `dimension`, `value`, `created_at` |
 | `client_plan_overrides` | Topes negociados | `id`, `client_id`, `dimension`, `value`, `valid_from`, `valid_to`, `negotiated_by`, `updated_by`, `created_at`, `updated_at` |
 | `media_catalog` | Catálogo global de archivos | `id`, `content_hash`, `storage_pool_id`, `storage_key`, `size_bytes`, `media_kind`, `mime_type`, `source_format`, `original_filename`, `width`, `height`, `duration_ms`, `processing_status`, `storage_type`, `source_url`, `provider`, `created_at` |
@@ -145,13 +145,24 @@ CREATE TABLE cells (
 );
 
 CREATE TABLE plans (
-    id                uuid PRIMARY KEY DEFAULT uuidv7(),
-    code              text NOT NULL UNIQUE,
-    name              text NOT NULL,
-    is_public         boolean NOT NULL DEFAULT false,
-    price             numeric(12, 2) NOT NULL DEFAULT 0,
-    currency          text NOT NULL DEFAULT 'USD',
-    created_at        timestamptz NOT NULL DEFAULT now()
+    id                    uuid PRIMARY KEY DEFAULT uuidv7(),
+    code                  text NOT NULL UNIQUE,
+    name                  jsonb NOT NULL,
+    description           jsonb,
+    status                text NOT NULL DEFAULT 'draft',
+    is_public             boolean NOT NULL DEFAULT false,
+    is_popular            boolean NOT NULL DEFAULT false,
+    sort_order            integer NOT NULL DEFAULT 0,
+    trial_days            integer NOT NULL DEFAULT 14,
+    grace_days            integer NOT NULL DEFAULT 7,
+    billing_cycles        jsonb NOT NULL DEFAULT '["monthly","annual"]'::jsonb,
+    price_monthly_cents   bigint NOT NULL DEFAULT 0,
+    price_annual_cents    bigint NOT NULL DEFAULT 0,
+    currency              char(3) NOT NULL DEFAULT 'COP',
+    marketing_features    jsonb NOT NULL DEFAULT '{"es":[],"en":[]}'::jsonb,
+    created_at            timestamptz NOT NULL DEFAULT now(),
+    updated_at            timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT plans_status_check CHECK (status IN ('draft', 'active', 'retired'))
 );
 
 CREATE TABLE plan_limits (
@@ -869,7 +880,7 @@ No se implementa en esta versión. La paridad lógica se mantiene para no refact
 
 ### 9.7 Rollback de Chatwoot sobre PostgreSQL 18
 
-La ejecución de Chatwoot 4.19.0 sobre PostgreSQL 18 + pgvector está validada en laboratorio. El rollback es una precaución operativa; no es el camino esperado. Se ejecuta solo si ocurre uno de estos disparadores:
+La ejecución de Chatwoot 4.19.1 sobre PostgreSQL 18 + pgvector se valida en T-01A/T-17/T-18; la evidencia previa de 4.19.0 se conserva. El rollback es una precaución operativa; no es el camino esperado. Se ejecuta solo si ocurre uno de estos disparadores:
 
 - Una migración de Chatwoot falla y no se puede reparar en la ventana de mantenimiento.
 - Una consulta o extensión de Chatwoot es incompatible con PostgreSQL 18 y bloquea el servicio.
@@ -912,7 +923,7 @@ La única frontera es la API de Mocter. Si N8N produce archivos, lo hace por el 
 
 | Riesgo | Impacto | Mitigación |
 |---|---|---|
-| Chatwoot sobre PostgreSQL 18 no soportado oficialmente | Fallo en despliegue o comportamiento inesperado | Laboratorio realizado: 4.19.0 funciona y las migraciones pasaron; rollback como precaución operativa, procedimiento en §9.7 |
+| Chatwoot sobre PostgreSQL 18 no soportado oficialmente | Fallo en despliegue o comportamiento inesperado | Validación de 4.19.1 en T-01A/T-17/T-18; 4.19.0 validado previamente; rollback como precaución operativa, procedimiento en §9.7 |
 | `maintenance_work_mem` multiplicada por workers | OOM en la celda | Perfil conservador, medición y ajuste |
 | `CREATE TABLE ... PARTITION OF` en el camino caliente | Lock y bloqueo de consultas | Alta como saga, pre-creación y ventana controlada |
 | Caché local obsoleta durante migración | Lecturas o escrituras en la celda equivocada | `routing_version` + invalidación por Pub/Sub; TTL como respaldo |

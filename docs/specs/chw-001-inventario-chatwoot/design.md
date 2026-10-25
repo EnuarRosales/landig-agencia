@@ -3,10 +3,10 @@
 | Atributo | Valor |
 |---|---|
 | ID | CHW-001 |
-| Versión | 1.0 |
-| Fecha | 2026-10-20 · actualizado 2026-10-22 |
+| Versión | 1.1 |
+| Fecha | 2026-10-20 · actualizado 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`DAT-001`](../dat-001-arquitectura-datos-multiinquilino/requirements.md) |
-| Fuente fijada | `chatwoot/chatwoot` · commit `042b438fe31d2a2ef00c396379b7064ab6d0034f` · release `4.19.0` |
+| Fuente fijada | `chatwoot/chatwoot:v4.19.1` · digest y commit a fijar en T-01A/T-17/T-18 |
 
 ## 1. Principio rector
 
@@ -48,7 +48,7 @@ Chatwoot es el sistema del plano de soporte en DAT-001. Corre sobre una instanci
 
 | Componente | Versión | Verificación |
 |---|---|---|
-| PostgreSQL | 18 + pgvector (`pgvector/pgvector:pg18`) | Validado en laboratorio con Chatwoot 4.19.0; rollback a PostgreSQL 16 en DAT-001 §9.7 |
+| PostgreSQL | 18 + pgvector (`pgvector/pgvector:pg18`) | Versión canónica 4.19.1; validación de laboratorio en T-01A/T-17/T-18; 4.19.0 fue la base previa. Rollback a PostgreSQL 16 en DAT-001 §9.7 |
 | Redis | 7+ | Propio de Chatwoot (SSO, caché y cola); no se comparte con el Redis dedicado del plano de control (DAT-001 RF-01.7, AUTH-001 A-03) |
 | Sidekiq | Incluido en la imagen de Chatwoot | Procesamiento en segundo plano; se documenta en `architecture.md` |
 | Rails | 7.2.3.1 | Fijado por el pin del commit |
@@ -146,7 +146,7 @@ Consecuencias:
 
 ADM-001 D-32 exige que la bandeja de Chatwoot se presente en un iframe same-site. CHW-001 no modifica Chatwoot; documenta y valida las restricciones que condicionan esa decisión.
 
-| Restricción | Qué verificar en 4.19.0 | Evidencia |
+| Restricción | Qué verificar en 4.19.1 | Evidencia |
 |---|---|---|
 | Framing | `X-Frame-Options` y `Content-Security-Policy: frame-ancestors` en la respuesta del dashboard; si existe configuración (`FRAME_ANCESTORS` o equivalente) y qué orígenes admite | `config/`, `app/controllers/`, cabeceras |
 | Cookies | Nombre, `Domain`, `SameSite`, `Secure` y `HttpOnly` de la cookie de sesión; si se envía en un iframe same-site y en uno cross-site | `config/initializers/session_store.rb`, controladores |
@@ -185,7 +185,7 @@ No se dibuja un único ERD de 104 tablas: es ilegible y no aporta a la decisión
 | Doble escritor de contactos | Decisión O-01 antes de implementar `ADM-001` |
 | Token de servicio con blast radius amplio | Decisión O-02; cifrado en reposo y rotación |
 | Deriva entre el fork y la referencia | Comparar commit del fork contra el pin en cada release |
-| Chatwoot 4.19.0 no está soportado oficialmente sobre PostgreSQL 18 | Ejecución y migraciones validadas en laboratorio; rollback operativo documentado en DAT-001 §9.7 |
+| Chatwoot 4.19.1 no está soportado oficialmente sobre PostgreSQL 18 | Validación de 4.19.1 en T-01A/T-17/T-18; rollback operativo documentado en DAT-001 §9.7 |
 
 ## 10. Insumos para `ADM-001` (fuera de alcance de CHW-001)
 

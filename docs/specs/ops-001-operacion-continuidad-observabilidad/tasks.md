@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.1 |
-| Fecha | 2026-10-21 · actualizado 2026-10-24 |
+| Versión | 1.3 |
+| Fecha | 2026-10-21 · actualizado 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 
@@ -81,7 +81,7 @@
 
 - [ ] **T-14 · Restore de Chatwoot**
   - Ejecutar el runbook §7.4 cuando la instancia exista.
-  - Verificación: login, mensajes, Sidekiq, adjuntos y SSO funcionan con la imagen 4.19.0.
+  - Verificación: login, mensajes, Sidekiq, adjuntos y SSO funcionan con la imagen 4.19.1.
 
 - [ ] **T-15 · Definir los conteos críticos por instancia**
   - Tabla de tablas y rangos esperados para la verificación §7.6.
@@ -119,6 +119,10 @@
   - Verificación: el RPO de multimedia ≤ 24 h, el RTO ≤ 4 h y la alerta de antigüedad > 24 h funciona.
 
 ## Fase 4 · Cierre
+
+- [ ] **T-23A · Monitorear RabbitMQ de NTF-001**
+  - Healthcheck, profundidad de `email.send`/`email.retry`/`email.dlq` y consumers activos; alerta de cola sin consumer o DLQ > 0.
+  - Verificación: el dashboard muestra las colas; una cola sin consumer alerta; no se respalda la cola (outbox en PostgreSQL).
 
 - [ ] **T-23 · Verificar los criterios de aceptación**
   - Recorrer todos los criterios de `requirements.md` §5 con evidencia.

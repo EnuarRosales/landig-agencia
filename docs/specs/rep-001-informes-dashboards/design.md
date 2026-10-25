@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | REP-001 |
-| Versión | 1.0 (Aprobada) |
-| Fecha | 2026-10-24 |
+| Versión | 1.1 (Aprobada — roles D-31 sin tenant_admin) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [CRM-001](../crm-001-prospectos-gestion-comercial/design.md) · [BOT-001](../bot-001-atencion-automatizada-llm/design.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) |
 | Estado | Aprobada |
 
@@ -94,7 +94,7 @@ El módulo `PeriodResolver` convierte la selección del usuario en límites exac
 
 ## 6. Roles y Seguridad (Alineación D-31)
 
-- **`tenant_owner` / `tenant_admin`:** Acceso irrestricto a todas las métricas del inquilino.
+- **`tenant_owner`:** Acceso irrestricto a todas las métricas del inquilino. No existe `tenant_admin` en v1.
 - **`tenant_agent`:** Acceso restringido; la capa de servicio inyecta `agent_id = session.user_id` para filtrar únicamente sus conversaciones y prospectos atendidos.
 - **`platform_owner` / `platform_admin`:** Dashboard consolidado de la SaaS (todos los inquilinos, almacenamiento global, facturación global).
 - **`platform_sales`:** Métricas comerciales globales (planes, inquilinos, MRR); sin acceso a conversaciones de soporte ni prospectos de inquilinos.

@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | ADM-001 |
-| Versión | 1.0 |
-| Fecha | 2026-10-21 · actualizado 2026-10-22 |
+| Versión | 1.2 |
+| Fecha | 2026-10-21 · actualizado 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) · CHW-001 · DAT-001 · AUTH-001 · OPS-001 |
 | Estado | Aprobada |
 
@@ -68,8 +68,8 @@
 ## Fase 2 · Planes y Chatwoot
 
 - [ ] **T-10 · Implementar planes y límites**
-  - `plans`, `plan_limits`, `client_plan_overrides`, `client_plans`; `clients.plan_id` vigente; validación antes de persistir. `tenant_owner` único y `tenant_agent` según `max_tenant_agents`; free con 1 owner y 0 agents.
-  - Catálogos `plan_dimensions` y `plan_features`, valores `plan_feature_values` y overrides de capacidad `client_feature_overrides`; metadata de plan (trial, gracia, estado, orden, ciclos).
+  - `plans` con `id uuid`, `code` único, `name`/`description` y `marketing_features` JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles`, `price_monthly_cents`, `price_annual_cents` y `currency`; `plan_limits`, `client_plan_overrides`, `client_plans`; `clients.plan_id` uuid vigente; validación antes de persistir. `tenant_owner` único y `tenant_agent` según `max_tenant_agents`; free con 1 owner y 0 agents.
+  - Catálogos `plan_dimensions` y `plan_features`, valores `plan_feature_values` y overrides de capacidad `client_feature_overrides`; `marketing_features` es solo presentación y no se usa para enforcement.
   - Verificación: un plan retirado no se ofrece en autoservicio; un override de capacidad aplica solo a su inquilino; una capacidad ausente se rechaza con mensaje explícito.
   - Verificación: un exceso de productos, `tenant_agent` o bytes se rechaza con mensaje explícito; la venta manual asigna el plan y el autoservicio parte del free.
   - RF-04.1 a RF-04.4, RF-04.7.
@@ -188,6 +188,16 @@
   - Evidencia: ADM-001 §8.3, AUTH-001 T-38/T-39, CHW-001 T-17/T-18.
   - RF-02.2, RF-02.4, RF-02.5, D-32.
 
+- [ ] **T-37 · Implementar la bandeja de contactos de la landing**
+  - Migrar `leads` con `status`, `assigned_to_user_id`, `notes`, `updated_at` y `updated_by`; crear `/admin/leads` con tabla, filtros, detalle, estados, asignación, notas y exportación CSV.
+  - Verificación: `platform_sales`/`platform_admin` gestionan leads; `tenant_*` recibe 403; `mocter_landing` solo inserta; cada cambio queda auditado.
+  - RF-16.
+
+- [ ] **T-38 · Emitir eventos de notificación de ADM**
+  - Onboarding: `tenant.welcome`; comunidad: `community.role_promoted` y `community.join_accepted`.
+  - Verificación: NTF-001 registra una entrega por evento, con destinatario y plantilla correctos.
+  - NTF-001; RF-14/RF-08.
+
 ## Fase 7 · Verificación y aceptación
 
 - [ ] **T-30 · Verificar seguridad de roles y RLS**
@@ -211,7 +221,7 @@
   - RF-10.11, RF-10.12, RF-10.15.
 
 - [ ] **T-34 · Verificar los criterios de aceptación**
-  - Recorrer los 38 criterios de `requirements.md` §5.
+  - Recorrer los 41 criterios de `requirements.md` §5.
   - Verificación: cada criterio tiene evidencia de prueba o queda marcado como pendiente con motivo.
   - §5 completo.
 

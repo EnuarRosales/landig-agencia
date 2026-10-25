@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.1 |
+| Versión | 1.3 |
 | Estado | Aprobada |
-| Fecha | 2026-10-21 · actualizado 2026-10-24 |
+| Fecha | 2026-10-21 · actualizado 2026-10-25 |
 | Documentos | `requirements.md` (este) · [`design.md`](design.md) · [`tasks.md`](tasks.md) |
 | Depende de | [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) · [CD-001](../cd-001-despliegue-continuo/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 | Directivas | `.agents/AGENTS.md` |
@@ -18,7 +18,7 @@ Definir cómo Mocter **protege los datos, los recupera y sabe que la plataforma 
 2. Celdas (`pg-cell-*`), una por grupo de inquilinos.
 3. Chatwoot (`pg-chatwoot`), en el plano de soporte.
 
-El sistema se despliega en todos sus ambientes en Docker con **Docker Compose**, donde **Traefik** actúa como reverse proxy único para todo el tráfico de la plataforma. Bajo esta misma topología, **Chatwoot (`chatwoot/chatwoot:v4.19.1`)** y **SeaweedFS (`seaweedfs/seaweedfs:4.49`)** corren como contenedores administrados por Traefik (sin publicar puertos en el host, cumpliendo R-10), proveyendo la bandeja de atención omnicanal y el almacenamiento de archivos multimedia de los inquilinos respectivamente.
+El sistema se despliega en **staging y producción** en Docker con **Docker Compose**, donde **Traefik** actúa como reverse proxy único para todo el tráfico de la plataforma. Bajo esta misma topología, **Chatwoot (`chatwoot/chatwoot:v4.19.1`)** y **SeaweedFS (`seaweedfs/seaweedfs:4.49`)** corren como contenedores administrados por Traefik (sin publicar puertos en el host, cumpliendo R-10). En **desarrollo local** no se usa Traefik y los puertos se publican solo en `127.0.0.1`, sin exposición externa.
 
 La necesidad nace de una contradicción documental: DAT-001 §9.1 delega destino, retención y prueba de restore en CD-001, y CD-001 excluye de su alcance las copias fuera del host y el monitoreo externo. Hoy el único respaldo es un `pg_dump` previo al despliegue, guardado en el mismo VPS (`deploy/server/deploy.sh`, retención 10). Si el VPS se pierde, se pierde el respaldo con él.
 
@@ -105,6 +105,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-04.3 | Existe un dashboard por plano (control, celda, Chatwoot) y uno de respaldos con la antigüedad del último full, el último WAL archivado y el resultado del último `verify`. |
 | RF-04.4 | La retención mínima es de 30 días para métricas y 14 días para logs. |
 | RF-04.5 | Se monitorean los healthchecks de los contenedores y la disponibilidad del sitio público desde fuera del VPS. |
+| RF-04.6 | Se monitorea RabbitMQ de NTF-001: healthcheck, profundidad de `email.send`/`email.retry`/`email.dlq` y consumers activos. Una cola sin consumer o un DLQ creciente alerta; la cola no se respalda porque el outbox en PostgreSQL es la fuente de verdad. |
 
 ### RF-05 · Alertas
 

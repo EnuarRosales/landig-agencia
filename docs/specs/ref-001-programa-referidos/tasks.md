@@ -31,7 +31,8 @@
 
 - [ ] **T-03 · Implementar códigos y atribución**
   - Código/enlace único por inquilino, captura en el alta, ventana de atribución y estados.
-  - Verificación: un alta con código dentro de la ventana queda asociada; fuera de la ventana no.
+  - Al registrarse el referido, emitir `referral.registered` a NTF-001 para notificar al referente.
+  - Verificación: un alta con código dentro de la ventana queda asociada y genera una sola notificación; fuera de la ventana no.
 
 ## Fase 2 · Calificación, crédito y gestión
 

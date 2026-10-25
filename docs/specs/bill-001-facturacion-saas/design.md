@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | BILL-001 |
-| Versión | 1.1 (Aprobada — integración de créditos de referidos) |
-| Fecha | 2026-10-24 |
+| Versión | 1.3 (Aprobada — payment_methods, prorrateo y créditos) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/design.md) · [REP-001](../rep-001-informes-dashboards/design.md) |
 | Estado | Aprobada |
 
@@ -59,12 +59,28 @@ flowchart TD
 | `city_code` | `varchar(16)` | Código DANE de municipio (opcional) |
 | `updated_at` | `timestamptz` | Auditoría |
 
-### 3.2 `subscriptions`
+### 3.2 `payment_methods`
+| Columna | Tipo | Regla |
+|---|---|---|
+| `id` | `uuid` PK | Identificador único |
+| `client_id` | `uuid` | FK a `clients.id` |
+| `gateway` | `varchar(16)` | `wompi` o `stripe` |
+| `gateway_customer_id` | `varchar(255)` | Token de cliente de la pasarela |
+| `gateway_payment_method_id` | `varchar(255)` | Token de método; nunca PAN/CVV |
+| `brand` | `varchar(32)` | Marca de la tarjeta o método |
+| `last4` | `char(4)` | Últimos 4 dígitos |
+| `is_default` | `boolean` | Método por defecto del inquilino |
+| `status` | `varchar(16)` | `active`/`inactive` |
+| Auditoría | — | `created_at`, `updated_at`, `created_by`, `updated_by` |
+
+Único `(client_id, gateway, gateway_payment_method_id)`. Solo puede haber un `is_default = true` por cliente (índice parcial).
+
+### 3.3 `subscriptions`
 | Columna | Tipo | Regla |
 |---|---|---|
 | `id` | `uuid` PK | Identificador único |
 | `client_id` | `uuid` | FK a `clients.id`, único por inquilino |
-| `plan_id` | `varchar(64)` | FK a `plans.id` |
+| `plan_id` | `uuid` | FK a `plans.id` (UUID); el slug público vive en `plans.code` |
 | `status` | `varchar(32)` | `trialing`, `active`, `past_due`, `suspended`, `cancelled` |
 | `cycle` | `varchar(16)` | `monthly`, `annual` |
 | `trial_ends_at` | `timestamptz` | Fecha de expiración del trial |
@@ -72,7 +88,7 @@ flowchart TD
 | `current_period_end` | `timestamptz` | Fin del ciclo vigente |
 | `gateway` | `varchar(16)` | `wompi` o `stripe` |
 
-### 3.3 `invoices`
+### 3.4 `invoices`
 | Columna | Tipo | Regla |
 |---|---|---|
 | `id` | `uuid` PK | Identificador único |
@@ -83,12 +99,13 @@ flowchart TD
 | `tax_cents` | `bigint` | 0 en v1 (sin retenciones ni IVA) |
 | `credit_cents` | `bigint` | Créditos de referidos aplicados; default 0 |
 | `applied_referral_credit_id` | `uuid` | FK nullable a `referral_rewards.id`; crédito redimido en esta factura |
-| `total_cents` | `bigint` | `subtotal_cents + tax_cents - credit_cents`; nunca negativo |
+| `proration_cents` | `bigint` | Neto de prorrateo; positivo cobra, negativo acredita; default 0 |
+| `total_cents` | `bigint` | `subtotal_cents + tax_cents - credit_cents + proration_cents`; nunca negativo |
 | `currency` | `varchar(3)` | `COP` o `USD` |
 | `due_at` | `timestamptz` | Fecha límite de pago |
 | `paid_at` | `timestamptz` | Fecha de pago efectivo |
 
-### 3.4 `payments`
+### 3.5 `payments`
 | Columna | Tipo | Regla |
 |---|---|---|
 | `id` | `uuid` PK | Identificador único |
@@ -101,7 +118,7 @@ flowchart TD
 | `status` | `varchar(32)` | `pending`, `approved`, `rejected`, `refunded` |
 | `created_at` | `timestamptz` | Fecha de registro |
 
-### 3.5 `payment_receipts`
+### 3.6 `payment_receipts`
 | Columna | Tipo | Regla |
 |---|---|---|
 | `id` | `uuid` PK | Identificador único |
@@ -111,6 +128,22 @@ flowchart TD
 | `emailed_to` | `varchar(255)` | Correo donde se remitió el comprobante |
 | `emailed_at` | `timestamptz` | Fecha y hora del envío de correo |
 | `created_at` | `timestamptz` | Fecha de emisión |
+
+### 3.7 `subscription_changes`
+| Columna | Tipo | Regla |
+|---|---|---|
+| `id` | `uuid` PK | Identificador único |
+| `subscription_id` | `uuid` | FK a `subscriptions.id` |
+| `from_plan_id` | `uuid` | FK a `plans.id` |
+| `to_plan_id` | `uuid` | FK a `plans.id` |
+| `effective_at` | `timestamptz` | Momento del cambio |
+| `remaining_days` | `integer` | Días restantes del ciclo al cambiar |
+| `credit_cents` | `bigint` | Crédito por el plan anterior |
+| `charge_cents` | `bigint` | Cobro por el plan nuevo |
+| `net_cents` | `bigint` | `charge_cents - credit_cents`; positivo cobra, negativo acredita |
+| `invoice_id` | `uuid` nullable | Factura donde se aplicó el neto |
+| `status` | `varchar(16)` | `pending`/`applied`/`void` |
+| Auditoría | — | `created_at`, `created_by` |
 
 ---
 
@@ -139,6 +172,13 @@ flowchart TD
 4. Si `total_cents` queda en cero, la factura se marca `pagada` sin llamar a la pasarela y se emite el comprobante con la referencia del crédito.
 5. La aplicación es idempotente: reintentos de emisión no consumen dos veces el mismo crédito.
 
+### 4.4 Prorrateo por cambio de plan
+1. Al cambiar de plan, se calculan `remaining_days = current_period_end - effective_at` y los días del ciclo.
+2. `credit_cents = round(precio_actual × remaining_days / días_ciclo)`; `charge_cents = round(precio_nuevo × remaining_days / días_ciclo)`; `net_cents = charge_cents - credit_cents`.
+3. Se inserta `subscription_changes` con `pending`; el neto se aplica en la próxima factura (`proration_cents`). Si el neto es negativo, queda como crédito a favor y el total de la factura no baja de cero.
+4. Un cambio de plan es idempotente por `(subscription_id, effective_at)`; reintentos no duplican el registro ni el neto.
+5. El cambio se audita con `from_plan_id`, `to_plan_id`, `net_cents` y actor.
+
 ---
 
 ## 5. Módulo de Exportación en Excel y PDF
@@ -165,8 +205,11 @@ flowchart TD
 | Firma Wompi | Payload con checksum inválido retorna HTTP 401; checksum válido procesa el cobro. |
 | Firma Stripe | Webhook sin firma o con secreto erróneo es rechazado con HTTP 400. |
 | Idempotencia | Reenvío del mismo webhook 5 veces produce exactamente 1 pago y 1 comprobante. |
-| Sin Impuestos | La factura generada tiene `tax_cents = 0` y `total_cents = subtotal_cents - credit_cents`. |
+| Sin Impuestos | La factura generada tiene `tax_cents = 0` y `total_cents = subtotal_cents - credit_cents + proration_cents`. |
 | Crédito de referidos | Un crédito de 50,000 sobre una factura de 150,000 deja `total_cents = 100,000` y el crédito pasa a `redeemed`. |
 | Crédito mayor al total | Si el crédito supera el total, `total_cents = 0`, la factura queda `pagada` sin pasarela y el remanente sigue `partially_redeemed`. |
+| Payment methods | Los tokens se guardan en `payment_methods`; no hay PAN/CVV; un solo default por cliente. |
+| Prorrateo | Un plan de 100,000 con 15/30 días restantes que cambia a 200,000 produce `credit=50,000`, `charge=100,000`, `net=50,000` y un registro `subscription_changes`. |
+| Prorrateo negativo | Un downgrade con neto negativo deja crédito a favor y `total_cents >= 0`. |
 | Exportación Excel | Endpoint `/api/billing/export?format=xlsx&period=monthly` descarga un archivo `.xlsx` válido y legible. |
 | Exportación PDF | Endpoint `/api/billing/export?format=pdf&period=monthly` descarga un documento `.pdf` con tabla estructurada. |

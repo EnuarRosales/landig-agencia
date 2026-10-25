@@ -3,9 +3,10 @@
 | Atributo | Valor |
 |---|---|
 | ID | LND-001 |
-| Versión | 1.0 (Aprobada) |
-| Fecha | 2026-10-24 |
+| Versión | 1.1 (Aprobada — plan_code y planes canónicos) |
+| Fecha | 2026-10-25 |
 | Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [BILL-001](../bill-001-facturacion-saas/requirements.md) · [DSN-001](../dsn-001-sistema-diseno/requirements.md) |
+| Alcance por fase | **Fase 1:** landing, header, `#planes`, `/login` y `/register` con `plan_code`. **Fase 5:** vista de upgrade en `mocter-admin` con BILL-001. |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-i18n.md` |
 | Estado | Aprobada |
 
@@ -30,22 +31,22 @@ Definir las adaptaciones funcionales e interfaces de la **landing page pública*
 ### RF-02 · Visualización condicional de planes comerciales
 | ID | Requisito |
 |---|---|
-| RF-02.1 | La landing page solo renderiza la sección `#planes` (y su respectivo enlace en el menú cápsula) **si existen planes activos y públicos** en la base de datos (`plans.is_active = true` y `plans.is_public = true`), parametrizados desde la SaaS en `mocter-admin`. |
+| RF-02.1 | La landing page solo renderiza la sección `#planes` (y su respectivo enlace en el menú cápsula) **si existen planes activos y públicos** en la base de datos (`plans.status = 'active'` y `plans.is_public = true`), parametrizados desde la SaaS en `mocter-admin`. |
 | RF-02.2 | Si no existen planes comerciales creados o activos, la sección `#planes` y el enlace del menú no se renderizan en el DOM, evitando enlaces rotos o secciones vacías. |
-| RF-02.3 | La consulta de planes comerciales para la landing es pública, optimizada y libre de autenticación. |
+| RF-02.3 | La consulta de planes comerciales para la landing es pública, optimizada y libre de autenticación; devuelve `plans.code` (slug), nombre y descripción en el locale activo. |
 
 ### RF-03 · Sección de planes comerciales (`#planes`)
 | ID | Requisito |
 |---|---|
 | RF-03.1 | Muestra tarjetas de precios con: nombre del plan, descripción comercial, precio (en COP o USD según locale/moneda), selector o toggle de ciclo (mensual / anual con porcentaje de ahorro destacado), lista de características incluidas y badge opcional de "Recomendado" o "Más popular". |
-| RF-03.2 | Cada tarjeta de plan dispone de un botón de Call-to-Action (CTA) "Comenzar ahora" / "Elegir plan" que redirige al flujo de registro: `/[locale]/register?plan_id=[id]`. |
+| RF-03.2 | Cada tarjeta de plan dispone de un botón de Call-to-Action (CTA) "Comenzar ahora" / "Elegir plan" que redirige al flujo de registro: `/[locale]/register?plan_code=[code]`. |
 | RF-03.3 | El diseño sigue la estética HUD de alto contraste (`DSN-001`) con soporte fluido en temas claro y oscuro. |
 
 ### RF-04 · Flujos interconectados de Login y Registro
 | ID | Requisito |
 |---|---|
 | RF-04.1 | **Ruta de Login (`/[locale]/login`):** Presenta formulario de acceso nativo y botones OAuth parametrizados. Incluye un enlace visible hacia el registro: "¿Aún no tienes cuenta? Regístrate aquí" (`/[locale]/register`). |
-| RF-04.2 | **Ruta de Registro (`/[locale]/register`):** Presenta formulario de alta inicial (nombre, correo, contraseña con validación de complejidad o botones OAuth). Si en la URL viene el parámetro `plan_id`, el plan queda preseleccionado y visible en el resumen del alta. |
+| RF-04.2 | **Ruta de Registro (`/[locale]/register`):** Presenta formulario de alta inicial (nombre, correo, contraseña con validación de complejidad o botones OAuth). Si en la URL viene el parámetro `plan_code`, el plan queda preseleccionado y visible en el resumen del alta; se resuelve a `plans.id` (UUID) antes de crear el inquilino. |
 | RF-04.3 | El formulario de registro incluye un enlace directo hacia el login: "¿Ya tienes cuenta? Inicia sesión" (`/[locale]/login`). |
 | RF-04.4 | Ambos formularios validan la aceptación obligatoria de los términos y aviso de privacidad de Habeas Data (`user_consents`). |
 
@@ -54,7 +55,7 @@ Definir las adaptaciones funcionales e interfaces de la **landing page pública*
 |---|---|
 | RF-05.1 | Un inquilino autenticado tiene acceso dentro de `mocter-admin` a la vista de suscripción (`/[locale]/admin/settings/billing` o `/[locale]/admin/plans`). |
 | RF-05.2 | La vista muestra su plan actual (`clients.plan_id`), fecha de renovación y el catálogo de planes disponibles para **Upgrade** o cambio de ciclo (mensual/anual). |
-| RF-05.3 | La acción de cambio de plan dispara el cálculo de prorrateo y enlaza con la pasarela de pagos configurada en `BILL-001`. |
+| RF-05.3 | La acción de cambio de plan dispara el cálculo de prorrateo por días restantes (`BILL-001` RF-01.5), registra `subscription_changes` y enlaza con la pasarela de pagos configurada en `BILL-001`. |
 
 ### RF-06 · Internacionalización (i18n)
 | ID | Requisito |
@@ -78,7 +79,7 @@ Definir las adaptaciones funcionales e interfaces de la **landing page pública*
 ## 5. Criterios de Aceptación (BDD)
 
 ### CA-LND-01 · Renderizado condicional de planes comerciales
-- **Dado** que en la base de datos no existen planes con `is_active = true` y `is_public = true`,
+- **Dado** que en la base de datos no existen planes con `status = 'active'` y `is_public = true`,
 - **Cuando** un usuario anónimo visita la landing page `/[locale]`,
 - **Entonces** el menú de navegación no muestra el enlace `#planes` y la página no renderiza la sección de planes;
 - **Y cuando** el administrador de la SaaS activa al menos un plan público, la sección `#planes` y el link de navegación aparecen automáticamente en el siguiente renderizado.
@@ -92,7 +93,7 @@ Definir las adaptaciones funcionales e interfaces de la **landing page pública*
 ### CA-LND-03 · Call-to-Action de tarjeta de plan hacia registro
 - **Dado** que la sección `#planes` está visible con los planes "Básico" y "Pro",
 - **Cuando** el usuario pulsa "Elegir plan" en la tarjeta "Pro",
-- **Entonces** es redirigido a `/[locale]/register?plan_id=[pro_id]`,
+- **Entonces** es redirigido a `/[locale]/register?plan_code=[pro_code]`,
 - **Y** el formulario de registro muestra un badge confirmando "Plan seleccionado: Pro".
 
 ### CA-LND-04 · Navegación cruzada entre Login y Registro
@@ -114,7 +115,7 @@ Definir las adaptaciones funcionales e interfaces de la **landing page pública*
 |---|---|---|
 | D-01 | Renderizado condicional de planes en landing: dependiente de datos activos en BD. | Cero código hardcodeado en la landing; la SaaS gobierna su oferta comercial desde `mocter-admin`. |
 | D-02 | Acceso unificado en header de landing contiguo a «Solicitar demo». | Punto único y visible de entrada tanto para inquilinos como para el equipo de plataforma. |
-| D-03 | Flujo de registro enlazable con plan preseleccionado vía query param (`plan_id`). | Conversión directa desde la landing sin perder el contexto de la elección comercial. |
+| D-03 | Flujo de registro enlazable con plan preseleccionado vía query param (`plan_code`, slug estable). | Conversión directa desde la landing sin perder el contexto; el servidor resuelve el slug a `plans.id` (UUID). |
 | D-04 | Interconexión bidireccional obligatoria entre `/login` y `/register`. | Reducción de fricción para usuarios que confunden el inicio de sesión con el alta. |
 | D-05 | Gestión de upgrade en backoffice del inquilino. | Autogestión del ciclo de vida del cliente sin requerir soporte manual. |
 

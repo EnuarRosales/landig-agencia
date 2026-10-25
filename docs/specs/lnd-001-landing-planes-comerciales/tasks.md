@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | LND-001 |
-| Versión | 1.0 (Aprobada) |
-| Fecha | 2026-10-24 |
+| Versión | 1.1 (Aprobada — plan_code y planes canónicos) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 
@@ -23,13 +23,13 @@
 
 ## Fase 1 · Capa de Datos y Consultas de Planes
 
-- [ ] **T-01 · Extender la tabla plans en packages/domain**
-  - Incorporar en el esquema de Drizzle los campos `is_public`, `is_popular`, `sort_order`, `price_monthly_cents`, `price_annual_cents`, `currency`, `features`.
-  - Verificación: `drizzle-kit check` pasa sin errores sintácticos.
+- [ ] **T-01 · Consolidar la tabla plans canónica en packages/domain**
+  - Incorporar `id uuid`, `code` único, `name`/`description` JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles`, `price_monthly_cents`, `price_annual_cents`, `currency` y `marketing_features` JSONB `{es:[],en:[]}`.
+  - Verificación: `drizzle-kit check` pasa; `plans.code` es único; las FKs `plan_id` son uuid.
 
 - [ ] **T-02 · Implementar repositorio y función getPublicPlans()**
-  - Crear en `packages/domain/src/repositories/plans.repository.ts` la consulta de planes con `WHERE is_active = true AND is_public = true ORDER BY sort_order ASC`.
-  - Verificación: Test unitario comprueba que los planes no públicos o inactivos son excluidos.
+  - Crear en `packages/domain/src/repositories/plans.repository.ts` la consulta de planes con `WHERE status = 'active' AND is_public = true ORDER BY sort_order ASC`.
+  - Verificación: Test unitario comprueba que los planes no públicos, en draft o retirados son excluidos; el resultado expone `code` para la URL.
 
 ---
 
@@ -46,7 +46,7 @@
 - [ ] **T-05 · Crear componente PricingSection con renderizado condicional**
   - Implementar `apps/web/components/sections/pricing-section.tsx` con toggle mensual/anual y tarjetas de precios HUD.
   - Si no hay planes activos, retorna `null`.
-  - Si hay planes, renderiza las tarjetas con CTA hacia `/[locale]/register?plan_id=...`.
+  - Si hay planes, renderiza las tarjetas con CTA hacia `/[locale]/register?plan_code=...`.
   - Verificación: Componente desaparece sin romper el layout cuando la base no tiene planes públicos.
 
 ---
@@ -57,11 +57,11 @@
   - Crear `apps/web/app/[locale]/(auth)/login/page.tsx` con formulario de acceso y enlace claro hacia `/[locale]/register`.
   - Verificación: Click en "¿Aún no tienes cuenta?" navega a `/register`.
 
-- [ ] **T-07 · Implementar pantalla de Registro con parámetro plan_id**
+- [ ] **T-07 · Implementar pantalla de Registro con parámetro plan_code**
   - Crear `apps/web/app/[locale]/(auth)/register/page.tsx` con formulario de alta.
-  - Si en URL viene `plan_id`, muestra badge con el nombre del plan elegido.
+  - Si en URL viene `plan_code`, resuelve el plan por `plans.code`, muestra badge con `plan.name[locale]` y conserva el UUID para el alta.
   - Enlace inferior hacia `/[locale]/login`.
-  - Verificación: Al entrar con `?plan_id=pro`, el formulario refleja la selección.
+  - Verificación: Al entrar con `?plan_code=pro`, el formulario refleja la selección y el alta recibe el UUID correcto.
 
 ---
 

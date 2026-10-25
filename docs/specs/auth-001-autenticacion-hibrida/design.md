@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | AUTH-001 |
-| Versión | 1.0 |
-| Fecha | 2026-10-20 · actualizado 2026-10-22 |
+| Versión | 1.1 |
+| Fecha | 2026-10-20 · actualizado 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/design.md) |
 | Estado | Aprobada |
 
@@ -197,12 +197,14 @@ Toda tabla y columna no evidente lleva comentario en la base, según `.agents/AG
    - Si la cuenta es federada, el correo enviado contiene un token `setup` de 30 minutos; al confirmarlo se setea `email_verified_at`, se guarda la contraseña Argon2id y se vincula la credencial nativa al mismo `user_id` sin crear otra cuenta. La contraseña enviada en el registro no se persiste para una cuenta federada: el formulario de `setup` la solicita de nuevo junto con el token.
    - Si la cuenta es nativa y no está verificada, el correo reenvía el enlace de verificación; si ya está verificada, invita a iniciar sesión o a recuperar la contraseña.
 3. Si el correo no existe, crea `users` con `email_verified_at = NULL`, `password_hash` Argon2id y `status = 'active'`.
-4. Genera un token de verificación de 32 bytes; guarda solo `token_hash` con vencimiento de 24 horas y envía el enlace por SMTP. No crea sesión.
-5. Responde `202` con el mismo mensaje genérico. Un fallo de SMTP se registra y permite reenviar; no se expone el token ni el error interno.
+4. Genera un token de verificación de 32 bytes; guarda solo `token_hash` con vencimiento de 24 horas y solicita a NTF-001 el envío del enlace (`auth.verify_email`). No crea sesión.
+5. Responde `202` con el mismo mensaje genérico. Un fallo de envío se registra y permite reenviar; no se expone el token ni el error interno.
 
 La verificación se confirma con `POST /auth/email/verify/confirm`, no con un `GET` que consuma el token: los escáneres de correo no deben invalidarlo. El `GET` solo muestra la pantalla de confirmación. Al confirmar, se marca `email_verified_at` y se consume el token; el usuario vuelve al login.
 
 Con Google el correo se considera verificado y `email_verified_at` se completa en el alta. Con correo y contraseña, `ADM-001` impide crear el inquilino hasta que `email_verified_at` exista (RF-14.6). El login puede completarse antes de verificar para permitir reenviar el correo, pero las rutas de negocio y el onboarding consultan la marca y rechazan el alta.
+
+El contenido de los correos de verificación, `setup` y reset se administra en NTF-001 (`auth.*`). AUTH conserva la generación y consumo de tokens y el flujo de seguridad; NTF-001 renderiza la plantilla, resuelve el remitente y registra la entrega. En Fase 1 AUTH puede usar su SMTP mínimo; la migración a NTF-001 ocurre en Fase 2 sin cambiar el contrato de tokens.
 
 ### 5.2 Inicio de sesión nativo
 
@@ -320,7 +322,7 @@ Un usuario con membresía activa en un inquilino no puede aceptar una invitació
 
 `GET /auth/chatwoot/sso?client_id=<uuid>` exige sesión válida, `session.client_id = client_id`, membresía activa y cuenta de Chatwoot en estado `active`. La verificación de membresía la hace ADM-001; `mocter_auth` no consulta `tenant_users` directamente. AUTH-001 no aprovisiona la cuenta; eso es ADM-001/CHW-001.
 
-El módulo emite un JWT HS256 firmado con `CHATWOOT_SSO_SECRET`, con `email`, `name`, `identifier` (el `user_id`), `iat` y `exp` a 5 minutos. El token es de un solo uso: Chatwoot lo consume con `consume_sso_auth_token` (CHW-001 RF-02.3), no se guarda en la base, no se escribe en logs y se entrega a Chatwoot por HTTPS. El secreto se comparte solo entre `apps/admin` y Chatwoot; no se usa la contraseña del usuario. La ruta exacta y el nombre del parámetro se validan contra Chatwoot 4.19.0 en T-33.
+El módulo emite un JWT HS256 firmado con `CHATWOOT_SSO_SECRET`, con `email`, `name`, `identifier` (el `user_id`), `iat` y `exp` a 5 minutos. El token es de un solo uso: Chatwoot lo consume con `consume_sso_auth_token` (CHW-001 RF-02.3), no se guarda en la base, no se escribe en logs y se entrega a Chatwoot por HTTPS. El secreto se comparte solo entre `apps/admin` y Chatwoot; no se usa la contraseña del usuario. La ruta exacta y el nombre del parámetro se validan contra Chatwoot 4.19.1 en T-33.
 
 **Handoff embebido (ADM-001 D-32).** El flujo de producto no navega el nivel superior. La shell carga `GET /auth/chatwoot/embed?client_id=<uuid>` en un iframe; el endpoint valida sesión, membresía y cuenta `active`, emite el mismo JWT de 5 minutos y devuelve una página HTML mínima que auto-envía el token por `POST` al endpoint SSO de Chatwoot dentro del iframe. Chatwoot consume el token, crea su cookie de sesión en `chat.mocter.co` y navega a la bandeja. La página se sirve con `Cache-Control: no-store`, CSP restrictiva y sin token en el `src`, en el historial del top-level ni en logs. Si 4.19 no admite `POST`, se usa un código de un solo uso canjeado server-side; el iframe navega a la URL de canje y el token nunca aparece en el nivel superior. `/auth/chatwoot/sso` se conserva para pruebas y para un flujo no embebido de soporte; el producto usa `/embed`.
 
@@ -565,7 +567,7 @@ Un job diario purga sesiones vencidas hace más de 30 días, tokens vencidos y c
 - T-30: Google y Facebook reales, redirect URIs exactas y errores de proveedor.
 - T-31: entrega de correo, SPF/DKIM/DMARC y enlaces que no se consumen por prefetch.
 - T-32: Google Authenticator, Microsoft Authenticator y Authy; deriva de reloj ±1.
-- T-33: SSO contra Chatwoot 4.19.0, TTL, single-use y cuenta inexistente.
+- T-33: SSO contra Chatwoot 4.19.1, TTL, single-use y cuenta inexistente.
 - T-34: dos réplicas, Redis caído, Postgres caído, 1000 sesiones y 100 logins/minuto.
 - T-35: restore de Router y celda dedicada; revocación de sesiones y clave TOTP.
 - T-39: SSO y cookies de Chatwoot dentro del iframe; same-site, dominio custom, re-auth y expiración.
@@ -592,7 +594,7 @@ Los criterios de aceptación del documento de origen y los requisitos verificabl
 | Facebook no devuelve correo verificado | Diseño | Rechazo explícito; el usuario usa otro método |
 | Facebook no ofrece OIDC completo | **No verificado** | Se usa OAuth 2.0 + Graph API, la interfaz oficial; T-30 valida state, redirect y correo. Si se exige OIDC estricto, Facebook no lo cumple. |
 | Entrega de correo (rebotes, spam) | **No verificado** | T-31 con SPF/DKIM/DMARC y monitoreo de rebotes |
-| Contrato SSO de Chatwoot 4.19.0 | **No verificado** | T-33 contra la versión fijada |
+| Contrato SSO de Chatwoot 4.19.1 | **No verificado** | T-33 contra la versión fijada |
 | Pérdida de la clave TOTP | Diseño | Re-enrolamiento; la clave no va al backup |
 | Redis como dependencia de login | Diseño | Fallback de sesión a Postgres; fail-closed para nuevas autenticaciones |
 | Migración de identidad a celda dedicada | Diseño | Transacción expandir → copiar → conmutar → verificar; T-27 |

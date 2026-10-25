@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.1 |
-| Fecha | 2026-10-21 · actualizado 2026-10-24 |
+| Versión | 1.3 |
+| Fecha | 2026-10-21 · actualizado 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) |
 | Estado | Aprobada |
 
@@ -256,7 +256,7 @@ Idéntico a §7.1, con stanza `pg-cell-00N` y volumen `pgdata-cell-00N`. La celd
 
 1. Detener web, workers y Sidekiq de Chatwoot.
 2. Restaurar su base con stanza `pg-chatwoot` en un volumen nuevo.
-3. Arrancar con la **misma imagen de Chatwoot** que produjo el respaldo (4.19.0 del pin de CHW-001).
+3. Arrancar con la **misma imagen de Chatwoot** que produjo el respaldo (4.19.1 del pin de CHW-001).
 4. Verificar login, envío y recepción de mensajes, cola de Sidekiq, adjuntos y SSO.
 5. No importar la base de Chatwoot dentro de la base de Mocter. No ejecutar migraciones de Mocter sobre ella.
 
@@ -355,6 +355,9 @@ El RTO de ransomware incluye contención y rotación de credenciales; el restore
 | Último `archive-push` | pgBackRest | > 15 min | Crítico |
 | `verify` fallido | pgBackRest | Última corrida con error | Crítico |
 | Consumo del presupuesto | Costo estimado | > 80 % | Aviso |
+| RabbitMQ health | Healthcheck | Caído 2 min | Crítico |
+| RabbitMQ queue depth | `email.send`/`email.retry` | > 1.000 mensajes o sin consumers | Alto |
+| RabbitMQ DLQ | `email.dlq` | > 0 mensajes | Crítico |
 | Sitio público | Synthetic Monitoring | Caído 2 min | Crítico |
 
 ### 9.3 Dashboards
@@ -363,6 +366,7 @@ El RTO de ransomware incluye contención y rotación de credenciales; el restore
 2. **Celda:** las mismas métricas por celda, más HNSW y particiones.
 3. **Chatwoot:** base, Sidekiq, cola y latencia.
 4. **Respaldos:** último full por stanza, último WAL, resultado de `verify`, tamaño del repositorio, backup de SeaweedFS y costo estimado.
+5. **RabbitMQ:** health, profundidad de colas, consumers y DLQ.
 
 ## 10. Alertas
 
@@ -437,11 +441,12 @@ Los valores usan 0,015 USD por GB-mes como referencia y no incluyen operaciones.
 | Pérdida de la passphrase | Respaldo irrecuperable | Copia en gestor de secretos y copia offline del dueño |
 | R2 rechaza la configuración de pgBackRest | No hay archiving | Prueba en laboratorio antes de producción (T-03) |
 | R2 no disponible | WAL se acumula y puede llenar el disco | Alerta al 60 % del límite de retención local; reintento automático |
+| RabbitMQ no disponible | Notificaciones retenidas en outbox | El negocio continúa; alerta de cola/consumer; el relay publica al recuperarse |
 | Ventana de full con presión de I/O | Degradación del servicio | `process-max` limitado y horario de madrugada |
 | Drill trimestral omitido | RTO no confiable | Fecha agendada y evidencia obligatoria (CA-4) |
 | Costo de logs crece | Gasto no previsto | Retención de 14 días y alerta de presupuesto al 80 % |
 | Token de R2 filtrado | Acceso a respaldos | Alcance mínimo, rotación y versionado |
-| Backup de Chatwoot restaurado en base equivocada | Corrupción cruzada | Runbook §7.4 y verificación de imagen 4.19.0 |
+| Backup de Chatwoot restaurado en base equivocada | Corrupción cruzada | Runbook §7.4 y verificación de imagen 4.19.1 |
 
 ## 15. Glosario
 

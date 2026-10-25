@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | ADM-001 |
-| Versión | 1.0 |
-| Fecha | 2026-10-21 · actualizado 2026-10-22 |
+| Versión | 1.2 |
+| Fecha | 2026-10-21 · actualizado 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/design.md) |
 | Estado | Aprobada |
 
@@ -117,7 +117,7 @@ Todas las tablas llevan las columnas de auditoría de la directiva de base de da
 | `clients` | `id` | `owner_user_id` no nulo y único entre clientes no dados de baja, `contact_email`, `phone` (E.164, contacto comercial), `website_url`, `display_name`, `slug`, `lifecycle_status`, `plan_id`, `quota_version`, `locale` (`es` por defecto; conjunto inicial `es`/`en` validado por la aplicación), `currency` (ISO 4217, por defecto `COP` para la operación inicial en Colombia; editable en el onboarding), `tax_id`, `country`/`state`/`city`/`address_line`/`postal_code`, `industry`, `timezone` (por defecto `America/Bogota`), `logo_media_id`, `social_links` JSONB; el `tenant_owner` activo se materializa en `tenant_users` |
 | `client_routing` | `client_id` | `cell_id`, `identity_location`; caché en Redis |
 | `client_migrations` | `id` | `client_id`, `source_cell_id`, `target_cell_id`, `state`, `started_at`, `completed_at` |
-| `plans` | `id` | `code`, `name`, `description`, `price`, `currency`, `is_public`, `trial_days`, `grace_days`, `status` (`active`/`retired`), `sort_order`, `billing_cycles` JSONB |
+| `plans` | `id` (uuid PK) | `code` único (slug estable), `name` JSONB `{es,en}`, `description` JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles` JSONB, `price_monthly_cents`, `price_annual_cents`, `currency`, `marketing_features` JSONB `{es:[],en:[]}`; auditoría |
 | `plan_limits` | `(plan_id, dimension)` | Productos, `max_tenant_agents` (`tenant_owner` fijo en 1), imágenes, audios, videos, PDF, retención, bytes |
 | `client_plan_overrides` | `id` | `client_id`, `dimension`, `value`, `valid_from`, `valid_to`, `negotiated_by`, `updated_by` |
 | `client_plans` | `id` | Historial de asignaciones: `client_id`, `plan_id`, `valid_from`, `valid_to`, `source` (`manual` o `self_service`), `assigned_by_user_id`; el plan vigente se refleja en `clients.plan_id` |
@@ -254,9 +254,9 @@ En la celda dedicada, el Router conserva el correo y el puntero, no las credenci
 
 1. El usuario se registra con Google o con correo y contraseña.
 2. Google se considera verificado; el correo manual queda pendiente hasta la confirmación (RF-14.6).
-3. Con la identidad verificada, se ejecuta el asistente guiado: datos del negocio, plan, preferencias.
+3. Con la identidad verificada, se ejecuta el asistente guiado: datos del negocio, plan, preferencias. Si viene `plan_code` desde la landing, se resuelve `plans.code` → `plans.id` (UUID) y se precarga.
 4. Antes de crear el cliente se verifica que el usuario no tenga `active_client_id` ni sea dueño de un cliente no dado de baja; si ya tiene membresía o negocio, el alta se rechaza.
-5. Al completar el asistente se crea el `client` con `owner_user_id`, la fila `tenant_users` del `tenant_owner` y se enruta a una celda. `users.active_client_id` apunta a ese `client_id`.
+5. Al completar el asistente se crea el `client` con `owner_user_id`, `plan_id` (UUID resuelto), la fila `tenant_users` del `tenant_owner` y se enruta a una celda. `users.active_client_id` apunta a ese `client_id`. Si el usuario abandona, el avance y el `plan_code` se conservan para retomar.
 6. El inquilino opera sin comunidad hasta que `platform_admin` le asigna el rol de líder. El onboarding no crea comunidades ni autoasigna liderazgo (RF-08.1).
 
 El inquilino no existe antes de que el negocio esté configurado. El avance del asistente se guarda por usuario y, cuando existe, por inquilino (RF-14.4).
@@ -592,7 +592,7 @@ El inquilino puede definir un enlace en lugar de cargar un archivo (RF-07.17): *
 
 El plan define productos, `max_tenant_agents`, imágenes, audios, videos, PDF, retención de chats y bytes (RF-04.1). El `tenant_owner` es único por inquilino y no consume un asiento de agente; el plan free incluye un `tenant_owner` y cero `tenant_agent` (RF-04.7). La validación ocurre en `mocter-admin` antes de persistir o replicar; Chatwoot no la hace cumplir (RF-04.2). Un exceso se rechaza con mensaje explícito (RF-04.3).
 
-**Modelo en dos capas (RF-04.8/RF-04.9).** Los límites numéricos viven en `plan_limits` y las capacidades en `plan_feature_values`; ambos se catalogan (`plan_dimensions`, `plan_features`) para evitar claves libres. El `platform_owner` define el catálogo y los valores; `platform_sales` asigna el plan y negocia overrides numéricos o de capacidad; el `tenant_owner` elige entre los planes públicos en estado `active`. `plans` guarda además descripción, `trial_days`, `grace_days`, `status` y ciclos de cobro permitidos.
+**Modelo en dos capas (RF-04.8/RF-04.9).** Los límites numéricos viven en `plan_limits` y las capacidades en `plan_feature_values`; ambos se catalogan (`plan_dimensions`, `plan_features`) para evitar claves libres. El `platform_owner` define el catálogo y los valores; `platform_sales` asigna el plan y negocia overrides numéricos o de capacidad; el `tenant_owner` elige entre los planes públicos en estado `active`. `plans` guarda además `code` único, `name`/`description` y `marketing_features` en JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles`, `price_monthly_cents`, `price_annual_cents` y `currency`.
 
 - **Dimensiones iniciales:** las actuales + `max_bots`, `max_channels`, `max_followup_sequences` y `ai_tokens_monthly` (si se aprueba O-04 de BOT-001).
 - **Capacidades iniciales:** `white_label` (`none`/`paleta`/`completa`), `custom_domain`, `legal_archive`, `community_feed`, `data_export`, `api_access`.
@@ -653,7 +653,15 @@ El schema `admin` es la unidad de privilegios; la landing no accede a él (D-25,
 - **Jobs:** retención, sincronización, notificaciones y GC de archivos; idempotentes y con reintentos.
 - **Migraciones:** una línea por base; las celdas comparten esquema (RF-10.9, RF-10.10).
 
-## 16. Riesgos y verificaciones pendientes
+## 16. Bandeja de contactos de la landing
+
+- **Ruta:** `/admin/leads`, accesible para `platform_sales` y `platform_admin`; `tenant_*` recibe 403.
+- **Datos:** la tabla pública `leads` conserva nombre, email, teléfono, mensaje y fecha; agrega `status` (`new`/`contacted`/`qualified`/`discarded`), `assigned_to_user_id`, `notes`, `updated_at` y `updated_by`.
+- **Permisos:** `mocter_landing` sigue solo con `INSERT`; `platform_sales`/`platform_admin` leen y actualizan; todo cambio se audita.
+- **UI:** tabla estándar DSN-001 con paginación, búsqueda, filtros por fecha/estado, detalle en drawer, cambio de estado, asignación, notas y exportación CSV del listado filtrado.
+- **i18n:** etiquetas de estados y acciones en es/en.
+
+## 17. Riesgos y verificaciones pendientes
 
 | Riesgo | Estado | Mitigación |
 |---|---|---|
@@ -669,7 +677,7 @@ El schema `admin` es la unidad de privilegios; la landing no accede a él (D-25,
 | UI de Chatwoot y marca blanca | Decisión | La shell conserva la marca; el contenido embebido es de Chatwoot. Personalizarlo es un alcance separado |
 | Teclado y scroll del iframe en móvil | **No verificado** | Prueba en iOS/Android; ajuste del contenedor, sin cambiar la modalidad |
 
-## 17. Trazabilidad
+## 18. Trazabilidad
 
 | Sección | Requisitos | Decisiones |
 |---|---|---|

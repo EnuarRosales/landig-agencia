@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | ADM-001 |
-| Versión | 1.0 |
+| Versión | 1.2 |
 | Estado | Aprobada |
-| Fecha | 2026-10-21 · actualizado 2026-10-22 |
+| Fecha | 2026-10-21 · actualizado 2026-10-25 |
 | Documentos | `requirements.md` (este) · `design.md` · `tasks.md` |
 | Depende de | CHW-001 (inventario técnico de Chatwoot) · DAT-001 (arquitectura de datos) · AUTH-001 (autenticación) |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` · `.agents/rules/rules-for-i18n.md` |
@@ -103,8 +103,8 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | RF-04.5 | La retención de chats puede tener un piso legal mínimo; un override no puede reducirlo. |
 | RF-04.6 | La retención se ejecuta desde `mocter-admin` por la API de Chatwoot: al vencer, las conversaciones y sus mensajes se eliminan. No hay archivo por defecto; un plan con archivo legal exporta cifrado a R2 con retención propia. |
 | RF-04.7 | El `tenant_owner` es único por inquilino en todos los planes. El plan free incluye un solo `tenant_owner` y ningún `tenant_agent`; los demás planes definen la cantidad de `tenant_agent` en su oferta. En venta manual, `platform_sales` asigna el plan; en autogestión, el `tenant_owner` elige del catálogo y el plan free es el valor por defecto. |
-| RF-04.8 | Los planes separan **límites numéricos** (`plan_limits`) de **capacidades** (`plan_features`). Las dimensiones y las capacidades se definen en catálogos de plataforma (`plan_dimensions`, `plan_feature_catalog`); cada plan declara sus valores y los overrides por inquilino aplican a ambos. |
-| RF-04.9 | El catálogo `plans` agrega descripción, días de trial, días de gracia, estado (`active`/`retired`), orden y ciclos de cobro permitidos. Las capacidades iniciales incluyen marca blanca por niveles, dominio custom, archivo legal, comunidad/feed, exportación y acceso API; la **asistencia AI es transversal y no se gatea** (AI-001 D-05). |
+| RF-04.8 | Los planes separan **límites numéricos** (`plan_limits`) de **capacidades** (`plan_features`). Las dimensiones y las capacidades se definen en catálogos de plataforma (`plan_dimensions`, `plan_features`); cada plan declara sus valores en `plan_feature_values` y los overrides por inquilino aplican a ambos. |
+| RF-04.9 | El catálogo `plans` tiene `id` UUID, `code` único (slug estable), `name`/`description` y `marketing_features` en JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles`, `price_monthly_cents`, `price_annual_cents` y `currency`. `marketing_features` es solo presentación; el enforcement usa `plan_limits`/`plan_feature_values`. Las capacidades iniciales incluyen marca blanca por niveles, dominio custom, archivo legal, comunidad/feed, exportación y acceso API; la **asistencia AI es transversal y no se gatea** (AI-001 D-05). |
 
 ### RF-05 · Productos
 
@@ -145,7 +145,7 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | RF-07.6 | El vínculo entre un producto y un archivo vive en la celda del producto. |
 | RF-07.7 | La verificación de referencias previa a un borrado consulta todas las celdas que puedan referenciar el archivo. Ninguna celda decide sola el borrado de un archivo compartido. |
 | RF-07.8 | El borrado no es inmediato: se ejecuta solo cuando la verificación global confirma que no queda ninguna referencia. |
-| RF-07.9 | Existen dos dominios de archivos: multimedia de producto, propiedad de Mocter, con catálogo global, SeaweedFS (contenedor Docker `seaweedfs/seaweedfs:4.49` gestionado exclusivamente por Traefik en todos los ambientes bajo Docker Compose sin publicar puertos en el host, R-10), deduplicación por hash, cuota y borrado por ausencia de referencias; y adjuntos de conversación, propiedad de Chatwoot ActiveStorage (contenedor `chatwoot/chatwoot:v4.19.1` también bajo Traefik), sin deduplicación, sin cuota de producto y con política propia. |
+| RF-07.9 | Existen dos dominios de archivos: multimedia de producto, propiedad de Mocter, con catálogo global, SeaweedFS (contenedor Docker `seaweedfs/seaweedfs:4.49` gestionado por Traefik en staging/producción, sin publicar puertos en el host; en desarrollo local puede publicar solo en `127.0.0.1`, R-10), deduplicación por hash, cuota y borrado por ausencia de referencias; y adjuntos de conversación, propiedad de Chatwoot ActiveStorage (contenedor `chatwoot/chatwoot:v4.19.1` con la misma regla), sin deduplicación, sin cuota de producto y con política propia. |
 | RF-07.10 | Los adjuntos de Chatwoot no se cuentan en la cuota de producto y no se eliminan desde el GC de producto. |
 | RF-07.11 | Los adjuntos de Chatwoot siguen la retención de su conversación y no tienen plazo propio. Al borrarse la conversación se purgan sus blobs de ActiveStorage; si Chatwoot no los elimina, `mocter-admin` completa la limpieza. |
 | RF-07.12 | Los formatos de archivo admitidos como **ingreso** son restrictivos por tipo de medio: imágenes `webp`, `avif`, `png`, `jpeg`; audio `opus`, `aac`, `mp3`; video `mp4` (H.264 + AAC) y `webm` (VP9/AV1 + Opus); documentos `pdf`. Todo otro formato se rechaza al subir con mensaje explícito; la validación es por contenido, no por extensión. |
@@ -254,6 +254,7 @@ Primera ley para el desarrollo de componentes visuales.
 | RF-14.8 | **Time-to-value:** al finalizar el asistente el inquilino queda **operativo**: negocio, un producto, bot con preset y canal de atención activo. Los 5 minutos son una guía de diseño, no un SLA. **WhatsApp es el canal preferido** y su conexión puede extenderse sin bloquear la operación; el widget web permite operar de inmediato. Políticas, FAQs, catálogo completo y configuración avanzada se completan después. |
 | RF-14.9 | El alta se siembra con defaults de plataforma: `COP`, `es`, `America/Bogota`, etiquetas reservadas de leads, bot en ritmo natural, recordatorios apagados y políticas base. El inquilino solo edita lo que difiere del default. |
 | RF-14.10 | Al cerrar el asistente se muestra una lista de **pendientes opcionales** (conectar WhatsApp, completar políticas, cargar más productos); ningún pendiente bloquea la operación ni el acceso al panel. |
+| RF-14.11 | El onboarding recibe el `plan_code` elegido en la landing, resuelve `plans.code` → `plans.id` (UUID) y asigna el plan al crear el inquilino. Si el usuario abandona, el avance se conserva y puede retomarse sin crear un inquilino vacío. |
 
 ### RF-15 · Marca blanca (white-labeling)
 
@@ -264,6 +265,18 @@ Primera ley para el desarrollo de componentes visuales.
 | RF-15.3 | La personalización altera los tokens de identidad visual, no la estructura ni el comportamiento de los componentes. |
 | RF-15.4 | Todo valor personalizado se valida contra las reglas de contraste accesible antes de aplicarse. Un valor inválido se rechaza con mensaje explícito. |
 | RF-15.5 | La configuración visual por defecto de la plataforma se restaura con una acción única. |
+
+### RF-16 · Bandeja de contactos de la landing
+
+| ID | Requisito |
+|---|---|
+| RF-16.1 | `platform_sales` y `platform_admin` acceden a `/admin/leads` para gestionar los contactos capturados por el formulario público de la landing. |
+| RF-16.2 | La bandeja lista los `leads` con paginación, búsqueda, filtros por fecha/estado y ordenamiento; muestra nombre, email, teléfono, mensaje, origen y fecha. |
+| RF-16.3 | El detalle permite cambiar estado (`new`/`contacted`/`qualified`/`discarded`), asignar a un usuario de plataforma y registrar notas. |
+| RF-16.4 | Cada cambio de estado, asignación o nota se audita con actor y fecha; el `lead` conserva el historial. |
+| RF-16.5 | La bandeja permite exportar el listado filtrado a CSV con los campos visibles. |
+| RF-16.6 | El rol `mocter_landing` sigue limitado a `INSERT`; solo `platform_sales`/`platform_admin` leen y actualizan. Un usuario de inquilino recibe 403. |
+| RF-16.7 | La UI cumple i18n es/en y DSN-001 (tabla estándar y estados vacíos/error). |
 
 ## 5. Criterios de aceptación
 
@@ -305,6 +318,9 @@ Primera ley para el desarrollo de componentes visuales.
 36. Publican el feed `tenant_owner` y `tenant_agent` de cualquier inquilino; moderan los del inquilino líder o co-líder.
 37. Los roles de plataforma separan ventas, operación y gobierno: `platform_sales` no asigna líderes ni accede a chats, y `platform_admin` no asigna planes comerciales.
 38. Un usuario tiene como máximo una membresía activa de inquilino; `users.active_client_id` se anula al salir y una segunda alta con la misma identidad se rechaza.
+39. `platform_sales` y `platform_admin` ven los leads de la landing en `/admin/leads`, con filtros, detalle y exportación CSV.
+40. Un lead puede pasar por `new` → `contacted` → `qualified`/`discarded`, con asignación y notas auditadas.
+41. Un usuario de inquilino no accede a la bandeja de leads; `mocter_landing` solo inserta y no lee.
 
 ## 6. Decisiones
 
@@ -379,6 +395,7 @@ Cerradas:
 - 2026-10-23: clasificación de leads y contexto de negocio. RF-03.7 fija el conjunto reservado `lead-frio`, `lead-tibio`, `lead-caliente`, `compra-realizada` (`origin = mocter_default`, no renombrable). RF-03.8 agrega el contexto de atención del negocio (pagos, devoluciones, garantía, entregas por ciudad/grupo, transportadoras, FAQs, cierre) que consume BOT-002; se modela en `client_business_info`, `shipping_carriers`, `delivery_groups`, `delivery_rules`, `product_price_tiers` y `product_faqs`.
 - 2026-10-23: time-to-value. RF-14.8 a RF-14.10 definen la operación mínima en una sesión corta: negocio, un producto, bot con preset y canal de atención activo; los 5 minutos son una guía, no un SLA, y WhatsApp es el canal preferido (su conexión no bloquea). Defaults de plataforma y pendientes opcionales que no bloquean. La configuración avanzada nunca es requisito del alta.
 - 2026-10-23: regla de envío (ORD-001 D-08). `client_business_info.shipping_policy` guarda la política (gratis y costo por defecto) y `products.free_shipping` / `products.shipping_cost_cents` el indicador y costo por producto. El envío es gratis solo cuando ambas condiciones coinciden.
-- 2026-10-24: modelo de planes en dos capas (RF-04.8/RF-04.9): límites numéricos (`plan_limits`) + capacidades (`plan_features`) con catálogos (`plan_dimensions`, `plan_feature_catalog`), metadata de plan (trial, gracia, estado, orden, ciclos) y overrides de capacidades por inquilino. La asistencia AI queda transversal a todos los planes (AI-001 D-05).
+- 2026-10-24: modelo de planes en dos capas (RF-04.8/RF-04.9): límites numéricos (`plan_limits`) + capacidades (`plan_features`) con catálogos (`plan_dimensions`, `plan_features`), metadata de plan (trial, gracia, estado, orden, ciclos) y overrides de capacidades por inquilino. La asistencia AI queda transversal a todos los planes (AI-001 D-05).
+- 2026-10-25: modelo canónico de `plans` (`id uuid`, `code` slug único, `name`/`description`/`marketing_features` JSONB `{es,en}`, `status`, precios mensual/anual en centavos, `currency`); `marketing_features` es presentación y no reemplaza `plan_features`/`plan_feature_values`.
 - 2026-10-23: la internacionalización se eleva a **regla general del sistema** (directiva `rules/rules-for-i18n.md`, registrada en la constitución §4.6): Español e Inglés en toda interfaz, correos y notificaciones, con Español por defecto. `clients.locale` sigue siendo el atributo por inquilino dentro de esa regla.
 - 2026-10-24: acceso a Chatwoot en iframe (D-32, RF-02.4/RF-02.5). El usuario nunca abandona la shell; Chatwoot se publica en un subdominio same-site y se embebe. Se prohíben la pestaña nueva, el redirect de nivel superior y la reimplementación de la bandeja. La validación de framing, cookies y SSO en 4.19 queda como condición de aceptación en CHW-001 y AUTH-001.

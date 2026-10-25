@@ -3,10 +3,10 @@
 | Atributo | Valor |
 |---|---|
 | ID | ORD-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
-| Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [CRM-001](../crm-001-prospectos-gestion-comercial/design.md) · [BOT-002](../bot-002-motor-atencion-prompts/design.md) · [REP-001](../rep-001-informes-dashboards/design.md) |
-| Estado | Borrador |
+| Versión | 1.0 (Aprobada) |
+| Fecha | 2026-10-25 |
+| Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [CRM-001](../crm-001-prospectos-gestion-comercial/design.md) · [BOT-002](../bot-002-motor-atencion-prompts/design.md). REP-001 consume las métricas de pedidos; no es una dependencia de ORD-001. |
+| Estado | Aprobada |
 
 ## 1. Principios
 

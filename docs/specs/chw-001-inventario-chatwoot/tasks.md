@@ -3,10 +3,10 @@
 | Atributo | Valor |
 |---|---|
 | ID | CHW-001 |
-| Versión | 1.0 |
-| Fecha | 2026-10-20 |
+| Versión | 1.1 |
+| Fecha | 2026-10-20 · actualizado 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
-| Fuente fijada | commit `042b438fe31d2a2ef00c396379b7064ab6d0034f` · release `4.19.0` |
+| Fuente fijada | `chatwoot/chatwoot:v4.19.1` · digest y commit a fijar en T-01A/T-17/T-18 |
 
 ## Convenciones
 
@@ -16,11 +16,15 @@
 
 ## Tareas
 
-- [x] **T-01 · Fijar el checkout de referencia**
+- [x] **T-01 · Fijar el checkout de referencia (histórico 4.19.0)**
   - Clonar `chatwoot/chatwoot` con `--depth 1 --single-branch`.
   - Registrar commit y versión.
   - Verificación: `git rev-parse HEAD` = `042b438fe31d2a2ef00c396379b7064ab6d0034f` y `package.json.version` = `4.19.0`.
-  - Evidencia: commit verificado el 2026-10-20.
+  - Evidencia: commit verificado el 2026-10-20; se conserva como evidencia histórica.
+
+- [ ] **T-01A · Fijar la imagen canónica Chatwoot v4.19.1**
+  - Descargar `chatwoot/chatwoot:v4.19.1` y registrar digest, commit y `package.json.version`.
+  - Verificación: `docker inspect` deja el digest registrado; `package.json.version` = `4.19.1`; design/tasks de CHW, DAT, AUTH y OPS usan la misma versión.
 
 - [x] **T-02 · Extraer el inventario de rutas**
   - Parsear `config/routes.rb` (838 líneas) y contrastar con `swagger/swagger.json` (96 paths).
@@ -79,7 +83,7 @@
   - Verificación: se cita el índice único `(account_id, user_id)` y la consecuencia de O-04.
   - Evidencia: `design.md` §6.1; la unicidad por par cuenta–usuario se cita en `auth.md` §6 con `db/schema.rb:55`.
 
-- [ ] **T-17 · [LAB] Validar framing y cookies de la UI en 4.19.0**
+- [ ] **T-17 · [LAB] Validar framing y cookies de la UI en 4.19.1**
   - Medir `X-Frame-Options`/CSP `frame-ancestors`, la configuración disponible y la cookie de sesión en un iframe same-site y cross-site.
   - Verificación: la UI carga en un iframe same-site sin bloquearse; la cookie se envía; se documenta el ajuste mínimo si 4.19 no lo permite.
   - Evidencia: `design.md` §6.2 con `archivo:línea` y resultado de laboratorio.

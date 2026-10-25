@@ -13,12 +13,13 @@ Plan estratégico de codificación modular dividido en **5 fases secuenciales**,
 El sistema Mocter opera en contenedores **Docker con Docker Compose**, aplicando una separación clara por ambiente:
 
 1. **Desarrollo Local:**
-   - **No se utiliza Traefik en desarrollo local.** Los servicios corren directamente en sus puertos mapeados locales mediante `docker-compose.yml` (`apps/web` en `:3000`, PostgreSQL en `:5432`, Redis en `:6379`, SeaweedFS en `:8333`/`:8888` y Chatwoot en `:3001`).
+   - **No se utiliza Traefik en desarrollo local.** Los servicios corren mediante `docker-compose.yml` y publican puertos solo en `127.0.0.1` (loopback), nunca en `0.0.0.0`: `apps/web` en `:3000`, PostgreSQL `:5432`, Redis `:6379`, SeaweedFS `:8333`/`:8888` y Chatwoot `:3001`.
 2. **Ambientes de Pruebas (Staging) y Producción:**
    - **Traefik v2.11** actúa como reverse proxy único para todo el tráfico público (HTTP, HTTPS, WebSockets).
-   - Ningún contenedor publica puertos directamente en el host (cumplimiento estricto de la directiva `R-10`).
+   - En staging/producción, ningún contenedor publica puertos directamente en el host (cumplimiento estricto de `R-10`); en desarrollo local solo se publican en `127.0.0.1`.
    - **Chatwoot (`chatwoot/chatwoot:v4.19.1`):** Corre en contenedor administrado por Traefik, accediendo a PostgreSQL 18 con pgvector y Redis 7+ en el plano de soporte (`CHW-001`).
    - **SeaweedFS (`seaweedfs/seaweedfs:4.49`):** Contenedor gestionado por Traefik para la gestión y deduplicación de archivos multimedia de inquilinos (`ADM-001`, `OPS-001`).
+   - **RabbitMQ (`rabbitmq:3.13-management`):** Cola interna para notificaciones (`NTF-001`), sin puertos públicos ni router de Traefik; credenciales en secrets y healthcheck para OPS-001.
    - **Mocter Web (`ghcr.io/enuarrosales/mocter-web`):** Contenedor único para la aplicación Next.js 16 App Router y el migrador Drizzle en modo standalone sobre Node.js 24 Alpine.
 
 ---
@@ -35,210 +36,224 @@ flowchart TD
         INFRA_TRAEFIK --> INFRA_FS
     end
 
-    subgraph FASE1 ["Fase 1: Cimientos, Autenticación y Landing (LND-001)"]
-        F1_DAT["DAT-001: Esquemas Drizzle Router & Celdas"]
-        F1_AUTH["AUTH-001: Auth Híbrida & OAuth Parametrizable SaaS"]
-        F1_LND["LND-001: Landing, Planes Dinámicos, Login/Register"]
+    subgraph FASE1 ["Fase 1: Cimientos y entrada pública"]
+        F1_DAT["DAT-001: Esquemas, Router y Celdas; plans canónico"]
+        F1_AUTH["AUTH-001: Auth híbrida y OAuth parametrizable"]
+        F1_DSN["DSN-001: tokens base"]
+        F1_LND["LND-001: landing, header, #planes, /login y /register?plan_code"]
         F1_DAT --> F1_AUTH
         F1_AUTH --> F1_LND
+        F1_DSN --> F1_LND
     end
 
-    subgraph FASE2 ["Fase 2: Núcleo Administrativo y UI"]
-        F2_DSN["DSN-001: Tokens HUD & Componentes Base"]
-        F2_ADM["ADM-001: mocter-admin, Onboarding 5 min, Producto Demo"]
+    subgraph FASE2 ["Fase 2: Chatwoot base, núcleo administrativo y notificaciones"]
+        F2_CHW["CHW-001 base: contenedor, API, account/inbox"]
+        F2_ADM["ADM-001: onboarding plan_code, tenant, roles, producto demo, webchat"]
+        F2_DSN["DSN-001: componentes y vistas base"]
+        F2_NTF["NTF-001: remitentes, plantillas, outbox y admin"]
+        F2_CHW --> F2_ADM
         F2_DSN --> F2_ADM
+        F2_ADM -->|tenant.welcome / community.*| F2_NTF
     end
 
-    subgraph FASE3 ["Fase 3: Operación de Atención y CRM"]
-        F3_CHW["CHW-001: Chatwoot API, SSO & Iframe Same-Site"]
-        F3_CRM["CRM-001: Prospectos & Habeas Data Ley 1581"]
+    subgraph FASE3 ["Fase 3: Chatwoot avanzado y CRM"]
+        F3_CHW["CHW-001 avanzado: iframe same-site y SSO"]
+        F3_CRM["CRM-001: prospectos, consentimiento y Habeas Data"]
         F3_CHW --> F3_CRM
     end
 
-    subgraph FASE4 ["Fase 4: Inteligencia Artificial y Pedidos"]
-        F4_BOT["BOT-001/002: Motor de Prompts & Conectores LLM BYOK"]
-        F4_ORD["ORD-001: Registro de Pedidos sin Cobro Online"]
-        F4_AI["AI-001: Asistente AI en Textareas"]
+    subgraph FASE4 ["Fase 4: IA y pedidos"]
+        F4_BOT["BOT-001/002: BYOK, prompts y contrato registrar_pedido"]
+        F4_ORD["ORD-001: estados, idempotencia y fulfillment"]
+        F4_AI["AI-001: asistente en textareas"]
         F4_BOT --> F4_ORD
         F4_BOT --> F4_AI
     end
 
-    subgraph FASE5 ["Fase 5: Monetización, Analítica y Resiliencia"]
-        F5_BILL["BILL-001: Pasarela Dual Wompi/Stripe, Matías API & Comprobantes"]
-        F5_REF["REF-001: Billetera de Créditos Referidos 1 Año"]
-        F5_REP["REP-001: Dashboards en Caliente Excel/PDF"]
-        F5_OPS["OPS-001: Backups R2 & Observabilidad Grafana Cloud"]
-        F5_BILL --> F5_REF
+    subgraph FASE5 ["Fase 5: Monetización, analítica y resiliencia"]
+        F5_BILL["BILL-001: suscripciones, pagos, comprobantes y créditos"]
+        F5_REP["REP-001: dashboards en caliente"]
+        F5_REF["REF-001: créditos de referidos"]
+        F5_OPS["OPS-001: backups R2, SeaweedFS y observabilidad"]
+        F5_LND["LND-001: vista de upgrade"]
         F5_BILL --> F5_REP
+        F5_BILL --> F5_REF
         F5_REP --> F5_OPS
+        F5_BILL --> F5_LND
     end
 
-    F1_LND -->|Gate 1 Aprobado| F2_DSN
-    F2_ADM -->|Gate 2 Aprobado| F3_CHW
-    F3_CRM -->|Gate 3 Aprobado| F4_BOT
-    F4_ORD -->|Gate 4 Aprobado| F5_BILL
-    F5_OPS -->|Gate 5 Aprobado| SistemaCompletado["Sistema Mocter Operativo en Producción"]
+    F1_LND -->|Gate 1| F2_CHW
+    F2_ADM -->|Gate 2| F3_CHW
+    F3_CRM -->|Gate 3| F4_BOT
+    F4_ORD -->|Gate 4| F5_BILL
+    F5_OPS -->|Gate 5| SistemaCompletado["Sistema Mocter Operativo en Producción"]
 ```
 
 ---
 
 ## 3. Detalle de Fases de Codificación
 
-### Fase 1 · Cimientos de Datos, Autenticación Híbrida y Landing (`DAT-001` + `AUTH-001` + `LND-001`)
+### Fase 1 · Cimientos y entrada pública (`DAT-001` + `AUTH-001` + `LND-001` slice + `DSN-001` base)
 
-> **Objetivo:** Establecer el plano de persistencia base multi-inquilino en Drizzle ORM, la autenticación híbrida completa y la interfaz pública de la landing con planes dinámicos y accesos.
+> **Objetivo:** Persistencia multi-inquilino, autenticación híbrida, catálogo canónico de planes y la porción pública de la landing: header, `#planes`, login y registro con `plan_code`.
 
 #### 1.1 Persistencia y Esquemas Drizzle (`packages/domain`)
-- Reestructurar modularmente `packages/domain/src/db/`:
-  - `schemas/admin/`: Tablas del Router Global (`clients`, `plans`, `client_plans`, `users`, `identities`, `sessions`, `email_verification_tokens`, `password_reset_tokens`, `user_consents`, `two_factor_secrets`, `auth_providers_config`).
-  - `schemas/tenant/`: Tablas de la celda del inquilino (`tenant_users`, `products`, `orders`, `conversations`, `prospects`).
-  - `schemas/public/`: Tabla de aterrizaje (`leads`).
-- Extender la entidad `plans` con `is_public`, `is_popular`, `sort_order`, `price_monthly_cents`, `price_annual_cents`, `currency`, `features`.
-- Re-exportar desde `packages/domain/src/db/schema.ts` para compatibilidad transparente con `drizzle-kit`.
-- Generar y verificar la migración SQL fundacional (`pnpm --filter @mocter/domain db:generate`).
+- Reestructurar `packages/domain/src/db/`:
+  - `schemas/admin/`: Router Global (`clients`, `plans`, `client_plans`, `users`, `identities`, `sessions`, `email_verification_tokens`, `password_reset_tokens`, `user_consents`, `two_factor_secrets`, `auth_providers_config`).
+  - `schemas/tenant/`: celda (`tenant_users`, `products`, `orders`, `conversations`, `prospects`).
+  - `schemas/public/`: `leads`.
+- Modelo canónico de `plans`: `id uuid`, `code` único, `name`/`description`/`marketing_features` JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles`, `price_monthly_cents`, `price_annual_cents`, `currency`. FKs `plan_id` uuid.
+- Generar y verificar la migración fundacional (`pnpm --filter @mocter/domain db:generate`).
 
-#### 1.2 Autenticación Híbrida Completa (`apps/web` & `packages/domain`)
-- **Nativa:** Registro y login con Email + Contraseña, política estricta de complejidad (6+ chars, mayúscula, número, especial), y hashing criptográfico con **Argon2id**.
-- **Sesiones en Base de Datos:** Cookie `__Host-mocter_sid` (`HttpOnly`, `Secure`, `SameSite=Strict`), hash SHA-256 en BD y middleware en Next.js App Router.
-- **Proveedores OAuth Parametrizables desde Backoffice SaaS (`AUTH-D-08`):**
-  - Tabla `auth_providers_config` para gestionar dinámicamente proveedores (Google, Facebook, Microsoft, etc.) con banderas `is_enabled` y credenciales cifradas con AES-256-GCM.
-  - La pantalla de login renderiza en runtime únicamente los botones de proveedores activos en la configuración de la SaaS.
-  - Resolución automática de cuentas duplicadas y vinculación de identidades.
-- **2FA Optativo:** TOTP basado en RFC 6238, generación de QR con URI oficial, secreto cifrado en reposo con **AES-256-GCM**, y desafío de 6 dígitos al iniciar sesión.
-- **Roles y Scopes (`D-31`):** Soporte de scopes independientes (`platform_*`, `tenant_*`, `community_*`).
+#### 1.2 Autenticación híbrida (`apps/web` & `packages/domain`)
+- Registro/login nativo con Argon2id y política de complejidad.
+- Cookie `__Host-mocter_sid` (`HttpOnly`, `Secure`, `SameSite=Strict`), hash SHA-256 en BD y middleware en Next.js.
+- OAuth parametrizable desde la SaaS (`auth_providers_config`, `AUTH-D-08`), 2FA TOTP opcional y roles/scopes `D-31`.
 
-#### 1.3 Landing Page, Planes Comerciales y Accesos (`LND-001`)
-- **Header Principal:** Botón de acción ("Iniciar sesión" / "Sign in") ubicado inmediatamente contiguo a «Solicitar demo», con enlace directo a `/[locale]/login`.
-- **Sección Dinámica de Planes (`#planes`):**
-  - **Renderizado condicional:** Solo aparece en la landing (y su link en el menú cápsula) si existen planes con `is_active = true` y `is_public = true` parametrizados desde la SaaS. Si no hay planes activos, la sección y el link se ocultan por completo.
-  - Tarjetas de planes con selector mensual/anual (descuento visible), características y botón CTA "Comenzar ahora" enlazado a `/[locale]/register?plan_id=[id]`.
-- **Formularios Interconectados:**
-  - `/[locale]/login`: Formulario de acceso con enlace inferior "¿Aún no tienes cuenta? Regístrate aquí" (`/[locale]/register`).
-  - `/[locale]/register`: Formulario de alta con captura de `plan_id` preseleccionado y enlace "¿Ya tienes cuenta? Inicia sesión" (`/[locale]/login`).
-- **Vista de Upgrade en Backoffice:**
-  - El inquilino autenticado tiene acceso en `mocter-admin` (`/admin/settings/billing`) para consultar su plan actual y ejecutar **Upgrade** de plan a voluntad (`BILL-001`).
-- **Internacionalización:** Diccionarios `messages/es.json` y `messages/en.json` actualizados para todos los nuevos textos de navegación, planes y autenticación.
+#### 1.3 Landing y registro (`LND-001` slice + DSN base)
+- Header con botón «Iniciar sesión» contiguo a «Solicitar demo».
+- Sección `#planes` solo si `plans.status = 'active' AND plans.is_public = true`; usa `plan.code` y `marketing_features[locale]`.
+- `/[locale]/login` y `/[locale]/register?plan_code=...`: el registro crea el usuario y conserva `plan_code` para el onboarding; no crea inquilino.
+- DSN base: tokens, tipografía y componentes mínimos para las vistas públicas.
+- La vista de **upgrade** de LND-001 no entra en esta fase; se implementa en Fase 5 con BILL-001.
 
 > [!IMPORTANT]
-> **Compuerta de Verificación 1 (Gate 1):**
-> - `pnpm --filter @mocter/domain exec drizzle-kit check` pasa al 100%.
-> - Suite de tests unitarios de autenticación: hashing Argon2id, validación de sesiones, tokens de un solo uso, TOTP 2FA, activación dinámica de proveedores OAuth.
-> - Test de renderizado condicional de `LND-001`: comprobación de que `#planes` desaparece cuando no hay planes y se muestra cuando existen planes públicos activos.
-> - Verificación de navegación fluida entre `/login` y `/register` con parámetro `plan_id`.
-> - Cero advertencias de TypeScript en `@mocter/domain` y `@mocter/web`.
+> **Compuerta 1:**
+> - `drizzle-kit check` y migración fundacional pasan.
+> - Tests de auth (Argon2id, sesión, tokens, TOTP, OAuth dinámico).
+> - `#planes` aparece/desaparece según `status` + `is_public`; el CTA usa `plan_code`.
+> - `/login` ↔ `/register` conservan `plan_code`; el registro no crea inquilino.
+> - Tokens base pasan AA en claro/oscuro.
 
 ---
 
-### Fase 2 · Núcleo Administrativo de Inquilinos y UI Shell (`ADM-001` + `DSN-001`)
+### Fase 2 · Chatwoot base, núcleo administrativo y notificaciones (`CHW-001` base + `ADM-001` + `DSN-001` + `NTF-001`)
 
-> **Objetivo:** Construir la interfaz de usuario `mocter-admin`, el sistema de tokens HUD, el catálogo multimedia sobre SeaweedFS 4.49 y el onboarding express en 5 minutos.
+> **Objetivo:** Aprovisionar Chatwoot y construir `mocter-admin`: onboarding con `plan_code`, creación de inquilino, roles, producto demo, multimedia y webchat activo.
 
-#### 2.1 Sistema de Diseño HUD y Tokens (`apps/web`)
-- Implementar tokens de color y tipografía (Space Grotesk / Inter / IBM Plex Mono) con Tailwind CSS v4.
-- Construir componentes base de UI con Radix UI accesibles (WCAG 2.2 AA): botones, diálogos, dropdowns, inputs, tablas HUD paginadas.
-- Soporte de modo oscuro predeterminado y conmutador de tema.
+#### 2.1 Chatwoot base (`CHW-001`)
+- Contenedor `chatwoot/chatwoot:v4.19.1` bajo Traefik.
+- Adaptador de API: creación de cuenta, inbox webchat y token de servicio por inquilino.
+- Correlación `client_id` ↔ `chatwoot_account_id` con idempotencia y reintentos.
+- El iframe same-site y el SSO se completan en Fase 3; el webchat puede operar sin la bandeja embebida.
 
-#### 2.2 Consola Administrativa y Onboarding Express 5 min
-- Layout principal de `mocter-admin` con navegación adaptativa y separación de roles `D-31`.
-- Wizard de onboarding express:
-  1. Registro de usuario e inquilino.
-  2. Auto-creación de un **producto demo parametrizable desde el backoffice de la SaaS**.
-  3. Pre-activación del canal webchat con preset de bienvenida.
-- Conexión con **SeaweedFS 4.49** para subida y canonicalización de imágenes a WebP y videos a WebM.
-- Gestión del ciclo de vida del inquilino (`lifecycle_status`: `trialing`, `active`, `past_due`, `suspended`).
+#### 2.2 Sistema de diseño y shell (`DSN-001`)
+- Tokens HUD, componentes base accesibles, tablas con paginación/filtros/orden, tema sistema con fallback oscuro.
+- Catálogo interno `/design-system`.
+
+#### 2.3 Consola administrativa y onboarding (`ADM-001`)
+- Layout, navegación y RBAC `D-31`.
+- Onboarding: recibe `plan_code`, resuelve `plans.code` → `plans.id`, crea `client`, `tenant_owner`, asigna plan y enruta a celda.
+- Producto demo, catálogo multimedia en SeaweedFS 4.49, deduplicación y cuota.
+- Pre-activación del webchat; `lifecycle_status` del inquilino.
+- Si el usuario abandona, conserva avance y `plan_code` para retomar sin inquilino vacío.
+- Bandeja `/admin/leads` para `platform_sales` con la tabla `leads` y gestión de estados/notas/asignación (ADM-001 RF-16).
+
+#### 2.4 Notificaciones y plantillas (`NTF-001`)
+- Remitentes múltiples y proveedor SMTP; plantillas TipTap versionadas por evento/locale.
+- Catálogo de eventos: bienvenida, comunidad, auth (migrado desde AUTH), y base para BILL/REF.
+- **Outbox transaccional + RabbitMQ + worker independiente**: `enqueueEmail` no espera la cola ni el SMTP; si RabbitMQ/proveedor falla, el negocio continúa y el outbox se publica al recuperarse.
+- Reintentos con DLQ, log de entregas y administración en `/admin/settings/notifications`.
 
 > [!IMPORTANT]
-> **Compuerta de Verificación 2 (Gate 2):**
-> - Test e2e automatizado (Playwright) ejecutando el flujo completo de alta express en menos de 300 segundos.
-> - Verificación de carga y deduplicación de imágenes en SeaweedFS 4.49.
-> - Comprobación de auditoría de accesos y restricción estricta de rutas por rol `D-31`.
+> **Compuerta 2:**
+> - Onboarding funcional de punta a punta: usuario → inquilino → plan UUID → webchat activo.
+> - Cuenta e inbox de Chatwoot creados y correlacionados; reintento idempotente.
+> - Producto demo, multimedia deduplicada y RBAC/auditoría.
+> - Correo de bienvenida enviado una sola vez; plantillas/remitentes administrables y entrega registrada.
+> - **RabbitMQ caído no bloquea el onboarding**: el alta termina, el outbox queda pendiente y se publica al recuperarse.
+> - Objetivo de 5 minutos medido y reportado; **no es un SLA duro** (ADM-001 RF-14.8).
 
 ---
 
-### Fase 3 · Atención Conversacional y Gestión Comercial (`CHW-001` + `CRM-001`)
+### Fase 3 · Chatwoot avanzado y CRM (`CHW-001` avanzado + `CRM-001`)
 
-> **Objetivo:** Habilitar la bandeja de entrada unificada mediante Chatwoot v4.19.1 embebido en iframe same-site y el maestro de prospectos con cumplimiento de Habeas Data.
+> **Objetivo:** Completar la bandeja embebida y el maestro de prospectos con Habeas Data.
 
-#### 3.1 Integración Técnica con Chatwoot v4.19.1
-- Adaptador de API de Chatwoot: aprovisionamiento de cuentas, sincronización de inboxes y emisión de token SSO de un solo uso (TTL 5 min).
-- Embebido de Chatwoot en `mocter-admin` mediante iframe same-site (`ADM-001` D-32).
-- Webhook receiver para eventos de mensajes y contactos entrantes.
+#### 3.1 Chatwoot avanzado (`CHW-001`)
+- Iframe same-site en `mocter-admin` (`ADM-001` D-32).
+- SSO embebido (`/auth/chatwoot/embed`), cookies same-site y validación de framing.
+- Webhooks de mensajes/contactos con idempotencia.
 
-#### 3.2 Maestro de Prospectos y Consentimiento (Ley 1581)
-- Entidad `prospects` en la celda y tabla `prospect_consents`.
-- Captura de consentimiento mediante botones interactivos de WhatsApp y formulario web.
-- Mecanismo de derecho al olvido: sobreescritura de datos con hashes irreversibles en Mocter y eliminación asociada en Chatwoot.
+#### 3.2 CRM (`CRM-001`)
+- `prospects` y `prospect_consents`; dos propósitos (`data_treatment`, `commercial_comms`).
+- Aviso de privacidad versionado y editable; captura por botones interactivos + enlace.
+- Derecho al olvido/anonimización y proyección a Chatwoot.
 
 > [!IMPORTANT]
-> **Compuerta de Verificación 3 (Gate 3):**
-> - Prueba de integración de webhooks Chatwoot ↔ Mocter con procesamiento idempotente.
-> - Verificación de inmutabilidad del registro de consentimientos y prueba de anonimización de prospecto.
+> **Compuerta 3:**
+> - Iframe/SSO validados en laboratorio contra la versión canónica de Chatwoot.
+> - Webhooks idempotentes; consentimiento y anonimización probados.
 
 ---
 
-### Fase 4 · Automatización con IA y Gestión de Pedidos (`BOT-001` + `BOT-002` + `ORD-001` + `AI-001`)
+### Fase 4 · IA y pedidos (`BOT-001` + `BOT-002` + `ORD-001` + `AI-001`)
 
-> **Objetivo:** Activar el bot conversacional para atención y captura de pedidos, junto con la asistencia inteligente en la configuración.
+> **Objetivo:** Activar el bot, el motor de prompts, la captura de pedidos y la asistencia AI.
 
-#### 4.1 Motor de Atención y Prompts (`BOT-001` + `BOT-002`)
-- Conectores LLM con soporte BYOK (OpenAI, Anthropic, Gemini) y preset Mocter.
-- Composición dinámica de prompts en runtime con contexto de negocio y catálogo de productos.
-- Límite de timeout (10s) con derivación automática a agente humano en Chatwoot.
+#### 4.1 Contrato primero (`BOT-002` ↔ `ORD-001`)
+- Definir `registrar_pedido`: payload, idempotencia por conversación, estados y errores.
+- ORD y BOT-002 se implementan como una unidad; no se avanza uno sin el contrato.
 
-#### 4.2 Registro de Pedidos sin Cobro Online (`ORD-001`)
-- Extracción de entidades de pedido desde el diálogo del bot (`CreateOrderIntentPayload`) con validación de clave de idempotencia (`Idempotency-Key`).
-- Entidad `orders` y `order_items` en la celda del inquilino.
-- Interfaz web para que el inquilino gestione manualmente los estados (`creado` → `confirmado` → `despachado` → `entregado` | `cancelado`).
-- Documentación de adaptadores para Dropshipping (Dropi, Effi) sin implementación de código.
+#### 4.2 Bot y prompts (`BOT-001` + `BOT-002`)
+- BYOK, catálogo de proveedores/modelos, prompts en runtime, timeout 10 s y fallback a humano.
+- Billetera/spread como fundaciones activables por fases.
 
-#### 4.3 Asistencia AI en Textareas (`AI-001`)
-- Componente `AiEnhanceTextarea` integrado con los prompts maestros del catálogo de plataforma en los campos de instrucciones de bot, notas de pedido y notas de CRM.
+#### 4.3 Pedidos (`ORD-001`)
+- `orders`, `order_items`, `order_events`, estados, idempotencia, fulfillment manual y devoluciones.
+
+#### 4.4 Asistente AI (`AI-001`)
+- `AiEnhanceTextarea`, modelo propio configurable y consumo en la billetera compartida.
 
 > [!IMPORTANT]
-> **Compuerta de Verificación 4 (Gate 4):**
-> - Test automatizado de extracción de pedidos desde texto conversacional con verificación de idempotencia contra pedidos duplicados.
-> - Prueba de streaming y fallback de inferencia LLM ante timeouts simulados.
+> **Compuerta 4:**
+> - Contrato `registrar_pedido` probado con reintentos y sin duplicados.
+> - Timeout/fallback del bot y flujo de pedidos completo.
+> - Asistente AI en los textareas priorizados.
 
 ---
 
-### Fase 5 · Monetización, Analítica y Resiliencia (`BILL-001` + `REF-001` + `REP-001` + `OPS-001`)
+### Fase 5 · Monetización, analítica y resiliencia (`BILL-001` + `REP-001` + `REF-001` + `OPS-001` + `LND-001` upgrade)
 
-> **Objetivo:** Completar el ciclo comercial de la SaaS: pasarelas duales, créditos de referidos, dashboards en caliente y copias de seguridad automáticas.
+> **Objetivo:** Cerrar el ciclo comercial y operativo.
 
-#### 5.1 Facturación SaaS y Comprobantes (`BILL-001`)
-- Integración de pasarela dual: **Wompi** (Colombia, COP) y **Stripe** (Internacional, USD) con webhooks criptográficamente verificados.
-- Captura de datos fiscales bajo la especificación de **Matías API** (`identity_document_id`, `dni`, `company_name`, `email`).
-- Emisión de comprobantes internos y despacho automático por correo electrónico.
-- Módulo de exportación en **Excel (`.xlsx`) y PDF (`.pdf`)** con filtros por período.
+#### 5.1 Facturación (`BILL-001`)
+- Wompi + Stripe, suscripciones, facturas, pagos, comprobantes y dunning.
+- Créditos de referidos: `credit_cents`, aplicación a la próxima factura y CA-BILL-06.
+- Prorrateo de cambios de plan y métodos de pago tokenizados.
+- Emite `billing.payment_succeeded`, `billing.payment_failed` y `billing.renewal` a NTF-001.
 
-#### 5.2 Billetera de Créditos por Referidos (`REF-001`)
-- Entidades `referral_wallets` y `referral_credit_transactions`.
-- Incentivo administrable desde el backoffice SaaS (fijo o porcentual), con vigencia de 1 año y aplicación en checkout.
-- Reglas anti-fraude: maduración de 30 días y exclusión de auto-referidos.
+#### 5.2 Informes (`REP-001`)
+- Cálculo en caliente, 7 períodos, exportación Excel/PDF y roles D-31; consume BILL/ORD.
 
-#### 5.3 Informes y Dashboards en Caliente (`REP-001`)
-- Consultas agregadas en caliente optimizadas con índices compuestos por `(client_id, created_at)`.
-- Vistas de dashboard para inquilino y SaaS con los 7 períodos y rango personalizado.
-- Exportación nativa a **Excel (`.xlsx`) y PDF (`.pdf`)** garantizando P95 ≤ 800 ms.
+#### 5.3 Referidos (`REF-001`)
+- Modelo A unilateral, recompensa fija/porcentual configurable, crédito único, 365 días, tope opcional y toggle.
+- Emite `referral.registered` a NTF-001.
 
-#### 5.4 Continuidad y Observabilidad (`OPS-001`)
-- Script automatizado de backup diario completo a Cloudflare R2 con cifrado simétrico y retención de 30 días.
-- Configuración de métricas y alertas de salud a Grafana Cloud.
+#### 5.4 Operación (`OPS-001`)
+- Backups R2 (full semanal + diff diario), SeaweedFS, logs 14 días, sin WORM, operador único.
+
+#### 5.5 Upgrade de landing (`LND-001`)
+- Vista de suscripción/upgrade en `mocter-admin` enlazada a BILL-001.
 
 > [!IMPORTANT]
-> **Compuerta de Verificación 5 (Gate 5):**
-> - Simulación de webhooks de Wompi y Stripe con verificación de comprobante generado y correo enviado.
-> - Benchmark de consultas analíticas en caliente confirmando P95 ≤ 800 ms para rangos de 1 año.
-> - Comprobación de exportación de reportes en `.xlsx` y `.pdf` y test de restauración de backup R2 en sandbox.
+> **Compuerta 5:**
+> - Webhooks Wompi/Stripe, comprobante y crédito aplicado.
+> - REP P95 ≤ 800 ms y exportaciones válidas.
+> - REF: crédito único, vencimiento y toggle.
+> - OPS: restore de PostgreSQL y SeaweedFS probado.
 
 ---
 
 ## 4. Estado de Preparación
 
-El plan y las especificaciones están 100% blindados y alineados con las directivas de arquitectura e infraestructura:
-- `LND-001`: Creada y aprobada, integrada formalmente en la **Fase 1** (landing con planes dinámicos condicionales, botón acceso en header, `/login` y `/register` interconectados y upgrade en backoffice).
-- `AUTH-001`: Actualizada con `AUTH-D-08` (OAuth dinámico parametrizable) y botón de acceso en header.
-- `CHW-001`: Actualizada con Chatwoot `v4.19.1` contenerizado bajo Traefik (pruebas y producción).
-- `ADM-001`: Actualizada con SeaweedFS `4.49` contenerizado y acceso desde landing header.
-- `OPS-001`: Actualizada con topología Docker Compose y Traefik (exclusivo para pruebas y producción; no en desarrollo local).
-- **Implementación de código:** En pausa hasta que indiques la orden de inicio.
+El plan ya no declara un “100% blindado”. Estado real:
+
+- **Decisiones:** 29/29 cerradas (REF, BOT, OPS, CRM, DSN, AI).
+- **Modelo de planes:** canónico aprobado (UUID + `code`, JSONB i18n, `status`, precios mensual/anual, `marketing_features` separado).
+- **Fases:** revisadas para corregir LND→ADM/BILL/DSN, ADM→CHW, ORD→REP, BILL↔REP y BOT-002↔ORD.
+- **Handoff:** `/register?plan_code` → onboarding ADM con resolución a `plans.id` (UUID).
+- **Bloqueantes resueltos:** modelo de `plans`, orden de fases, `payment_methods`/prorrateo, `tenant_admin`, Chatwoot 4.19.1, topología dev/Traefik y BOT-002/ORD-001.
+- **Nuevo alcance:** NTF-001 (remitentes, plantillas, eventos y entregas) y bandeja de leads de la landing en ADM-001.
+- **Pendiente:** brechas RNF/BDD/i18n en las specs de Fase 2+ (ADM, BOT-001, CRM, OPS, CHW) antes de congelar cada fase.
+- **Implementación de código:** en pausa hasta que el usuario lo autorice explícitamente.

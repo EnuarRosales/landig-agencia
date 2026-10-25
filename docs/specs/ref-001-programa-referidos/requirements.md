@@ -111,6 +111,7 @@ Multinivel, pagos en efectivo sin soporte, referidos entre contactos finales (CR
 | Spec | Impacto |
 |---|---|
 | BILL-001 | Aplicación del crédito de referidos a la próxima factura: campo de crédito, reducción del total y referencia al crédito redimido. |
+| NTF-001 | Emite `referral.registered` para notificar al referente cuando el referido se registra. |
 | ADM-001 | Inquilinos, roles y comunidad (`originator`); el beneficiario es el inquilino. El área de gestión de referidos vive en el backoffice de la SaaS. |
 | REP-001 | Conversión de referidos, CAC, LTV y costo del programa. |
 | DSN-001 | Panel de referidos con la tabla estándar. |

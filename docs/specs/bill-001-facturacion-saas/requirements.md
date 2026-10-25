@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | BILL-001 |
-| Versión | 1.1 (Aprobada — integración de créditos de referidos) |
-| Fecha | 2026-10-24 |
-| Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [REP-001](../rep-001-informes-dashboards/requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) |
+| Versión | 1.3 (Aprobada — payment_methods, prorrateo y créditos) |
+| Fecha | 2026-10-25 |
+| Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md). REP-001 consume su facturación; no es una dependencia de BILL-001. |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` · `.agents/rules/rules-for-i18n.md` |
 | Estado | Aprobada |
 
@@ -30,6 +30,7 @@ Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pag
 | RF-01.2 | La suscripción tiene estados: `trialing`, `active`, `past_due`, `suspended`, `cancelled`; el plan vigente se refleja en `clients.plan_id` y `client_plans`. |
 | RF-01.3 | Cambios de plan (upgrade/downgrade) aplican prorrateo y quedan auditados; la cancelación mantiene el servicio hasta el fin del ciclo pagado. |
 | RF-01.4 | El trial del plan es de 14 días por defecto, configurable por plataforma. |
+| RF-01.5 | **Prorrateo por días restantes:** si cambia de plan a mitad de ciclo, `credit = precio_actual × días_restantes / días_del_ciclo` y `charge = precio_nuevo × días_restantes / días_del_ciclo`; `net = charge − credit` se aplica en la próxima factura. Si el neto es negativo, queda como crédito a favor; el total nunca es negativo. Cada cambio se registra en `subscription_changes` con `from_plan_id`, `to_plan_id`, `net_cents` y auditoría. |
 
 ### RF-02 · Pasarelas de pagos duales (Wompi y Stripe)
 | ID | Requisito |
@@ -38,6 +39,7 @@ Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pag
 | RF-02.2 | **Stripe (Internacional):** Soporta tarjetas de crédito/débito globales tokenizadas vía Stripe Elements / Payment Intents. La moneda base de cobro es USD. |
 | RF-02.3 | **Cero almacenamiento de PAN:** Mocter **nunca almacena números de tarjeta ni CVV** en sus bases de datos ni logs; únicamente almacena tokens de cliente/método (`gateway_customer_id`, `gateway_payment_method_id`, marca y últimos 4 dígitos). |
 | RF-02.4 | **Webhooks idempotentes:** Los eventos de cobro (`transaction.updated` en Wompi, `payment_intent.succeeded` en Stripe) se procesan verificando la firma criptográfica del webhook y garantizando idempotencia por `gateway_reference` único. |
+| RF-02.5 | **Métodos tokenizados:** los tokens de cliente/método (`gateway_customer_id`, `gateway_payment_method_id`), marca y últimos 4 dígitos viven en `payment_methods`, con `is_default` y estado. Nunca se almacenan PAN ni CVV. |
 
 ### RF-03 · Ciclo de facturación interna y dunning
 | ID | Requisito |
@@ -114,6 +116,12 @@ Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pag
 - **Entonces** registra `credit_cents = 50,000`, `total_cents = 100,000` y descuenta `remaining_cents` en REF-001 hasta cero, dejando el crédito `redeemed`;
 - **Y si** el crédito supera el total de la factura, el total queda en cero, la factura se marca `pagada` sin pasarela y el remanente queda `partially_redeemed` hasta su vencimiento.
 
+### CA-BILL-07 · Prorrateo por cambio de plan
+- **Dado** un inquilino en un plan mensual de 100,000 COP con 15 días restantes del ciclo de 30,
+- **Cuando** cambia a un plan de 200,000 COP,
+- **Entonces** el sistema calcula `credit = 50,000`, `charge = 100,000`, `net = 50,000`, registra el cambio en `subscription_changes` y aplica el neto en la próxima factura;
+- **Y si** el nuevo plan es más barato y el neto es negativo, el crédito queda a favor y el total de la factura nunca es negativo.
+
 ---
 
 ## 6. Decisiones del documento
@@ -127,6 +135,8 @@ Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pag
 | D-05 | Sin retenciones ni cobro de impuestos en v1. | Modelo financiero simplificado para el lanzamiento. |
 | D-06 | Máquina de estados: `borrador` → `emitida` → `pagada` \| `vencida` \| `anulada`. | Consistencia de estados en todo el ciclo de vida de cobro. |
 | D-07 | Los créditos de referidos se aplican a la próxima factura, por orden de vencimiento y sin reembolso en efectivo. | Reduce el total a pagar y evita payout; el remanente se conserva hasta vencer. |
+| D-08 | Los tokens de pago viven en `payment_methods`; el gateway custodia PAN/CVV. | Cumple PCI-DSS SAQ A y RF-02.3. |
+| D-09 | El cambio de plan usa prorrateo por días restantes y se registra en `subscription_changes`. | Coherente con RF-01.3 y con la vista de upgrade de LND-001. |
 
 ## 7. Decisiones abiertas
 

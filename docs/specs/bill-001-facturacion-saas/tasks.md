@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | BILL-001 |
-| Versión | 1.1 (Aprobada — integración de créditos de referidos) |
-| Fecha | 2026-10-24 |
+| Versión | 1.3 (Aprobada — payment_methods, prorrateo y créditos) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 
@@ -39,10 +39,12 @@
 - [ ] **T-02 · Crear las entidades de billing en packages/domain**
   - Implementar en `packages/domain/src/schema/admin/billing.ts` las tablas:
     - `client_billing_profiles` (con campos Matías API: `identity_document_id`, `dni`, `company_name`, `email`, `address`, `city_code`).
-    - `subscriptions` (con estados `trialing`, `active`, `past_due`, `suspended`, `cancelled`).
-    - `invoices` (con máquina de estados `draft`, `issued`, `paid`, `past_due`, `void`, `subtotal_cents`, `tax_cents = 0`).
+    - `payment_methods` (tokens de cliente/método, `brand`, `last4`, `is_default`, `status`; sin PAN/CVV).
+    - `subscriptions` con `plan_id uuid` (FK a `plans.id`) y estados `trialing`, `active`, `past_due`, `suspended`, `cancelled`.
+    - `invoices` (con máquina de estados `draft`, `issued`, `paid`, `past_due`, `void`, `subtotal_cents`, `tax_cents = 0`, `credit_cents`, `proration_cents`).
     - `payments` (con `gateway_reference` único, `gateway` wompi/stripe).
     - `payment_receipts` (con `receipt_number`, `pdf_url`, `emailed_at`).
+    - `subscription_changes` (from/to plan, remaining_days, credit/charge/net, invoice_id).
   - Verificación: `pnpm --filter @mocter/domain exec drizzle-kit check` pasa sin errores sintácticos.
 
 - [ ] **T-03 · Generar y validar la migración SQL de billing**
@@ -68,8 +70,8 @@
   - Verificación: Stripe CLI trigger `payment_intent.succeeded` procesa correctamente sin duplicados.
 
 - [ ] **T-06 · Implementar servicio de Checkout Session**
-  - Endpoint para iniciar pago: redirige a Wompi Web Checkout para COP o genera clientSecret de Stripe Payment Intent para USD.
-  - Verificación: Inquilino en Colombia obtiene referencia Wompi; inquilino internacional obtiene intent de Stripe.
+  - Endpoint para iniciar pago: redirige a Wompi Web Checkout para COP o genera clientSecret de Stripe Payment Intent para USD, usando el token de `payment_methods`.
+  - Verificación: Inquilino en Colombia obtiene referencia Wompi; inquilino internacional obtiene intent de Stripe; no se almacena PAN/CVV.
 
 ---
 
@@ -77,8 +79,8 @@
 
 - [ ] **T-07 · Implementar servicio de comprobantes internos y despacho de email**
   - Al recibir pago confirmado, generar registro en `payment_receipts` con numeración consecutiva.
-  - Encolar tarea de despacho de correo electrónico con plantilla HTML y comprobante adjunto.
-  - Verificación: Pago aprobado registra comprobante y envía correo al `email` fiscal registrado.
+  - Solicitar a NTF-001 el envío de `billing.payment_succeeded` o `billing.renewal` con el comprobante adjunto.
+  - Verificación: Pago aprobado registra comprobante y NTF-001 envía el correo al `email` fiscal registrado.
 
 - [ ] **T-08 · Implementar exportador a Excel (.xlsx)**
   - Endpoint `GET /api/billing/export?format=xlsx&period=...` usando `exceljs`.
@@ -100,6 +102,11 @@
   - Si `total_cents = 0`, marcar la factura `pagada` sin pasarela y emitir comprobante.
   - Verificación: CA-BILL-06 pasa; un reintento no consume dos veces el mismo crédito.
 
+- [ ] **T-10A · Implementar prorrateo por cambio de plan**
+  - Calcular `credit_cents`, `charge_cents`, `remaining_days` y `net_cents`; registrar en `subscription_changes`.
+  - Aplicar `proration_cents` en la próxima factura; si el neto es negativo, dejar crédito a favor y evitar total negativo.
+  - Verificación: CA-BILL-07 pasa; un reintento no duplica el cambio ni el neto.
+
 - [ ] **T-11 · Ejecutar pruebas automatizadas BDD**
   - Validar CA-BILL-01 (Idempotencia Wompi).
   - Validar CA-BILL-02 (Stripe USD).
@@ -107,6 +114,7 @@
   - Validar CA-BILL-04 (Exportación Excel y PDF).
   - Validar CA-BILL-05 (Dunning y gracia).
   - Validar CA-BILL-06 (Créditos de referidos).
+  - Validar CA-BILL-07 (Prorrateo).
   - Verificación: Suite de tests automatizados pasa al 100%.
 
 - [ ] **T-12 · [HUMANO] Aprobación final y pase a codificación**

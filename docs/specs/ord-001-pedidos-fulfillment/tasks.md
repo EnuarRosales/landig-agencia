@@ -3,10 +3,10 @@
 | Atributo | Valor |
 |---|---|
 | ID | ORD-001 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 1.0 (Aprobada) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
-| Estado | Borrador |
+| Estado | Aprobada |
 
 ## Convenciones
 
@@ -70,6 +70,6 @@
   - Recorrer `requirements.md` RF-01 a RF-08 y registrar evidencia por requisito.
   - Verificación: cada requisito tiene prueba o evidencia; ninguno queda «asumido».
 
-- [ ] **T-12 · [HUMANO] Aprobar ORD-001**
+- [x] **T-12 · [HUMANO] Aprobar ORD-001 (2026-10-25)**
   - Revisar `requirements.md`, `design.md` y `tasks.md`; decidir si se aprueba la spec.
   - Verificación: el estado pasa a `Aprobada` solo con decisión explícita; no se inicia implementación antes.

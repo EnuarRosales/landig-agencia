@@ -3,7 +3,7 @@
 | Atributo | Valor |
 |---|---|
 | ID | DSN-001 |
-| Versión | 0.2 (Aprobada — decisiones O-01 a O-04 cerradas) |
+| Versión | 1.1 (Aprobada — RNF/BDD/i18n y decisiones cerradas) |
 | Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |

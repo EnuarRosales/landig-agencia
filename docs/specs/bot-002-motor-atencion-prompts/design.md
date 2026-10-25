@@ -3,10 +3,10 @@
 | Atributo | Valor |
 |---|---|
 | ID | BOT-002 |
-| Versión | 0.1 (Borrador) |
-| Fecha | 2026-10-23 |
+| Versión | 1.0 (Aprobada) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [BOT-001](../bot-001-atencion-automatizada-llm/design.md) · [CRM-001](../crm-001-prospectos-gestion-comercial/design.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) |
-| Estado | Borrador |
+| Estado | Aprobada |
 
 ## 1. Principios
 

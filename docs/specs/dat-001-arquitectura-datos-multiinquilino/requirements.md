@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | DAT-001 |
-| Versión | 1.0 |
+| Versión | 1.2 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 · actualizado 2026-10-22 |
+| Fecha | 2026-10-20 · actualizado 2026-10-25 |
 | Documentos | `requirements.md` (este) · `design.md` · `tasks.md` |
 | Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` |
@@ -177,15 +177,15 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 | ID | Requisito |
 |---|---|
 | RF-11.1 | Todas las instancias usan PostgreSQL 18 con pgvector, incluida Chatwoot. |
-| RF-11.2 | Chatwoot se fija en la versión 4.19.0 documentada en CHW-001. Su esquema no se modifica. |
+| RF-11.2 | Chatwoot se fija en la versión 4.19.1 documentada en CHW-001. Su esquema no se modifica. |
 | RF-11.3 | La versión de pgvector se verifica en la imagen. `halfvec` e `iterative_scan` requieren pgvector 0.7+ y 0.8+, respectivamente. |
 | RF-11.4 | Chatwoot requiere Redis 7+ y Sidekiq; ambos forman parte del plano de soporte. |
-| RF-11.5 | La ejecución de Chatwoot sobre PostgreSQL 18 está validada en laboratorio: Chatwoot 4.19.0 funciona y las migraciones pasaron satisfactoriamente. Se mantiene el rollback como precaución operativa; su procedimiento está documentado en `design.md` §9.7. |
+| RF-11.5 | La ejecución de Chatwoot 4.19.1 sobre PostgreSQL 18 se valida en T-01A/T-17/T-18; la evidencia previa de 4.19.0 se conserva. Se mantiene el rollback como precaución operativa; su procedimiento está documentado en `design.md` §9.7. |
 
 ## 5. Criterios de aceptación
 
 1. Todas las instancias responden `SELECT version()` con PostgreSQL 18 y tienen pgvector disponible.
-2. Chatwoot 4.19.0 corre sobre PostgreSQL 18 con su esquema intacto y sincronizado con upstream.
+2. Chatwoot 4.19.1 corre sobre PostgreSQL 18 con su esquema intacto y sincronizado con upstream (validación en T-01A/T-17/T-18).
 3. `client_id` es UUIDv7 en todas las tablas de inquilino y su valor se origina en `clients.id` (`uuidv7()`); las tablas hijas lo copian.
 4. Existen `cells`, `clients`, `client_routing` y `client_migrations` en el Router Global.
 5. El alta de un inquilino es una saga con compensación y respeta la capacidad de la celda.
@@ -212,11 +212,50 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 26. El destino, la retención y la prueba de restore se fijan en OPS-001; DAT-001 exige S3 compatible, offsite, cifrado, versionado y restore probado.
 27. La capacidad nominal es 100 inquilinos por celda; la efectiva se determina por el primer disparador de escalado de RF-10.3.
 
-## 6. Decisiones
+## 6. Requisitos No Funcionales (RNF)
+
+| ID | Categoría | Métrica / Umbral |
+|---|---|---|
+| RNF-01 | Disponibilidad | 99.9% del Router Global y del enrutamiento. |
+| RNF-02 | Latencia de enrutamiento | P95 ≤ 50 ms con caché; P95 ≤ 150 ms contra PostgreSQL. |
+| RNF-03 | Aislamiento | 0 filas cross-tenant en pruebas de RLS; toda consulta de tenant filtra por `client_id`. |
+| RNF-04 | Continuidad | RPO ≤ 15 min; RTO ≤ 2 h Router Global y ≤ 4 h celdas/Chatwoot (OPS-001). |
+| RNF-05 | Capacidad | 100 inquilinos nominales por celda; alerta al 80% y apertura de celda al primer disparador. |
+| RNF-06 | Migraciones | Una línea por base; migración sin pérdida de datos y con ventana de mantenimiento declarada. |
+| RNF-07 | i18n | Sin strings de UI en el dominio; errores de API con códigos estables traducidos por la capa web. |
+
+## 7. Criterios de Aceptación (BDD)
+
+### CA-DAT-01 · Aislamiento RLS
+- **Dado** un usuario del inquilino A,
+- **Cuando** consulta una tabla de su celda sin `client_id = A`,
+- **Entonces** no recibe filas de B y la consulta falla cerrada.
+
+### CA-DAT-02 · Enrutamiento por cliente
+- **Dado** un `client_id` con `client_routing` vigente,
+- **Cuando** la aplicación resuelve su celda,
+- **Entonces** usa la celda correcta y respeta `routing_version`; un cambio invalida la caché.
+
+### CA-DAT-03 · Capacidad de celda
+- **Dado** una celda con 100 inquilinos,
+- **Cuando** llega un alta nueva,
+- **Entonces** se rechaza en esa celda y se aprovisiona/enruta a una celda nueva.
+
+### CA-DAT-04 · Restore PITR
+- **Dado** un punto dentro de la retención,
+- **Cuando** se restaura una instancia,
+- **Entonces** el RPO/RTO se cumplen y la verificación de integridad pasa.
+
+### CA-DAT-05 · Cuotas efectivas
+- **Dado** un plan con `plan_limits` y un override,
+- **Cuando** se calcula el tope efectivo,
+- **Entonces** se aplica el override vigente y `quota_version` se incrementa al cambiar.
+
+## 8. Decisiones
 
 | ID | Decisión | Justificación |
 |---|---|---|
-| D-01 | PostgreSQL 18 con pgvector en todas las instancias, incluida Chatwoot. | Decisión del usuario. Laboratorio realizado: Chatwoot 4.19.0 funciona y las migraciones pasaron. El rollback queda como precaución operativa; procedimiento en `design.md` §9.7. |
+| D-01 | PostgreSQL 18 con pgvector en todas las instancias, incluida Chatwoot. | Decisión del usuario. La versión canónica es Chatwoot 4.19.1; su validación se registra en T-01A/T-17/T-18 y la evidencia previa de 4.19.0 se conserva. El rollback queda como precaución operativa; procedimiento en `design.md` §9.7. |
 | D-02 | N8N fuera de alcance. | El usuario lo define como referencia de existencia; no se documenta su persistencia ni su correlación. |
 | D-03 | `clients.id` UUIDv7 con `uuidv7()` nativo; `client_id` lo copia en las tablas hijas. | PostgreSQL 18 lo soporta; evita el UUIDv4 aleatorio y mejora la localidad de índices. |
 | D-04 | Router Global como plano de control. | RF-10.1 de ADM-001. Se puede separar en el futuro si el tráfico lo justifica. |
@@ -235,12 +274,12 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 | D-17 | Capacidad nominal de 100 inquilinos por celda; la efectiva es el primer disparador de RF-10.3. | HNSW, CPU o relaciones pueden reducir la capacidad; fijar un número menor sin medición sería arbitrario. |
 | D-18 | Las cuatro columnas de auditoría (`created_at`, `updated_at`, `created_by`, `updated_by`) son obligatorias en todas las tablas; el soft delete (`deleted_at`, `deleted_by`) se aplica solo donde corresponde. Las columnas de ciclo de vida ya documentadas cumplen ese rol y no se duplican. | Un solo mecanismo de baja por tabla evita dos fuentes de verdad sobre el mismo hecho y mantiene el historial de `tenant_users` intacto. |
 
-## 7. Decisiones abiertas
+## 9. Decisiones abiertas
 
 | ID | Pregunta | Impacto |
 |---|---|---|
 
-## 8. Trazabilidad
+## 10. Trazabilidad
 
 - 2026-10-20: análisis del SDD externo de arquitectura multi-inquilino basada en celdas y alineación con `ADM-001`, `AUTH-001` y `CHW-001`.
 - 2026-10-20, corrección del usuario: "Correccion todo en Postgresql 18 + pgvector eso incluye Chatwoot, N8N se tiene como referencia de existencia como orquestador de flujos pero no es relevante para esta documentación. A la pregunta crea una nueva spec".
@@ -257,4 +296,17 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 - 2026-10-22: alineación con AUTH-D-06 y corrección de membresía 1:0..1. La cookie del panel transporta solo un `sid` opaco; la sesión de servidor guarda `client_id` y `routing_version`. `users.active_client_id` es el guardián global de una única membresía activa. JWT queda para APIs futuras. Se unifica el nombre físico `tenant_users` y se elimina `client_users`.
 - 2026-10-22: revisión de control del plan SDD. La decisión O-07 quedó superada por OPS-001 (creada el 2026-10-21, dueña de destino, retención y prueba de restore). `design.md` §9.1 ahora delega en OPS-001 y nombra la instancia actual `pg-portal`; la separación `pg-control-plane` sigue diferida (O-02, RF-01.9).
 - 2026-10-23: se agregan RF-10.9 y D-18 por decisión del usuario: columnas de auditoría obligatorias en todas las tablas (`created_at`, `updated_at`, `created_by`, `updated_by`), soft delete donde aplique y sin duplicar las columnas de ciclo de vida ya documentadas. La regla global vive en la directiva de base de datos (§8).
-- 2026-10-23: RF-10.10 — vectorización administrable por la plataforma con default nombre + descripción + categoría + marca; el prompt de venta queda fuera del embedding (alineado con ADM-001 RF-05.5 a RF-05.7).
+- 2026-10-23: RF-10.10 - vectorización administrable por la plataforma con default nombre + descripción + categoría + marca; el prompt de venta queda fuera del embedding (alineado con ADM-001 RF-05.5 a RF-05.7).
+- 2026-10-25: modelo canónico de `plans` (`id uuid`, `code` slug único, `name`/`description`/`marketing_features` JSONB `{es,en}`, `status`, precios mensual/anual en centavos, `currency`) y FKs `plan_id` uuid en DAT/BILL/ADM; la landing usa `plans.code` y resuelve a UUID.
+- 2026-10-25: **DAT-001 1.2.** Se agregan RNF medibles, criterios BDD y anexo de códigos de error para i18n.
+
+## 11. Anexo i18n · Códigos de error
+
+DAT-001 no expone UI. La capa web traduce estos códigos estables; el dominio no emite strings visibles.
+
+| Código | Español | Inglés |
+|---|---|---|
+| `DAT_TENANT_NOT_FOUND` | Inquilino no encontrado | Tenant not found |
+| `DAT_CELL_CAPACITY_EXCEEDED` | Capacidad de celda agotada | Cell capacity exceeded |
+| `DAT_ROUTING_VERSION_MISMATCH` | Versión de enrutamiento desactualizada | Routing version mismatch |
+| `DAT_RLS_DENIED` | Acceso no autorizado a datos del inquilino | Unauthorized tenant data access |

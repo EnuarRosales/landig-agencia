@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | DAT-001 |
-| Versión | 1.0 |
+| Versión | 1.1 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 |
+| Fecha | 2026-10-20 · actualizado 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 
 ## Convenciones
@@ -61,7 +61,7 @@
 
 - [x] **T-09 · Fijar la compatibilidad PostgreSQL 18 y el límite de N8N**
   - PostgreSQL 18 + pgvector en todas las instancias, incluida Chatwoot.
-  - Chatwoot 4.19.0, Redis 7+ y Sidekiq.
+  - Chatwoot 4.19.1, Redis 7+ y Sidekiq.
   - N8N fuera de alcance.
   - Verificación: `requirements.md` RF-01, RF-11 y `design.md` §10 registran la decisión y el laboratorio validado de Chatwoot sobre PostgreSQL 18.
 

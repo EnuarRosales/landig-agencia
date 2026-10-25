@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | REP-001 |
-| Versión | 1.0 (Aprobada) |
-| Fecha | 2026-10-24 |
+| Versión | 1.1 (Aprobada — roles D-31 sin tenant_admin) |
+| Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 

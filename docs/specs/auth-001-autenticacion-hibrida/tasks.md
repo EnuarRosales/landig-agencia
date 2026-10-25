@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | AUTH-001 |
-| Versión | 1.0 |
-| Fecha | 2026-10-20 · actualizado 2026-10-22 |
+| Versión | 1.1 |
+| Fecha | 2026-10-20 · actualizado 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) · ADM-001 · DAT-001 · CHW-001 · OPS-001 |
 | Estado | Aprobada |
 
@@ -172,7 +172,7 @@
   - Probar Google Authenticator, Microsoft Authenticator y Authy; deriva de reloj ±1; replay; pérdida de dispositivo.
   - Verificación: el código válido entra; el código repetido no; el procedimiento de T-20 revoca sesiones y permite re-enrolar.
 
-- [ ] **T-33 · [LAB] Validar SSO contra Chatwoot 4.19.0**
+- [ ] **T-33 · [LAB] Validar SSO contra Chatwoot 4.19.1**
   - Confirmar ruta, parámetro, secreto, TTL de 5 minutos, un solo uso y cuenta inexistente.
   - Verificación: un usuario con membresía activa entra a su `account_id`; un `client_id` ajeno no; el token no se reutiliza; no se crea `AccountUser` cruzado.
 

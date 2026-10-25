@@ -3,7 +3,7 @@
 | Atributo | Valor |
 |---|---|
 | ID | DSN-001 |
-| Versión | 0.2 (Aprobada — decisiones O-01 a O-04 cerradas) |
+| Versión | 1.1 (Aprobada — RNF/BDD/i18n y decisiones cerradas) |
 | Fecha | 2026-10-25 |
 | Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [MIG-001](../mig-001-nextjs-migration/design.md) |
 | Directivas | `.agents/AGENTS.md` (§4.8) · `.agents/rules/rules-for-i18n.md` |
