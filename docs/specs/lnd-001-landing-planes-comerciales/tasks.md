@@ -3,14 +3,14 @@
 | Atributo | Valor |
 |---|---|
 | ID | LND-001 |
-| Versión | 1.1 (Aprobada — plan_code y planes canónicos) |
-| Fecha | 2026-10-25 |
+| Versión | 1.2 (Aprobada — plan_code y planes canónicos) |
+| Fecha | 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 
 ## Convenciones
 
-- Esta especificación se ejecuta como parte de la **Fase 1** del plan maestro de implementación.
+- Esta especificación se reparte por slices del plan maestro: T-01 a T-07 corresponden a la Fase 1; T-08 (upgrade) corresponde a la Fase 5, después de BILL-001. T-09 verifica los criterios del slice en cada compuerta y se cierra después de la última.
 - Ejecutar en orden; una tarea no se marca `[x]` hasta que su verificación pase.
 - Comandos de verificación:
   ```bash
@@ -65,7 +65,7 @@
 
 ---
 
-## Fase 4 · Vista de Upgrade en Backoffice del Inquilino
+## Fase 5 · Vista de Upgrade en Backoffice del Inquilino
 
 - [ ] **T-08 · Crear vista de suscripción y cambio de plan en mocter-admin**
   - Implementar en `apps/web/app/[locale]/(admin)/admin/settings/billing/page.tsx` la visualización del plan actual y el comparador para Upgrade.
@@ -73,8 +73,8 @@
 
 ---
 
-## Fase 5 · Verificación BDD y Cierre
+## Verificación BDD y cierre por compuerta
 
-- [ ] **T-09 · Validar criterios BDD (CA-LND-01 a CA-LND-05)**
-  - Pruebas unitarias y de integración para renderizado condicional, navegación en header y query params de plan.
-  - Verificación: Suite de tests automatizados pasa al 100%.
+- [ ] **T-09 · Validar criterios BDD por slice (CA-LND-01 a CA-LND-05)**
+  - Ejecutar en cada fase las pruebas unitarias y de integración de los criterios cubiertos por ese slice, incluidos renderizado condicional, navegación en header, query params del plan y upgrade.
+  - Verificación: cada slice pasa sus criterios en su compuerta; T-09 se cierra cuando se validaron todos los criterios, incluido el upgrade de Fase 5.

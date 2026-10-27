@@ -1,10 +1,10 @@
 # Plan Maestro de Implementación Secuencial por Fases (Mocter Core)
 
 ## Resumen Ejecutivo
-Plan estratégico de codificación modular dividido en **5 fases secuenciales**, diseñado bajo la metodología **Spec-Driven Development (SDD)** y la Constitución del Proyecto ([`AGENTS.md`](file:///d:/DataDev/1.%20Proyectos%20Dev/landig-agencia/.agents/AGENTS.md)). Cada fase aborda una capa arquitectónica autónoma con dependencias estrictas, culminando en una **Compuerta de Verificación Automatizada (Verification Gate)** obligatoria que debe superarse al 100% antes de autorizar el inicio de la siguiente fase.
+Plan estratégico de codificación modular dividido en **5 fases secuenciales de implementación**, precedidas por un **Gate 0 de preparación**, bajo la metodología **Spec-Driven Development (SDD)** y la Constitución del Proyecto ([`AGENTS.md`](file:///d:/DataDev/1.%20Proyectos%20Dev/landig-agencia/.agents/AGENTS.md)). Gate 0 alinea las decisiones y dependencias documentales y verifica los prerrequisitos operativos de autenticación; cada fase de implementación culmina en una **Compuerta de Verificación Automatizada (Verification Gate)** que debe superarse antes de iniciar la siguiente.
 
 > [!NOTE]
-> **Estado de la Hoja de Ruta:** Especificaciones técnicas creadas, actualizadas y sincronizadas (incluyendo la nueva spec [`LND-001`](file:///d:/DataDev/1.%20Proyectos%20Dev/landig-agencia/docs/specs/lnd-001-landing-planes-comerciales/requirements.md)). **Fase de planificación activa; no se iniciará codificación aún.**
+> **Estado de la Hoja de Ruta:** La implementación está autorizada y se ejecutará de forma incremental. **Gate 0 está en curso; la Fase 1 de código no comienza hasta validar los Compose, el Redis privado y la evidencia de respaldo/restore requerida por AUTH-001.**
 
 ---
 
@@ -21,7 +21,8 @@ El sistema Mocter opera en contenedores **Docker con Docker Compose**, aplicando
    - **SeaweedFS v4.51:** servicio de plataforma **ya aprovisionado** en desarrollo, pruebas y producción; S3 **interno**, sin ruta pública, para la gestión y deduplicación de archivos multimedia de inquilinos (`ADM-001`, `OPS-001`).
    - **imgproxy v4.0.20:** servicio de plataforma **ya aprovisionado** en `media.mocter.co`; entrega imágenes con resize/WebP/AVIF y URLs firmadas HMAC. SeaweedFS no se expone.
    - **Chatwoot, SeaweedFS e imgproxy no se despliegan en este plan:** los contenedores ya existen en los tres ambientes. La documentación define cómo se consumen, no cómo se provisionan. El estado observado de producción está en [`docs/reference/production-services.md`](reference/production-services.md).
-   - **RabbitMQ (`rabbitmq:3.13-management`):** Cola interna para notificaciones (`NTF-001`), sin puertos públicos ni router de Traefik; credenciales en secrets y healthcheck para OPS-001.
+    - **RabbitMQ (`rabbitmq:3.13-management`):** Cola interna para notificaciones (`NTF-001`), sin puertos públicos ni router de Traefik; credenciales en secrets y healthcheck para OPS-001.
+    - **Redis de control (`redis:8.8.4-alpine`):** servicio `redis-control` definido en Compose local, staging y producción; autenticado, interno y efímero. No se comparte con el Redis de Chatwoot.
    - **Mocter Web (`ghcr.io/enuarrosales/mocter-web`):** Contenedor único para la aplicación Next.js 16 App Router y el migrador Drizzle en modo standalone sobre Node.js 24 Alpine.
 
 ---
@@ -40,11 +41,17 @@ flowchart TD
         INFRA_IMG --> INFRA_FS
     end
 
+    subgraph FASE0 ["Gate 0: Preparación y consistencia SDD"]
+        F0_GATE["Decisiones, propiedad de users, dependencias, Redis y respaldo Router"]
+    end
+
     subgraph FASE1 ["Fase 1: Cimientos y entrada pública"]
-        F1_DAT["DAT-001: Esquemas, Router y Celdas; plans canónico"]
+        F1_ADM["ADM-001: shell de apps/admin (T-02)"]
+        F1_DAT["DAT-001 + ADM T-03/T-04: schemas, roles, plans y users base"]
         F1_AUTH["AUTH-001: Auth híbrida y OAuth parametrizable"]
         F1_DSN["DSN-001: tokens base"]
-        F1_LND["LND-001: landing, header, #planes, /login y /register?plan_code"]
+        F1_LND["LND-001 slice: landing, header, #planes, /login y /register?plan_code (sin T-08)"]
+        F1_ADM --> F1_DAT
         F1_DAT --> F1_AUTH
         F1_AUTH --> F1_LND
         F1_DSN --> F1_LND
@@ -52,7 +59,7 @@ flowchart TD
 
     subgraph FASE2 ["Fase 2: Chatwoot base, núcleo administrativo y notificaciones"]
         F2_CHW["CHW-001 base: integración, API, account/inbox"]
-        F2_ADM["ADM-001: onboarding plan_code, tenant, roles, producto demo, webchat"]
+        F2_ADM["ADM-001: integración de identidad/clientes, onboarding, producto demo y webchat"]
         F2_DSN["DSN-001: componentes y vistas base"]
         F2_NTF["NTF-001: remitentes, plantillas, outbox y admin"]
         F2_CHW --> F2_ADM
@@ -86,6 +93,8 @@ flowchart TD
         F5_BILL --> F5_LND
     end
 
+    F0_GATE -->|Gate 0| F1_ADM
+    F1_AUTH -->|identidad base| F2_ADM
     F1_LND -->|Gate 1| F2_CHW
     F2_ADM -->|Gate 2| F3_CHW
     F3_CRM -->|Gate 3| F4_BOT
@@ -93,15 +102,33 @@ flowchart TD
     F5_OPS -->|Gate 5| SistemaCompletado["Sistema Mocter Operativo en Producción"]
 ```
 
+### Gate 0 · Preparación de implementación (no es una fase de código)
+
+**Objetivo:** cerrar las contradicciones de secuencia y contrato antes de ejecutar las tareas que dependen de ellas. Gate 0 actualiza la documentación y define el servicio Redis en Compose; no inicia servicios ni modifica producción.
+
+- **Dominio Chatwoot:** CHW-001 O-05 queda cerrada: `mocter-core` es un módulo de dominio dentro de `mocter-admin`, con la misma persistencia, según ADM-001 D-24 y CHW-001 D-12.
+- **Propiedad del esquema de usuarios:** ADM-001 crea la fila canónica de `users` y es dueño de `active_client_id`; AUTH-001 añade los campos y tablas de autenticación. La FK `active_client_id → clients(id)` se agrega cuando ADM-001 T-06 crea `clients`.
+- **Secuencia AUTH/ADM:** ADM-001 T-02/T-03/T-04 prepara la app, el schema/roles y las líneas de migración. AUTH puede iniciar con esa base y el preflight operativo. ADM-001 T-05/T-06 y el onboarding se integran después de que AUTH provea login/sesión; no son prerrequisitos para iniciar AUTH.
+- **Prerrequisitos operativos:** Redis de control se define como `redis-control` con imagen `redis:8.8.4-alpine` en los tres Compose, red interna, `REDIS_PASSWORD` propio, healthcheck y sin persistencia; Chatwoot conserva su Redis independiente. OPS-001 monitorea, no provisiona Redis. Antes de ejecutar AUTH-001 T-01 deben validarse los Compose y registrarse la disponibilidad del servicio y la evidencia de respaldo/restore del Router (OPS-001 T-05 a T-10 y T-12). Si falta alguno, AUTH queda bloqueada; este plan no autoriza acceso remoto ni cambios de infraestructura.
+- **Toolchain local:** pnpm/Turbo se ejecutan dentro de `web-portal` mediante Corepack; no se instala pnpm en el host. Los comandos de verificación local usan `docker compose exec`/`run`.
+- **Calidad por fase:** antes de congelar cada fase, sus specs deben tener RNF medibles, criterios BDD verificables y requisitos de i18n completos. Las brechas detectadas en ADM, AUTH, BOT-001, CRM, OPS, CHW, AI, REF y NTF se cierran en el gate de la fase correspondiente.
+- **LND-001:** T-01 a T-07 y T-09 cubren la entrada pública de Fase 1; T-08 (upgrade) queda en Fase 5, después de BILL-001.
+
+**Criterio de salida:** las decisiones y tareas de esta sección están reflejadas de forma consistente en requirements/design/tasks; además, AUTH-001 T-01 cuenta con evidencia de Redis y respaldo/restore. La alineación documental de esta actualización no sustituye esa evidencia operativa.
+
 ---
 
 ## 3. Detalle de Fases de Codificación
 
-### Fase 1 · Cimientos y entrada pública (`DAT-001` + `AUTH-001` + `LND-001` slice + `DSN-001` base)
+### Fase 1 · Cimientos y entrada pública (`DAT-001` + ADM-001 base + `AUTH-001` + `LND-001` slice + `DSN-001` base)
 
 > **Objetivo:** Persistencia multi-inquilino, autenticación híbrida, catálogo canónico de planes y la porción pública de la landing: header, `#planes`, login y registro con `plan_code`.
 
+#### 1.0 Base de la aplicación administrativa (ADM-001 T-02)
+- Crear `apps/admin` y su paquete de monorepo (T-02), sin adelantar el onboarding de Fase 2.
+
 #### 1.1 Persistencia y Esquemas Drizzle (`packages/domain`)
+- Aplicar DAT-001 antes de crear los schemas/roles y la fila base canónica `users` de ADM-001 T-03; definir las líneas de migración Router/celdas en ADM-001 T-04.
 - Reestructurar `packages/domain/src/db/`:
   - `schemas/admin/`: Router Global (`clients`, `plans`, `client_plans`, `users`, `identities`, `sessions`, `email_verification_tokens`, `password_reset_tokens`, `user_consents`, `two_factor_secrets`, `auth_providers_config`).
   - `schemas/tenant/`: celda (`tenant_users`, `products`, `orders`, `conversations`, `prospects`).
@@ -123,6 +150,7 @@ flowchart TD
 
 > [!IMPORTANT]
 > **Compuerta 1:**
+> - La fila base `users` y los roles/schema de administración pertenecen a ADM-001; AUTH-001 no duplica su creación.
 > - `drizzle-kit check` y migración fundacional pasan.
 > - Tests de auth (Argon2id, sesión, tokens, TOTP, OAuth dinámico).
 > - `#planes` aparece/desaparece según `status` + `is_public`; el CTA usa `plan_code`.
@@ -133,7 +161,7 @@ flowchart TD
 
 ### Fase 2 · Chatwoot base, núcleo administrativo y notificaciones (`CHW-001` base + `ADM-001` + `DSN-001` + `NTF-001`)
 
-> **Objetivo:** Aprovisionar Chatwoot y construir `mocter-admin`: onboarding con `plan_code`, creación de inquilino, roles, producto demo, multimedia y webchat activo.
+> **Objetivo:** Integrar Chatwoot y completar `mocter-admin`: resolución del ancla de identidad, creación de inquilino, onboarding con `plan_code`, roles, producto demo, multimedia y webchat activo.
 
 #### 2.1 Chatwoot base (`CHW-001`)
 - Servicio Chatwoot v4.19.1 ya aprovisionado; la fase integra su API y SSO.
@@ -147,6 +175,8 @@ flowchart TD
 
 #### 2.3 Consola administrativa y onboarding (`ADM-001`)
 - Layout, navegación y RBAC `D-31`.
+- Completar ADM-001 T-05/T-06 después de AUTH: el login resuelve el ancla; al crear `clients`, se agrega la FK de `users.active_client_id`.
+- `mocter-core` vive como módulo de dominio dentro de `mocter-admin`; no agrega un servicio ni una base independientes.
 - Onboarding: recibe `plan_code`, resuelve `plans.code` → `plans.id`, crea `client`, `tenant_owner`, asigna plan y enruta a celda.
 - Producto demo, catálogo multimedia usando SeaweedFS v4.51 + imgproxy v4.0.20 ya aprovisionados, deduplicación, cuota y entrega con URLs firmadas.
 - Pre-activación del webchat; `lifecycle_status` del inquilino.
@@ -260,5 +290,5 @@ El plan ya no declara un “100% blindado”. Estado real:
 - **Handoff:** `/register?plan_code` → onboarding ADM con resolución a `plans.id` (UUID).
 - **Bloqueantes resueltos:** modelo de `plans`, orden de fases, `payment_methods`/prorrateo, `tenant_admin`, Chatwoot 4.19.1, topología dev/Traefik y BOT-002/ORD-001.
 - **Nuevo alcance:** NTF-001 (remitentes, plantillas, eventos y entregas) y bandeja de leads de la landing en ADM-001.
-- **Pendiente:** brechas RNF/BDD/i18n en las specs de Fase 2+ (ADM, BOT-001, CRM, OPS, CHW) antes de congelar cada fase.
-- **Implementación de código:** en pausa hasta que el usuario lo autorice explícitamente.
+- **Pendiente:** evidencia de Redis en staging/producción y respaldo/restore del Router para AUTH-001; cerrar las brechas RNF/BDD/i18n de cada spec antes del gate de su fase.
+- **Implementación de código:** autorizada; el inicio de Fase 1 queda condicionado al criterio de salida de Gate 0.

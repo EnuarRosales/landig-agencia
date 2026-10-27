@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | CHW-001 |
-| Versión | 1.1 |
-| Fecha | 2026-10-20 · actualizado 2026-10-25 |
+| Versión | 1.2 |
+| Fecha | 2026-10-20 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Fuente fijada | `chatwoot/chatwoot:v4.19.1` · digest y commit a fijar en T-01A/T-17/T-18 |
 
@@ -13,6 +13,7 @@
 - Ejecutar en orden. `[x]` solo cuando la verificación pase.
 - Toda afirmación publicada debe citar `archivo:línea`.
 - Las tareas **[HUMANO]** no se ejecutan; se reportan como pendientes.
+- O-05 está cerrada por CHW-001 D-12 y ADM-001 D-24: `mocter-core` se implementa dentro de `mocter-admin` y comparte su persistencia.
 
 ## Tareas
 

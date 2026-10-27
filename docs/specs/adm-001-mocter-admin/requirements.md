@@ -3,7 +3,7 @@
 | Atributo | Valor |
 |---|---|
 | ID | ADM-001 |
-| Versión | 1.4 |
+| Versión | 1.5 |
 | Estado | Aprobada |
 | Fecha | 2026-10-21 · actualizado 2026-10-27 |
 | Documentos | `requirements.md` (este) · `design.md` · `tasks.md` |
@@ -360,6 +360,7 @@ Rigen las decisiones D-01 a D-09: doble autoridad de tenencia, correlación en t
 | D-31 | Los roles se separan en tres scopes independientes: plataforma (`platform_owner`, `platform_admin`, `platform_sales`), inquilino (`tenant_owner` único y `tenant_agent` según plan) y comunidad (`originator`, `co_leader`, `member`). Un usuario puede tener roles en varios scopes, pero como máximo en un inquilino; los permisos se evalúan contra el vínculo activo. El inquilino #1 es la SaaS y puede estar administrado por un usuario con rol de plataforma. | Cierra A-04: el `tenant_owner` es único y `tenant_agent` es el rol operativo del inquilino; el límite de asientos es una característica del plan. La separación impide que un rol de plataforma otorgue acceso rutinario a chats o datos de negocio: ese acceso es break-glass auditado. El caso del inquilino #1 valida el modelo multi-scope sin excepciones. |
 | D-32 | Chatwoot se embebe en un **iframe same-site** dentro de `mocter-admin`; es la única modalidad de acceso. No hay redirección de nivel superior, pestaña nueva ni reimplementación de la bandeja. | El requisito del usuario es que el inquilino trabaje en una sola plataforma. El iframe conserva la operación nativa de Chatwoot (RF-13.3) y evita duplicar su UI; el SSO se completa dentro del iframe. La condición técnica es publicar Chatwoot en un subdominio del mismo dominio y validar framing, cookies y SSO en 4.19 (CHW-001 T-17/T-18, AUTH-001 T-38/T-39). |
 | D-33 | La multimedia de producto usa **SeaweedFS v4.51 S3 interno + imgproxy v4.0.20 con URLs firmadas**, como servicios de plataforma ya aprovisionados. Las imágenes conservan el original y se optimizan al vuelo; el video mantiene el canónico WebM. SeaweedFS no se publica. | Separa almacenamiento de entrega, evita exponer el bucket y permite migrar a S3/R2 cambiando la configuración de plataforma. Preservar el original evita pérdida irreversible y habilita AVIF futuro; el costo es que la deduplicación de imágenes opera sobre el original, no sobre un WebP canónico. La seguridad y los límites de imgproxy se detallan en RF-07.19 a RF-07.21. |
+| D-34 | ADM-001 es dueño del DDL base de `users` en el Router y de la proyección `users` en las celdas. `active_client_id` existe solo en la fila canónica del Router. AUTH-001 añade los campos de credenciales/TOTP y sus tablas de autenticación; la FK de `active_client_id` a `clients(id)` se agrega después de ADM-001 T-06. ADM-001 crea el rol `mocter_auth`; AUTH-001 configura sus permisos. | Evita dos propietarios de la fila canónica y mantiene separados el ancla de identidad del inquilino y las credenciales. La secuencia de la FK respeta que `clients` se crea en T-06. Decisión confirmada por el usuario el 2026-10-27. |
 
 ## 7. Decisiones abiertas
 

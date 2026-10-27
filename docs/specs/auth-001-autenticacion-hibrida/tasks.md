@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | AUTH-001 |
-| Versión | 1.1 |
-| Fecha | 2026-10-20 · actualizado 2026-10-25 |
+| Versión | 1.2 |
+| Fecha | 2026-10-20 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) · ADM-001 · DAT-001 · CHW-001 · OPS-001 |
 | Estado | Aprobada |
 
@@ -16,27 +16,28 @@
 - Las tareas **[LAB]** se validan fuera de producción y no tocan datos reales.
 - Toda tarea de código incluye su prueba. Ningún cambio se cierra sin la verificación indicada.
 - AUTH-001 no modifica el esquema ni el código de Chatwoot; solo consume su SSO.
-- Dependencias de entrada: ADM-001 T-02 (`apps/admin`), T-03 (schemas/roles), T-05 (ancla de identidad), T-07 (onboarding), T-08 (invitaciones) y T-11 (Chatwoot). OPS-001 debe tener el Redis del plano de control y el respaldo del Router.
+- Prerrequisitos para iniciar AUTH: ADM-001 T-02 (`apps/admin`) y T-03 (schema y fila base `users`); registrar Redis 7+ del plano de control (DAT-001 A-03) y evidencia de respaldo/restore del Router (OPS-001 T-05 a T-10 y T-12). Esta spec no provisiona Redis ni el respaldo.
+- Dependencias de integración, no de entrada: ADM-001 T-05 completa el comportamiento del ancla después del login; T-06 crea `clients` y agrega la FK de `active_client_id`; T-07/T-08 consumen sesiones de AUTH; T-11 precede a la integración SSO de AUTH. ADM-001 T-04 debe preceder AUTH T-04 para la línea de migración de celdas.
 
 ## Fase 0 · Fundaciones
 
 - [ ] **T-01 · Confirmar el estado de la app y las dependencias**
-  - Verificar que `apps/admin` existe o está creado por ADM-001 T-02; que el Router tiene el schema `admin`; que Redis 7+ del plano de control está disponible; que OPS-001 tiene el respaldo del Router.
+  - Verificar que `apps/admin`, el schema `admin` y la fila base `users` existen por ADM-001 T-02/T-03; que Redis 7+ del plano de control está disponible; y que el respaldo/restore del Router tiene evidencia según OPS-001.
   - Verificación: `design.md` §2 y §3 no atribuyen componentes inexistentes; el inventario de dependencias queda en la evidencia.
   - Evidencia: `git status`, `pnpm -v`, `turbo --version` y salida de `docker compose config -q`.
 
-- [ ] **T-02 · Crear las migraciones de identidad del Router**
-  - Crear `users`, `identities`, `sessions`, `email_verification_tokens`, `password_reset_tokens` y `user_consents` en el schema `admin` del Router.
+- [ ] **T-02 · Extender `users` y crear las tablas de autenticación del Router**
+  - Extender la tabla canónica `admin.users` creada por ADM-001 T-03 con las columnas de credenciales/TOTP de AUTH-001; crear `identities`, `sessions`, `email_verification_tokens`, `password_reset_tokens` y `user_consents` en el schema `admin` del Router. No crear `users` ni la columna/FK `active_client_id` desde AUTH-001.
   - Aplicar los índices del Router de `design.md` §4.3, los `CHECK` de `identity_location`, `status`, proveedor y `purpose`, y comentarios de tabla y columna.
   - Verificación: `drizzle-kit check` pasa; la migración aplica desde cero y desde el estado anterior; el índice de correo rechaza mayúsculas duplicadas; no se guarda `sid` ni token en claro.
 
-- [ ] **T-03 · Crear el rol `mocter_auth` y sus permisos**
-  - Router: `SELECT`/`INSERT`/`UPDATE` sobre `users`, `identities`, `sessions` y tokens; sin DDL, sin `BYPASSRLS`, sin acceso a `tenant_users`, `clients` ni datos de negocio, y sin `INSERT` en `audit_log`.
+- [ ] **T-03 · Asignar permisos al rol existente `mocter_auth`**
+  - ADM-001 T-03 crea el rol. AUTH-001 concede los permisos de su dominio: Router `SELECT`/`INSERT`/`UPDATE` sobre `users`, `identities`, `sessions` y tokens; sin DDL, sin `BYPASSRLS`, sin acceso a `tenant_users`, `clients` ni datos de negocio, y sin `INSERT` en `audit_log`.
   - Celda dedicada: `SELECT`/`UPDATE` sobre `users`; `SELECT`/`INSERT`/`UPDATE` sobre `identities`; la aplicación fija `SET LOCAL app.current_client_id`.
   - Verificación: pruebas negativas por tabla y por rol; `mocter_auth` no lee `tenant_users` ni `clients` ni escribe `audit_log`; una consulta de celda sin contexto RLS no devuelve filas.
 
-- [ ] **T-04 · Crear la identidad de celda dedicada**
-  - Crear o extender `users` e `identities` en la celda con el mismo `id` del Router, `client_id`, RLS forzado y los índices de celda de `design.md` §4.3.
+- [ ] **T-04 · Extender la identidad de celda dedicada**
+  - Extender la proyección `users` de celda creada por ADM-001 T-03 con los campos de autenticación y crear `identities` en la celda con el mismo `id` del Router, `client_id`, RLS forzado y los índices de celda de `design.md` §4.3.
   - Incluir la rutina de migración de §5.12, con expandir → copiar → conmutar → verificar; la ejecución end-to-end se valida en T-27.
   - Verificación: un usuario migrado inicia sesión en la celda; el Router ya no tiene `password_hash` ni secretos TOTP; una falla a mitad de la copia no conmuta `identity_location`.
 
@@ -201,4 +202,3 @@
 - [x] **T-37 · [HUMANO] Aprobar AUTH-001**
   - Revisar `requirements.md`, `design.md` y `tasks.md`; decidir si se aprueba la spec.
   - Verificación: el estado pasa a `Aprobada` solo con decisión explícita; no se inicia implementación antes.
-

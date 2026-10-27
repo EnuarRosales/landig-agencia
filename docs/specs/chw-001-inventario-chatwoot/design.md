@@ -3,7 +3,7 @@
 | Atributo | Valor |
 |---|---|
 | ID | CHW-001 |
-| Versión | 1.2 |
+| Versión | 1.3 |
 | Fecha | 2026-10-20 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [`DAT-001`](../dat-001-arquitectura-datos-multiinquilino/requirements.md) |
 | Fuente fijada | `chatwoot/chatwoot:v4.19.1` · digest de producción observado `sha256:de91ebbe04cef408e88697ccaee44cb6f33ea87330c826880790c0eec656c610`; commit upstream a fijar en T-01A/T-17/T-18 |
@@ -41,6 +41,8 @@ Reglas:
 - No existe foreign key entre bases.
 - Cada aplicación corre su **propia instancia PostgreSQL**; no hay acceso directo a la base del otro sistema.
 - `custom_attributes.client_id` es opcional y **no** otorga autoridad (D-03).
+
+El maestro de contactos vive en `mocter-core`, módulo de dominio dentro de `mocter-admin`, y comparte la persistencia de esa aplicación (CHW-001 D-12, ADM-001 D-24). No se agrega un servicio ni una instancia de base de datos; Chatwoot recibe únicamente la proyección operativa.
 
 ### 1.1 Entorno de ejecución
 

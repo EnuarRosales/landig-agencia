@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | AUTH-001 |
-| Versión | 1.1 |
-| Fecha | 2026-10-20 · actualizado 2026-10-25 |
+| Versión | 1.2 |
+| Fecha | 2026-10-20 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/design.md) |
 | Estado | Aprobada |
 
@@ -95,6 +95,8 @@ Traefik ──► apps/admin (módulo identity)
 
 `users` no tiene `client_id` y no usa RLS. `sessions` puede llevar `client_id`, pero no es una tabla de tenencia. `identities` y `auth_providers_config` no llevan tenencia. Estas tablas (identidad, sesión, tokens, `user_consents` y `auth_providers_config`) se protegen con el rol `mocter_auth` y filtros de aplicación. Todas siguen la convención global de auditoría (DAT-001 RF-10.9): `created_at`, `updated_at`, `created_by`, `updated_by`; `sessions` usa `revoked_at` y los tokens `consumed_at` como su baja lógica, sin duplicar `deleted_at`.
 
+La fila canónica `users` y su DDL base son propiedad de ADM-001 (ADM-001 D-34). AUTH-001 no crea la tabla: añade sus columnas de credenciales/TOTP y crea las tablas de autenticación. ADM-001 crea el rol `mocter_auth`; AUTH-001 configura los permisos de su dominio.
+
 Columnas de `users`:
 
 | Columna | Tipo | Regla |
@@ -112,7 +114,7 @@ Columnas de `users`:
 | `totp_pending_created_at` | `timestamptz` | Vence a los 10 minutos |
 | `totp_last_used_step` | `bigint` | Último `time_step` aceptado; evita reutilizar un código |
 | `identity_location` | `text` | `router` o el UUID de la celda (`cell_id`); `CHECK` correspondiente |
-| `active_client_id` | `uuid` | FK `clients(id)` `ON DELETE SET NULL`; guardián global de 1:0..1 |
+| `active_client_id` | `uuid` | Nullable; columna propiedad de ADM-001. La FK `clients(id) ON DELETE SET NULL` se agrega en ADM-001 T-06, una vez creada `clients`; guardián global de 1:0..1 |
 | `status` | `text` | `active` o `disabled` |
 | `display_name` | `text` | Nombre para la interfaz; puede venir del proveedor |
 | `avatar_url` | `text` | URL validada; nunca se descarga en el login |
@@ -615,5 +617,4 @@ No quedan decisiones de producto abiertas. Las verificaciones de laboratorio no 
 | §7 Seguridad | RNF-01, RNF-02, RNF-03 | AUTH-D-02, AUTH-D-04, AUTH-D-06 |
 | §8 Operación | OPS-001, DAT-001 | AUTH-D-02, AUTH-D-06 |
 | §9 Verificación | Criterios de aceptación de `requirements.md` §4 | AUTH-D-01 a AUTH-D-06 |
-
 

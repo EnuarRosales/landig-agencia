@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | CHW-001 |
-| Versión | 1.1 |
+| Versión | 1.2 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 · actualizado 2026-10-25 |
+| Fecha | 2026-10-20 · actualizado 2026-10-27 |
 | Documentos | `requirements.md` (este) · [`design.md`](design.md) · [`tasks.md`](tasks.md) |
 | Fuente fijada | `chatwoot/chatwoot:v4.19.1` · contenedor Docker gestionado bajo Traefik en staging/producción; en desarrollo local puede publicar solo en `127.0.0.1` |
 | Depende de | [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) (arquitectura de datos multi-inquilino) |
@@ -132,19 +132,17 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 | D-03 | `custom_attributes.client_id` es **opcional** y solo sirve como marcador de idempotencia. | Permite reconciliar un alta con timeout sin duplicar; no otorga autoridad. |
 | D-04 | Chatwoot es dueño del dominio operativo (conversaciones, mensajes). | Es el sistema que los produce y el fork lo mantiene. |
 | D-05 | No se usa código enterprise; el directorio `enterprise/` se conserva en el fork. | Restricción de licenciamiento declarada; conservar el código no habilita su uso. |
-| D-06 | El maestro de contactos pertenece a `mocter-core`. Chatwoot recibe una proyección operativa. | O-01 resuelta: un solo dueño del dato, sin doble escritura. |
+| D-06 | El maestro de contactos pertenece a `mocter-core`, módulo de dominio dentro de `mocter-admin`; Chatwoot recibe una proyección operativa. | O-01 resuelta: un solo dueño del dato, sin doble escritura. La ubicación y persistencia del módulo quedan fijadas por D-12 y ADM-001 D-24. |
 | D-07 | Token de servicio por inquilino. | O-02 resuelta: blast radius acotado a una cuenta. |
 | D-08 | Cada aplicación mantiene su propia instancia PostgreSQL. | No hay FK cruzada ni acceso directo a la base del otro sistema. |
 | D-09 | La lógica de comunidades, propuestas y clonación vive exclusivamente en `mocter-admin`. | Hacia Chatwoot solo se materializan cuentas y usuarios; Chatwoot no conoce organizaciones ni propuestas. |
 | D-10 | Chatwoot 4.19.1 se ejecuta sobre PostgreSQL 18 + pgvector, con Redis 7+ y Sidekiq, en el plano de soporte de DAT-001. Su instancia PostgreSQL y su Redis son propios: no se comparten con el plano de control ni se les aplica particionado por `client_id` ni RLS. | DAT-001 RF-11 fija PostgreSQL 18 para toda la plataforma, incluida Chatwoot; RF-01.7 separa el Redis de Chatwoot del dedicado del plano de control. La versión canónica es 4.19.1; su validación se registra en T-01A/T-17/T-18 y el rollback en DAT-001 §9.7. |
 | D-11 | La interfaz de Chatwoot se consume embebida en un iframe same-site desde `mocter-admin`; CHW-001 documenta las restricciones y no modifica Chatwoot. | ADM-001 D-32 fija la modalidad; el inventario debe probar si 4.19 permite framing, cookies y SSO dentro del iframe antes de implementar. |
+| D-12 | `mocter-core` es un módulo de dominio dentro de `mocter-admin` y comparte su persistencia; no es un servicio separado ni crea una tercera instancia. Chatwoot recibe solo una proyección operativa. | Cierra O-05 y alinea CHW-001 con ADM-001 D-24; evita despliegue, red y consistencia distribuida sin un consumidor independiente. Decisión confirmada por el usuario el 2026-10-27. |
 
 ## 7. Decisiones abiertas
 
-| ID | Pregunta | Impacto |
-|---|---|---|
-| O-04 | ¿El líder de comunidad lee los datos de Chatwoot de sus inquilinos subordinados, o solo métricas agregadas en `mocter-admin`? | Resuelta el 2026-10-21: agregación en `mocter-admin` con tokens de servicio por inquilino; sin `AccountUser` en cuentas subordinadas (ADM-001 D-19). |
-| O-05 | ¿`mocter-core` es la capa de dominio de `mocter-admin` o un servicio aparte con su propia persistencia? | Define dónde vive el maestro de contactos y si existe una tercera instancia. |
+No quedan decisiones abiertas. O-04 está resuelta por ADM-001 D-19; O-05 está resuelta por CHW-001 D-12 y ADM-001 D-24.
 
 ## 8. Trazabilidad
 

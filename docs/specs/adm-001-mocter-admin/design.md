@@ -3,7 +3,7 @@
 | Atributo | Valor |
 |---|---|
 | ID | ADM-001 |
-| Versión | 1.4 |
+| Versión | 1.5 |
 | Fecha | 2026-10-21 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/design.md) |
 | Estado | Aprobada |
@@ -106,6 +106,8 @@
 
 `mocter-core` es un módulo de dominio dentro de `apps/admin`, no un servicio aparte (D-24). Expone contactos, roles y permisos al resto de los módulos; no tiene despliegue ni base propia.
 
+ADM-001 es dueño del DDL base de `users` en Router y celdas. AUTH-001 extiende esa fila con los campos de credenciales/TOTP y es dueño de `identities`, sesiones, tokens y consentimientos. La columna `active_client_id` pertenece a ADM-001; su FK a `clients(id)` se incorpora en T-06, cuando la tabla `clients` ya existe (D-34).
+
 ## 5. Modelo de datos
 
 Todas las tablas llevan las columnas de auditoría de la directiva de base de datos: `created_at`, `updated_at`, `created_by`, `updated_by`, más `deleted_at` y `deleted_by` donde aplica soft delete. Las columnas de ciclo de vida ya documentadas no se duplican: `clients.lifecycle_status`, `sessions.revoked_at`, `consumed_at` de los tokens y `tenant_users.left_at` cumplen el rol de borrado lógico (DAT-001 RF-10.9).
@@ -114,7 +116,7 @@ Todas las tablas llevan las columnas de auditoría de la directiva de base de da
 
 | Tabla | Clave | Notas |
 |---|---|---|
-| `users` | `id` | Ancla global: `email` único, `email_verified_at`, `identity_location` (`router` o `cell_id`), `active_client_id` nullable con `ON DELETE SET NULL`; un usuario tiene como máximo una membresía activa |
+| `users` | `id` | Ancla global de ADM-001: `email` único, `email_verified_at`, `identity_location` (`router` o `cell_id`), `active_client_id` nullable con FK `ON DELETE SET NULL` agregada en T-06; un usuario tiene como máximo una membresía activa. AUTH-001 añade las columnas de credenciales/TOTP. |
 | `cells` | `id` | `code`, `tier`, `status`, `pgbouncer_host`, `pgbouncer_port`, `database_name`, `max_clients`, `current_clients`, `region` |
 | `clients` | `id` | `owner_user_id` no nulo y único entre clientes no dados de baja, `contact_email`, `phone` (E.164, contacto comercial), `website_url`, `display_name`, `slug`, `lifecycle_status`, `plan_id`, `quota_version`, `locale` (`es` por defecto; conjunto inicial `es`/`en` validado por la aplicación), `currency` (ISO 4217, por defecto `COP` para la operación inicial en Colombia; editable en el onboarding), `tax_id`, `country`/`state`/`city`/`address_line`/`postal_code`, `industry`, `timezone` (por defecto `America/Bogota`), `logo_media_id`, `social_links` JSONB; el `tenant_owner` activo se materializa en `tenant_users` |
 | `client_routing` | `client_id` | `cell_id`, `identity_location`; caché en Redis |

@@ -3,7 +3,7 @@
 | Atributo | Valor |
 |---|---|
 | ID | ADM-001 |
-| Versión | 1.4 |
+| Versión | 1.5 |
 | Fecha | 2026-10-21 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) · CHW-001 · DAT-001 · AUTH-001 · OPS-001 |
 | Estado | Aprobada |
@@ -28,8 +28,9 @@
   - No se alteran routers existentes (D-10).
 
 - [ ] **T-03 · Crear schemas y roles de base**
-  - Schema `admin` en Router y celdas; roles `mocter_migrator`, `mocter_admin`, `mocter_landing`, `mocter_auth`. Todas las tablas llevan `created_at`, `updated_at`, `created_by`, `updated_by` (y `deleted_at`/`deleted_by` donde aplica soft delete) según la directiva de base de datos y DAT-001 RF-10.9.
-  - Verificación: `mocter_admin` no tiene DDL ni `BYPASSRLS`; `mocter_landing` solo inserta solicitudes de contacto y no accede al schema `admin`; en una celda dedicada, `mocter_auth` solo accede a `users` e `identities`.
+  - Schema `admin` en Router y celdas; roles `mocter_migrator`, `mocter_admin`, `mocter_landing`, `mocter_auth`. Crear bajo propiedad de ADM-001 la fila canónica de Router `users` (`id`, `email`, `email_verified_at`, `identity_location`, `active_client_id` nullable, `status`, `display_name`, `avatar_url`) y la proyección local de celdas (`id`, `client_id`, `email`, `status`). AUTH-001 agrega después credenciales/TOTP y tablas de autenticación. El rol `mocter_auth` se crea aquí; AUTH-001 asigna y verifica sus permisos.
+  - Todas las tablas llevan `created_at`, `updated_at`, `created_by`, `updated_by` (y `deleted_at`/`deleted_by` donde aplica soft delete) según la directiva de base de datos y DAT-001 RF-10.9.
+  - Verificación: `users` existe antes de las migraciones AUTH; `active_client_id` admite NULL y su FK se difiere hasta T-06; `mocter_admin` no tiene DDL ni `BYPASSRLS`; `mocter_landing` solo inserta solicitudes de contacto y no accede al schema `admin`; el rol `mocter_auth` existe sin permisos adicionales a los concedidos por AUTH-001.
   - Criterios 26 y RF-09.3 (D-25).
 
 - [ ] **T-04 · Definir las dos líneas de migración**
@@ -39,13 +40,15 @@
 
 ## Fase 1 · Identidad, tenencia y alta
 
-- [ ] **T-05 · Implementar el ancla de identidad**
+- [ ] **T-05 · Completar el ancla de identidad e integración con AUTH**
+  - La tabla base `users` y su DDL pertenecen a T-03. Esta tarea completa el comportamiento de identidad sobre la tabla existente; no vuelve a crearla.
   - `users` global con correo único, `email_verified_at`, `identity_location` y `active_client_id` nullable.
   - Verificación: Google entra verificado; correo/contraseña queda pendiente hasta confirmar; el login resuelve la ubicación antes de verificar; un usuario sin inquilino tiene `active_client_id` nulo.
   - RF-01.10, RF-14.6, AUTH-D-01, AUTH-D-05, D-29.
 
 - [ ] **T-06 · Implementar `clients` y `owner_user_id`**
   - `owner_user_id` no nulo y único entre clientes no dados de baja, `contact_email`, `locale` (por defecto `es`), `currency` (ISO 4217, por defecto `COP`), `phone`, `website_url`, `tax_id`, dirección, `industry`, `timezone`, `logo_media_id`, `social_links`, ciclo de vida y `client_routing`.
+  - Al crear `clients`, agregar la FK `users.active_client_id → clients(id) ON DELETE SET NULL` definida por ADM-001 D-34 y documentada por AUTH-001; no instalarla antes de que exista `clients`.
   - Verificación: insertar un cliente sin dueño falla; un usuario no puede ser dueño de dos inquilinos no dados de baja; el alta manual crea o vincula el usuario en la misma operación; el alta se completa sin `phone`, NIT ni dirección.
   - RF-01.6, RF-01.10, RF-01.11, RF-11.5, RF-05.9, criterio 31, D-29.
 
