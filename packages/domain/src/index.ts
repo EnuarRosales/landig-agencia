@@ -11,7 +11,7 @@
  * - Servicios de negocio para orquestación de prospectos (leads).
  */
 
-export * from "./db/schema";
+export * from "./db/schemas";
 export * from "./validation";
 export * from "./db/index";
 export * from "./types/result";

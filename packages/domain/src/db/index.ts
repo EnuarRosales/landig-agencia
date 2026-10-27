@@ -1,11 +1,11 @@
 import { getDb } from "./client";
-import { leads, type Lead } from "./schema";
+import { leads, type Lead } from "./schemas";
 import type { LeadInput } from "../validation";
 import { appLogger } from "../utils/logger";
 
 export * from "./client";
 export * from "./health";
-export * from "./schema";
+export * from "./schemas";
 
 /**
  * Inserta directamente un registro en la tabla `leads` sin validación previa.

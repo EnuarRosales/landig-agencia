@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { getDb } from "../db/client";
-import * as schema from "../db/schema";
-import { leads, type Lead } from "../db/schema";
+import * as schema from "../db/schemas";
+import { leads, type Lead } from "../db/schemas";
 import type { LeadInput } from "../validation";
 import type { ILeadRepository } from "./lead.repository.interface";
 import { appLogger } from "../utils/logger";

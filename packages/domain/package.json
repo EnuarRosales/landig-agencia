@@ -6,7 +6,7 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/db/schema.ts",
+    "./schema": "./src/db/schemas/index.ts",
     "./validation": "./src/validation.ts",
     "./db": "./src/db/index.ts"
   },

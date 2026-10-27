@@ -1,7 +1,7 @@
 import { leadSchema, type LeadInput } from "../validation";
 import type { ILeadRepository } from "../repositories/lead.repository.interface";
 import { defaultLeadRepository } from "../repositories/drizzle-lead.repository";
-import type { Lead } from "../db/schema";
+import type { Lead } from "../db/schemas";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 

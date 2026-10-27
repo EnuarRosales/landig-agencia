@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { LeadService } from "./lead.service";
 import type { ILeadRepository } from "../repositories/lead.repository.interface";
-import type { Lead } from "../db/schema";
+import type { Lead } from "../db/schemas";
 
 describe("LeadService", () => {
   const mockLead: Lead = {

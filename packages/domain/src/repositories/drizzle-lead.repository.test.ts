@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { DrizzleLeadRepository } from "./drizzle-lead.repository";
-import type { Lead } from "../db/schema";
+import type { Lead } from "../db/schemas";
 
 describe("DrizzleLeadRepository", () => {
   const mockLead: Lead = {
