@@ -11,6 +11,8 @@
 | Especificación | [CHW-001](../../specs/chw-001-inventario-chatwoot/requirements.md) |
 | Método | Lectura del checkout fijado. **No** se ejecutó la aplicación ni el resolutor de rutas de Rails. |
 
+> **Producción observada (2026-10-27):** la imagen desplegada es `chatwoot/chatwoot:v4.19.1`, no la `4.19.0` de este checkout. La actualización del inventario contra 4.19.1 sigue en T-01A/T-17/T-18. Inventario de servicios: [`docs/reference/production-services.md`](../production-services.md).
+
 ## 1. Alcance
 
 Estos documentos describen Chatwoot desde la perspectiva de `mocter-admin`: qué datos posee, qué puede sembrarse por API, qué no debe tocarse y dónde termina la frontera entre el código libre y el enterprise.

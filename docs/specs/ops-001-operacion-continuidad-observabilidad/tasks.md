@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.3 |
-| Fecha | 2026-10-21 · actualizado 2026-10-25 |
+| Versión | 1.6 |
+| Fecha | 2026-10-21 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 
@@ -117,6 +117,20 @@
   - Snapshot semanal + incremental diario del volumen, cifrado en cliente, sync a R2 y manifiesto con hashes.
   - Restore en una instancia aislada y verificación de una imagen, un audio, un video y un PDF por hash.
   - Verificación: el RPO de multimedia ≤ 24 h, el RTO ≤ 4 h y la alerta de antigüedad > 24 h funciona.
+
+- [ ] **T-22A · Monitorear imgproxy y el S3 interno ya aprovisionados**
+  - Healthcheck, latencia p95, 5xx, 403 por firma, 429 por cola, CPU/RAM y saturación de workers; SeaweedFS solo desde la red interna.
+  - Verificación: un 403 por URL sin firma se registra; una cola llena devuelve 429 y se alerta si se sostiene; una caída de imgproxy alerta en ≤ 2 min; el dashboard muestra latencia, 5xx y 429; SeaweedFS no responde desde Internet.
+  - No provisionar ni modificar los contenedores: son servicios de plataforma ya disponibles.
+
+- [ ] **T-22B · Respaldar y restaurar los adjuntos de Chatwoot**
+  - Backend actual: volumen local `mocter-chatwoot_storage-chatwoot`; si se migra a ActiveStorage S3-compatible, bucket separado.
+  - Incluir los adjuntos en el respaldo offsite y probar el restore junto con la base de Chatwoot.
+  - Verificación: una conversación con adjunto se recupera completa; el `pg_dump` por sí solo no se acepta como evidencia.
+
+- [ ] **T-22C · Verificar el smoke del gateway S3 en el deploy**
+  - En `deploy/vps-deploy.sh`, ejecutar dentro de SeaweedFS: `curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8333/`.
+  - Verificación: `403` sin credenciales; `200`, `000` o timeout deben abortar el deploy con mensaje claro.
 
 ## Fase 4 · Cierre
 

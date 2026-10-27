@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | ADM-001 |
-| Versión | 1.2 |
-| Fecha | 2026-10-21 · actualizado 2026-10-25 |
+| Versión | 1.4 |
+| Fecha | 2026-10-21 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) · CHW-001 · DAT-001 · AUTH-001 · OPS-001 |
 | Estado | Aprobada |
 
@@ -96,10 +96,17 @@
 - [ ] **T-14 · Implementar el catálogo global de archivos**
   - `media_catalog` con ficha extendida (§11.2), `media_variants`, `client_media`, `product_media` (con `alt_text`), `client_usage`, SeaweedFS y deduplicación por hash; el vínculo y la cuota viven en la celda.
   - Validación restrictiva de formatos por `media_kind` (§11.1) por contenido, no por extensión; tamaño máximo por archivo (video 100 MB, imágenes 10 MB).
-  - Canonicalización (§11.4): imágenes a `webp` y videos a `webm`; el origen se descarta en `ready`; variantes de canal bajo demanda.
-  - Enlaces externos (§11.5): videos embed de plataformas admitidas e imágenes por URL con importación perezosa; catálogo `external_media_providers` gobernado por la plataforma.
-  - Verificación: dos productos que referencian el mismo archivo comparten una sola ficha y un solo objeto; el archivo se cuenta una vez por inquilino; un `svg`, `gif` o formato no listado se rechaza con mensaje explícito; una imagen `png` subida queda almacenada como `webp` canónico y el origen se descarta; un video `mp4` genera el `webm` canónico; el hash de dedup corresponde a los bytes canónicos; un enlace externo no consume cuota y una URL con `http`, credenciales o IP privada se rechaza; la imagen externa se importa y canonicaliza en la primera entrega por canal; el `alt_text` es independiente por vínculo.
+  - Procesamiento (§11.4): el original de imagen se conserva; el video se transcodifica a `webm`; audio/PDF se guardan sin recodificar; `mp4_compat` bajo demanda.
+  - Enlaces externos (§11.5): videos embed de plataformas admitidas e imágenes por URL con importación perezosa sin recodificación; catálogo `external_media_providers` gobernado por la plataforma.
+  - Verificación: dos productos que referencian el mismo archivo comparten una sola ficha y un solo objeto; el archivo se cuenta una vez por inquilino; un `svg`, `gif` o formato no listado se rechaza con mensaje explícito; una imagen `png` subida se conserva como original y se sirve por imgproxy; un video `mp4` genera el `webm` canónico; el hash de dedup corresponde a los bytes almacenados (original de imagen, canónico de video); un enlace externo no consume cuota y una URL con `http`, credenciales o IP privada se rechaza; la imagen externa se importa sin recodificar en la primera entrega por canal; el `alt_text` es independiente por vínculo.
   - RF-07.1 a RF-07.6, RF-07.12 a RF-07.18.
+
+- [ ] **T-14A · Integrar la entrega de imágenes con imgproxy y URLs firmadas**
+  - Consumir los servicios de plataforma ya aprovisionados: SeaweedFS v4.51 (S3 interno) e imgproxy v4.0.20 (`media.mocter.co`). No provisionar contenedores ni modificar su compose.
+  - Firma HMAC-SHA256 en el backend con el par key/salt provisto por la plataforma; consumir el bucket `media` y las credenciales de mínimo privilegio desde el gestor de secretos.
+  - Firmar solo transformaciones permitidas; bucket `media`; origen máximo 100 MB, dimensión resultante máxima 4096 px y cola de 100 solicitudes; sin ruta pública para SeaweedFS; el navegador solo recibe URLs firmadas.
+  - Verificación: una URL firmada devuelve WebP/AVIF; una URL sin firma o con opciones alteradas devuelve 403; una URL con `expires` vencido devuelve 404; una imagen que supera 100 MB o 4096 px se rechaza según el límite correspondiente; una cola llena devuelve 429; con el límite actual de 1 frame, una animación se entrega como primer frame; el S3 no responde desde Internet; las claves rotadas por la plataforma mantienen válidas las URLs del par anterior durante la ventana acordada.
+  - RF-07.9, RF-07.14, RF-07.15, RF-07.19 a RF-07.21.
 
 - [ ] **T-15 · Implementar el GC por última referencia**
   - Dos fases: marcar, consultar todas las celdas, eliminar.

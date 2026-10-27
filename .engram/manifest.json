@@ -40,6 +40,30 @@
       "sessions": 12,
       "memories": 50,
       "prompts": 0
+    },
+    {
+      "id": "ac960c84",
+      "created_by": "alejandroher",
+      "created_at": "2026-10-27T11:30:50.9888996Z",
+      "sessions": 1,
+      "memories": 1,
+      "prompts": 0
+    },
+    {
+      "id": "22e38080",
+      "created_by": "alejandroher",
+      "created_at": "2026-10-27T11:32:03.3335223Z",
+      "sessions": 1,
+      "memories": 1,
+      "prompts": 0
+    },
+    {
+      "id": "5fe4aa5f",
+      "created_by": "alejandroher",
+      "created_at": "2026-10-27T16:36:21.6780293Z",
+      "sessions": 1,
+      "memories": 1,
+      "prompts": 0
     }
   ]
 }

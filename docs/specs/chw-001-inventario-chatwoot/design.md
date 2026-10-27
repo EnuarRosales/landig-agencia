@@ -3,10 +3,10 @@
 | Atributo | Valor |
 |---|---|
 | ID | CHW-001 |
-| Versión | 1.1 |
-| Fecha | 2026-10-20 · actualizado 2026-10-25 |
+| Versión | 1.2 |
+| Fecha | 2026-10-20 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [`DAT-001`](../dat-001-arquitectura-datos-multiinquilino/requirements.md) |
-| Fuente fijada | `chatwoot/chatwoot:v4.19.1` · digest y commit a fijar en T-01A/T-17/T-18 |
+| Fuente fijada | `chatwoot/chatwoot:v4.19.1` · digest de producción observado `sha256:de91ebbe04cef408e88697ccaee44cb6f33ea87330c826880790c0eec656c610`; commit upstream a fijar en T-01A/T-17/T-18 |
 
 ## 1. Principio rector
 
@@ -54,6 +54,8 @@ Chatwoot es el sistema del plano de soporte en DAT-001. Corre sobre una instanci
 | Rails | 7.2.3.1 | Fijado por el pin del commit |
 
 El esquema de Chatwoot se sincroniza con upstream. La directiva de base de datos de Mocter (`.agents/AGENTS.md` §4.5) y el particionado de DAT-001 **no** se aplican a ese esquema: esta referencia describe lo que existe, no lo modifica.
+
+> **Estado observado en producción (2026-10-27):** `chatwoot/chatwoot:v4.19.1`, `pgvector/pgvector:pg18`, `redis:8.8.3-alpine`, almacenamiento local en el volumen `mocter-chatwoot_storage-chatwoot` y `CW_EDITION=ee`. El inventario completo está en [`docs/reference/production-services.md`](../../reference/production-services.md).
 
 ## 2. Entregables documentales
 

@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.3 |
+| Versión | 1.6 |
 | Estado | Aprobada |
-| Fecha | 2026-10-21 · actualizado 2026-10-25 |
+| Fecha | 2026-10-21 · actualizado 2026-10-27 |
 | Documentos | `requirements.md` (este) · [`design.md`](design.md) · [`tasks.md`](tasks.md) |
 | Depende de | [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) · [CD-001](../cd-001-despliegue-continuo/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 | Directivas | `.agents/AGENTS.md` |
@@ -18,7 +18,7 @@ Definir cómo Mocter **protege los datos, los recupera y sabe que la plataforma 
 2. Celdas (`pg-cell-*`), una por grupo de inquilinos.
 3. Chatwoot (`pg-chatwoot`), en el plano de soporte.
 
-El sistema se despliega en **staging y producción** en Docker con **Docker Compose**, donde **Traefik** actúa como reverse proxy único para todo el tráfico de la plataforma. Bajo esta misma topología, **Chatwoot (`chatwoot/chatwoot:v4.19.1`)** y **SeaweedFS (`seaweedfs/seaweedfs:4.49`)** corren como contenedores administrados por Traefik (sin publicar puertos en el host, cumpliendo R-10). En **desarrollo local** no se usa Traefik y los puertos se publican solo en `127.0.0.1`, sin exposición externa.
+El sistema se despliega en **staging y producción** en Docker con **Docker Compose**, donde **Traefik** actúa como reverse proxy único para todo el tráfico público de la plataforma. **Chatwoot v4.19.1**, **SeaweedFS v4.51** e **imgproxy v4.0.20** son **servicios de plataforma ya aprovisionados** en desarrollo, pruebas y producción. OPS-001 monitorea y respalda esos servicios; no define su despliegue ni su compose. SeaweedFS queda en la red interna sin ruta pública e imgproxy publica únicamente `media.mocter.co` con URLs firmadas. En **desarrollo local** los puertos se publican solo en `127.0.0.1`, sin exposición externa.
 
 La necesidad nace de una contradicción documental: DAT-001 §9.1 delega destino, retención y prueba de restore en CD-001, y CD-001 excluye de su alcance las copias fuera del host y el monitoreo externo. Hoy el único respaldo es un `pg_dump` previo al despliegue, guardado en el mismo VPS (`deploy/server/deploy.sh`, retención 10). Si el VPS se pierde, se pierde el respaldo con él.
 
@@ -31,11 +31,12 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 1. Respaldo físico con archiving continuo de WAL hacia almacenamiento de objetos S3 compatible (Cloudflare R2).
 2. Restore completo y recuperación a un punto en el tiempo (PITR) por instancia.
 3. Respaldo y restore de la multimedia de producto en SeaweedFS hacia R2.
-4. Continuidad: escenarios de pérdida, orden de recuperación, RPO/RTO y dependencias.
-5. Observabilidad: métricas de infraestructura, PostgreSQL, PgBouncer y respaldos, con retención y dashboards.
-6. Alertas: umbrales, severidades, canales, silencios y escalado.
-7. Costos: fórmula, estimación y control del gasto.
-8. Runbooks, glosario y verificación reproducible.
+4. Respaldo de los adjuntos de Chatwoot, sea desde su volumen local o desde un bucket S3-compatible separado.
+5. Continuidad: escenarios de pérdida, orden de recuperación, RPO/RTO y dependencias.
+6. Observabilidad: métricas de infraestructura, PostgreSQL, PgBouncer y respaldos, con retención y dashboards.
+7. Alertas: umbrales, severidades, canales, silencios y escalado.
+8. Costos: fórmula, estimación y control del gasto.
+9. Runbooks, glosario y verificación reproducible.
 
 ### Excluye
 
@@ -72,6 +73,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-01.9 | El `pg_dump` previo al despliegue de CD-001 se conserva como respaldo de migración, no como estrategia de continuidad (D-10). |
 | RF-01.10 | SeaweedFS se respalda a R2 con snapshot/versionado y restore probado; el procedimiento y la retención se documentan en OPS-001 y no dependen de ADM-001. |
 | RF-01.11 | **No se exige WORM en v1.** R2 usa versionado, cifrado en cliente y credenciales de alcance mínimo; WORM se evalúa si aparece un requisito de cumplimiento. |
+| RF-01.12 | Los adjuntos de Chatwoot se respaldan según su backend activo: volumen local de Chatwoot o bucket S3-compatible separado. El `pg_dump` de la base de Chatwoot no cubre los archivos. |
 
 ### RF-02 · Restore
 
@@ -106,6 +108,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-04.4 | La retención mínima es de 30 días para métricas y 14 días para logs. |
 | RF-04.5 | Se monitorean los healthchecks de los contenedores y la disponibilidad del sitio público desde fuera del VPS. |
 | RF-04.6 | Se monitorea RabbitMQ de NTF-001: healthcheck, profundidad de `email.send`/`email.retry`/`email.dlq` y consumers activos. Una cola sin consumer o un DLQ creciente alerta; la cola no se respalda porque el outbox en PostgreSQL es la fuente de verdad. |
+| RF-04.7 | Se monitorea **imgproxy**: healthcheck, latencia p95, tasa de 5xx, 403 por firma inválida, 429 por backpressure (cola de 100), CPU/RAM y saturación de workers. Se alerta si la latencia p95 supera 500 ms durante 10 minutos, si la tasa de 5xx supera 1 %, si los 429 sostenidos superan 5 % o si el proceso reinicia. SeaweedFS S3 se monitorea solo desde la red interna (disponibilidad y espacio). |
 
 ### RF-05 · Alertas
 
@@ -127,6 +130,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-06.3 | Ningún secreto vive en el repositorio. Los archivos de configuración con credenciales tienen permisos `0600`. |
 | RF-06.4 | La passphrase de cifrado se guarda en un gestor de secretos y en una copia offsite; sin ella el respaldo es irrecuperable. |
 | RF-06.5 | Restaurar exige dos secretos distintos: acceso a R2 y passphrase. Cada uno vive en un archivo separado con permisos `0600` en el VPS; ninguno se guarda en el repositorio ni en el mismo archivo. |
+| RF-06.6 | Las claves HMAC de imgproxy y las credenciales S3 de SeaweedFS las provee la plataforma y viven en su gestor de secretos, separadas de las credenciales R2. La rotación conserva el par anterior al menos hasta que las URLs emitidas con él expiren o se regeneren; la ventana se documenta y ninguna clave se expone al navegador ni al repositorio. |
 
 ### RF-07 · Costos
 
@@ -160,6 +164,8 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 10. Un operador sin contexto previo puede ejecutar el runbook de restore siguiendo solo la spec.
 11. La indisponibilidad del Redis del plano de control se detecta y no degrada a sesiones locales; el auth usa Postgres como fallback y, si tampoco responde, falla cerrado.
 12. SeaweedFS tiene respaldo en R2 y restore probado; la pérdida del VPS no deja la multimedia de los inquilinos sin recuperación.
+13. imgproxy entrega imágenes solo con URL firmada, rechaza solicitudes sin firma con 403, no expone SeaweedFS a Internet y se mantiene dentro de los límites de CPU/RAM acordados. Un `GET` anónimo al gateway S3 responde 403; el deploy falla si responde 200 o no responde.
+14. Los adjuntos de Chatwoot tienen respaldo y restore probado, sea desde su volumen local o desde su bucket S3-compatible; el respaldo de PostgreSQL por sí solo no satisface este criterio.
 
 ## 6. Decisiones
 
@@ -179,6 +185,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | D-12 | Sin WORM en v1; R2 con versionado y cifrado. | Cubre borrado accidental sin el costo y la complejidad de object lock. |
 | D-13 | Operador único con guardia best-effort; sin segundo respondedor en v1. | Refleja la realidad actual; el riesgo se revisa cuando el SLA lo exija. |
 | D-14 | El respaldo de SeaweedFS entra en OPS-001. | Centraliza backup/restore y evita que la multimedia quede sin protección. |
+| D-15 | SeaweedFS S3 queda en la red interna; la única puerta pública de imágenes es imgproxy con HMAC. | Evita exponer el bucket y acota las transformaciones a las que firma el backend; la entrega pública se concentra en `media.mocter.co`. |
 
 ## 7. Decisiones abiertas
 
@@ -194,3 +201,6 @@ No quedan decisiones abiertas en OPS-001.
 - 2026-10-22: **OPS-001 aprobada** por el dueño del producto. Las decisiones O-01 a O-06 quedan diferidas a la implementación y las tareas de laboratorio T-02, T-03, T-08 y T-18 se ejecutan antes de producción. El planeamiento global del SDD queda cerrado; la implementación y RDD requieren autorización explícita aparte.
 - 2026-10-22: alineación con AUTH-D-06; Redis es dependencia de runtime con fallback a Postgres y fallo cerrado. Se agrega guardia de backup cada 5 minutos, alerta de fallo/ausencia, alerta de presupuesto al 80 % y se corrige la retención de WAL para que cubra el full más antiguo. La passphrase de cifrado queda en un archivo separado de las credenciales R2 y se inyecta con el wrapper `pgbackrest-secure`.
 - 2026-10-24: O-01 a O-06 cerradas — presupuesto ≤ USD 50/mes, operador único best-effort, sin WORM, full semanal + diff diario, logs 14 días y SeaweedFS incluido en OPS-001. Se agregan RF-01.10, RF-01.11 y el criterio 12.
+- 2026-10-26: **OPS-001 1.4.** Se incorporan **SeaweedFS v4.51** e **imgproxy v4.0.20** como servicios de plataforma ya aprovisionados en los tres ambientes. OPS-001 monitorea y respalda; no documenta su despliegue ni compose. imgproxy publica solo `media.mocter.co` con URLs firmadas y SeaweedFS queda interno. Se agregan RF-04.7 (métricas de imgproxy), RF-06.6 (secretos/rotación) y el criterio 13.
+- 2026-10-27: inventario observado de producción en `docs/reference/production-services.md`. Se agrega RF-01.12 y el criterio 14: los adjuntos de Chatwoot (volumen local o bucket S3-compatible) requieren respaldo y restore propios; el `pg_dump` de la base no los cubre. T-22B agrega la verificación.
+- 2026-10-27: límites de imgproxy documentados (bucket `media`, 100 MB de origen, 4096 px de resultado, cola 100 con 429, 1 frame de animación) y smoke de deploy del gateway S3: 403 sin credenciales. RF-04.7, criterio 13 y T-22A/T-22C actualizados.

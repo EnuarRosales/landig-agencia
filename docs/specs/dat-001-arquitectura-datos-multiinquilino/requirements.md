@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | DAT-001 |
-| Versión | 1.2 |
+| Versión | 1.3 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 · actualizado 2026-10-25 |
+| Fecha | 2026-10-20 · actualizado 2026-10-26 |
 | Documentos | `requirements.md` (este) · `design.md` · `tasks.md` |
 | Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` |
@@ -141,7 +141,7 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 | RF-08.1 | El plan se modela en dos capas: catálogo de planes (públicos y privados) y asignación por inquilino con overrides por dimensión. |
 | RF-08.2 | El tope efectivo se lee desde un único punto: override del inquilino, si existe; si no, plan; si no, default. |
 | RF-08.3 | Las dimensiones sobrescribibles son: retención de chats en días, almacenamiento en bytes, productos, usuarios por cuenta, imágenes por producto, audios, videos y PDF. |
-| RF-08.4 | El almacenamiento facturado es la suma de tamaños de archivos distintos referenciados por el inquilino. El almacenamiento físico es el de objetos distintos en SeaweedFS. La diferencia es margen del proveedor. |
+| RF-08.4 | El almacenamiento facturado es la suma de tamaños de archivos distintos referenciados por el inquilino, contando los bytes almacenados (original de imagen/audio/PDF o canónico de video). El almacenamiento físico es el de objetos distintos en SeaweedFS; las variantes de imagen generadas por imgproxy no suman. La diferencia es margen del proveedor. |
 | RF-08.5 | La cuota se controla en el acto de vincular el archivo, de forma atómica con el insert y con lock sobre el contador. Si otro productor puede escribir sin pasar por el vínculo, la cuota es decorativa. |
 | RF-08.6 | Los topes negociados se guardan con vigencia (inicio y fin) y auditoría de quién los negoció y quién los cambió. La retención puede tener un piso legal mínimo. |
 
@@ -149,13 +149,14 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 
 | ID | Requisito |
 |---|---|
-| RF-09.1 | Existen dos dominios de archivos: multimedia de producto, propiedad de Mocter, con catálogo global, SeaweedFS, deduplicación por hash, cuota y borrado por ausencia de referencias; y adjuntos de conversación, propiedad de Chatwoot ActiveStorage, sin deduplicación, sin cuota de producto y con política propia. |
+| RF-09.1 | Existen dos dominios de archivos: multimedia de producto, propiedad de Mocter, con catálogo global, SeaweedFS v4.51 S3 interno + imgproxy v4.0.20 para entrega firmada (servicios de plataforma ya aprovisionados), deduplicación por hash, cuota y borrado por ausencia de referencias; y adjuntos de conversación, propiedad de Chatwoot ActiveStorage, sin deduplicación, sin cuota de producto y con política propia. |
 | RF-09.2 | El catálogo global vive en el Router Global y contiene solo la ficha técnica: hash, clave de almacenamiento, tamaño y tipo. No contiene `client_id` ni atributos de negocio. |
 | RF-09.3 | El vínculo producto–archivo vive en la celda del producto. |
 | RF-09.4 | El borrado físico se decide por ausencia de referencias en todas las celdas, nunca por un contador. |
 | RF-09.5 | El GC de producto verifica solo catálogos propios (Router Global y celdas), nunca Chatwoot. |
-| RF-09.6 | SeaweedFS se usa como almacenamiento S3 compatible, con path-style y endpoint alcanzable desde el navegador. |
+| RF-09.6 | SeaweedFS se usa como almacenamiento S3 compatible con path-style, en la red interna y sin endpoint público. La entrega al navegador se hace por `media.mocter.co` (imgproxy) con URL firmada; el navegador nunca recibe credenciales S3. |
 | RF-09.7 | Los adjuntos de Chatwoot no se cuentan en la cuota de producto y no se eliminan desde el GC de producto. |
+| RF-09.8 | El catálogo guarda la clave de almacenamiento, no una URL pública. La entrega de imágenes se firma con HMAC-SHA256 y se genera bajo demanda; las variantes de imagen no se almacenan. El hash de deduplicación corresponde a los bytes almacenados: original de imagen/audio/PDF, canónico de video o URL normalizada en externos. |
 
 ### RF-10 · Operación
 
@@ -211,6 +212,7 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 25. El rollback de Chatwoot a PostgreSQL 16 está documentado en `design.md` §9.7 y se ensaya en laboratorio antes de producción.
 26. El destino, la retención y la prueba de restore se fijan en OPS-001; DAT-001 exige S3 compatible, offsite, cifrado, versionado y restore probado.
 27. La capacidad nominal es 100 inquilinos por celda; la efectiva se determina por el primer disparador de escalado de RF-10.3.
+28. `media_catalog` no expone URLs públicas; la entrega de imágenes se resuelve con URL firmada de imgproxy y SeaweedFS no responde desde Internet.
 
 ## 6. Requisitos No Funcionales (RNF)
 
@@ -299,6 +301,7 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 - 2026-10-23: RF-10.10 - vectorización administrable por la plataforma con default nombre + descripción + categoría + marca; el prompt de venta queda fuera del embedding (alineado con ADM-001 RF-05.5 a RF-05.7).
 - 2026-10-25: modelo canónico de `plans` (`id uuid`, `code` slug único, `name`/`description`/`marketing_features` JSONB `{es,en}`, `status`, precios mensual/anual en centavos, `currency`) y FKs `plan_id` uuid en DAT/BILL/ADM; la landing usa `plans.code` y resuelve a UUID.
 - 2026-10-25: **DAT-001 1.2.** Se agregan RNF medibles, criterios BDD y anexo de códigos de error para i18n.
+- 2026-10-26: **DAT-001 1.3.** Revisión del subsistema de multimedia: `content_hash` identifica los bytes almacenados (original de imagen/audio/PDF, canónico de video), la entrega usa imgproxy con URL firmada y SeaweedFS queda en la red interna sin endpoint público. SeaweedFS v4.51 e imgproxy v4.0.20 son servicios de plataforma ya aprovisionados; DAT-001 solo define su uso. RF-08.4, RF-09.1, RF-09.6 y RF-09.8 actualizados; las variantes de imagen no se almacenan.
 
 ## 11. Anexo i18n · Códigos de error
 

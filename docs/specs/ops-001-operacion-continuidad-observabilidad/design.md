@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.3 |
-| Fecha | 2026-10-21 · actualizado 2026-10-25 |
+| Versión | 1.6 |
+| Fecha | 2026-10-21 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) |
 | Estado | Aprobada |
 
@@ -17,7 +17,7 @@
 5. **Un fallo no arrastra a los demás.** Cada instancia tiene su repositorio, su stanza y su retención.
 6. **La observabilidad no vive donde vive el servicio.** Métricas y alertas se recolectan fuera del VPS.
 7. **Todo procedimiento es reproducible.** Comandos exactos, salida esperada y verificación.
-8. **La multimedia también se protege.** SeaweedFS entra en el mismo esquema de backup/restore y alertas.
+8. **La multimedia también se protege.** SeaweedFS entra en el mismo esquema de backup/restore y alertas; imgproxy es stateless y se monitorea como puerta pública de imágenes.
 
 > **Cómo leer este documento.** Las secciones §2 a §6 explican el diseño. Las §7 a §10 son operación: runbooks, escenarios y alertas. La §15 es un glosario para quien nunca trabajó con respaldos. Lo marcado como **no verificado** debe confirmarse en laboratorio antes de producción (ver `tasks.md`).
 
@@ -299,12 +299,16 @@ La tabla exacta de conteos críticos se fija por instancia en T-10.
 
 ### 7.8 Respaldo y restore de SeaweedFS
 
-1. **Alcance:** volumen de datos de SeaweedFS (`/data` del contenedor) y metadatos del catálogo de archivos.
+1. **Alcance:** volumen de datos de SeaweedFS y metadatos del catálogo de archivos.
 2. **Frecuencia:** full semanal + incremental diario, cifrado en cliente antes de subir a R2. RPO de multimedia ≤ 24 h; RTO ≤ 4 h.
 3. **Procedimiento:** snapshot consistente del volumen, sync a un prefijo dedicado en R2 y registro de fecha, tamaño, cantidad de objetos y hash del manifiesto.
-4. **Restore:** crear un volumen nuevo, restaurar el snapshot, montarlo en una instancia aislada de SeaweedFS y verificar una muestra de objetos contra los hashes del catálogo.
+4. **Restore:** restaurar el snapshot en una instancia aislada de SeaweedFS y verificar una muestra de objetos contra los hashes del catálogo.
 5. **Verificación:** una imagen, un audio, un video y un PDF se recuperan y se comparan por hash; el restore no toca el volumen productivo.
 6. **Credenciales:** token de R2 limitado al prefijo de media; la passphrase de cifrado no comparte archivo con la de PostgreSQL.
+7. **Servicios de plataforma:** SeaweedFS v4.51 e imgproxy v4.0.20 ya están aprovisionados; OPS-001 no define su despliegue. imgproxy no tiene estado persistente que respaldar: su configuración la administra la plataforma y OPS solo la monitorea. Un restore de SeaweedFS debe validar que imgproxy vuelve a servir las imágenes restauradas con URLs firmadas.
+8. **Adjuntos de Chatwoot:** en el estado observado de producción (2026-10-27), Chatwoot usa el volumen local `mocter-chatwoot_storage-chatwoot`; el `pg_dump` de su base no cubre esos archivos. Incluir el volumen en el respaldo o migrar Chatwoot a ActiveStorage S3-compatible con bucket separado. El inventario observado está en [`docs/reference/production-services.md`](../../reference/production-services.md).
+9. **Smoke S3 en deploy:** `deploy/vps-deploy.sh` ejecuta `GET http://127.0.0.1:8333/` dentro del contenedor de SeaweedFS; sin credenciales debe responder **403**. `200` (público), `000` o timeout fallan el despliegue con mensaje explícito.
+10. **Recursos vigentes:** imgproxy 2.0 CPU / 1.5 GB; SeaweedFS 1.0 CPU / 1.5 GB; Chatwoot sin límites explícitos. El uso observado es ~19 MiB y ~86 MiB respectivamente; se monitorea contra los límites de OPS-001.
 
 ## 8. Escenarios de continuidad
 
@@ -358,6 +362,13 @@ El RTO de ransomware incluye contención y rotación de credenciales; el restore
 | RabbitMQ health | Healthcheck | Caído 2 min | Crítico |
 | RabbitMQ queue depth | `email.send`/`email.retry` | > 1.000 mensajes o sin consumers | Alto |
 | RabbitMQ DLQ | `email.dlq` | > 0 mensajes | Crítico |
+| imgproxy health | Healthcheck | Caído 2 min | Crítico |
+| imgproxy latencia p95 | Métricas HTTP de Traefik | > 500 ms por 10 min | Alto |
+| imgproxy 5xx | Métricas HTTP de Traefik | > 1 % por 10 min | Alto |
+| imgproxy 403 por firma | Logs de imgproxy | > 5 % de solicitudes por 10 min | Aviso |
+| imgproxy 429 por cola | Métricas HTTP de Traefik / logs | > 5 % sostenido 10 min | Alto |
+| imgproxy CPU/RAM | cAdvisor | > 80 % sostenido 10 min | Alto |
+| SeaweedFS S3 interno | Healthcheck | Caído 2 min | Crítico |
 | Sitio público | Synthetic Monitoring | Caído 2 min | Crítico |
 
 ### 9.3 Dashboards
@@ -367,6 +378,7 @@ El RTO de ransomware incluye contención y rotación de credenciales; el restore
 3. **Chatwoot:** base, Sidekiq, cola y latencia.
 4. **Respaldos:** último full por stanza, último WAL, resultado de `verify`, tamaño del repositorio, backup de SeaweedFS y costo estimado.
 5. **RabbitMQ:** health, profundidad de colas, consumers y DLQ.
+6. **Media:** imgproxy (latencia, 5xx, 403, CPU/RAM, saturación de concurrencia) y SeaweedFS (salud y espacio) desde la red interna.
 
 ## 10. Alertas
 

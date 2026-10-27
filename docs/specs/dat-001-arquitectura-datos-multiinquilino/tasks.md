@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | DAT-001 |
-| Versión | 1.1 |
+| Versión | 1.2 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 · actualizado 2026-10-25 |
+| Fecha | 2026-10-20 · actualizado 2026-10-26 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 
 ## Convenciones

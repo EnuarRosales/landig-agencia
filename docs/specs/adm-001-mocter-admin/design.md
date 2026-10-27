@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | ADM-001 |
-| Versión | 1.2 |
-| Fecha | 2026-10-21 · actualizado 2026-10-25 |
+| Versión | 1.4 |
+| Fecha | 2026-10-21 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/design.md) |
 | Estado | Aprobada |
 
@@ -70,7 +70,8 @@
                                 └──────────────────────┘  │
                                                            │
         ┌──────────────────────────────────────────────────▼─┐
-        │ SeaweedFS (multimedia de producto) · R2 (archivo legal) │
+        │ SeaweedFS v4.51 S3 interno (original/canónico) · R2 (legal) │
+        │ imgproxy v4.0.20 público `media.mocter.co` (firmadas)      │
         └────────────────────────────────────────────────────┘
 ```
 
@@ -81,7 +82,8 @@
 | Celdas | PostgreSQL independientes | Productos, embeddings, vínculos y cuota de archivos, proyección de usuarios |
 | Redis 7+ | Plano de control | Rate limiting, revocación de sesión y caché de enrutamiento (AUTH-D-02) |
 | Chatwoot | Plano de soporte | Conversaciones, cuentas, SSO |
-| SeaweedFS | Almacenamiento de objetos | Multimedia de producto, deduplicada por hash |
+| SeaweedFS v4.51 | Servicio de plataforma ya aprovisionado, red interna | Multimedia de producto (original de imagen y canónicos de video), deduplicada por hash; S3 sin exposición pública |
+| imgproxy v4.0.20 | Servicio de plataforma ya aprovisionado (`media.mocter.co`) | Resize/WebP/AVIF al vuelo con HMAC; rechaza solicitudes no firmadas |
 | R2 | Externo | Archivo legal cifrado; backups de OPS-001 |
 
 **Decisión de diseño aprobada (D-30):** las comunidades, el feed y las publicaciones de producto viven en el Router Global porque cruzan celdas; los productos, embeddings, vínculos y cuota de archivos, y la proyección de usuarios del inquilino quedan en la celda. El producto compartido no se mueve: se copia desde la celda de origen a la celda del adoptante por API, sin FK entre celdas (RF-10.8). Aprobada el 2026-10-21.
@@ -97,7 +99,7 @@
 | `chatwoot` | Aprovisionamiento, correlación, token de servicio, reintentos | Chatwoot API |
 | `catalog` | Productos, atributos, embeddings | Celda |
 | `cloning` | Propuestas, adopciones, versiones, sincronización, notificaciones | `catalog`, Router Global |
-| `files` | Catálogo global, SeaweedFS, GC por última referencia | Router Global + celdas |
+| `files` | Catálogo global, SeaweedFS S3 interno + imgproxy, GC por última referencia | Router Global + celdas |
 | `communities` | Organizaciones, membresías, admisión, feed, moderación, métricas | Router Global + celdas |
 | `ui` | i18n, temas, marca blanca, componentes | — |
 | `operations` | Retención, archivo legal, auditoría | Chatwoot API, R2 |
@@ -140,8 +142,8 @@ Todas las tablas llevan las columnas de auditoría de la directiva de base de da
 | `feed_posts` | `id` | `organization_id`, `author_client_id`, `author_user_id`, `body`, `status`, `published_at` |
 | `feed_moderation_events` | `id` | `post_id`, `actor_client_id`, `actor_user_id`, `action`, `reason`, `created_at` |
 | `notifications` | `id` | `client_id`, `type`, `payload`, `read_at` |
-| `media_catalog` | `id` | `content_hash` (bytes canónicos o hash de la URL externa), `storage_pool_id`, `storage_key`, `size_bytes`, `media_kind`, `mime_type`, `source_format`, `original_filename`, `width`, `height`, `duration_ms`, `processing_status`, `storage_type` (`internal`/`external`), `source_url` (https, solo external), `provider` (código del allowlist); sin `client_id` |
-| `media_variants` | `(media_id, variant_code)` | Variantes derivadas (`thumbnail`, `preview`) con ficha propia (`storage_pool_id`, `storage_key`, `size_bytes`, `width`, `height`, `mime_type`); en el Router Global |
+| `media_catalog` | `id` | `content_hash` (bytes almacenados: original de imagen/audio/PDF, canónico de video, o hash de la URL externa), `storage_pool_id`, `storage_key`, `size_bytes`, `media_kind`, `mime_type`, `source_format`, `original_filename`, `width`, `height`, `duration_ms`, `processing_status`, `storage_type` (`internal`/`external`), `source_url` (https, solo external), `provider` (código del allowlist); sin `client_id` |
+| `media_variants` | `(media_id, variant_code)` | Solo variantes que requieren transcodificación (`mp4_compat`) con ficha propia (`storage_pool_id`, `storage_key`, `size_bytes`, `width`, `height`, `mime_type`); en el Router Global. Las variantes de imagen las genera imgproxy al vuelo |
 | `external_media_providers` | `code` | Plataformas admisibles para enlaces externos: `code` (youtube, tiktok, vimeo, instagram, facebook), `labels` JSONB `{es,en}`, `url_pattern`, `embeddable`, `is_admissible`, `sort_order` |
 | `chatwoot_accounts` | `client_id` | `chatwoot_account_id`, `state`, `idempotency_key`, `last_error`, `synced_at` |
 | `vectorization_config` | `attribute_key` | Qué atributos del producto componen el texto que se vectoriza: `attribute_key`, `enabled`, `position`; administrada y versionada por la plataforma (RF-05.7, §9.0) |
@@ -538,40 +540,42 @@ Dos dominios separados (RF-07.9):
 
 | Dominio | Dueño | Almacenamiento | Cuota | Borrado |
 |---|---|---|---|---|
-| Multimedia de producto | Mocter | SeaweedFS, `media_catalog` | Sí, del plan | Por última referencia |
-| Adjuntos de conversación | Chatwoot ActiveStorage | Disco de Chatwoot | No | Con la conversación |
+| Multimedia de producto | Mocter | SeaweedFS S3 interno + imgproxy, `media_catalog` | Sí, del plan | Por última referencia |
+| Adjuntos de conversación | Chatwoot ActiveStorage | Volumen local de Chatwoot (producción actual) o S3-compatible | No | Con la conversación |
+
+**Producción actual (2026-10-27):** Chatwoot usa el volumen local `mocter-chatwoot_storage-chatwoot`; no usa SeaweedFS para adjuntos. Chatwoot soporta ActiveStorage S3-compatible, pero esa capacidad no está activa. El inventario observado de contenedores, redes y volúmenes está en [`docs/reference/production-services.md`](../../reference/production-services.md).
 
 El catálogo global (`media_catalog`) guarda hash, clave, tamaño y tipo; no guarda inquilino (RF-07.5). El vínculo producto–archivo (`product_media`) y la referencia distinta del inquilino (`client_media`) viven en la celda; `client_usage` mantiene el contador autoritativo (RF-07.6). Antes de borrar un archivo, `mocter-admin` consulta todas las celdas que puedan referenciarlo; ninguna celda decide sola (RF-07.7). El borrado es diferido y se ejecuta solo cuando no queda referencia (RF-07.8).
 
 ### 11.1 Formatos admitidos
 
-Restrictivo por tipo de medio; cualquier otro formato se rechaza al subir con mensaje explícito (i18n es/en). La validación es **por contenido** (magic bytes), no por extensión (RF-07.12). Lo que se guarda como canónico es el resultado de la conversión de §11.4, no el archivo subido:
+Restrictivo por tipo de medio; cualquier otro formato se rechaza al subir con mensaje explícito (i18n es/en). La validación es **por contenido** (magic bytes), no por extensión (RF-07.12). Se guarda el **original validado** de imágenes, audio y PDF; el video se convierte a su canónico (WebM).
 
 | `media_kind` | Formatos admitidos | Por qué |
 |---|---|---|
-| imagen | `webp`, `avif`, `png`, `jpeg` | WebP/AVIF óptimos para web; PNG sin pérdida (logos, diagramas); JPEG por compatibilidad. Sin SVG (puede llevar scripts) ni GIF (superado por WebP animado) |
+| imagen | `webp`, `avif`, `png`, `jpeg` | Se conserva el original y imgproxy entrega WebP/AVIF al vuelo; PNG sin pérdida; JPEG por compatibilidad. Sin SVG (scripts) ni GIF (se prefiere WebP animado) |
 | audio | `opus`, `aac`, `mp3` | Opus óptimo calidad/bitrate; AAC nativo de iOS/WhatsApp; MP3 por compatibilidad |
-| video | `mp4` (H.264 + AAC), `webm` (VP9/AV1 + Opus) | MP4 compatibilidad universal; WebM óptimo para web |
+| video | `mp4` (H.264 + AAC), `webm` (VP9/AV1 + Opus) | MP4 compatibilidad universal; WebM óptimo para web; se guarda canónico WebM |
 | pdf | `pdf` | Único formato de documento |
 
 El peso máximo por archivo se define por plataforma: video 100 MB e imágenes 10 MB por defecto (RF-07.16); se valida antes de aceptar la subida. La lista de formatos se revisa cuando cambien los navegadores o los canales de Chatwoot.
 
 ### 11.2 Ficha técnica extendida
 
-`media_catalog` agrega (RF-07.13): `mime_type` (obligatorio, del canónico), `source_format` (formato de ingreso, para diagnóstico), `original_filename` (sanitizado, sin ruta), `width` y `height` (solo imágenes), `duration_ms` (solo audio/video), `processing_status` (`uploaded` → `processing` → `ready` | `failed`; `external` para enlaces) y `processing_error` (nullable). El `content_hash` es el hash de los **bytes canónicos** (post-conversión, §11.4) o de la URL normalizada en el caso externo (§11.5). El `alt_text` vive en `product_media`, no en el catálogo: el mismo archivo puede tener distinto texto alternativo por producto (RF-07.14).
+`media_catalog` agrega (RF-07.13): `mime_type` (obligatorio; original en imagen/audio/PDF, canónico en video), `source_format` (formato de ingreso, para diagnóstico), `original_filename` (sanitizado, sin ruta), `width` y `height` (solo imágenes), `duration_ms` (solo audio/video), `processing_status` (`uploaded` → `processing` → `ready` | `failed`; `external` para enlaces) y `processing_error` (nullable). El `content_hash` es el hash de los **bytes almacenados**: original de imagen/audio/PDF, canónico de video, o URL normalizada en externos (§11.5). El `alt_text` vive en `product_media`, no en el catálogo: el mismo archivo puede tener distinto texto alternativo por producto (RF-07.14).
 
 ### 11.3 Variantes
 
-`media_variants` (Router Global): `media_id`, `variant_code` (`thumbnail`, `preview`, `mp4_compat`, `jpeg_compat`), `storage_pool_id`, `storage_key`, `size_bytes`, `width`, `height`, `mime_type` y auditoría; único `(media_id, variant_code)`. `thumbnail` y `preview` se generan cuando la interfaz del catálogo las necesite; `mp4_compat` y `jpeg_compat` son variantes de compatibilidad de canal que se generan **bajo demanda** y quedan cacheadas (RF-07.15).
+`media_variants` (Router Global) se reserva para variantes que requieren transcodificación, hoy `mp4_compat` (H.264 + AAC) para canales que no aceptan WebM. Las variantes de imagen (`thumbnail`, `preview`, WebP/AVIF a medida, JPEG de compatibilidad) **no se almacenan**: imgproxy las genera al vuelo con una URL firmada (RF-07.14, RF-07.19). `media_variants` conserva `media_id`, `variant_code`, `storage_pool_id`, `storage_key`, `size_bytes`, `width`, `height`, `mime_type` y auditoría; único `(media_id, variant_code)`.
 
-### 11.4 Canonicalización
+### 11.4 Procesamiento y preservación
 
-Flujo: subida → validación de formato por contenido → almacenamiento transitorio del origen → transcodificación **asíncrona** → alta del canónico y sus variantes → descarte del origen al llegar a `ready`. En `failed`, el origen se conserva para diagnóstico y reintento idempotente (RF-07.15).
+Flujo: subida → validación por contenido → almacenamiento del original (imagen/audio/PDF) o transcodificación asíncrona (video) → `ready`. En `failed`, el original se conserva para diagnóstico y reintento idempotente (RF-07.15).
 
-- **Imágenes → `webp` canónico.** Perfil de calidad fijo para que la conversión sea determinista (la misma entrada produce los mismos bytes y habilita la deduplicación); transparencia y animación preservadas. Dos inquilinos que suben el mismo JPEG comparten el mismo WebP canónico.
-- **Video → `webm` canónico** (VP9 + Opus). La transcodificación de video es costosa en CPU: corre en un worker asíncrono con reintentos idempotentes. WhatsApp no acepta WebM, por eso la variante `mp4_compat` (H.264 + AAC) se genera bajo demanda cuando un canal la requiere y queda cacheada.
-- **Audio:** sin transcodificación; se guarda el formato admitido de ingreso.
-- **Entrega por canal:** la capa de entrega elige el canónico o la variante compatible según el canal; si el laboratorio confirma que algún canal no acepta WebP, se agrega la variante `jpeg_compat` bajo demanda.
+- **Imágenes:** se guarda el original validado sin recodificación. La optimización (resize, WebP/AVIF, calidad) se hace al vuelo con imgproxy; no hay `webp` canónico almacenado ni pérdida irreversible. Dos inquilinos que suben el mismo original comparten el mismo objeto por hash.
+- **Video → `webm` canónico** (VP9 + Opus). La transcodificación es costosa: worker asíncrono con reintentos idempotentes. `mp4_compat` se genera bajo demanda para WhatsApp/canales que no aceptan WebM.
+- **Audio y PDF:** sin transcodificación; se guarda el original admitido.
+- **Entrega por canal:** la capa de entrega usa imgproxy para imágenes y el canónico/variante para video; nunca expone el bucket S3.
 - Los estados de procesamiento se muestran al inquilino («procesando…») según la directiva de i18n.
 
 ### 11.5 Enlaces externos
@@ -579,10 +583,23 @@ Flujo: subida → validación de formato por contenido → almacenamiento transi
 El inquilino puede definir un enlace en lugar de cargar un archivo (RF-07.17): **no consume cuota** porque `size_bytes` queda nulo y `client_media.size_bytes` registra 0 para ese vínculo.
 
 - **Video externo (embed):** solo plataformas admitidas del catálogo `external_media_providers` (YouTube, TikTok, Vimeo, Instagram, Facebook). `provider` guarda el código de la plataforma; la UI lo embebe (iframe del proveedor) y el bot envía el enlace por el canal. Sin transcodificación ni almacenamiento.
-- **Imagen externa (importación perezosa):** se guarda la URL y la UI y los feeds la muestran por enlace; al **entregarla por un canal** (WhatsApp/Chatwoot), el sistema la descarga una única vez, valida por contenido, la canonicaliza a `webp` y la promueve a `internal`; a partir de ahí consume cuota y deja de depender del origen. Si la descarga falla, el vínculo queda `failed` con aviso visible para el inquilino.
+- **Imagen externa (importación perezosa):** se guarda la URL y la UI y los feeds la muestran por enlace; al **entregarla por un canal** (WhatsApp/Chatwoot), el sistema la descarga una única vez, valida por contenido, la almacena como original y la promueve a `internal`; desde entonces se sirve vía imgproxy y consume cuota. Si la descarga falla, el vínculo queda `failed` con aviso visible.
 - **Seguridad (RF-07.18):** solo `https`, sin credenciales en la URL, sin IPs privadas ni loopback en el destino; la descarga usa un guard SSRF y timeout. El catálogo de plataformas lo gobierna la plataforma.
 - **Deduplicación:** para externos, `content_hash = SHA-256(url normalizada)` con índice único parcial (`WHERE storage_type = 'external'`); el mismo enlace no se registra dos veces.
 - **GC:** un enlace externo no tiene objeto que borrar; el desvínculo elimina solo las filas.
+
+### 11.6 Entrega con imgproxy y URLs firmadas
+
+- **Servicios de plataforma:** SeaweedFS v4.51 (S3 interno) e imgproxy v4.0.20 (`media.mocter.co`) ya están aprovisionados en desarrollo, pruebas y producción; son las versiones canónicas y su actualización es responsabilidad de la plataforma. ADM-001 no define su despliegue, contenedores, compose ni variables de entorno; solo su contrato de uso.
+- **Bucket y credenciales:** el bucket `media` y las credenciales S3 de mínimo privilegio los provee la plataforma. El backend las recibe desde el gestor de secretos; el navegador nunca las recibe.
+- **Firma:** el backend genera URLs con HMAC-SHA256 usando el par key/salt provisto por la plataforma. La firma cubre el path completo después de la firma: opciones, `plain/`, la fuente `s3://media/<key>` y el formato de salida (`@webp`/`@avif`). Solo se firman fuentes de ese bucket; no se habilitan URLs HTTP(S) arbitrarias. Sin firma válida → 403, sin invocar libvips.
+- **Transformaciones:** la plataforma debe aplicar allowlist de opciones y tiene estos límites vigentes: bucket `media`, origen máximo 100 MB, dimensión resultante máxima 4096 px, cola de 100 solicitudes (429 al llenarse) y máximo 1 frame de animación. El backend solo firma resize/fit, formato, calidad, gravity y `expires`; no puede habilitar opciones fuera de esa lista. El límite de ingreso de imágenes sigue siendo 10 MB: el límite de 100 MB de imgproxy no relaja la validación de producto. Con 1 frame, una animación se entrega como primer frame; si el producto necesita animación, se sube el límite y se valida.
+- **Caché:** `Cache-Control: public, max-age=31536000, immutable` para imágenes de producto; la URL firmada cambia cuando cambian las opciones. La caché persistente y su TTL son responsabilidad de la plataforma; en v1 la caché efectiva es la del navegador (y un CDN si se agrega). No se usa para adjuntos privados de conversación, que siguen en Chatwoot.
+- **Caducidad:** la plataforma admite la opción firmada `expires`; una URL vencida responde 404. Las imágenes públicas de producto pueden usar firma de larga duración; si en el futuro se sirven medios privados fuera de Chatwoot, se firma con `expires` corto, sin `immutable` y con control de autorización en el backend. La firma por sí sola valida integridad, no identidad.
+- **Claves:** las provee y rota la plataforma. El backend consume el par vigente; el par anterior se conserva al menos hasta que las URLs emitidas con él expiren o se regeneren, según la ventana que defina OPS-001.
+- **No expuesto:** SeaweedFS no publica S3 en Internet; el único endpoint público de medios es `media.mocter.co`.
+
+**Contexto de producción (2026-10-27):** el stack `mocter-media` corre con SeaweedFS en `media_network` y `mocter-admin-prod_backend`, e imgproxy en `media_network` y `traefik_network`. Chatwoot corre en `mocter-chatwoot` y sus adjuntos siguen en volumen local. Ver el inventario observado en [`docs/reference/production-services.md`](../../reference/production-services.md).
 
 **GC en dos fases:** marcar el objeto como candidato, verificar referencias en todas las celdas y eliminar. Si una celda no responde, el objeto no se borra.
 
@@ -600,7 +617,9 @@ El plan define productos, `max_tenant_agents`, imágenes, audios, videos, PDF, r
 
 En venta manual, `platform_sales` asigna el plan del catálogo, registra `client_plans` con `source = 'manual'` y actualiza `clients.plan_id`. En autoservicio, el `tenant_owner` elige del catálogo y el plan free es el valor por defecto; el cambio queda auditado con `source = 'self_service'` (RF-04.7). Cada cambio de plan u override incrementa `clients.quota_version`; la celda refresca el tope cuando ve una versión distinta.
 
-El almacenamiento facturado es la suma de `client_media.size_bytes` distintos por inquilino; `client_usage` mantiene el contador por dimensión y el físico es el de objetos distintos en `media_catalog`/SeaweedFS (RF-04.4).
+El almacenamiento facturado es la suma de `client_media.size_bytes` de los bytes almacenados (original de imagen/audio/PDF o canónico de video) distintos por inquilino; `client_usage` mantiene el contador por dimensión y el físico es el de objetos distintos en `media_catalog`/SeaweedFS (RF-04.4). Las variantes de imagen generadas por imgproxy no consumen cuota porque no se almacenan.
+
+> **Ajuste de planes:** al conservar el original, una imagen PNG/JPEG puede ocupar más que el WebP canónico anterior. Los valores de `plan_limits` para almacenamiento se recalibran con una muestra real antes de publicar los planes; la cuota se mide sobre bytes almacenados, no sobre una estimación de conversión.
 
 ### 12.2 Retención de chats
 

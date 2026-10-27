@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | DAT-001 |
-| Versión | 1.1 |
+| Versión | 1.2 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 · actualizado 2026-10-25 |
+| Fecha | 2026-10-20 · actualizado 2026-10-27 |
 | Depende de | [`requirements.md`](requirements.md) |
 | Relacionado | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 
@@ -106,7 +106,7 @@ Todas las tablas siguen la directiva: nombre plural, PK `id`, FK `<entidad>_id`,
 | `plans` | Catálogo de planes | `id` (uuidv7), `code`, `name` JSONB `{es,en}`, `description` JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles` JSONB, `price_monthly_cents`, `price_annual_cents`, `currency`, `marketing_features` JSONB `{es,en}`, `created_at`, `updated_at` |
 | `plan_limits` | Topes por plan | `id`, `plan_id`, `dimension`, `value`, `created_at` |
 | `client_plan_overrides` | Topes negociados | `id`, `client_id`, `dimension`, `value`, `valid_from`, `valid_to`, `negotiated_by`, `updated_by`, `created_at`, `updated_at` |
-| `media_catalog` | Catálogo global de archivos | `id`, `content_hash`, `storage_pool_id`, `storage_key`, `size_bytes`, `media_kind`, `mime_type`, `source_format`, `original_filename`, `width`, `height`, `duration_ms`, `processing_status`, `storage_type`, `source_url`, `provider`, `created_at` |
+| `media_catalog` | Catálogo global de archivos | `id`, `content_hash` (bytes almacenados o URL externa), `storage_pool_id`, `storage_key`, `size_bytes`, `media_kind`, `mime_type`, `source_format`, `original_filename`, `width`, `height`, `duration_ms`, `processing_status`, `storage_type`, `source_url`, `provider`, `created_at` |
 | `chatwoot_accounts` | Correlación con Chatwoot | `id`, `client_id`, `chatwoot_account_id`, `state`, `idempotency_key`, `last_error`, `synced_at` |
 | `organizations` | Comunidades u organizaciones | `id`, `name`, `created_at` |
 | `organization_members` | Membresías | `id`, `organization_id`, `client_id`, `role`, `created_at` |
@@ -116,7 +116,9 @@ Reglas:
 - `clients.id` es la PK del inquilino y se expone como `client_id` en las tablas hijas. Las tablas hijas no generan un `client_id` nuevo: copian el valor de `clients.id`. En el plano de control es una FK física; en las celdas es una clave lógica porque no hay FK entre bases. En tablas particionadas, la PK es `(client_id, id)`; en las no particionadas, la PK es `id`.
 - `client_routing.client_id` es único.
 - `chatwoot_accounts.client_id` es único; `chatwoot_accounts.chatwoot_account_id` es único.
-- `media_catalog` tiene unicidad por `(content_hash, storage_pool_id)` y no tiene `client_id` ni atributos de negocio. `storage_pool_id` referencia un pool de almacenamiento (SeaweedFS) definido en la implementación; su catálogo no se detalla en esta spec.
+- `media_catalog` tiene unicidad por `(content_hash, storage_pool_id)` y no tiene `client_id` ni atributos de negocio. `content_hash` corresponde a los bytes almacenados: original de imagen/audio/PDF, canónico de video o URL normalizada en externos. `storage_pool_id` referencia un pool de almacenamiento (SeaweedFS) definido en la implementación; su catálogo no se detalla en esta spec.
+- `media_catalog` no guarda URLs públicas de entrega. La capa de aplicación resuelve `storage_key` a una URL firmada de imgproxy; SeaweedFS v4.51 e imgproxy v4.0.20 son servicios de plataforma ya aprovisionados. SeaweedFS S3 permanece en la red interna y no recibe tráfico del navegador. Las variantes de imagen se generan al vuelo y no se registran en `media_variants`.
+- **Producción actual (2026-10-27):** los adjuntos de Chatwoot están en el volumen local de Chatwoot, no en `media_catalog` ni en SeaweedFS. Si se activa ActiveStorage S3-compatible, el bucket debe ser separado y quedar fuera de la cuota de producto. Inventario observado: [`docs/reference/production-services.md`](../../reference/production-services.md).
 - `plan_limits` tiene una fila por `(plan_id, dimension)`.
 - `client_plan_overrides` tiene vigencia y auditoría (`negotiated_by`, `updated_by`); el tope efectivo se calcula en una sola función de lectura.
 - La retención mínima legal se valida en la capa de servicio contra `legal_floor_days`; un override no puede reducirla.

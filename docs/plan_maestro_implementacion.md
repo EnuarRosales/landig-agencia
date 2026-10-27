@@ -13,12 +13,14 @@ Plan estratégico de codificación modular dividido en **5 fases secuenciales**,
 El sistema Mocter opera en contenedores **Docker con Docker Compose**, aplicando una separación clara por ambiente:
 
 1. **Desarrollo Local:**
-   - **No se utiliza Traefik en desarrollo local.** Los servicios corren mediante `docker-compose.yml` y publican puertos solo en `127.0.0.1` (loopback), nunca en `0.0.0.0`: `apps/web` en `:3000`, PostgreSQL `:5432`, Redis `:6379`, SeaweedFS `:8333`/`:8888` y Chatwoot `:3001`.
+   - **No se utiliza Traefik en desarrollo local.** La aplicación corre mediante `docker-compose.yml` y publica solo en `127.0.0.1` (loopback), nunca en `0.0.0.0`. Los servicios de plataforma ya aprovisionados se consumen en las direcciones que defina el entorno local; como referencia: SeaweedFS `:8333`/`:8888`, imgproxy `:8080` y Chatwoot `:3001`.
 2. **Ambientes de Pruebas (Staging) y Producción:**
    - **Traefik v2.11** actúa como reverse proxy único para todo el tráfico público (HTTP, HTTPS, WebSockets).
    - En staging/producción, ningún contenedor publica puertos directamente en el host (cumplimiento estricto de `R-10`); en desarrollo local solo se publican en `127.0.0.1`.
    - **Chatwoot (`chatwoot/chatwoot:v4.19.1`):** Corre en contenedor administrado por Traefik, accediendo a PostgreSQL 18 con pgvector y Redis 7+ en el plano de soporte (`CHW-001`).
-   - **SeaweedFS (`seaweedfs/seaweedfs:4.49`):** Contenedor gestionado por Traefik para la gestión y deduplicación de archivos multimedia de inquilinos (`ADM-001`, `OPS-001`).
+   - **SeaweedFS v4.51:** servicio de plataforma **ya aprovisionado** en desarrollo, pruebas y producción; S3 **interno**, sin ruta pública, para la gestión y deduplicación de archivos multimedia de inquilinos (`ADM-001`, `OPS-001`).
+   - **imgproxy v4.0.20:** servicio de plataforma **ya aprovisionado** en `media.mocter.co`; entrega imágenes con resize/WebP/AVIF y URLs firmadas HMAC. SeaweedFS no se expone.
+   - **Chatwoot, SeaweedFS e imgproxy no se despliegan en este plan:** los contenedores ya existen en los tres ambientes. La documentación define cómo se consumen, no cómo se provisionan. El estado observado de producción está en [`docs/reference/production-services.md`](reference/production-services.md).
    - **RabbitMQ (`rabbitmq:3.13-management`):** Cola interna para notificaciones (`NTF-001`), sin puertos públicos ni router de Traefik; credenciales en secrets y healthcheck para OPS-001.
    - **Mocter Web (`ghcr.io/enuarrosales/mocter-web`):** Contenedor único para la aplicación Next.js 16 App Router y el migrador Drizzle en modo standalone sobre Node.js 24 Alpine.
 
@@ -28,12 +30,14 @@ El sistema Mocter opera en contenedores **Docker con Docker Compose**, aplicando
 
 ```mermaid
 flowchart TD
-    subgraph INFRA ["Infraestructura: Docker Compose"]
+    subgraph INFRA ["Servicios de plataforma ya aprovisionados"]
         INFRA_TRAEFIK["Traefik (Reverse Proxy en Pruebas y Prod)"]
-        INFRA_CHW["Chatwoot v4.19.1 (Contenedor)"]
-        INFRA_FS["SeaweedFS 4.49 (Contenedor)"]
+        INFRA_CHW["Chatwoot v4.19.1 (servicio de plataforma)"]
+        INFRA_FS["SeaweedFS v4.51 (servicio de plataforma, S3 interno)"]
+        INFRA_IMG["imgproxy v4.0.20 (servicio de plataforma, media.mocter.co)"]
         INFRA_TRAEFIK --> INFRA_CHW
-        INFRA_TRAEFIK --> INFRA_FS
+        INFRA_TRAEFIK --> INFRA_IMG
+        INFRA_IMG --> INFRA_FS
     end
 
     subgraph FASE1 ["Fase 1: Cimientos y entrada pública"]
@@ -47,7 +51,7 @@ flowchart TD
     end
 
     subgraph FASE2 ["Fase 2: Chatwoot base, núcleo administrativo y notificaciones"]
-        F2_CHW["CHW-001 base: contenedor, API, account/inbox"]
+        F2_CHW["CHW-001 base: integración, API, account/inbox"]
         F2_ADM["ADM-001: onboarding plan_code, tenant, roles, producto demo, webchat"]
         F2_DSN["DSN-001: componentes y vistas base"]
         F2_NTF["NTF-001: remitentes, plantillas, outbox y admin"]
@@ -132,7 +136,7 @@ flowchart TD
 > **Objetivo:** Aprovisionar Chatwoot y construir `mocter-admin`: onboarding con `plan_code`, creación de inquilino, roles, producto demo, multimedia y webchat activo.
 
 #### 2.1 Chatwoot base (`CHW-001`)
-- Contenedor `chatwoot/chatwoot:v4.19.1` bajo Traefik.
+- Servicio Chatwoot v4.19.1 ya aprovisionado; la fase integra su API y SSO.
 - Adaptador de API: creación de cuenta, inbox webchat y token de servicio por inquilino.
 - Correlación `client_id` ↔ `chatwoot_account_id` con idempotencia y reintentos.
 - El iframe same-site y el SSO se completan en Fase 3; el webchat puede operar sin la bandeja embebida.
@@ -144,7 +148,7 @@ flowchart TD
 #### 2.3 Consola administrativa y onboarding (`ADM-001`)
 - Layout, navegación y RBAC `D-31`.
 - Onboarding: recibe `plan_code`, resuelve `plans.code` → `plans.id`, crea `client`, `tenant_owner`, asigna plan y enruta a celda.
-- Producto demo, catálogo multimedia en SeaweedFS 4.49, deduplicación y cuota.
+- Producto demo, catálogo multimedia usando SeaweedFS v4.51 + imgproxy v4.0.20 ya aprovisionados, deduplicación, cuota y entrega con URLs firmadas.
 - Pre-activación del webchat; `lifecycle_status` del inquilino.
 - Si el usuario abandona, conserva avance y `plan_code` para retomar sin inquilino vacío.
 - Bandeja `/admin/leads` para `platform_sales` con la tabla `leads` y gestión de estados/notas/asignación (ADM-001 RF-16).
@@ -160,6 +164,7 @@ flowchart TD
 > - Onboarding funcional de punta a punta: usuario → inquilino → plan UUID → webchat activo.
 > - Cuenta e inbox de Chatwoot creados y correlacionados; reintento idempotente.
 > - Producto demo, multimedia deduplicada y RBAC/auditoría.
+> - imgproxy sirve imágenes solo con URL firmada y bucket `media`; el gateway S3 responde 403 sin credenciales y no se expone a Internet.
 > - Correo de bienvenida enviado una sola vez; plantillas/remitentes administrables y entrega registrada.
 > - **RabbitMQ caído no bloquea el onboarding**: el alta termina, el outbox queda pendiente y se publica al recuperarse.
 > - Objetivo de 5 minutos medido y reportado; **no es un SLA duro** (ADM-001 RF-14.8).
@@ -231,7 +236,7 @@ flowchart TD
 - Emite `referral.registered` a NTF-001.
 
 #### 5.4 Operación (`OPS-001`)
-- Backups R2 (full semanal + diff diario), SeaweedFS, logs 14 días, sin WORM, operador único.
+- Backups R2 (full semanal + diff diario), SeaweedFS, adjuntos de Chatwoot (volumen local o bucket), logs 14 días, sin WORM, operador único.
 
 #### 5.5 Upgrade de landing (`LND-001`)
 - Vista de suscripción/upgrade en `mocter-admin` enlazada a BILL-001.
@@ -241,7 +246,7 @@ flowchart TD
 > - Webhooks Wompi/Stripe, comprobante y crédito aplicado.
 > - REP P95 ≤ 800 ms y exportaciones válidas.
 > - REF: crédito único, vencimiento y toggle.
-> - OPS: restore de PostgreSQL y SeaweedFS probado.
+> - OPS: restore de PostgreSQL, SeaweedFS y adjuntos de Chatwoot probado.
 
 ---
 
