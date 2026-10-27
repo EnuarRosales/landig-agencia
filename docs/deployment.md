@@ -97,7 +97,8 @@ bash -n /opt/mocter-admin/bin/deploy.sh && echo "sintaxis deploy.sh: OK"
 Generar una contraseña **hexadecimal** (URL-safe):
 
 ```bash
-openssl rand -hex 24
+openssl rand -hex 24 # POSTGRES_PASSWORD
+openssl rand -hex 32 # REDIS_PASSWORD (usar un valor distinto por entorno)
 ```
 
 Escribir el archivo con el valor generado:
@@ -107,6 +108,7 @@ cat > /opt/mocter-admin/.env <<'EOF'
 POSTGRES_USER=mocter_admin
 POSTGRES_PASSWORD=<PEGAR_AQUI_EL_HEX>
 POSTGRES_DB=mocter_prod
+REDIS_PASSWORD=<PEGAR_AQUI_OTRO_HEX>
 DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pg-portal:5432/${POSTGRES_DB}
 TAG=v1.0.0
 EOF
@@ -119,6 +121,7 @@ Tres reglas que evitan fallos silenciosos:
 1. **Las comillas de `<<'EOF'` son obligatorias.** Sin ellas, el shell expande `${POSTGRES_USER}` a vacío al escribir el archivo y `DATABASE_URL` queda rota.
 2. **Usar hex, no base64.** Base64 puede generar `+`, `/` y `=`, que rompen la URL de conexión.
 3. **La interpolación dentro del `.env` funciona** en Docker Compose v2 (verificado con `docker compose config`). No hace falta repetir el password dentro de `DATABASE_URL`.
+4. **`REDIS_PASSWORD` es independiente** del password PostgreSQL y del Redis de Chatwoot. `redis-control` solo pertenece a la red interna, no publica puertos y no conserva claves en un volumen; Compose construye `REDIS_URL` para `web-portal`.
 
 ### 3.5 Configuración del orquestador (`deploy.conf`)
 

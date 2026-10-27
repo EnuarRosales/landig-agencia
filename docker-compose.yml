@@ -1,12 +1,13 @@
 # Uso: docker compose up --build
 #
 # Requisitos:
-# - Archivo .env configurado con: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_PORT, DATABASE_URL.
+# - Archivo .env configurado con: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, POSTGRES_PORT, DATABASE_URL, REDIS_PASSWORD.
 #
 # Servicios:
 # - pg-portal: Motor PostgreSQL 18+ persistente en el volumen con nombre 'pgdata-portal' e inicialización Drizzle.
 # - web-portal: Contenedor Node 24 con montaje bind del espacio de trabajo (.:/app). Las dependencias
 #   (node_modules) y la compilación (.next) se aíslan en volúmenes Docker para proteger el host.
+# - redis-control: Redis privado para el plano de control; no publica puertos ni persiste datos.
 
 name: mocter-core
 
@@ -29,12 +30,31 @@ services:
       retries: 10
     restart: unless-stopped
 
+  redis-control:
+    image: redis:8.8.4-alpine
+    command:
+      - sh
+      - -ec
+      - |
+        umask 077
+        printf 'requirepass %s\nsave ""\nappendonly no\n' "$$REDIS_PASSWORD" > /tmp/redis.conf
+        exec redis-server /tmp/redis.conf
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"
+    healthcheck:
+      test: [ "CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   web-portal:
     image: node:24-alpine
     working_dir: /app
     command: sh -c "corepack enable && corepack pnpm install && node packages/domain/scripts/migrate.mjs && corepack pnpm dev"
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-control:6379/0"
       # File watching over a Windows bind mount requires polling.
       WATCHPACK_POLLING: "true"
     ports:
@@ -48,6 +68,8 @@ services:
       - domain-node-modules:/app/packages/domain/node_modules
     depends_on:
       pg-portal:
+        condition: service_healthy
+      redis-control:
         condition: service_healthy
     restart: unless-stopped
 

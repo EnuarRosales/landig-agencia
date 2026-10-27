@@ -12,7 +12,7 @@
 # Operación manual:
 #   cd /opt/mocter-admin && docker compose -f compose.yml --env-file .env ps
 #
-# .env requerido: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DATABASE_URL, TAG
+# .env requerido: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, DATABASE_URL, REDIS_PASSWORD, TAG
 
 name: mocter-admin-prod
 
@@ -33,6 +33,25 @@ services:
       timeout: 3s
       retries: 10
 
+  redis-control:
+    image: redis:8.8.4-alpine
+    command:
+      - sh
+      - -ec
+      - |
+        umask 077
+        printf 'requirepass %s\nsave ""\nappendonly no\n' "$$REDIS_PASSWORD" > /tmp/redis.conf
+        exec redis-server /tmp/redis.conf
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}"
+    networks: [ backend ]
+    healthcheck:
+      test: [ "CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG" ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   migrate:
     image: ghcr.io/enuarrosales/mocter-web:${TAG:-temp}
     profiles: [ "migrate" ]
@@ -51,6 +70,7 @@ services:
     image: ghcr.io/enuarrosales/mocter-web:${TAG:-latest}
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-control:6379/0"
     networks: [ backend, traefik_network ]
     labels:
       - "traefik.enable=true"
@@ -74,6 +94,8 @@ services:
       start_interval: 2s
     depends_on:
       pg-portal:
+        condition: service_healthy
+      redis-control:
         condition: service_healthy
 
 networks:
