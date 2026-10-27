@@ -23,7 +23,7 @@
 
 ## Fase 1 · Capa de Datos y Consultas de Planes
 
-- [ ] **T-01 · Consolidar la tabla plans canónica en packages/domain**
+- [x] **T-01 · Consolidar la tabla plans canónica en packages/domain**
   - Incorporar `id uuid`, `code` único, `name`/`description` JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles`, `price_monthly_cents`, `price_annual_cents`, `currency` y `marketing_features` JSONB `{es:[],en:[]}`.
   - Verificación: `drizzle-kit check` pasa; `plans.code` es único; las FKs `plan_id` son uuid.
 

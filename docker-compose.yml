@@ -8,6 +8,7 @@
 # - web-portal: Contenedor Node 24 con montaje bind del espacio de trabajo (.:/app). Las dependencias
 #   (node_modules) y la compilación (.next) se aíslan en volúmenes Docker para proteger el host.
 # - redis-control: Redis privado para el plano de control; no publica puertos ni persiste datos.
+# - admin-portal: Shell de apps/admin (ADM-001 T-02) en el puerto 3003 (3002 lo usa otro stack); mismo patrón que web-portal con volúmenes propios.
 
 name: mocter-core
 
@@ -73,9 +74,40 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  admin-portal:
+    image: node:24-alpine
+    working_dir: /app
+    command: sh -c "corepack enable && corepack pnpm install && corepack pnpm --filter @mocter/admin dev"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-control:6379/0"
+      # File watching over a Windows bind mount requires polling.
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "3003:3000"
+    volumes:
+      - .:/app
+      # Named volumes keep container-installed node_modules and .next out of the host.
+      - admin-root-node-modules:/app/node_modules
+      - admin-node-modules:/app/apps/admin/node_modules
+      - admin-next:/app/apps/admin/.next
+      - admin-web-node-modules:/app/apps/web/node_modules
+      - admin-domain-node-modules:/app/packages/domain/node_modules
+    depends_on:
+      pg-portal:
+        condition: service_healthy
+      redis-control:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pgdata-portal:
   root-node-modules:
   web-node-modules:
   web-next:
   domain-node-modules:
+  admin-root-node-modules:
+  admin-node-modules:
+  admin-next:
+  admin-web-node-modules:
+  admin-domain-node-modules:
