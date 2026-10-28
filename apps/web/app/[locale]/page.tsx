@@ -14,6 +14,8 @@ import { WhatsappFab } from "@/components/sections/whatsapp-fab";
 import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
 import { getPublicPlans, type Plan } from "@mocter/domain";
 
+export const instant = false;
+
 export default async function LandingPage() {
   let publicPlans: Plan[] = [];
   try {
