@@ -27,6 +27,8 @@ describe("AUTH-001 T-08 · Servicio de Registro Nativo (AuthService)", () => {
       invalidatePendingEmailVerificationTokens: vi.fn(),
       createPasswordResetToken: vi.fn(),
       invalidatePendingPasswordResetTokens: vi.fn(),
+      findEmailVerificationTokenByHash: vi.fn(),
+      consumeEmailVerificationToken: vi.fn(),
     };
 
     mockMailer = {
@@ -315,5 +317,218 @@ describe("AUTH-001 T-08 · Servicio de Registro Nativo (AuthService)", () => {
       "carlos@empresa.com",
       "Carlos Activo",
     );
+  });
+});
+
+describe("AUTH-001 T-09 · Verificación de correo (request y confirm)", () => {
+  let mockAuthRepo: IAuthRepository;
+  let mockMailer: IAuthMailer;
+  let authService: AuthService;
+
+  beforeEach(() => {
+    mockAuthRepo = {
+      findUserByEmail: vi.fn(),
+      findUserById: vi.fn(),
+      createUserWithConsent: vi.fn(),
+      createEmailVerificationToken: vi.fn(),
+      invalidatePendingEmailVerificationTokens: vi.fn(),
+      createPasswordResetToken: vi.fn(),
+      invalidatePendingPasswordResetTokens: vi.fn(),
+      findEmailVerificationTokenByHash: vi.fn(),
+      consumeEmailVerificationToken: vi.fn(),
+    };
+
+    mockMailer = {
+      sendVerificationEmail: vi.fn(),
+      sendPasswordSetupEmail: vi.fn(),
+      sendAccountAlreadyExistsEmail: vi.fn(),
+    };
+
+    authService = new AuthService(mockAuthRepo, mockMailer);
+  });
+
+  describe("requestEmailVerification", () => {
+    it("reenvía token invalidando el anterior si la cuenta existe y no está verificada", async () => {
+      const unverifiedUser: User = {
+        id: "uuid-unverified",
+        email: "carlos@empresa.com",
+        emailVerifiedAt: null,
+        passwordHash: "$argon2id$...",
+        passwordUpdatedAt: new Date(),
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpEnabledAt: null,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: null,
+        identityLocation: "router",
+        activeClientId: null,
+        status: "active",
+        displayName: "Carlos",
+        avatarUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(unverifiedUser);
+
+      const result = await authService.requestEmailVerification("carlos@empresa.com");
+
+      expect(result.ok).toBe(true);
+      expect(mockAuthRepo.invalidatePendingEmailVerificationTokens).toHaveBeenCalledWith(
+        "uuid-unverified",
+      );
+      expect(mockAuthRepo.createEmailVerificationToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "uuid-unverified",
+        }),
+      );
+      expect(mockMailer.sendVerificationEmail).toHaveBeenCalledWith(
+        "carlos@empresa.com",
+        expect.any(String),
+        "Carlos",
+      );
+    });
+
+    it("responde con mensaje genérico y no despacha correo si la cuenta no existe", async () => {
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(null);
+
+      const result = await authService.requestEmailVerification("desconocido@empresa.com");
+
+      expect(result.ok).toBe(true);
+      expect(mockAuthRepo.createEmailVerificationToken).not.toHaveBeenCalled();
+      expect(mockMailer.sendVerificationEmail).not.toHaveBeenCalled();
+    });
+
+    it("rechaza formato de correo inválido", async () => {
+      const result = await authService.requestEmailVerification("correo-invalido");
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("VALIDATION_ERROR");
+      }
+    });
+  });
+
+  describe("confirmEmailVerification", () => {
+    it("verifica el correo con éxito y consume el token", async () => {
+      const rawToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+      const validTokenRecord: EmailVerificationToken = {
+        id: "uuid-token-1",
+        userId: "uuid-user-1",
+        tokenHash: Buffer.alloc(32),
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // Válido por 10 min más
+        consumedAt: null,
+        requestedIpHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      const updatedUser: User = {
+        id: "uuid-user-1",
+        email: "carlos@empresa.com",
+        emailVerifiedAt: new Date(),
+        passwordHash: "$argon2id$...",
+        passwordUpdatedAt: new Date(),
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpEnabledAt: null,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: null,
+        identityLocation: "router",
+        activeClientId: null,
+        status: "active",
+        displayName: "Carlos",
+        avatarUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      vi.mocked(mockAuthRepo.findEmailVerificationTokenByHash).mockResolvedValue(validTokenRecord);
+      vi.mocked(mockAuthRepo.consumeEmailVerificationToken).mockResolvedValue(updatedUser);
+
+      const result = await authService.confirmEmailVerification(rawToken);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.email).toBe("carlos@empresa.com");
+      }
+
+      expect(mockAuthRepo.consumeEmailVerificationToken).toHaveBeenCalledWith(
+        "uuid-token-1",
+        "uuid-user-1",
+      );
+    });
+
+    it("falla si el token no existe", async () => {
+      vi.mocked(mockAuthRepo.findEmailVerificationTokenByHash).mockResolvedValue(null);
+
+      const result = await authService.confirmEmailVerification("token-inexistente");
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("INVALID_TOKEN");
+      }
+      expect(mockAuthRepo.consumeEmailVerificationToken).not.toHaveBeenCalled();
+    });
+
+    it("falla si el token ya fue consumido", async () => {
+      const consumedToken: EmailVerificationToken = {
+        id: "uuid-token-1",
+        userId: "uuid-user-1",
+        tokenHash: Buffer.alloc(32),
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        consumedAt: new Date(), // Ya consumido
+        requestedIpHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      vi.mocked(mockAuthRepo.findEmailVerificationTokenByHash).mockResolvedValue(consumedToken);
+
+      const result = await authService.confirmEmailVerification("token-ya-usado");
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("TOKEN_ALREADY_USED");
+      }
+      expect(mockAuthRepo.consumeEmailVerificationToken).not.toHaveBeenCalled();
+    });
+
+    it("falla si el token ha expirado", async () => {
+      const expiredToken: EmailVerificationToken = {
+        id: "uuid-token-1",
+        userId: "uuid-user-1",
+        tokenHash: Buffer.alloc(32),
+        expiresAt: new Date(Date.now() - 60 * 1000), // Expiró hace 1 minuto
+        consumedAt: null,
+        requestedIpHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      vi.mocked(mockAuthRepo.findEmailVerificationTokenByHash).mockResolvedValue(expiredToken);
+
+      const result = await authService.confirmEmailVerification("token-vencido");
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("TOKEN_EXPIRED");
+      }
+      expect(mockAuthRepo.consumeEmailVerificationToken).not.toHaveBeenCalled();
+    });
   });
 });

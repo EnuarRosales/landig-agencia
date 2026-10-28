@@ -261,6 +261,79 @@ export class DrizzleAuthRepository implements IAuthRepository {
       throw error;
     }
   }
+
+  /**
+   * Busca un token de verificación de correo por su hash SHA-256 binario.
+   */
+  async findEmailVerificationTokenByHash(
+    tokenHash: Buffer,
+  ): Promise<EmailVerificationToken | null> {
+    try {
+      const rows = await this.db
+        .select()
+        .from(emailVerificationTokens)
+        .where(eq(emailVerificationTokens.tokenHash, tokenHash))
+        .limit(1);
+
+      return rows[0] || null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(
+        `[AuthRepository.findEmailVerificationTokenByHash Failed] ${msg}`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Consume un token de verificación y marca email_verified_at en users en una sola transacción atómica.
+   */
+  async consumeEmailVerificationToken(
+    tokenId: string,
+    userId: string,
+  ): Promise<User> {
+    try {
+      return await this.db.transaction(async (tx) => {
+        const now = new Date();
+
+        await tx
+          .update(emailVerificationTokens)
+          .set({
+            consumedAt: now,
+            updatedAt: now,
+            updatedBy: "system",
+          })
+          .where(eq(emailVerificationTokens.id, tokenId));
+
+        const [updatedUser] = await tx
+          .update(users)
+          .set({
+            emailVerifiedAt: now,
+            updatedAt: now,
+            updatedBy: "self",
+          })
+          .where(eq(users.id, userId))
+          .returning();
+
+        if (!updatedUser) {
+          throw new Error(
+            "DrizzleAuthRepository: user update returned no rows upon email verification",
+          );
+        }
+
+        return updatedUser;
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(
+        `[AuthRepository.consumeEmailVerificationToken Failed] ${msg}`,
+        error,
+        { tokenId, userId },
+      );
+      throw error;
+    }
+  }
 }
 
 /** Instancia singleton por defecto de {@link DrizzleAuthRepository}. */

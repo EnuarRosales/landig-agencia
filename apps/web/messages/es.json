@@ -309,6 +309,17 @@
       "hasAccount": "¿Ya tienes una cuenta?",
       "loginLink": "Inicia sesión",
       "backToHome": "Volver al inicio"
+    },
+    "verifyEmail": {
+      "title": "Verifica tu correo electrónico",
+      "subtitle": "Confirma tu dirección para activar el acceso a tu cuenta",
+      "missingToken": "No se proporcionó ningún token de verificación en el enlace.",
+      "confirmButton": "Confirmar verificación",
+      "confirming": "Verificando...",
+      "successTitle": "¡Correo verificado con éxito!",
+      "successMessage": "Tu cuenta ha sido activada correctamente. Ya puedes iniciar sesión.",
+      "goToLogin": "Ir a Iniciar sesión",
+      "backToHome": "Volver al inicio"
     }
   }
 }

@@ -118,4 +118,27 @@ export interface IAuthRepository {
     userId: string,
     purpose?: "reset" | "setup",
   ): Promise<void>;
+
+  /**
+   * Busca un token de verificación de correo por su hash SHA-256 binario.
+   *
+   * @param tokenHash - Buffer de 32 bytes con el hash SHA-256.
+   * @returns La entidad {@link EmailVerificationToken} o `null` si no existe.
+   */
+  findEmailVerificationTokenByHash(
+    tokenHash: Buffer,
+  ): Promise<EmailVerificationToken | null>;
+
+  /**
+   * Consume un token de verificación y marca el correo del usuario como verificado (`email_verified_at = now()`)
+   * en una sola transacción atómica (AUTH-001 §5.7).
+   *
+   * @param tokenId - Identificador UUID del token a consumir.
+   * @param userId - Identificador UUID del usuario correspondiente.
+   * @returns La entidad {@link User} actualizada.
+   */
+  consumeEmailVerificationToken(
+    tokenId: string,
+    userId: string,
+  ): Promise<User>;
 }

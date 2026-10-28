@@ -309,6 +309,17 @@
       "hasAccount": "Already have an account?",
       "loginLink": "Sign in",
       "backToHome": "Back to home"
+    },
+    "verifyEmail": {
+      "title": "Verify your email",
+      "subtitle": "Confirm your address to activate account access",
+      "missingToken": "No verification token was provided in the link.",
+      "confirmButton": "Confirm verification",
+      "confirming": "Verifying...",
+      "successTitle": "Email successfully verified!",
+      "successMessage": "Your account has been activated. You can now sign in.",
+      "goToLogin": "Go to Sign in",
+      "backToHome": "Back to home"
     }
   }
 }

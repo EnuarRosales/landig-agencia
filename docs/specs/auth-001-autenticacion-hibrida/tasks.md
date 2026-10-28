@@ -67,9 +67,10 @@
   - Verificación: dos registros con el mismo correo no duplican; la respuesta es idéntica; el token no aparece en la respuesta; el correo existente recibe instrucciones, no una cuenta nueva; si la cuenta existente es federada, recibe un enlace `setup` para establecer su primera contraseña y la contraseña del registro no se persiste; un registro sin consentimiento de tratamiento se rechaza y no crea cuenta, y el consentimiento queda en `user_consents` con versión y canal.
   - Evidencia: 2026-10-28 — Implementado `AuthService.register`, `DrizzleAuthRepository`, `IAuthMailer`, tokens criptográficos SHA-256 (`tokens.ts`) y endpoint `/api/auth/register` con validación de Origin, rate limit y Habeas Data obligatorio (Ley 1581). Interfaz conectada con `RegisterForm` HUD y diccionarios i18n (`es.json`, `en.json`). 9 pruebas unitarias y de integración pasando en `auth.service.test.ts`, `tokens.test.ts` y `route.test.ts`. Compilación limpia en monorepo (131 pruebas passing).
 
-- [ ] **T-09 · Implementar verificación de correo**
+- [x] **T-09 · Implementar verificación de correo**
   - `POST /auth/email/verify/request` y `POST /auth/email/verify/confirm`; token de 32 bytes, hash, un solo uso, TTL 24 h y reenvío limitado.
   - Verificación: un token vencido o consumido falla; el `GET` no consume; el reenvío invalida el anterior; `email_verified_at` queda seteado y auditado.
+  - Evidencia: 2026-10-28 — Implementado `requestEmailVerification` y `confirmEmailVerification` en `AuthService` y `DrizzleAuthRepository`; endpoints `/api/auth/email/verify/request` y `/api/auth/email/verify/confirm`; pantalla HUD de confirmación `verify-email/page.tsx` donde el GET no consume el token y la confirmación se ejecuta vía POST. 12 pruebas unitarias y de integración pasando en `auth.service.test.ts` y `verify-routes.test.ts`. Compilación de producción limpia en monorepo con 143 pruebas en verde.
 
 - [ ] **T-10 · Implementar login nativo**
   - Resolver `identity_location`; verificar en Router o celda; usar verificación ficticia para usuarios inexistentes, sin contraseña o deshabilitados; rehash si corresponde.

@@ -1,4 +1,8 @@
-import { registerUserSchema, type RegisterUserInput } from "../auth/validation";
+import {
+  registerUserSchema,
+  authEmailSchema,
+  type RegisterUserInput,
+} from "../auth/validation";
 import { hashPassword } from "../auth/password-hasher";
 import { generateSecureToken, hashToken, hashIpWithPepper } from "../auth/tokens";
 import type { IAuthRepository } from "../repositories/auth.repository.interface";
@@ -206,6 +210,134 @@ export class AuthService {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[AuthService.register Error] ${msg}`, error);
       return err("Error interno al procesar el registro.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Solicita el reenvío de un token de verificación de correo (AUTH-001 §5.7).
+   *
+   * Responde siempre HTTP 202 con mensaje genérico uniforme (anti-enumeración).
+   *
+   * @param email - Correo electrónico de la cuenta.
+   * @param options - Metadatos opcionales como IP del cliente y pepper.
+   */
+  async requestEmailVerification(
+    email: string,
+    options?: RegisterContextOptions,
+  ): Promise<Result<{ message: string }>> {
+    const parseResult = authEmailSchema.safeParse(email);
+    if (!parseResult.success) {
+      return err(
+        "Dirección de correo electrónico inválida.",
+        "VALIDATION_ERROR",
+        parseResult.error.issues,
+      );
+    }
+
+    const normalizedEmail = parseResult.data;
+
+    try {
+      const user = await this.authRepo.findUserByEmail(normalizedEmail);
+
+      // Si el usuario existe y está pendiente de verificación
+      if (user && user.emailVerifiedAt === null) {
+        await this.authRepo.invalidatePendingEmailVerificationTokens(user.id);
+
+        let requestedIpHash: Buffer | null = null;
+        if (options?.clientIp && options?.pepper) {
+          requestedIpHash = hashIpWithPepper(options.clientIp, options.pepper);
+        }
+
+        const rawToken = generateSecureToken(32);
+        const tokenHash = hashToken(rawToken);
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+
+        await this.authRepo.createEmailVerificationToken({
+          userId: user.id,
+          tokenHash,
+          expiresAt,
+          requestedIpHash,
+        });
+
+        await this.mailer.sendVerificationEmail(
+          normalizedEmail,
+          rawToken,
+          user.displayName || undefined,
+        );
+      }
+
+      // Respuesta uniforme anti-enumeración
+      return ok({
+        message: "Si la cuenta requiere verificación, hemos enviado un enlace a su correo.",
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.requestEmailVerification Error] ${msg}`, error);
+      return err("Error interno al solicitar verificación.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Confirma la verificación de un correo electrónico canjeando el token recibido (AUTH-001 §5.7).
+   *
+   * Operación de un solo uso ejecutada exclusivamente mediante POST.
+   *
+   * @param rawToken - Token seguro en claro recibido por query param o cuerpo JSON.
+   */
+  async confirmEmailVerification(
+    rawToken: string,
+  ): Promise<Result<{ message: string; email: string }>> {
+    if (!rawToken || typeof rawToken !== "string" || rawToken.trim().length === 0) {
+      return err("Token de verificación no proporcionado.", "INVALID_TOKEN");
+    }
+
+    try {
+      const tokenHash = hashToken(rawToken.trim());
+      const tokenRecord = await this.authRepo.findEmailVerificationTokenByHash(tokenHash);
+
+      // 1. Validar existencia del token
+      if (!tokenRecord) {
+        return err(
+          "El enlace de verificación es inválido o no existe.",
+          "INVALID_TOKEN",
+        );
+      }
+
+      // 2. Validar que no haya sido consumido previamente (un solo uso)
+      if (tokenRecord.consumedAt !== null) {
+        return err(
+          "Este enlace de verificación ya fue utilizado.",
+          "TOKEN_ALREADY_USED",
+        );
+      }
+
+      // 3. Validar que no haya expirado (TTL 24 horas)
+      if (tokenRecord.expiresAt < new Date()) {
+        return err(
+          "El enlace de verificación ha expirado. Por favor solicite uno nuevo.",
+          "TOKEN_EXPIRED",
+        );
+      }
+
+      // 4. Consumir token y actualizar email_verified_at en transacción
+      const updatedUser = await this.authRepo.consumeEmailVerificationToken(
+        tokenRecord.id,
+        tokenRecord.userId,
+      );
+
+      appLogger.info("[AuthService.confirmEmailVerification] Correo verificado con éxito", {
+        userId: updatedUser.id,
+        email: updatedUser.email,
+      });
+
+      return ok({
+        message: "Correo electrónico verificado exitosamente.",
+        email: updatedUser.email,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.confirmEmailVerification Error] ${msg}`, error);
+      return err("Error interno al verificar el correo electrónico.", "DB_ERROR");
     }
   }
 }
