@@ -43,3 +43,6 @@ export const userConsents = adminSchema.table(
     ),
   ],
 );
+
+export type UserConsent = typeof userConsents.$inferSelect;
+export type NewUserConsent = typeof userConsents.$inferInsert;

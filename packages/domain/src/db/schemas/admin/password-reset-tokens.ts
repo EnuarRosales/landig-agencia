@@ -34,3 +34,6 @@ export const passwordResetTokens = adminSchema.table(
     check("password_reset_tokens_hash_length_check", sql.raw("octet_length(token_hash) = 32")),
   ],
 );
+
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type NewPasswordResetToken = typeof passwordResetTokens.$inferInsert;

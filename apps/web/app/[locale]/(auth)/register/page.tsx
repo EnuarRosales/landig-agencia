@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { locales } from "@/i18n/routing";
 import { Logo } from "@/components/logo";
 import { FloatingBackground } from "@/components/sections/floating-background";
+import { RegisterForm } from "@/components/auth/register-form";
 import { getPlanByCode, type Plan } from "@mocter/domain";
 
 type Props = PageProps<"/[locale]">;
@@ -82,76 +83,26 @@ export default async function RegisterPage({ params, searchParams }: Props) {
             )}
           </header>
 
-          <form className="space-y-4" action="#" method="POST">
-            {selectedPlan && (
-              <>
-                <input type="hidden" name="plan_id" value={selectedPlan.id} />
-                <input type="hidden" name="plan_code" value={selectedPlan.code} />
-              </>
-            )}
-
-            <div>
-              <label
-                htmlFor="name"
-                className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
-              >
-                {t("nameLabel")}
-              </label>
-              <input
-                id="name"
-                name="name"
-                type="text"
-                autoComplete="name"
-                required
-                placeholder={t("namePlaceholder")}
-                className="w-full rounded-xl border border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="email"
-                className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
-              >
-                {t("emailLabel")}
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                placeholder={t("emailPlaceholder")}
-                className="w-full rounded-xl border border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="password"
-                className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
-              >
-                {t("passwordLabel")}
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={8}
-                placeholder={t("passwordPlaceholder")}
-                className="w-full rounded-xl border border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="mt-2 flex w-full cursor-pointer items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] py-3 text-sm font-semibold text-white shadow-lg shadow-a1/25 transition-all hover:opacity-95 hover:shadow-a1/40"
-            >
-              {t("submit")}
-            </button>
-          </form>
+          <RegisterForm
+            locale={locale}
+            selectedPlan={selectedPlan}
+            t={{
+              nameLabel: t("nameLabel"),
+              namePlaceholder: t("namePlaceholder"),
+              emailLabel: t("emailLabel"),
+              emailPlaceholder: t("emailPlaceholder"),
+              passwordLabel: t("passwordLabel"),
+              passwordPlaceholder: t("passwordPlaceholder"),
+              termsPrefix: t("termsPrefix"),
+              termsLink: t("termsLink"),
+              termsSuffix: t("termsSuffix"),
+              submit: t("submit"),
+              submitting: t("submitting"),
+              genericSuccessTitle: t("genericSuccessTitle"),
+              genericSuccessMessage: t("genericSuccessMessage"),
+              checkEmailPrompt: t("checkEmailPrompt"),
+            }}
+          />
 
           {/* Enlace inferior hacia Login */}
           <div className="mt-6 border-t border-stroke/60 pt-6 text-center text-xs text-muted">

@@ -104,13 +104,14 @@ describe("AUTH-001 T-06 · Política de complejidad de contraseñas", () => {
   });
 });
 
-describe("AUTH-001 T-06 · Esquema integral de registro", () => {
-  it("valida satisfactoriamente una carga útil completa de registro", () => {
+describe("AUTH-001 T-06 / T-08 · Esquema integral de registro y consentimiento", () => {
+  it("valida satisfactoriamente una carga útil completa de registro con consentimiento", () => {
     const payload = {
       name: "Carlos Gómez",
       email: "  CARLOS@EMPRESA.COM ",
       password: "SuperSecret123!",
       planCode: "growth",
+      treatmentConsent: true,
     };
 
     const parsed = registerUserSchema.safeParse(payload);
@@ -119,6 +120,43 @@ describe("AUTH-001 T-06 · Esquema integral de registro", () => {
       expect(parsed.data.email).toBe("carlos@empresa.com");
       expect(parsed.data.password).toBe("SuperSecret123!");
       expect(parsed.data.planCode).toBe("growth");
+      expect(parsed.data.treatmentConsent).toBe(true);
+      expect(parsed.data.policyVersion).toBe("v1.0");
+      expect(parsed.data.channel).toBe("register_form");
     }
+  });
+
+  it("acepta consentimiento provisto como valor booleano o string de formulario HTML", () => {
+    const payloadForm = {
+      name: "Ana Morales",
+      email: "ana@empresa.com",
+      password: "Password1!",
+      treatmentConsent: "on",
+    };
+
+    const parsed = registerUserSchema.safeParse(payloadForm);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.treatmentConsent).toBe(true);
+    }
+  });
+
+  it("rechaza el registro si el consentimiento no está presente o es falso", () => {
+    const payloadSinConsentimiento = {
+      name: "Carlos Gómez",
+      email: "carlos@empresa.com",
+      password: "SuperSecret123!",
+    };
+
+    const parsed1 = registerUserSchema.safeParse(payloadSinConsentimiento);
+    expect(parsed1.success).toBe(false);
+
+    const payloadConsentimientoFalso = {
+      ...payloadSinConsentimiento,
+      treatmentConsent: false,
+    };
+
+    const parsed2 = registerUserSchema.safeParse(payloadConsentimientoFalso);
+    expect(parsed2.success).toBe(false);
   });
 });

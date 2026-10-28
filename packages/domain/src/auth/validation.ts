@@ -97,13 +97,24 @@ export const authPasswordSchema = z
   });
 
 /**
- * Esquema Zod para solicitud de registro nativo de usuario.
+ * Esquema Zod para solicitud de registro nativo de usuario (AUTH-001 T-06, T-08).
+ *
+ * Requiere consentimiento expreso de tratamiento de datos personales conforme a la
+ * Ley 1581 de 2012 (Colombia). Sin autorización, la solicitud es rechazada en origen.
  */
 export const registerUserSchema = z.object({
   name: z.string().trim().min(1, "El nombre es obligatorio").max(120),
   email: authEmailSchema,
   password: authPasswordSchema,
   planCode: z.string().trim().optional(),
+  treatmentConsent: z.preprocess(
+    (val) => val === true || val === "true" || val === "on" || val === 1,
+    z.boolean().refine((val) => val === true, {
+      message: "Debe autorizar el tratamiento de datos personales.",
+    }),
+  ),
+  policyVersion: z.string().trim().min(1).default("v1.0"),
+  channel: z.string().trim().min(1).default("register_form"),
 });
 
 /**

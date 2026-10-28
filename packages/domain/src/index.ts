@@ -23,3 +23,8 @@ export * from "./repositories/plans.repository";
 export * from "./services/lead.service";
 export * from "./auth/validation";
 export * from "./auth/password-hasher";
+export * from "./auth/tokens";
+export * from "./auth/auth-mailer.interface";
+export * from "./repositories/auth.repository.interface";
+export * from "./repositories/drizzle-auth.repository";
+export * from "./services/auth.service";

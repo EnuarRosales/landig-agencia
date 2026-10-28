@@ -32,3 +32,6 @@ export const emailVerificationTokens = adminSchema.table(
     check("email_verification_tokens_hash_length_check", sql.raw("octet_length(token_hash) = 32")),
   ],
 );
+
+export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
+export type NewEmailVerificationToken = typeof emailVerificationTokens.$inferInsert;

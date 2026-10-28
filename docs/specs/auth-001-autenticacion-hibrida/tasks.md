@@ -61,10 +61,11 @@
   - Verificación: el hash verifica; nunca se guarda texto plano; al bajar los parámetros, el login rehasha; una verificación ficticia tarda un orden equivalente.
   - Evidencia: 2026-10-27 — Módulo `packages/domain/src/auth/password-hasher.ts` implementado con biblioteca canónica `@node-rs/argon2`, configuración `m=65536, t=3, p=1`, longitud de salida 32 bytes y hash ficticio `DUMMY_ARGON2_HASH` para verificación de tiempo constante contra ataques de temporización. 7 pruebas unitarias pasando en `password-hasher.test.ts` verificando hashing, verificación positiva/negativa, detección de rehash ante parámetros inferiores y orden de tiempo de verificación ficticia.
 
-- [ ] **T-08 · Implementar registro nativo**
+- [x] **T-08 · Implementar registro nativo**
   - Crear usuario no verificado, token de 24 horas y envío SMTP; respuesta genérica para correo existente y nuevo.
   - No crear sesión ni inquilino; no revelar si la cuenta es nativa o federada.
   - Verificación: dos registros con el mismo correo no duplican; la respuesta es idéntica; el token no aparece en la respuesta; el correo existente recibe instrucciones, no una cuenta nueva; si la cuenta existente es federada, recibe un enlace `setup` para establecer su primera contraseña y la contraseña del registro no se persiste; un registro sin consentimiento de tratamiento se rechaza y no crea cuenta, y el consentimiento queda en `user_consents` con versión y canal.
+  - Evidencia: 2026-10-28 — Implementado `AuthService.register`, `DrizzleAuthRepository`, `IAuthMailer`, tokens criptográficos SHA-256 (`tokens.ts`) y endpoint `/api/auth/register` con validación de Origin, rate limit y Habeas Data obligatorio (Ley 1581). Interfaz conectada con `RegisterForm` HUD y diccionarios i18n (`es.json`, `en.json`). 9 pruebas unitarias y de integración pasando en `auth.service.test.ts`, `tokens.test.ts` y `route.test.ts`. Compilación limpia en monorepo (131 pruebas passing).
 
 - [ ] **T-09 · Implementar verificación de correo**
   - `POST /auth/email/verify/request` y `POST /auth/email/verify/confirm`; token de 32 bytes, hash, un solo uso, TTL 24 h y reenvío limitado.
