@@ -274,5 +274,34 @@
     "cta": "Comenzar ahora",
     "freeTrial": "Prueba gratis por 14 días",
     "featuresTitle": "Lo que incluye este plan:"
+  },
+  "auth": {
+    "login": {
+      "title": "Inicia sesión en tu cuenta",
+      "subtitle": "Accede al panel de administración de tu empresa",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "tunombre@empresa.com",
+      "passwordLabel": "Contraseña",
+      "passwordPlaceholder": "••••••••",
+      "submit": "Iniciar sesión",
+      "noAccount": "¿Aún no tienes una cuenta?",
+      "registerLink": "Regístrate gratis",
+      "backToHome": "Volver al inicio"
+    },
+    "register": {
+      "title": "Crea la cuenta de tu empresa",
+      "subtitle": "Automatiza la atención por WhatsApp en minutos",
+      "nameLabel": "Nombre completo",
+      "namePlaceholder": "Carlos Gómez",
+      "emailLabel": "Correo corporativo",
+      "emailPlaceholder": "carlos@empresa.com",
+      "passwordLabel": "Contraseña",
+      "passwordPlaceholder": "Mínimo 8 caracteres",
+      "selectedPlan": "Plan seleccionado",
+      "submit": "Crear cuenta y comenzar",
+      "hasAccount": "¿Ya tienes una cuenta?",
+      "loginLink": "Inicia sesión",
+      "backToHome": "Volver al inicio"
+    }
   }
 }

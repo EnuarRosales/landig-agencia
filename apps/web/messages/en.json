@@ -274,5 +274,34 @@
     "cta": "Get started",
     "freeTrial": "14-day free trial",
     "featuresTitle": "What's included in this plan:"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in to your account",
+      "subtitle": "Access your company's administration dashboard",
+      "emailLabel": "Email address",
+      "emailPlaceholder": "yourname@company.com",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "••••••••",
+      "submit": "Sign in",
+      "noAccount": "Don't have an account yet?",
+      "registerLink": "Register for free",
+      "backToHome": "Back to home"
+    },
+    "register": {
+      "title": "Create your company account",
+      "subtitle": "Automate your customer service on WhatsApp in minutes",
+      "nameLabel": "Full name",
+      "namePlaceholder": "Carlos Gómez",
+      "emailLabel": "Corporate email",
+      "emailPlaceholder": "carlos@company.com",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Minimum 8 characters",
+      "selectedPlan": "Selected plan",
+      "submit": "Create account & get started",
+      "hasAccount": "Already have an account?",
+      "loginLink": "Sign in",
+      "backToHome": "Back to home"
+    }
   }
 }

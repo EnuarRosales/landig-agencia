@@ -57,15 +57,17 @@
 
 ## Fase 3 · Pantallas de Login y Registro Interconectadas
 
-- [ ] **T-06 · Implementar pantalla de Login con enlace a Registro**
+- [x] **T-06 · Implementar pantalla de Login con enlace a Registro**
   - Crear `apps/web/app/[locale]/(auth)/login/page.tsx` con formulario de acceso y enlace claro hacia `/[locale]/register`.
   - Verificación: Click en "¿Aún no tienes cuenta?" navega a `/register`.
+  - Evidencia: 2026-10-27 — Vista `LoginPage` creada en `apps/web/app/[locale]/(auth)/login/page.tsx` con diseño HUD, soporte i18n (`auth.login`), validación de campos y enlace cruzado hacia `/${locale}/register`. `next build` genera rutas estáticas `/es/login` y `/en/login`.
 
-- [ ] **T-07 · Implementar pantalla de Registro con parámetro plan_code**
+- [x] **T-07 · Implementar pantalla de Registro con parámetro plan_code**
   - Crear `apps/web/app/[locale]/(auth)/register/page.tsx` con formulario de alta.
   - Si en URL viene `plan_code`, resuelve el plan por `plans.code`, muestra badge con `plan.name[locale]` y conserva el UUID para el alta.
   - Enlace inferior hacia `/[locale]/login`.
   - Verificación: Al entrar con `?plan_code=pro`, el formulario refleja la selección y el alta recibe el UUID correcto.
+  - Evidencia: 2026-10-27 — Vista `RegisterPage` creada en `apps/web/app/[locale]/(auth)/register/page.tsx` con resolución asíncrona de `plan_code` mediante `getPlanByCode()`, badge visual del plan y campos ocultos `plan_id` (UUID) y `plan_code`. Enlace cruzado hacia `/${locale}/login`. `next build` genera rutas estáticas `/es/register` y `/en/register`.
 
 ---
 
