@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Sora } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
-import { getMessages, getTranslations, setRequestLocale } from "next-intl/server";
+import { getMessages, getTranslations } from "next-intl/server";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ChatwootWidget } from "@/components/chatwoot-widget";
 import "../globals.css";
@@ -21,6 +21,8 @@ const inter = Inter({
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mocter.co";
 
 type Props = LayoutProps<"/[locale]">;
+
+export const instant = false;
 
 export async function generateStaticParams() {
   return [{ locale: "es" }, { locale: "en" }];
@@ -74,11 +76,10 @@ export const viewport: Viewport = {
 
 export default async function LocaleLayout({ children, params }: Props) {
   const { locale } = await params;
-  setRequestLocale(locale);
 
   const [t, messages] = await Promise.all([
     getTranslations({ locale, namespace: "jsonld" }),
-    getMessages(),
+    getMessages({ locale }),
   ]);
 
   const jsonLd = {
@@ -137,7 +138,9 @@ export default async function LocaleLayout({ children, params }: Props) {
           storageKey="mocter-theme"
           disableTransitionOnChange
         >
-          <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
+          <NextIntlClientProvider locale={locale} messages={messages}>
+            {children}
+          </NextIntlClientProvider>
         </ThemeProvider>
         <ChatwootWidget />
         <script

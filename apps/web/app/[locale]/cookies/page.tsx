@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { setRequestLocale } from "next-intl/server";
 import { FloatingBackground } from "@/components/sections/floating-background";
 import { Nav } from "@/components/nav";
 import { Footer } from "@/components/sections/footer";
@@ -8,9 +7,15 @@ import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { CookiePreferences } from "@/components/cookie-preferences";
 
+import { locales } from "@/i18n/routing";
+
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mocter.co";
 
 type Props = PageProps<"/[locale]">;
+
+export function generateStaticParams() {
+  return locales.map((locale) => ({ locale }));
+}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale } = await params;
@@ -36,7 +41,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function CookiesPage({ params }: Props) {
   const { locale } = await params;
-  setRequestLocale(locale);
   const isEs = locale === "es";
 
   const breadcrumbs = [
