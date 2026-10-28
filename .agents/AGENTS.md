@@ -112,6 +112,10 @@ Un inquilino nuevo debe quedar **operativo en una sesión corta** (5 minutos com
 
 El usuario del inquilino trabaja en **una sola plataforma**: `mocter-admin` es el único nivel superior y Chatwoot se presenta **embebido en un iframe same-site**. No se abre en pestaña nueva, no se redirige el nivel superior y no se reimplementa la bandeja; la operación ocurre en la interfaz de Chatwoot (ADM-001 D-32, CHW-001 §6.2). La marca blanca aplica a la shell; la personalización visual del contenido embebido es un alcance separado.
 
+### 4.11 Código moderno y no deprecado
+
+Queda estrictamente prohibido introducir o conservar código, APIs o dependencias marcadas formalmente como `@deprecated` (en anotaciones JSDoc/TSDoc, advertencias del compilador o linters). Ante cualquier deprecación detectada (como `setRequestLocale` en `next-intl`), se debe migrar de inmediato a la alternativa canónica recomendada (`next/root-params` u homólogo vigente). Consulte la directiva completa en [rules/rules-for-no-deprecated-code.md](rules/rules-for-no-deprecated-code.md).
+
 ## 5. Formato del reporte del agente
 
 Al terminar una especificación, entrega:
