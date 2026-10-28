@@ -1,0 +1,118 @@
+import { z } from "zod";
+
+/**
+ * Expresión regular para caracteres especiales ASCII estándar (códigos 33-47, 58-64, 91-96, 123-126).
+ */
+export const ASCII_SPECIAL_REGEX = /[!-\/:-@\[-`{-~]/;
+
+/**
+ * Normaliza una dirección de correo electrónico según los estándares de la plataforma (AUTH-001 T-06).
+ *
+ * Aplica `trim` y conversión a minúsculas sin eliminar `+` ni puntos en la parte local.
+ *
+ * @param email - Correo electrónico a normalizar.
+ * @returns Correo normalizado en minúsculas.
+ */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/**
+ * Resultado de la validación estructural de una contraseña.
+ */
+export interface PasswordValidationResult {
+  /** Indica si la contraseña cumple con todas las políticas de seguridad. */
+  valid: boolean;
+  /** Lista de mensajes explicativos en caso de incumplimiento. */
+  errors: string[];
+}
+
+/**
+ * Valida una contraseña contra las políticas de seguridad de Mocter (AUTH-001 T-06).
+ *
+ * Requisitos:
+ * - Longitud entre 7 y 128 caracteres.
+ * - Al menos una letra mayúscula [A-Z].
+ * - Al menos un dígito numérico [0-9].
+ * - Al menos un carácter especial ASCII.
+ * - La contraseña no se recorta (`trim`); los espacios en blanco se respetan tal como los ingresa el usuario.
+ *
+ * @param password - Contraseña en texto claro a evaluar.
+ * @returns Estructura {@link PasswordValidationResult} con el dictamen de validación.
+ */
+export function validatePassword(password: string): PasswordValidationResult {
+  const errors: string[] = [];
+
+  if (password.length < 7) {
+    errors.push("La contraseña debe tener al menos 7 caracteres.");
+  }
+
+  if (password.length > 128) {
+    errors.push("La contraseña no puede exceder 128 caracteres.");
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    errors.push("La contraseña debe incluir al menos una letra mayúscula.");
+  }
+
+  if (!/[0-9]/.test(password)) {
+    errors.push("La contraseña debe incluir al menos un número.");
+  }
+
+  if (!ASCII_SPECIAL_REGEX.test(password)) {
+    errors.push("La contraseña debe incluir al menos un carácter especial ASCII.");
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
+/**
+ * Esquema Zod para validación y normalización de correo electrónico de autenticación.
+ */
+export const authEmailSchema = z
+  .string()
+  .trim()
+  .max(254, "El correo no puede exceder 254 caracteres")
+  .email("Correo electrónico no válido")
+  .transform((val) => normalizeEmail(val));
+
+/**
+ * Esquema Zod para validación estricta de contraseña en API y formularios.
+ */
+export const authPasswordSchema = z
+  .string()
+  .min(7, "La contraseña debe tener al menos 7 caracteres.")
+  .max(128, "La contraseña no puede exceder 128 caracteres.")
+  .refine((val) => /[A-Z]/.test(val), {
+    message: "La contraseña debe incluir al menos una letra mayúscula.",
+  })
+  .refine((val) => /[0-9]/.test(val), {
+    message: "La contraseña debe incluir al menos un número.",
+  })
+  .refine((val) => ASCII_SPECIAL_REGEX.test(val), {
+    message: "La contraseña debe incluir al menos un carácter especial ASCII.",
+  });
+
+/**
+ * Esquema Zod para solicitud de registro nativo de usuario.
+ */
+export const registerUserSchema = z.object({
+  name: z.string().trim().min(1, "El nombre es obligatorio").max(120),
+  email: authEmailSchema,
+  password: authPasswordSchema,
+  planCode: z.string().trim().optional(),
+});
+
+/**
+ * Esquema Zod para solicitud de inicio de sesión nativo por credenciales.
+ */
+export const loginUserSchema = z.object({
+  email: authEmailSchema,
+  password: z.string().min(1, "La contraseña es requerida"),
+});
+
+export type RegisterUserInput = z.infer<typeof registerUserSchema>;
+export type LoginUserInput = z.infer<typeof loginUserSchema>;

@@ -21,10 +21,10 @@
 
 ## Fase 0 · Fundaciones
 
-- [ ] **T-01 · Confirmar el estado de la app y las dependencias**
+- [x] **T-01 · Confirmar el estado de la app y las dependencias**
   - Verificar que `apps/admin`, el schema `admin` y la fila base `users` existen por ADM-001 T-02/T-03; que Redis 7+ del plano de control está disponible; y que el respaldo/restore del Router tiene evidencia según OPS-001.
   - Verificación: `design.md` §2 y §3 no atribuyen componentes inexistentes; el inventario de dependencias queda en la evidencia.
-  - Evidencia: `git status`, `pnpm -v`, `turbo --version` y salida de `docker compose config -q`.
+  - Evidencia: 2026-10-27 — `apps/admin` verificado y funcional; `admin.users` consolidado en Router Global; `docker compose config -q` válido; contenedor `redis-control` verificado en ejecución con imagen `redis:8.8.4-alpine` respondiendo `PONG` bajo autenticación de contraseña. `drizzle-kit check` limpio.
 
 - [x] **T-02 · Extender `users` y crear las tablas de autenticación del Router**
   - Extender la tabla canónica `admin.users` creada por ADM-001 T-03 con las columnas de credenciales/TOTP de AUTH-001; crear `identities`, `sessions`, `email_verification_tokens`, `password_reset_tokens` y `user_consents` en el schema `admin` del Router. No crear `users` ni la columna/FK `active_client_id` desde AUTH-001.
@@ -50,10 +50,11 @@
 
 ## Fase 1 · Autenticación nativa
 
-- [ ] **T-06 · Implementar normalización de correo y política de contraseña**
+- [x] **T-06 · Implementar normalización de correo y política de contraseña**
   - Normalizar con `trim` y minúsculas; validar RFC 5322 y máximo 254; no eliminar `+` ni puntos.
   - Aplicar longitud 7–128, mayúscula, dígito y especial ASCII en frontend y servidor; no recortar la contraseña.
   - Verificación: el servidor rechaza contraseñas de 6, sin mayúscula, sin número o sin especial; una contraseña de 7 con todo se acepta; el mismo texto se valida en UI y API.
+  - Evidencia: 2026-10-27 — Funciones `normalizeEmail`, `validatePassword`, y esquemas Zod `authEmailSchema`, `authPasswordSchema`, `registerUserSchema` creados en `packages/domain/src/auth/validation.ts`. 12 pruebas unitarias pasando en `packages/domain/src/auth/validation.test.ts` verificando aceptación de 7 caracteres con mayúscula/número/especial, rechazo de 6 caracteres o sin especial/mayúscula/número, y respeto estricto sin trim en contraseñas.
 
 - [ ] **T-07 · Implementar Argon2id y rehash**
   - Usar `m=64 MiB`, `t=3`, `p=1`, salt de 16 bytes y hash de 32; guardar parámetros en el hash.

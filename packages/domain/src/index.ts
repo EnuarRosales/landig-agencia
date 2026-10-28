@@ -21,3 +21,4 @@ export * from "./repositories/drizzle-lead.repository";
 export * from "./repositories/plans.repository.interface";
 export * from "./repositories/plans.repository";
 export * from "./services/lead.service";
+export * from "./auth/validation";
