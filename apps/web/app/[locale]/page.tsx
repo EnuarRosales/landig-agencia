@@ -1,4 +1,3 @@
-import { setRequestLocale } from "next-intl/server";
 import { FloatingBackground } from "@/components/sections/floating-background";
 import { Nav } from "@/components/nav";
 import { Hero } from "@/components/sections/hero";
@@ -12,15 +11,23 @@ import { Faq } from "@/components/sections/faq";
 import { Footer } from "@/components/sections/footer";
 import { WhatsappFab } from "@/components/sections/whatsapp-fab";
 import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
+import { getPublicPlans, type Plan } from "@mocter/domain";
 
-export default async function LandingPage(props: PageProps<"/[locale]">) {
-  const { locale } = await props.params;
-  setRequestLocale(locale);
+export default async function LandingPage() {
+  let publicPlans: Plan[] = [];
+  try {
+    publicPlans = await getPublicPlans();
+  } catch {
+    // Si la base no está lista o no hay conexión, degrada a arreglo vacío
+    publicPlans = [];
+  }
+
+  const hasPublicPlans = publicPlans.length > 0;
 
   return (
     <>
       <FloatingBackground />
-      <Nav />
+      <Nav hasPublicPlans={hasPublicPlans} />
       <Hero />
       <Features />
       <Sectors />

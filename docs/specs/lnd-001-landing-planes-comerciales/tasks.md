@@ -36,13 +36,15 @@
 
 ## Fase 2 · Adaptaciones en Header y Landing Page
 
-- [ ] **T-03 · Incorporar botón de acceso en Nav (header)**
+- [x] **T-03 · Incorporar botón de acceso en Nav (header)**
   - Modificar `apps/web/components/nav.tsx` añadiendo el botón de login contiguo al botón actual de «Solicitar demo».
   - Verificación: Visualización correcta en escritorio y menú móvil con enlace a `/[locale]/login`.
+  - Evidencia: 2026-10-27 — Botón de inicio de sesión agregado en `Nav` (`apps/web/components/nav.tsx`) con enlace a `/${locale}/login` y texto internacionalizado `t("login")`. Visible en escritorio y móvil.
 
-- [ ] **T-04 · Inyectar enlace dinámico de planes en menú cápsula**
+- [x] **T-04 · Inyectar enlace dinámico de planes en menú cápsula**
   - Modificar `Nav` para que incluya `{ href: '/[locale]#planes', label: t('pricing') }` únicamente cuando existan planes públicos.
   - Verificación: Sin planes activos, el enlace no se muestra; con planes activos, el enlace navega suavemente a `#planes`.
+  - Evidencia: 2026-10-27 — Propiedad `hasPublicPlans` agregada en `Nav`. `LandingPage` (`apps/web/app/[locale]/page.tsx`) consulta `getPublicPlans()` de `@mocter/domain`. El enlace `/${locale}#planes` con label `t("pricing")` se inyecta condicionalmente solo si hay planes públicos activos.
 
 - [ ] **T-05 · Crear componente PricingSection con renderizado condicional**
   - Implementar `apps/web/components/sections/pricing-section.tsx` con toggle mensual/anual y tarjetas de precios HUD.

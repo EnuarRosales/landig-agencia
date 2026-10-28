@@ -6,7 +6,27 @@ import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 import { LocaleSwitcher } from "./locale-switcher";
 
-export function Nav() {
+/**
+ * Propiedades de configuración para la barra de navegación principal {@link Nav}.
+ */
+export interface NavProps {
+  /**
+   * Indica si existen planes comerciales públicos activos para inyectar el enlace '#planes'
+   * en el menú de navegación tipo cápsula.
+   */
+  hasPublicPlans?: boolean;
+}
+
+/**
+ * Barra de navegación superior con diseño Floating Glass Island y soporte de internacionalización.
+ *
+ * Incluye acceso directo a inicio de sesión, enlace condicional a planes comerciales,
+ * selector de idioma y conmutador de tema visual.
+ *
+ * @param props - Propiedades del componente {@link NavProps}.
+ * @returns Elemento JSX que representa la cabecera fija de la aplicación.
+ */
+export function Nav({ hasPublicPlans = false }: NavProps) {
   const t = useTranslations("nav");
   const locale = useLocale();
   const [scrolled, setScrolled] = useState(false);
@@ -22,6 +42,7 @@ export function Nav() {
     { href: `/${locale}#features`, label: t("features") },
     { href: `/${locale}#sectors`, label: t("sectors") },
     { href: `/${locale}#how`, label: t("how") },
+    ...(hasPublicPlans ? [{ href: `/${locale}#planes`, label: t("pricing") }] : []),
     { href: `/${locale}#demo`, label: t("demo") },
   ];
 
@@ -52,8 +73,14 @@ export function Nav() {
         </div>
       </div>
 
-      {/* Extremo derecho: CTA, ThemeToggle y LocaleSwitcher */}
+      {/* Extremo derecho: Login, CTA, ThemeToggle y LocaleSwitcher */}
       <div className="flex shrink-0 items-center gap-2.5">
+        <a
+          href={`/${locale}/login`}
+          className="inline-flex items-center gap-1.5 rounded-full border border-stroke/90 bg-surface/80 px-4 py-2 text-[14px] font-medium text-txt transition-all hover:bg-stroke/40 dark:hover:bg-white/10"
+        >
+          {t("login")}
+        </a>
         <a
           href={`/${locale}#demo-form`}
           className="hidden cursor-pointer items-center gap-2 rounded-full bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] px-5 py-2.5 text-[14px] font-semibold text-white shadow-[0_8px_30px_rgba(47,107,255,0.4)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(47,107,255,0.6)] lg:inline-flex"
