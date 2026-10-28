@@ -27,9 +27,10 @@
   - Incorporar `id uuid`, `code` único, `name`/`description` JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles`, `price_monthly_cents`, `price_annual_cents`, `currency` y `marketing_features` JSONB `{es:[],en:[]}`.
   - Verificación: `drizzle-kit check` pasa; `plans.code` es único; las FKs `plan_id` son uuid.
 
-- [ ] **T-02 · Implementar repositorio y función getPublicPlans()**
+- [x] **T-02 · Implementar repositorio y función getPublicPlans()**
   - Crear en `packages/domain/src/repositories/plans.repository.ts` la consulta de planes con `WHERE status = 'active' AND is_public = true ORDER BY sort_order ASC`.
   - Verificación: Test unitario comprueba que los planes no públicos, en draft o retirados son excluidos; el resultado expone `code` para la URL.
+  - Evidencia: 2026-10-27 — `IPlansRepository` y `DrizzlePlansRepository` creados en `packages/domain/src/repositories/plans.repository.ts` con funciones standalone `getPublicPlans()` y `getPlanByCode(code)`. 6 pruebas unitarias pasando en `plans.repository.test.ts`. Expuesto en `packages/domain/src/index.ts`.
 
 ---
 

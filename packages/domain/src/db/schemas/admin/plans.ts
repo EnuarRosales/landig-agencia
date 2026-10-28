@@ -38,3 +38,13 @@ export const plans = adminSchema.table(
     check("plans_status_check", sql.raw("status IN ('draft', 'active', 'retired')")),
   ],
 );
+
+/**
+ * Representa un registro de plan canónico recuperado de la base de datos.
+ */
+export type Plan = typeof plans.$inferSelect;
+
+/**
+ * Representa la estructura requerida para insertar un nuevo plan canónico.
+ */
+export type NewPlan = typeof plans.$inferInsert;
