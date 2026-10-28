@@ -28,10 +28,11 @@
   - No se alteran routers existentes (D-10).
   - Evidencia: 2026-10-27 — `docker build -f apps/admin/Dockerfile` OK; contenedor runner responde `200 {"status":"ok"}` en `/api/health` (user no-root `mocter`); dev compose `admin-portal` healthy en `:3003` (3002 lo ocupa el stack Chatwoot del host); job `build-admin-and-push` agregado en `cd.yml` sin tocar el job web. **Diferido deliberadamente:** routers Traefik de staging/producción se conectan cuando la imagen exista en GHCR tras el primer push (publicarla en los compose antes rompería `docker compose pull` de `deploy.sh`).
 
-- [ ] **T-03 · Crear schemas y roles de base**
+- [x] **T-03 · Crear schemas y roles de base**
   - Schema `admin` en Router y celdas; roles `mocter_migrator`, `mocter_admin`, `mocter_landing`, `mocter_auth`. Crear bajo propiedad de ADM-001 la fila canónica de Router `users` (`id`, `email`, `email_verified_at`, `identity_location`, `active_client_id` nullable, `status`, `display_name`, `avatar_url`) y la proyección local de celdas (`id`, `client_id`, `email`, `status`). AUTH-001 agrega después credenciales/TOTP y tablas de autenticación. El rol `mocter_auth` se crea aquí; AUTH-001 asigna y verifica sus permisos.
   - Todas las tablas llevan `created_at`, `updated_at`, `created_by`, `updated_by` (y `deleted_at`/`deleted_by` donde aplica soft delete) según la directiva de base de datos y DAT-001 RF-10.9.
   - Verificación: `users` existe antes de las migraciones AUTH; `active_client_id` admite NULL y su FK se difiere hasta T-06; `mocter_admin` no tiene DDL ni `BYPASSRLS`; `mocter_landing` solo inserta solicitudes de contacto y no accede al schema `admin`; el rol `mocter_auth` existe sin permisos adicionales a los concedidos por AUTH-001.
+  - Evidencia: 2026-10-27 (commit `79f11f4`) — `packages/domain/src/db/schemas/admin/` estructurado con `cells`, `plans`, `clients`, `client_plans`, `client_routing`, `users`, roles `mocter_migrator/admin/landing/auth` con grants en `0001_roles_grants_comments.sql`, y 20 pruebas unitarias pasando en `admin-schema.test.ts`.
   - Criterios 26 y RF-09.3 (D-25).
 
 - [ ] **T-04 · Definir las dos líneas de migración**

@@ -26,15 +26,17 @@
   - Verificación: `design.md` §2 y §3 no atribuyen componentes inexistentes; el inventario de dependencias queda en la evidencia.
   - Evidencia: `git status`, `pnpm -v`, `turbo --version` y salida de `docker compose config -q`.
 
-- [ ] **T-02 · Extender `users` y crear las tablas de autenticación del Router**
+- [x] **T-02 · Extender `users` y crear las tablas de autenticación del Router**
   - Extender la tabla canónica `admin.users` creada por ADM-001 T-03 con las columnas de credenciales/TOTP de AUTH-001; crear `identities`, `sessions`, `email_verification_tokens`, `password_reset_tokens` y `user_consents` en el schema `admin` del Router. No crear `users` ni la columna/FK `active_client_id` desde AUTH-001.
   - Aplicar los índices del Router de `design.md` §4.3, los `CHECK` de `identity_location`, `status`, proveedor y `purpose`, y comentarios de tabla y columna.
   - Verificación: `drizzle-kit check` pasa; la migración aplica desde cero y desde el estado anterior; el índice de correo rechaza mayúsculas duplicadas; no se guarda `sid` ni token en claro.
+  - Evidencia: 2026-10-27 — Migración `0002_auth_identity_tables.sql` generada y aplicada. Tablas `identities`, `sessions`, `email_verification_tokens`, `password_reset_tokens`, `user_consents` creadas en `packages/domain/src/db/schemas/admin/`. `drizzle-kit check` pasa limpio; 32 pruebas unitarias pasando en `admin-auth-schema.test.ts`.
 
-- [ ] **T-03 · Asignar permisos al rol existente `mocter_auth`**
+- [x] **T-03 · Asignar permisos al rol existente `mocter_auth`**
   - ADM-001 T-03 crea el rol. AUTH-001 concede los permisos de su dominio: Router `SELECT`/`INSERT`/`UPDATE` sobre `users`, `identities`, `sessions` y tokens; sin DDL, sin `BYPASSRLS`, sin acceso a `tenant_users`, `clients` ni datos de negocio, y sin `INSERT` en `audit_log`.
   - Celda dedicada: `SELECT`/`UPDATE` sobre `users`; `SELECT`/`INSERT`/`UPDATE` sobre `identities`; la aplicación fija `SET LOCAL app.current_client_id`.
   - Verificación: pruebas negativas por tabla y por rol; `mocter_auth` no lee `tenant_users` ni `clients` ni escribe `audit_log`; una consulta de celda sin contexto RLS no devuelve filas.
+  - Evidencia: 2026-10-27 — Migración `0003_auth_grants_comments.sql` aplicada con permisos DML limitados exclusivamente al schema `admin` para `mocter_auth` y comentarios TSDoc/SQL añadidos. Validado en suite `admin-auth-schema.test.ts`.
 
 - [ ] **T-04 · Extender la identidad de celda dedicada**
   - Extender la proyección `users` de celda creada por ADM-001 T-03 con los campos de autenticación y crear `identities` en la celda con el mismo `id` del Router, `client_id`, RLS forzado y los índices de celda de `design.md` §4.3.
