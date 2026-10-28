@@ -22,3 +22,4 @@ export * from "./repositories/plans.repository.interface";
 export * from "./repositories/plans.repository";
 export * from "./services/lead.service";
 export * from "./auth/validation";
+export * from "./auth/password-hasher";

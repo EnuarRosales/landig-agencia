@@ -56,9 +56,10 @@
   - Verificación: el servidor rechaza contraseñas de 6, sin mayúscula, sin número o sin especial; una contraseña de 7 con todo se acepta; el mismo texto se valida en UI y API.
   - Evidencia: 2026-10-27 — Funciones `normalizeEmail`, `validatePassword`, y esquemas Zod `authEmailSchema`, `authPasswordSchema`, `registerUserSchema` creados en `packages/domain/src/auth/validation.ts`. 12 pruebas unitarias pasando en `packages/domain/src/auth/validation.test.ts` verificando aceptación de 7 caracteres con mayúscula/número/especial, rechazo de 6 caracteres o sin especial/mayúscula/número, y respeto estricto sin trim en contraseñas.
 
-- [ ] **T-07 · Implementar Argon2id y rehash**
+- [x] **T-07 · Implementar Argon2id y rehash**
   - Usar `m=64 MiB`, `t=3`, `p=1`, salt de 16 bytes y hash de 32; guardar parámetros en el hash.
   - Verificación: el hash verifica; nunca se guarda texto plano; al bajar los parámetros, el login rehasha; una verificación ficticia tarda un orden equivalente.
+  - Evidencia: 2026-10-27 — Módulo `packages/domain/src/auth/password-hasher.ts` implementado con biblioteca canónica `@node-rs/argon2`, configuración `m=65536, t=3, p=1`, longitud de salida 32 bytes y hash ficticio `DUMMY_ARGON2_HASH` para verificación de tiempo constante contra ataques de temporización. 7 pruebas unitarias pasando en `password-hasher.test.ts` verificando hashing, verificación positiva/negativa, detección de rehash ante parámetros inferiores y orden de tiempo de verificación ficticia.
 
 - [ ] **T-08 · Implementar registro nativo**
   - Crear usuario no verificado, token de 24 horas y envío SMTP; respuesta genérica para correo existente y nuevo.
