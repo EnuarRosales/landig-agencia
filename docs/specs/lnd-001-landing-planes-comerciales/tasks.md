@@ -46,11 +46,12 @@
   - Verificación: Sin planes activos, el enlace no se muestra; con planes activos, el enlace navega suavemente a `#planes`.
   - Evidencia: 2026-10-27 — Propiedad `hasPublicPlans` agregada en `Nav`. `LandingPage` (`apps/web/app/[locale]/page.tsx`) consulta `getPublicPlans()` de `@mocter/domain`. El enlace `/${locale}#planes` con label `t("pricing")` se inyecta condicionalmente solo si hay planes públicos activos.
 
-- [ ] **T-05 · Crear componente PricingSection con renderizado condicional**
+- [x] **T-05 · Crear componente PricingSection con renderizado condicional**
   - Implementar `apps/web/components/sections/pricing-section.tsx` con toggle mensual/anual y tarjetas de precios HUD.
   - Si no hay planes activos, retorna `null`.
   - Si hay planes, renderiza las tarjetas con CTA hacia `/[locale]/register?plan_code=...`.
   - Verificación: Componente desaparece sin romper el layout cuando la base no tiene planes públicos.
+  - Evidencia: 2026-10-27 — Componente `PricingSection` (`apps/web/components/sections/pricing-section.tsx`) creado con switch mensual/anual interactivo, tipado estricto `Plan`, `LocalizedText` y `LocalizedList`, formato de moneda según `currency` y CTA dinámico hacia `/[locale]/register?plan_code=...`. Integrado en `LandingPage` (`apps/web/app/[locale]/page.tsx`). `next build` pasa con 23/23 páginas prerenderizadas.
 
 ---
 

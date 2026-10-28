@@ -260,5 +260,19 @@
     "cookies": "Configuración de privacidad",
     "contact": "Contacto",
     "legal": "© 2026 Mocter · Todos los derechos reservados · Hecho en Colombia"
+  },
+  "pricing": {
+    "pill": "Planes y Tarifas",
+    "title": "Escala tu atención sin límites",
+    "subtitle": "Sin costos por mensaje. Elige el plan que mejor se adapte al volumen de tu empresa.",
+    "monthly": "Mensual",
+    "annual": "Anual",
+    "discountBadge": "Ahorra 20%",
+    "popularBadge": "Más popular",
+    "perMonth": "mes",
+    "perYear": "año",
+    "cta": "Comenzar ahora",
+    "freeTrial": "Prueba gratis por 14 días",
+    "featuresTitle": "Lo que incluye este plan:"
   }
 }

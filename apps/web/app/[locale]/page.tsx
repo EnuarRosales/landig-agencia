@@ -5,6 +5,7 @@ import { Features } from "@/components/sections/features";
 import { Sectors } from "@/components/sections/sectors";
 import { HowItWorks } from "@/components/sections/how-it-works";
 import { LiveDemo } from "@/components/sections/live-demo";
+import { PricingSection } from "@/components/sections/pricing-section";
 import { Testimonial } from "@/components/sections/testimonial";
 import { CtaSection } from "@/components/sections/cta-section";
 import { Faq } from "@/components/sections/faq";
@@ -33,6 +34,7 @@ export default async function LandingPage() {
       <Sectors />
       <HowItWorks />
       <LiveDemo />
+      <PricingSection plans={publicPlans} />
       <Testimonial />
       <CtaSection />
       <Faq />

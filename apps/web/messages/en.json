@@ -260,5 +260,19 @@
     "cookies": "Privacy & Cookie Settings",
     "contact": "Contact",
     "legal": "© 2026 Mocter · All rights reserved · Made in Colombia"
+  },
+  "pricing": {
+    "pill": "Plans & Pricing",
+    "title": "Scale customer service without limits",
+    "subtitle": "No per-message fees. Choose the plan that best fits your company's growth.",
+    "monthly": "Monthly",
+    "annual": "Annual",
+    "discountBadge": "Save 20%",
+    "popularBadge": "Most popular",
+    "perMonth": "mo",
+    "perYear": "yr",
+    "cta": "Get started",
+    "freeTrial": "14-day free trial",
+    "featuresTitle": "What's included in this plan:"
   }
 }
