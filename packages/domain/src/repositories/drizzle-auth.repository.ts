@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { getDb } from "../db/client";
 import * as schema from "../db/schemas";
@@ -7,16 +7,20 @@ import {
   userConsents,
   emailVerificationTokens,
   passwordResetTokens,
+  sessions,
+  clientRouting,
   type User,
   type UserConsent,
   type EmailVerificationToken,
   type PasswordResetToken,
+  type Session,
 } from "../db/schemas";
 import type {
   IAuthRepository,
   CreateUserWithConsentParams,
   CreateEmailVerificationTokenParams,
   CreatePasswordResetTokenParams,
+  CreateSessionParams,
 } from "./auth.repository.interface";
 import { appLogger } from "../utils/logger";
 
@@ -331,6 +335,165 @@ export class DrizzleAuthRepository implements IAuthRepository {
         error,
         { tokenId, userId },
       );
+      throw error;
+    }
+  }
+
+  /**
+   * Crea una nueva sesión opaca en la tabla `sessions`, aplicando el límite de 10 sesiones por usuario (AUTH-001 §5.6).
+   */
+  async createSession(params: CreateSessionParams): Promise<Session> {
+    try {
+      return await this.db.transaction(async (tx) => {
+        const now = new Date();
+
+        // 1. Límite de 10 sesiones activas por usuario (AUTH-001 §5.6)
+        const activeSessions = await tx
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(and(eq(sessions.userId, params.userId), isNull(sessions.revokedAt)))
+          .orderBy(asc(sessions.createdAt));
+
+        if (activeSessions.length >= 10) {
+          const oldest = activeSessions[0];
+          await tx
+            .update(sessions)
+            .set({
+              revokedAt: now,
+              revokedReason: "session_limit",
+              updatedAt: now,
+              updatedBy: "system",
+            })
+            .where(eq(sessions.id, oldest.id));
+        }
+
+        // 2. Inserción de la nueva sesión opaca
+        const [newSession] = await tx
+          .insert(sessions)
+          .values({
+            userId: params.userId,
+            sidHash: params.sidHash,
+            csrfHash: params.csrfHash,
+            clientId: params.clientId ?? null,
+            routingVersion: params.routingVersion ?? null,
+            authMethod: params.authMethod,
+            reauthAt: params.reauthAt,
+            lastSeenAt: now,
+            expiresAt: params.expiresAt,
+            absoluteExpiresAt: params.absoluteExpiresAt,
+            ipHash: params.ipHash ?? null,
+            userAgentHash: params.userAgentHash ?? null,
+            createdBy: "self",
+            updatedBy: "self",
+          })
+          .returning();
+
+        return newSession;
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.createSession Failed] ${msg}`, error, {
+        userId: params.userId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Actualiza el hash Argon2id de la contraseña de un usuario en el Router (rehash transparente, AUTH-001 T-07).
+   */
+  async updateUserPasswordHash(
+    userId: string,
+    newPasswordHash: string,
+  ): Promise<void> {
+    try {
+      const now = new Date();
+      await this.db
+        .update(users)
+        .set({
+          passwordHash: newPasswordHash,
+          passwordUpdatedAt: now,
+          updatedAt: now,
+          updatedBy: "self",
+        })
+        .where(eq(users.id, userId));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(
+        `[AuthRepository.updateUserPasswordHash Failed] ${msg}`,
+        error,
+        { userId },
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Consulta la versión vigente de enrutamiento (`routing_version`) para un inquilino en `client_routing`.
+   */
+  async getClientRoutingVersion(clientId: string): Promise<number | null> {
+    try {
+      const rows = await this.db
+        .select({ routingVersion: clientRouting.routingVersion })
+        .from(clientRouting)
+        .where(eq(clientRouting.clientId, clientId))
+        .limit(1);
+
+      return rows[0]?.routingVersion ?? null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(
+        `[AuthRepository.getClientRoutingVersion Failed] ${msg}`,
+        error,
+        { clientId },
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Busca una sesión activa por el hash binario SHA-256 de su `sid`.
+   */
+  async findSessionBySidHash(sidHash: Buffer): Promise<Session | null> {
+    try {
+      const rows = await this.db
+        .select()
+        .from(sessions)
+        .where(and(eq(sessions.sidHash, sidHash), isNull(sessions.revokedAt)))
+        .limit(1);
+
+      return rows[0] ?? null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(
+        `[AuthRepository.findSessionBySidHash Failed] ${msg}`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Revoca una sesión específica marcando `revoked_at = now()`.
+   */
+  async revokeSession(sessionId: string, reason: string): Promise<void> {
+    try {
+      const now = new Date();
+      await this.db
+        .update(sessions)
+        .set({
+          revokedAt: now,
+          revokedReason: reason,
+          updatedAt: now,
+          updatedBy: "self",
+        })
+        .where(eq(sessions.id, sessionId));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.revokeSession Failed] ${msg}`, error, {
+        sessionId,
+        reason,
+      });
       throw error;
     }
   }

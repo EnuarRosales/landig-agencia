@@ -1,8 +1,19 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { AuthService, GENERIC_REGISTER_SUCCESS_MESSAGE } from "./auth.service";
+import {
+  AuthService,
+  GENERIC_REGISTER_SUCCESS_MESSAGE,
+  GENERIC_INVALID_CREDENTIALS_MESSAGE,
+} from "./auth.service";
 import type { IAuthRepository } from "../repositories/auth.repository.interface";
 import type { IAuthMailer } from "../auth/auth-mailer.interface";
-import type { User, UserConsent, EmailVerificationToken, PasswordResetToken } from "../db/schemas";
+import type {
+  User,
+  UserConsent,
+  EmailVerificationToken,
+  PasswordResetToken,
+  Session,
+} from "../db/schemas";
+import { hashPassword } from "../auth/password-hasher";
 
 describe("AUTH-001 T-08 · Servicio de Registro Nativo (AuthService)", () => {
   let mockAuthRepo: IAuthRepository;
@@ -29,6 +40,11 @@ describe("AUTH-001 T-08 · Servicio de Registro Nativo (AuthService)", () => {
       invalidatePendingPasswordResetTokens: vi.fn(),
       findEmailVerificationTokenByHash: vi.fn(),
       consumeEmailVerificationToken: vi.fn(),
+      createSession: vi.fn(),
+      updateUserPasswordHash: vi.fn(),
+      getClientRoutingVersion: vi.fn(),
+      findSessionBySidHash: vi.fn(),
+      revokeSession: vi.fn(),
     };
 
     mockMailer = {
@@ -336,6 +352,11 @@ describe("AUTH-001 T-09 · Verificación de correo (request y confirm)", () => {
       invalidatePendingPasswordResetTokens: vi.fn(),
       findEmailVerificationTokenByHash: vi.fn(),
       consumeEmailVerificationToken: vi.fn(),
+      createSession: vi.fn(),
+      updateUserPasswordHash: vi.fn(),
+      getClientRoutingVersion: vi.fn(),
+      findSessionBySidHash: vi.fn(),
+      revokeSession: vi.fn(),
     };
 
     mockMailer = {
@@ -532,3 +553,282 @@ describe("AUTH-001 T-09 · Verificación de correo (request y confirm)", () => {
     });
   });
 });
+
+describe("AUTH-001 T-10 · Inicio de Sesión Nativo (login)", () => {
+  let mockAuthRepo: IAuthRepository;
+  let mockMailer: IAuthMailer;
+  let authService: AuthService;
+
+  beforeEach(() => {
+    mockAuthRepo = {
+      findUserByEmail: vi.fn(),
+      findUserById: vi.fn(),
+      createUserWithConsent: vi.fn(),
+      createEmailVerificationToken: vi.fn(),
+      invalidatePendingEmailVerificationTokens: vi.fn(),
+      createPasswordResetToken: vi.fn(),
+      invalidatePendingPasswordResetTokens: vi.fn(),
+      findEmailVerificationTokenByHash: vi.fn(),
+      consumeEmailVerificationToken: vi.fn(),
+      createSession: vi.fn(),
+      updateUserPasswordHash: vi.fn(),
+      getClientRoutingVersion: vi.fn(),
+      findSessionBySidHash: vi.fn(),
+      revokeSession: vi.fn(),
+    };
+
+    mockMailer = {
+      sendVerificationEmail: vi.fn(),
+      sendPasswordSetupEmail: vi.fn(),
+      sendAccountAlreadyExistsEmail: vi.fn(),
+    };
+
+    authService = new AuthService(mockAuthRepo, mockMailer);
+  });
+
+  const rawPassword = "Password123!";
+
+  const buildMockUser = async (overrides?: Partial<User>): Promise<User> => {
+      const passwordHash = await hashPassword(rawPassword);
+      return {
+        id: "uuid-user-1",
+        email: "carlos@empresa.com",
+        emailVerifiedAt: new Date(),
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpEnabledAt: null,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: null,
+        identityLocation: "router",
+        activeClientId: null,
+        status: "active",
+        displayName: "Carlos Gómez",
+        avatarUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+        ...overrides,
+      };
+    };
+
+    const buildMockSession = (overrides?: Partial<Session>): Session => ({
+      id: "uuid-session-1",
+      sidHash: Buffer.alloc(32),
+      csrfHash: Buffer.alloc(32),
+      userId: "uuid-user-1",
+      clientId: null,
+      routingVersion: null,
+      authMethod: "password",
+      mfaAt: null,
+      reauthAt: new Date(),
+      lastSeenAt: new Date(),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      revokedAt: null,
+      revokedReason: null,
+      ipHash: null,
+      userAgentHash: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "self",
+      updatedBy: "self",
+      ...overrides,
+    });
+
+    it("inicia sesión correctamente para credenciales válidas y emite sesión con sid y csrfToken", async () => {
+      const mockUser = await buildMockUser();
+      const mockSession = buildMockSession();
+
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(mockUser);
+      vi.mocked(mockAuthRepo.createSession).mockResolvedValue(mockSession);
+
+      const result = await authService.login({
+        email: "carlos@empresa.com",
+        password: rawPassword,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok && !("mfaRequired" in result.data)) {
+        expect(result.data.user.id).toBe("uuid-user-1");
+        expect(result.data.user.email).toBe("carlos@empresa.com");
+        expect(result.data.emailVerified).toBe(true);
+        expect(result.data.sid).toBeTypeOf("string");
+        expect(result.data.csrfToken).toBeTypeOf("string");
+        expect(result.data.expiresAt).toBe(mockSession.expiresAt.toISOString());
+      }
+      expect(mockAuthRepo.createSession).toHaveBeenCalled();
+    });
+
+    it("rechaza con 401 genérico y ejecuta verificación ficticia si el usuario no existe", async () => {
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(null);
+
+      const result = await authService.login({
+        email: "inexistente@empresa.com",
+        password: rawPassword,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe(GENERIC_INVALID_CREDENTIALS_MESSAGE);
+        expect(result.code).toBe("INVALID_CREDENTIALS");
+      }
+      expect(mockAuthRepo.createSession).not.toHaveBeenCalled();
+    });
+
+    it("rechaza con 401 genérico y ejecuta verificación ficticia si la cuenta está deshabilitada", async () => {
+      const disabledUser = await buildMockUser({ status: "disabled" });
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(disabledUser);
+
+      const result = await authService.login({
+        email: "carlos@empresa.com",
+        password: rawPassword,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe(GENERIC_INVALID_CREDENTIALS_MESSAGE);
+        expect(result.code).toBe("INVALID_CREDENTIALS");
+      }
+      expect(mockAuthRepo.createSession).not.toHaveBeenCalled();
+    });
+
+    it("rechaza con 401 genérico y ejecuta verificación ficticia si la cuenta es solo federada (passwordHash es null)", async () => {
+      const federatedUser = await buildMockUser({ passwordHash: null });
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(federatedUser);
+
+      const result = await authService.login({
+        email: "carlos@empresa.com",
+        password: rawPassword,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe(GENERIC_INVALID_CREDENTIALS_MESSAGE);
+        expect(result.code).toBe("INVALID_CREDENTIALS");
+      }
+      expect(mockAuthRepo.createSession).not.toHaveBeenCalled();
+    });
+
+    it("rechaza con 401 genérico si la contraseña no coincide", async () => {
+      const mockUser = await buildMockUser();
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(mockUser);
+
+      const result = await authService.login({
+        email: "carlos@empresa.com",
+        password: "WrongPassword999!",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe(GENERIC_INVALID_CREDENTIALS_MESSAGE);
+        expect(result.code).toBe("INVALID_CREDENTIALS");
+      }
+      expect(mockAuthRepo.createSession).not.toHaveBeenCalled();
+    });
+
+    it("rehashea automáticamente si el hash posee parámetros obsoletos", async () => {
+      // Hash generado con memoria inferior (32 MiB en vez de 64 MiB)
+      const outdatedHash = await hashPassword(rawPassword, { memoryCost: 32768, timeCost: 2 });
+      const mockUser = await buildMockUser({ passwordHash: outdatedHash });
+      const mockSession = buildMockSession();
+
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(mockUser);
+      vi.mocked(mockAuthRepo.createSession).mockResolvedValue(mockSession);
+
+      const result = await authService.login({
+        email: "carlos@empresa.com",
+        password: rawPassword,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(mockAuthRepo.updateUserPasswordHash).toHaveBeenCalledWith(
+        mockUser.id,
+        expect.stringContaining("$argon2id$"),
+      );
+    });
+
+    it("retorna challenge 2FA si la cuenta tiene totpEnabledAt sin emitir sesión", async () => {
+      const totpUser = await buildMockUser({ totpEnabledAt: new Date() });
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(totpUser);
+
+      const result = await authService.login({
+        email: "carlos@empresa.com",
+        password: rawPassword,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok && "mfaRequired" in result.data) {
+        expect(result.data.mfaRequired).toBe(true);
+        expect(result.data.challengeToken).toBeTypeOf("string");
+        expect(result.data.userId).toBe(totpUser.id);
+      }
+      expect(mockAuthRepo.createSession).not.toHaveBeenCalled();
+    });
+
+    it("falla con 503 IDENTITY_INCONSISTENT si identityLocation es una celda y activeClientId es nulo", async () => {
+      const inconsistentUser = await buildMockUser({
+        identityLocation: "11111111-1111-1111-1111-111111111111",
+        activeClientId: null,
+      });
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(inconsistentUser);
+
+      const result = await authService.login({
+        email: "carlos@empresa.com",
+        password: rawPassword,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("IDENTITY_INCONSISTENT");
+      }
+      expect(mockAuthRepo.createSession).not.toHaveBeenCalled();
+    });
+
+    it("falla con 503 CELL_UNAVAILABLE si identityLocation es una celda con activeClientId en Fase 1", async () => {
+      const cellUser = await buildMockUser({
+        identityLocation: "11111111-1111-1111-1111-111111111111",
+        activeClientId: "22222222-2222-2222-2222-222222222222",
+      });
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(cellUser);
+
+      const result = await authService.login({
+        email: "carlos@empresa.com",
+        password: rawPassword,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("CELL_UNAVAILABLE");
+      }
+      expect(mockAuthRepo.createSession).not.toHaveBeenCalled();
+    });
+
+    it("asocia routingVersion si el usuario tiene activeClientId", async () => {
+      const clientId = "22222222-2222-2222-2222-222222222222";
+      const userWithClient = await buildMockUser({ activeClientId: clientId });
+      const mockSession = buildMockSession({ clientId, routingVersion: 3 });
+
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(userWithClient);
+      vi.mocked(mockAuthRepo.getClientRoutingVersion).mockResolvedValue(3);
+      vi.mocked(mockAuthRepo.createSession).mockResolvedValue(mockSession);
+
+      const result = await authService.login({
+        email: "carlos@empresa.com",
+        password: rawPassword,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(mockAuthRepo.getClientRoutingVersion).toHaveBeenCalledWith(clientId);
+      expect(mockAuthRepo.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientId,
+          routingVersion: 3,
+        }),
+      );
+    });
+  });

@@ -62,3 +62,6 @@ export const sessions = adminSchema.table(
     check("sessions_csrf_hash_length_check", sql.raw("octet_length(csrf_hash) = 32")),
   ],
 );
+
+export type Session = typeof sessions.$inferSelect;
+export type NewSession = typeof sessions.$inferInsert;

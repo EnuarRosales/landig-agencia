@@ -284,6 +284,8 @@
       "passwordLabel": "Contraseña",
       "passwordPlaceholder": "••••••••",
       "submit": "Iniciar sesión",
+      "submitting": "Iniciando sesión...",
+      "unverifiedNotice": "Tu correo electrónico no ha sido verificado aún. Por favor revisa tu bandeja de entrada.",
       "noAccount": "¿Aún no tienes una cuenta?",
       "registerLink": "Regístrate gratis",
       "backToHome": "Volver al inicio"

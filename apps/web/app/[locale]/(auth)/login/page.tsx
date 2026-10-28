@@ -4,6 +4,9 @@ import { getTranslations } from "next-intl/server";
 import { locales } from "@/i18n/routing";
 import { Logo } from "@/components/logo";
 import { FloatingBackground } from "@/components/sections/floating-background";
+import { LoginForm } from "@/components/auth/login-form";
+
+export const instant = false;
 
 type Props = PageProps<"/[locale]">;
 
@@ -22,7 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /**
- * Página de inicio de sesión para administradores y agentes de inquilinos en Mocter.
+ * Página de inicio de sesión para administradores y agentes de inquilinos en Mocter (AUTH-001 T-10).
  *
  * Implementa la interfaz de acceso por credenciales con enlace cruzado directo hacia
  * la pantalla de registro (`/[locale]/register`), respetando el sistema de diseño HUD.
@@ -30,8 +33,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
  * @param props - Propiedades de página inyectadas por el App Router de Next.js.
  * @returns Elemento JSX que representa la vista de autenticación.
  */
-export default async function LoginPage({ params }: Props) {
+export default async function LoginPage({ params, searchParams }: Props) {
   const { locale } = await params;
+  const sParams = await searchParams;
+  const returnTo =
+    typeof sParams?.return_to === "string" ? sParams.return_to : undefined;
   const t = await getTranslations({ locale, namespace: "auth.login" });
 
   return (
@@ -41,7 +47,10 @@ export default async function LoginPage({ params }: Props) {
       <div className="relative z-10 w-full max-w-[420px]">
         {/* Logo superior */}
         <div className="mb-8 flex justify-center">
-          <Link href={`/${locale}`} className="transition-transform hover:scale-105">
+          <Link
+            href={`/${locale}`}
+            className="transition-transform hover:scale-105"
+          >
             <Logo />
           </Link>
         </div>
@@ -49,54 +58,25 @@ export default async function LoginPage({ params }: Props) {
         {/* Tarjeta HUD de Login */}
         <div className="rounded-2xl border border-stroke bg-surface/80 p-8 shadow-[0_8px_32px_rgba(0,0,0,0.36)] backdrop-blur-xl">
           <header className="mb-6 text-center">
-            <h1 className="text-2xl font-bold tracking-tight text-txt">{t("title")}</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-txt">
+              {t("title")}
+            </h1>
             <p className="mt-1.5 text-sm text-muted">{t("subtitle")}</p>
           </header>
 
-          <form className="space-y-4" action="#" method="POST">
-            <div>
-              <label
-                htmlFor="email"
-                className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
-              >
-                {t("emailLabel")}
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                placeholder={t("emailPlaceholder")}
-                className="w-full rounded-xl border border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="password"
-                className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
-              >
-                {t("passwordLabel")}
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                placeholder={t("passwordPlaceholder")}
-                className="w-full rounded-xl border border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="mt-2 flex w-full cursor-pointer items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] py-3 text-sm font-semibold text-white shadow-lg shadow-a1/25 transition-all hover:opacity-95 hover:shadow-a1/40"
-            >
-              {t("submit")}
-            </button>
-          </form>
+          <LoginForm
+            locale={locale}
+            returnTo={returnTo}
+            t={{
+              emailLabel: t("emailLabel"),
+              emailPlaceholder: t("emailPlaceholder"),
+              passwordLabel: t("passwordLabel"),
+              passwordPlaceholder: t("passwordPlaceholder"),
+              submit: t("submit"),
+              submitting: t("submitting"),
+              unverifiedNotice: t("unverifiedNotice"),
+            }}
+          />
 
           {/* Enlace inferior hacia Registro */}
           <div className="mt-6 border-t border-stroke/60 pt-6 text-center text-xs text-muted">

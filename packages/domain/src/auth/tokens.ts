@@ -39,3 +39,26 @@ export function hashToken(token: string): Buffer {
 export function hashIpWithPepper(ip: string, pepper: string): Buffer {
   return createHmac("sha256", pepper).update(ip).digest();
 }
+
+/**
+ * Genera un identificador opaco de sesión (sid) aleatorio de 32 bytes en formato base64url (AUTH-001 §5.6).
+ *
+ * Se utiliza para emitir la cookie `__Host-mocter_sid`. Solo se persiste su hash SHA-256 en base de datos.
+ *
+ * @returns Cadena codificada en base64url con 32 bytes de entropía criptográfica.
+ */
+export function generateSessionId(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+/**
+ * Genera un token CSRF aleatorio de 32 bytes en formato hexadecimal (AUTH-001 §5.6).
+ *
+ * Se utiliza para emitir la cookie `__Host-mocter_csrf` legible por el cliente y para validar
+ * mutaciones autenticadas contra `sessions.csrf_hash`.
+ *
+ * @returns Cadena hexadecimal de 64 caracteres (32 bytes de entropía).
+ */
+export function generateCsrfToken(): string {
+  return randomBytes(32).toString("hex");
+}

@@ -72,10 +72,11 @@
   - Verificación: un token vencido o consumido falla; el `GET` no consume; el reenvío invalida el anterior; `email_verified_at` queda seteado y auditado.
   - Evidencia: 2026-10-28 — Implementado `requestEmailVerification` y `confirmEmailVerification` en `AuthService` y `DrizzleAuthRepository`; endpoints `/api/auth/email/verify/request` y `/api/auth/email/verify/confirm`; pantalla HUD de confirmación `verify-email/page.tsx` donde el GET no consume el token y la confirmación se ejecuta vía POST. 12 pruebas unitarias y de integración pasando en `auth.service.test.ts` y `verify-routes.test.ts`. Compilación de producción limpia en monorepo con 143 pruebas en verde.
 
-- [ ] **T-10 · Implementar login nativo**
+- [x] **T-10 · Implementar login nativo**
   - Resolver `identity_location`; verificar en Router o celda; usar verificación ficticia para usuarios inexistentes, sin contraseña o deshabilitados; rehash si corresponde.
   - Si hay 2FA, emitir challenge; si no, crear sesión con `client_id` y `routing_version`.
   - Verificación: los cuatro casos de fallo devuelven el mismo `401` y tiempo equivalente; una celda caída devuelve `503`; el login exitoso setea cookie y CSRF.
+  - Evidencia: 2026-10-28 — Implementado `login()` en `AuthService` y métodos de sesión en `DrizzleAuthRepository` (`createSession`, `updateUserPasswordHash`, `getClientRoutingVersion`, etc.) con mitigación de ataques de temporización (`verifyDummyPassword`), rehash automático, challenge 2FA y límite de 10 sesiones por usuario (revocando la más antigua). Creado endpoint `POST /api/auth/login` con validación de Origin, rate limit por IP, cookies de sesión opaca (`mocter_sid` / `__Host-mocter_sid`) y CSRF (`mocter_csrf` / `__Host-mocter_csrf`). Implementado componente HUD interactivo `LoginForm` y cableado en `/[locale]/login`. 16 pruebas unitarias y de integración pasando en `auth.service.test.ts` y `route.test.ts`. Compilación de producción (`pnpm build`) exitosa con 36/36 rutas y 160 pruebas en verde en todo el monorepo.
 
 - [ ] **T-11 · Implementar recuperación, establecimiento y cambio de contraseña**
   - `forgot`, `reset` y `change`; token de 30 minutos, un solo uso, respuesta genérica y revocación de sesiones.

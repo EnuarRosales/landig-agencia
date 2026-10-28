@@ -52,7 +52,7 @@ services:
   web-portal:
     image: node:24-alpine
     working_dir: /app
-    command: sh -c "corepack enable && corepack pnpm install && node packages/domain/scripts/migrate.mjs && corepack pnpm dev"
+    command: sh -c "corepack enable && corepack pnpm install && node packages/domain/scripts/migrate.mjs && corepack pnpm --filter @mocter/web dev"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-control:6379/0"

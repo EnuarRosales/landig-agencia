@@ -3,6 +3,7 @@ import type {
   UserConsent,
   EmailVerificationToken,
   PasswordResetToken,
+  Session,
 } from "../db/schemas";
 
 /**
@@ -141,4 +142,74 @@ export interface IAuthRepository {
     tokenId: string,
     userId: string,
   ): Promise<User>;
+
+  /**
+   * Crea una nueva sesión opaca en la tabla `sessions`, aplicando el límite de 10 sesiones por usuario (AUTH-001 §5.6).
+   *
+   * Si el usuario ya posee 10 sesiones activas, revoca la más antigua antes de insertar la nueva.
+   *
+   * @param params - Parámetros de la sesión a persistir.
+   * @returns La entidad {@link Session} persistida.
+   */
+  createSession(params: CreateSessionParams): Promise<Session>;
+
+  /**
+   * Actualiza el hash Argon2id de la contraseña de un usuario en el Router (rehash transparente, AUTH-001 T-07).
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @param newPasswordHash - Nuevo hash Argon2id con parámetros canónicos vigentes.
+   */
+  updateUserPasswordHash(userId: string, newPasswordHash: string): Promise<void>;
+
+  /**
+   * Consulta la versión vigente de enrutamiento (`routing_version`) para un inquilino en `client_routing`.
+   *
+   * @param clientId - Identificador UUID del inquilino.
+   * @returns La versión entera de enrutamiento o `null` si no existe fila para el cliente.
+   */
+  getClientRoutingVersion(clientId: string): Promise<number | null>;
+
+  /**
+   * Busca una sesión activa por el hash binario SHA-256 de su `sid`.
+   *
+   * @param sidHash - Buffer de 32 bytes con el hash SHA-256 del `sid`.
+   * @returns La entidad {@link Session} encontrada o `null` si no existe o está revocada.
+   */
+  findSessionBySidHash(sidHash: Buffer): Promise<Session | null>;
+
+  /**
+   * Revoca una sesión específica marcando `revoked_at = now()` y el motivo correspondiente.
+   *
+   * @param sessionId - Identificador UUID de la sesión.
+   * @param reason - Motivo descriptivo de la revocación (p. ej. "user_logout", "session_limit").
+   */
+  revokeSession(sessionId: string, reason: string): Promise<void>;
+}
+
+/**
+ * Parámetros para la creación de una nueva sesión opaca en el Router (AUTH-001 §5.6).
+ */
+export interface CreateSessionParams {
+  /** Identificador UUID del usuario autenticado. */
+  userId: string;
+  /** Hash binario SHA-256 (32 bytes) del identificador de sesión `sid`. */
+  sidHash: Buffer;
+  /** Hash binario SHA-256 (32 bytes) del token CSRF. */
+  csrfHash: Buffer;
+  /** Identificador del cliente activo copiado de `users.active_client_id` (nulo si no tiene membresía). */
+  clientId?: string | null;
+  /** Versión de enrutamiento vigente para el inquilino (nulo si no tiene membresía). */
+  routingVersion?: number | null;
+  /** Método de autenticación utilizado ("password", "google", "facebook"). */
+  authMethod: "password" | "google" | "facebook";
+  /** Momento de reautenticación explícita con credenciales o TOTP. */
+  reauthAt: Date;
+  /** Fecha y hora UTC de vencimiento por inactividad (30 minutos tras emisión). */
+  expiresAt: Date;
+  /** Fecha y hora UTC de vencimiento absoluto ineludible (12 horas tras emisión). */
+  absoluteExpiresAt: Date;
+  /** Hash HMAC de la dirección IP del cliente (opcional). */
+  ipHash?: Buffer | null;
+  /** Hash HMAC del User-Agent del cliente (opcional). */
+  userAgentHash?: Buffer | null;
 }
