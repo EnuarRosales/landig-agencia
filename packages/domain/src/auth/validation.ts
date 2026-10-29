@@ -160,3 +160,50 @@ export const changePasswordSchema = z.object({
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
+/**
+ * Esquema Zod para solicitud de enrolamiento 2FA (AUTH-001 §5.5).
+ */
+export const enroll2faSchema = z.object({
+  password: z.string().min(1, "La contraseña es requerida").optional(),
+});
+
+/**
+ * Esquema Zod para confirmación y activación de 2FA (AUTH-001 §5.5).
+ */
+export const confirm2faSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .length(6, "El código de verificación debe tener exactamente 6 dígitos")
+    .regex(/^\d{6}$/, "El código de verificación debe ser numérico"),
+});
+
+/**
+ * Esquema Zod para desactivación de 2FA (AUTH-001 §5.5).
+ */
+export const disable2faSchema = z.object({
+  password: z.string().min(1, "La contraseña actual es requerida"),
+  code: z
+    .string()
+    .trim()
+    .length(6, "El código de verificación debe tener exactamente 6 dígitos")
+    .regex(/^\d{6}$/, "El código de verificación debe ser numérico"),
+});
+
+/**
+ * Esquema Zod para resolución de challenge 2FA en login (AUTH-001 §5.5).
+ */
+export const verify2faChallengeSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .length(6, "El código de verificación debe tener exactamente 6 dígitos")
+    .regex(/^\d{6}$/, "El código de verificación debe ser numérico"),
+});
+
+export type Enroll2faInputSchema = z.infer<typeof enroll2faSchema>;
+export type Confirm2faInputSchema = z.infer<typeof confirm2faSchema>;
+export type Disable2faInputSchema = z.infer<typeof disable2faSchema>;
+export type Verify2faChallengeInputSchema = z.infer<typeof verify2faChallengeSchema>;
+

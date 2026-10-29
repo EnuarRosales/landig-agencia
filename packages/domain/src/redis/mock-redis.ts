@@ -131,7 +131,7 @@ export class MockRedisClient extends EventEmitter {
     }
 
     // 5. Script de lectura y consumo atómico (GET + DEL)
-    if (script.includes("GET") && script.includes("DEL")) {
+    if (script.includes("GET") && script.includes("DEL") && !script.includes("attempts")) {
       const entry = this.store.get(key);
       if (!entry) return null;
       if (entry.expiresAt !== null && entry.expiresAt <= now) {
@@ -140,6 +140,29 @@ export class MockRedisClient extends EventEmitter {
       }
       this.store.delete(key);
       return entry.value;
+    }
+
+    // 6. Script atómico para incremento de intentos en challenge MFA
+    if (script.includes("attempts")) {
+      const entry = this.store.get(key);
+      if (!entry) return [-1, 1];
+      if (entry.expiresAt !== null && entry.expiresAt <= now) {
+        this.store.delete(key);
+        return [-1, 1];
+      }
+      try {
+        const data = JSON.parse(entry.value);
+        data.attempts = (data.attempts || 0) + 1;
+        if (data.attempts >= 5) {
+          this.store.delete(key);
+          return [data.attempts, 1];
+        }
+        entry.value = JSON.stringify(data);
+        return [data.attempts, 0];
+      } catch {
+        this.store.delete(key);
+        return [-1, 1];
+      }
     }
 
     return [1, 0, 0];

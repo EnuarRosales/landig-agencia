@@ -4,8 +4,10 @@ import { getTranslations } from "next-intl/server";
 import { locales } from "@/i18n/routing";
 import { Logo } from "@/components/logo";
 import { FloatingBackground } from "@/components/sections/floating-background";
-import { RegisterForm } from "@/components/auth/register-form";
+import { RegisterForm, OAuthButtons } from "@/components/auth";
 import { getPlanByCode, type Plan } from "@mocter/domain";
+
+export const instant = false;
 
 type Props = PageProps<"/[locale]">;
 
@@ -51,6 +53,7 @@ export default async function RegisterPage({ params, searchParams }: Props) {
   }
 
   const t = await getTranslations({ locale, namespace: "auth.register" });
+  const tOauth = await getTranslations({ locale, namespace: "auth.oauth" });
   const lang = locale === "en" ? "en" : "es";
   const planName = selectedPlan
     ? selectedPlan.name?.[lang] || selectedPlan.name?.es || selectedPlan.code
@@ -101,6 +104,14 @@ export default async function RegisterPage({ params, searchParams }: Props) {
               genericSuccessTitle: t("genericSuccessTitle"),
               genericSuccessMessage: t("genericSuccessMessage"),
               checkEmailPrompt: t("checkEmailPrompt"),
+            }}
+          />
+
+          <OAuthButtons
+            t={{
+              orDivider: tOauth("orDivider"),
+              googleButton: tOauth("googleButton"),
+              facebookButton: tOauth("facebookButton"),
             }}
           />
 

@@ -22,6 +22,14 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return [
+      {
+        source: "/auth/:path*",
+        destination: "/api/auth/:path*",
+      },
+    ];
+  },
 };
 
 /** Loads `i18n/request.ts` (default path when there is no `src/` directory). */

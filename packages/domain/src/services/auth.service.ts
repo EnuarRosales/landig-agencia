@@ -25,11 +25,37 @@ import {
   generateCsrfToken,
   compareHashesConstantTime,
 } from "../auth/tokens";
-import type { Session } from "../db/schemas";
+import type { Session, User } from "../db/schemas";
 import type { IAuthRepository } from "../repositories/auth.repository.interface";
 import { defaultAuthRepository } from "../repositories/drizzle-auth.repository";
 import type { IAuthMailer } from "../auth/auth-mailer.interface";
 import { defaultAuthMailer } from "../auth/auth-mailer.interface";
+import {
+  type IGoogleOidcClient,
+  defaultGoogleOidcClient,
+  GoogleProviderUnavailableError,
+  GoogleTokenValidationError,
+} from "../auth/google-oidc.service";
+import {
+  type IFacebookOAuthClient,
+  defaultFacebookOAuthClient,
+  FacebookProviderUnavailableError,
+  FacebookOAuthValidationError,
+} from "../auth/facebook-oauth.service";
+import { OAuthStateManager, oauthStateManager } from "../auth/oauth-state";
+import {
+  TotpCryptoService,
+  defaultTotpCryptoService,
+} from "../auth/totp-crypto";
+import {
+  generateTotpSecret,
+  verifyTotpCode,
+  generateOtpauthUri,
+} from "../auth/totp";
+import {
+  MfaChallengeManager,
+  mfaChallengeManager as defaultMfaChallengeManager,
+} from "../auth/mfa-challenge";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 
@@ -159,6 +185,204 @@ export interface RegisterContextOptions {
 }
 
 /**
+ * Parámetros requeridos para procesar el callback de autenticación federada con Google (AUTH-001 T-14).
+ */
+export interface AuthenticateWithGoogleInput {
+  /** Código de autorización devuelto por Google en la redirección. */
+  code: string;
+  /** Estado de autorización devuelto en el parámetro de consulta `state`. */
+  state: string;
+  /** Valor del estado almacenado en la cookie HTTP `mocter_oauth_state_google`. */
+  clientCookieState: string;
+  /** Identificador de cliente de Google (`GOOGLE_CLIENT_ID`). */
+  clientId: string;
+  /** Secreto de cliente de Google (`GOOGLE_CLIENT_SECRET`). */
+  clientSecret: string;
+  /** URI de redirección exacta registrada (`GOOGLE_REDIRECT_URI`). */
+  redirectUri: string;
+  /** Dirección IP del cliente solicitante para cómputo de HMAC y auditoría. */
+  clientIp?: string;
+  /** Agente de usuario para huella criptográfica de sesión. */
+  userAgent?: string;
+  /** Clave pepper del sistema para HMAC. */
+  pepper?: string;
+}
+
+/**
+ * Parámetros requeridos para procesar el callback de autenticación federada con Facebook (AUTH-001 T-15).
+ */
+export interface AuthenticateWithFacebookInput {
+  /** Código de autorización devuelto por Facebook en la redirección. */
+  code: string;
+  /** Estado de autorización devuelto en el parámetro de consulta `state`. */
+  state: string;
+  /** Valor del estado almacenado en la cookie HTTP `mocter_oauth_state_facebook`. */
+  clientCookieState: string;
+  /** Identificador de la aplicación de Facebook (`FACEBOOK_APP_ID`). */
+  clientId: string;
+  /** Secreto de la aplicación de Facebook (`FACEBOOK_APP_SECRET`). */
+  clientSecret: string;
+  /** URI de redirección exacta registrada (`FACEBOOK_REDIRECT_URI`). */
+  redirectUri: string;
+  /** Dirección IP del cliente solicitante para cómputo de HMAC y auditoría. */
+  clientIp?: string;
+  /** Agente de usuario para huella criptográfica de sesión. */
+  userAgent?: string;
+  /** Clave pepper del sistema para HMAC. */
+  pepper?: string;
+}
+
+/**
+ * Resultado de la autenticación federada con sesión creada o error descriptivo.
+ */
+export type FederatedLoginResult = Result<LoginSuccessData>;
+
+/**
+ * Parámetros de entrada para el callback de vinculación de identidad federada (AUTH-001 §5.4, T-16).
+ */
+export interface LinkIdentityCallbackInput {
+  provider: "google" | "facebook";
+  code: string;
+  state: string;
+  clientCookieState: string;
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  clientIp?: string;
+  userAgent?: string;
+  pepper?: string;
+}
+
+/**
+ * Resultado de la vinculación de identidad federada con sesión renovada y URL de retorno.
+ */
+export type LinkIdentityResult = Result<LoginSuccessData & { returnTo: string }>;
+
+/**
+ * Parámetros de entrada para la desvinculación de una identidad federada (AUTH-001 §5.4, T-16).
+ */
+export interface UnlinkIdentityInput {
+  userId: string;
+  sessionId: string;
+  currentAuthMethod?: string;
+  provider: "google" | "facebook";
+  currentPassword?: string;
+  totpCode?: string;
+}
+
+/**
+ * Resultado de la desvinculación de una identidad federada.
+ */
+export type UnlinkIdentityResult = Result<{
+  message: string;
+  rotatedSession?: {
+    sid: string;
+    csrfToken: string;
+    expiresAt: string;
+  };
+}>;
+
+/**
+ * Parámetros de entrada para el enrolamiento 2FA (AUTH-001 §5.5, T-18).
+ */
+export interface Enroll2faInput {
+  userId: string;
+  sessionId: string;
+  reauthAt?: Date | null;
+  password?: string;
+}
+
+/**
+ * Datos de respuesta para enrolamiento 2FA.
+ */
+export interface Enroll2faResponseData {
+  otpauthUri: string;
+  secret: string;
+  expiresAt: string;
+}
+
+export type Enroll2faResult = Result<
+  Enroll2faResponseData,
+  "USER_NOT_FOUND" | "MFA_NOT_AVAILABLE" | "REAUTH_REQUIRED" | "INVALID_CREDENTIALS" | "DB_ERROR"
+>;
+
+/**
+ * Parámetros de entrada para confirmación y activación de 2FA (AUTH-001 §5.5, T-18).
+ */
+export interface Confirm2faInput {
+  userId: string;
+  sessionId: string;
+  code: string;
+}
+
+/**
+ * Datos de respuesta para confirmación 2FA con sesión rotada.
+ */
+export interface Confirm2faResponseData {
+  message: string;
+  rotatedSession: {
+    sid: string;
+    csrfToken: string;
+    expiresAt: string;
+  };
+}
+
+export type Confirm2faResult = Result<
+  Confirm2faResponseData,
+  "USER_NOT_FOUND" | "INVALID_TOTP_CODE" | "DB_ERROR"
+>;
+
+/**
+ * Parámetros de entrada para desactivación de 2FA (AUTH-001 §5.5, T-18).
+ */
+export interface Disable2faInput {
+  userId: string;
+  sessionId: string;
+  password?: string;
+  code?: string;
+}
+
+/**
+ * Datos de respuesta para desactivación 2FA con sesión rotada.
+ */
+export interface Disable2faResponseData {
+  message: string;
+  rotatedSession: {
+    sid: string;
+    csrfToken: string;
+    expiresAt: string;
+  };
+}
+
+export type Disable2faResult = Result<
+  Disable2faResponseData,
+  "USER_NOT_FOUND" | "MFA_NOT_ENABLED" | "INVALID_CREDENTIALS" | "INVALID_TOTP_CODE" | "DB_ERROR"
+>;
+
+/**
+ * Parámetros de entrada para la resolución del challenge 2FA en login (AUTH-001 §5.5, T-19).
+ */
+export interface Verify2faChallengeInput {
+  challengeToken: string;
+  code: string;
+  clientIp?: string;
+  userAgent?: string;
+  pepper?: string;
+}
+
+export type Verify2faChallengeResult = Result<
+  LoginSuccessData,
+  | "VALIDATION_ERROR"
+  | "CHALLENGE_EXPIRED"
+  | "CHALLENGE_EXHAUSTED"
+  | "USER_NOT_FOUND"
+  | "MFA_NOT_ENABLED"
+  | "INVALID_TOTP_CODE"
+  | "CELL_UNAVAILABLE"
+  | "DB_ERROR"
+>;
+
+/**
  * Servicio de dominio responsable de la orquestación del registro nativo de usuarios (AUTH-001 T-08).
  *
  * Implementa las políticas de seguridad:
@@ -174,10 +398,20 @@ export class AuthService {
    *
    * @param authRepo - Repositorio de persistencia de autenticación (por defecto {@link defaultAuthRepository}).
    * @param mailer - Despachador de correos transaccionales (por defecto {@link defaultAuthMailer}).
+   * @param googleOidcClient - Cliente OIDC para interacción con Google (por defecto {@link defaultGoogleOidcClient}).
+   * @param stateManager - Gestor atómico de estados OAuth en Redis (por defecto {@link oauthStateManager}).
+   * @param facebookOAuthClient - Cliente OAuth para interacción con Facebook (por defecto {@link defaultFacebookOAuthClient}).
+   * @param totpCrypto - Servicio criptográfico para cifrado de secretos TOTP (por defecto {@link defaultTotpCryptoService}).
+   * @param mfaChallengeManager - Gestor de challenges 2FA en Redis (por defecto {@link defaultMfaChallengeManager}).
    */
   constructor(
     private readonly authRepo: IAuthRepository = defaultAuthRepository,
     private readonly mailer: IAuthMailer = defaultAuthMailer,
+    private readonly googleOidcClient: IGoogleOidcClient = defaultGoogleOidcClient,
+    private readonly stateManager: OAuthStateManager = oauthStateManager,
+    private readonly facebookOAuthClient: IFacebookOAuthClient = defaultFacebookOAuthClient,
+    private readonly totpCrypto: TotpCryptoService = defaultTotpCryptoService,
+    private readonly mfaChallengeManager: MfaChallengeManager = defaultMfaChallengeManager,
   ) {}
 
   /**
@@ -557,20 +791,7 @@ export class AuthService {
         }
       }
 
-      // 6. Verificar si requiere doble factor (TOTP)
-      if (user.totpEnabledAt !== null) {
-        const challengeToken = generateSecureToken(32);
-        const challengeExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutos (AUTH-001 §5.5)
-
-        return ok({
-          mfaRequired: true,
-          userId: user.id,
-          challengeToken,
-          expiresAt: challengeExpiresAt.toISOString(),
-        });
-      }
-
-      // 7. Resolver routing_version para activeClientId
+      // 6. Resolver routing_version para activeClientId
       let routingVersion: number | null = null;
       if (user.activeClientId) {
         routingVersion = await this.authRepo.getClientRoutingVersion(
@@ -578,59 +799,701 @@ export class AuthService {
         );
       }
 
+      // 7. Verificar si requiere doble factor (TOTP) (AUTH-001 §5.5, design §5.2)
+      if (user.totpEnabledAt !== null) {
+        const challenge = await this.mfaChallengeManager.createChallenge({
+          userId: user.id,
+          clientId: user.activeClientId,
+          routingVersion,
+          identityLocation: user.identityLocation,
+        });
+
+        return ok({
+          mfaRequired: true,
+          userId: user.id,
+          challengeToken: challenge.challengeToken,
+          expiresAt: challenge.expiresAt.toISOString(),
+        });
+      }
+
       // 8. Crear sesión opaca con CSRF y límites (AUTH-001 §5.6)
-      const sid = generateSessionId();
-      const csrfToken = generateCsrfToken();
-      const sidHash = hashToken(sid);
-      const csrfHash = hashToken(csrfToken);
-
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutos inactividad
-      const absoluteExpiresAt = new Date(now.getTime() + 12 * 60 * 60 * 1000); // 12 horas absoluto
-
-      const ipHash =
-        options?.clientIp && options?.pepper
-          ? hashIpWithPepper(options.clientIp, options.pepper)
-          : null;
-
-      const userAgentHash =
-        options?.userAgent && options?.pepper
-          ? hashIpWithPepper(options.userAgent, options.pepper)
-          : null;
-
-      const session = await this.authRepo.createSession({
-        userId: user.id,
-        sidHash,
-        csrfHash,
-        clientId: user.activeClientId,
-        routingVersion,
-        authMethod: "password",
-        reauthAt: now,
-        expiresAt,
-        absoluteExpiresAt,
-        ipHash,
-        userAgentHash,
-      });
-
-      return ok({
-        user: {
-          id: user.id,
-          email: user.email,
-          fullName: user.displayName,
-          status: user.status,
-        },
-        emailVerified: Boolean(user.emailVerifiedAt),
-        clientId: user.activeClientId,
-        expiresAt: session.expiresAt.toISOString(),
-        sid,
-        csrfToken,
-      });
+      return await this.createSessionForUser(user, "password", routingVersion, options);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[AuthService.login Unexpected Error] ${msg}`, error, {
         email,
       });
       return err("Error interno al procesar el inicio de sesión.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Helper privado para emitir una sesión opaca con tokens y cookies canónicas para un usuario (AUTH-001 §5.6).
+   */
+  private async createSessionForUser(
+    user: User,
+    authMethod: "password" | "google" | "facebook",
+    routingVersion: number | null,
+    options?: LoginContextOptions,
+  ): Promise<Result<LoginSuccessData>> {
+    const sid = generateSessionId();
+    const csrfToken = generateCsrfToken();
+    const sidHash = hashToken(sid);
+    const csrfHash = hashToken(csrfToken);
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutos inactividad
+    const absoluteExpiresAt = new Date(now.getTime() + 12 * 60 * 60 * 1000); // 12 horas absoluto
+
+    const ipHash =
+      options?.clientIp && options?.pepper
+        ? hashIpWithPepper(options.clientIp, options.pepper)
+        : null;
+
+    const userAgentHash =
+      options?.userAgent && options?.pepper
+        ? hashIpWithPepper(options.userAgent, options.pepper)
+        : null;
+
+    const session = await this.authRepo.createSession({
+      userId: user.id,
+      sidHash,
+      csrfHash,
+      clientId: user.activeClientId,
+      routingVersion,
+      authMethod,
+      reauthAt: now,
+      expiresAt,
+      absoluteExpiresAt,
+      ipHash,
+      userAgentHash,
+    });
+
+    return ok({
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.displayName,
+        status: user.status,
+      },
+      emailVerified: Boolean(user.emailVerifiedAt),
+      clientId: user.activeClientId,
+      expiresAt: session.expiresAt.toISOString(),
+      sid,
+      csrfToken,
+    });
+  }
+
+  /**
+   * Procesa la autenticación y resolución de un usuario mediante Google OIDC (AUTH-001 §5.3, T-14).
+   *
+   * Flujo de resolución:
+   * 1. Valida y consume atómicamente el estado y cookie de Redis (anti-replay).
+   * 2. Canjea el código de autorización por tokens con Google usando PKCE S256.
+   * 3. Valida estrictamente el ID Token (emisor, audiencia, expiración, nonce, email_verified).
+   * 4. Resolución de identidad (§5.3):
+   *    a) Si existe la identidad en `admin.identities`, actualiza `last_login_at` e inicia sesión.
+   *    b) Si no existe la identidad pero el correo coincide con un usuario existente en `admin.users`:
+   *       - Si el correo de la cuenta existente no está verificado, rechaza (§5.4).
+   *       - Si está verificado, vincula la identidad a la cuenta e inicia sesión.
+   *    c) Si el usuario no existe, crea atómicamente el usuario (con `email_verified_at`) y la identidad, e inicia sesión.
+   *
+   * @param input - Parámetros recibidos en el callback de Google.
+   * @returns Resultado {@link FederatedLoginResult} con la sesión creada o error descriptivo.
+   */
+  async authenticateWithGoogle(
+    input: AuthenticateWithGoogleInput,
+  ): Promise<FederatedLoginResult> {
+    try {
+      // 1. Validar y consumir atómicamente el estado y cookie de Redis (anti-replay)
+      const stateResult = await this.stateManager.consumeState({
+        provider: "google",
+        state: input.state,
+        cookieState: input.clientCookieState,
+      });
+
+      if (!stateResult.ok) {
+        return err(stateResult.error, stateResult.code);
+      }
+
+      const { codeVerifier, nonce } = stateResult.data;
+
+      // 2. Canjear código por tokens con Google
+      let tokens;
+      try {
+        tokens = await this.googleOidcClient.exchangeCodeForTokens({
+          code: input.code,
+          clientId: input.clientId,
+          clientSecret: input.clientSecret,
+          redirectUri: input.redirectUri,
+          codeVerifier,
+        });
+      } catch (error) {
+        if (error instanceof GoogleProviderUnavailableError) {
+          return err("Proveedor temporalmente fuera de servicio", "PROVIDER_UNAVAILABLE");
+        }
+        throw error;
+      }
+
+      // 3. Validar ID Token de Google (emisor, aud, exp, nonce, email_verified)
+      let payload;
+      try {
+        payload = await this.googleOidcClient.verifyIdToken(
+          tokens.id_token,
+          nonce ?? "",
+          input.clientId,
+        );
+      } catch (error) {
+        if (error instanceof GoogleTokenValidationError) {
+          return err(error.message, error.code);
+        }
+        throw error;
+      }
+
+      // 4. Resolución de identidad (§5.3):
+      // 4a. Buscar identidad federada existente por proveedor y provider_user_id
+      const existingIdentity = await this.authRepo.findIdentityByProvider(
+        "google",
+        payload.sub,
+      );
+
+      if (existingIdentity) {
+        const user = await this.authRepo.findUserById(existingIdentity.userId);
+        if (!user || user.status !== "active") {
+          return err("Cuenta deshabilitada o inexistente.", "ACCOUNT_DISABLED");
+        }
+
+        await this.authRepo.updateIdentityLastLogin(existingIdentity.id);
+
+        let routingVersion: number | null = null;
+        if (user.activeClientId) {
+          routingVersion = await this.authRepo.getClientRoutingVersion(user.activeClientId);
+        }
+
+        return await this.createSessionForUser(user, "google", routingVersion, {
+          clientIp: input.clientIp,
+          userAgent: input.userAgent,
+          pepper: input.pepper,
+        });
+      }
+
+      // 4b. Buscar usuario por correo verificado en admin.users
+      const existingUser = await this.authRepo.findUserByEmail(payload.email);
+      if (existingUser) {
+        if (existingUser.status !== "active") {
+          return err("Cuenta deshabilitada o inexistente.", "ACCOUNT_DISABLED");
+        }
+
+        // §5.4: "El correo federado coincide con una cuenta no verificada: No vincular; exigir primero la verificación del correo."
+        if (!existingUser.emailVerifiedAt) {
+          return err(
+            "No es posible vincular la cuenta. La cuenta existente aún no ha verificado su correo electrónico.",
+            "EXISTING_USER_UNVERIFIED",
+          );
+        }
+
+        // Vincular identidad a cuenta existente
+        await this.authRepo.createIdentity({
+          userId: existingUser.id,
+          provider: "google",
+          providerUserId: payload.sub,
+          providerEmail: payload.email,
+          emailVerified: true,
+          displayName: payload.name ?? null,
+          avatarUrl: payload.picture ?? null,
+        });
+
+        let routingVersion: number | null = null;
+        if (existingUser.activeClientId) {
+          routingVersion = await this.authRepo.getClientRoutingVersion(
+            existingUser.activeClientId,
+          );
+        }
+
+        return await this.createSessionForUser(
+          existingUser,
+          "google",
+          routingVersion,
+          {
+            clientIp: input.clientIp,
+            userAgent: input.userAgent,
+            pepper: input.pepper,
+          },
+        );
+      }
+
+      // 4c. Si no existe usuario, crear usuario federado e identidad en transacción atómica
+      const { user } = await this.authRepo.createFederatedUserWithIdentity({
+        email: payload.email,
+        provider: "google",
+        providerUserId: payload.sub,
+        providerEmail: payload.email,
+        displayName: payload.name ?? null,
+        avatarUrl: payload.picture ?? null,
+      });
+
+      return await this.createSessionForUser(user, "google", null, {
+        clientIp: input.clientIp,
+        userAgent: input.userAgent,
+        pepper: input.pepper,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.authenticateWithGoogle Error] ${msg}`, error);
+      return err("Proveedor temporalmente fuera de servicio", "PROVIDER_UNAVAILABLE");
+    }
+  }
+
+  /**
+   * Procesa la autenticación y resolución de un usuario mediante Facebook OAuth 2.0 (AUTH-001 §5.3, T-15).
+   *
+   * Flujo de resolución:
+   * 1. Valida y consume atómicamente el estado y cookie de Redis (anti-replay).
+   * 2. Canjea el código de autorización por token de acceso con Facebook Graph API.
+   * 3. Consulta el perfil en `/me` y valida estrictamente la presencia de correo verificado.
+   * 4. Resolución de identidad (§5.3):
+   *    a) Si existe la identidad en `admin.identities`, actualiza `last_login_at` e inicia sesión.
+   *    b) Si no existe la identidad pero el correo coincide con un usuario existente en `admin.users`:
+   *       - Si el correo de la cuenta existente no está verificado, rechaza (§5.4).
+   *       - Si está verificado, vincula la identidad a la cuenta e inicia sesión.
+   *    c) Si el usuario no existe, crea atómicamente el usuario (con `email_verified_at`) y la identidad, e inicia sesión.
+   *
+   * @param input - Parámetros recibidos en el callback de Facebook.
+   * @returns Resultado {@link FederatedLoginResult} con la sesión creada o error descriptivo.
+   */
+  async authenticateWithFacebook(
+    input: AuthenticateWithFacebookInput,
+  ): Promise<FederatedLoginResult> {
+    try {
+      // 1. Validar y consumir atómicamente el estado y cookie de Redis (anti-replay)
+      const stateResult = await this.stateManager.consumeState({
+        provider: "facebook",
+        state: input.state,
+        cookieState: input.clientCookieState,
+      });
+
+      if (!stateResult.ok) {
+        return err(stateResult.error, stateResult.code);
+      }
+
+      // 2. Canjear código por tokens con Facebook
+      let tokens;
+      try {
+        tokens = await this.facebookOAuthClient.exchangeCodeForAccessToken({
+          code: input.code,
+          clientId: input.clientId,
+          clientSecret: input.clientSecret,
+          redirectUri: input.redirectUri,
+        });
+      } catch (error) {
+        if (error instanceof FacebookProviderUnavailableError) {
+          return err("Proveedor temporalmente fuera de servicio", "PROVIDER_UNAVAILABLE");
+        }
+        if (error instanceof FacebookOAuthValidationError) {
+          return err(error.message, error.code);
+        }
+        throw error;
+      }
+
+      // 3. Consultar perfil en Graph API y validar correo electrónico verificado
+      let profile;
+      try {
+        profile = await this.facebookOAuthClient.fetchUserProfile(tokens.access_token);
+      } catch (error) {
+        if (error instanceof FacebookProviderUnavailableError) {
+          return err("Proveedor temporalmente fuera de servicio", "PROVIDER_UNAVAILABLE");
+        }
+        if (error instanceof FacebookOAuthValidationError) {
+          return err(error.message, error.code);
+        }
+        throw error;
+      }
+
+      // 4. Resolución de identidad (§5.3):
+      // 4a. Buscar identidad federada existente por proveedor y provider_user_id
+      const existingIdentity = await this.authRepo.findIdentityByProvider(
+        "facebook",
+        profile.id,
+      );
+
+      if (existingIdentity) {
+        const user = await this.authRepo.findUserById(existingIdentity.userId);
+        if (!user || user.status !== "active") {
+          return err("Cuenta deshabilitada o inexistente.", "ACCOUNT_DISABLED");
+        }
+
+        await this.authRepo.updateIdentityLastLogin(existingIdentity.id);
+
+        let routingVersion: number | null = null;
+        if (user.activeClientId) {
+          routingVersion = await this.authRepo.getClientRoutingVersion(user.activeClientId);
+        }
+
+        return await this.createSessionForUser(user, "facebook", routingVersion, {
+          clientIp: input.clientIp,
+          userAgent: input.userAgent,
+          pepper: input.pepper,
+        });
+      }
+
+      // 4b. Buscar usuario por correo verificado en admin.users
+      const existingUser = await this.authRepo.findUserByEmail(profile.email!);
+      if (existingUser) {
+        if (existingUser.status !== "active") {
+          return err("Cuenta deshabilitada o inexistente.", "ACCOUNT_DISABLED");
+        }
+
+        // §5.4: "El correo federado coincide con una cuenta no verificada: No vincular; exigir primero la verificación del correo."
+        if (!existingUser.emailVerifiedAt) {
+          return err(
+            "No es posible vincular la cuenta. La cuenta existente aún no ha verificado su correo electrónico.",
+            "EXISTING_USER_UNVERIFIED",
+          );
+        }
+
+        // Vincular identidad a cuenta existente
+        await this.authRepo.createIdentity({
+          userId: existingUser.id,
+          provider: "facebook",
+          providerUserId: profile.id,
+          providerEmail: profile.email!,
+          emailVerified: true,
+          displayName: profile.name ?? null,
+          avatarUrl: profile.picture?.data?.url ?? null,
+        });
+
+        let routingVersion: number | null = null;
+        if (existingUser.activeClientId) {
+          routingVersion = await this.authRepo.getClientRoutingVersion(
+            existingUser.activeClientId,
+          );
+        }
+
+        return await this.createSessionForUser(
+          existingUser,
+          "facebook",
+          routingVersion,
+          {
+            clientIp: input.clientIp,
+            userAgent: input.userAgent,
+            pepper: input.pepper,
+          },
+        );
+      }
+
+      // 4c. Si no existe usuario, crear usuario federado e identidad en transacción atómica
+      const { user } = await this.authRepo.createFederatedUserWithIdentity({
+        email: profile.email!,
+        provider: "facebook",
+        providerUserId: profile.id,
+        providerEmail: profile.email!,
+        displayName: profile.name ?? null,
+        avatarUrl: profile.picture?.data?.url ?? null,
+      });
+
+      return await this.createSessionForUser(user, "facebook", null, {
+        clientIp: input.clientIp,
+        userAgent: input.userAgent,
+        pepper: input.pepper,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.authenticateWithFacebook Error] ${msg}`, error);
+      return err("Proveedor temporalmente fuera de servicio", "PROVIDER_UNAVAILABLE");
+    }
+  }
+
+  /**
+   * Procesa el callback de vinculación de una identidad federada a una cuenta existente (AUTH-001 §5.4, T-16).
+   *
+   * Flujo de ejecución:
+   * 1. Valida y consume el estado de vinculación en Redis a partir de la cookie de estado `mocter_oauth_link_state_<provider>`.
+   * 2. Canjea el código de autorización por tokens con el proveedor (PKCE S256 para Google, Graph API para Facebook).
+   * 3. Valida estrictamente el correo verificado del proveedor.
+   * 4. Valida que la identidad no se encuentre ya vinculada a otro usuario distinto (previene takeover).
+   * 5. Si ya pertenece a este usuario, actualiza `last_login_at`. Si no, crea la identidad asociada en `admin.identities`.
+   * 6. Emite una sesión opaca con tokens canónicos y retorna la URL de retorno sanitizada (`returnTo`).
+   *
+   * @param input - Parámetros recibidos en el callback de vinculación.
+   * @returns Resultado {@link LinkIdentityResult} con la sesión emitida y URL de destino.
+   */
+  async linkProviderIdentity(
+    input: LinkIdentityCallbackInput,
+  ): Promise<LinkIdentityResult> {
+    try {
+      // 1. Validar y consumir atómicamente el estado y cookie de Redis (anti-replay)
+      const stateResult = await this.stateManager.consumeState({
+        provider: input.provider,
+        state: input.state,
+        cookieState: input.clientCookieState,
+      });
+
+      if (!stateResult.ok) {
+        return err(stateResult.error, stateResult.code);
+      }
+
+      const { userId, codeVerifier, nonce, returnTo } = stateResult.data;
+      if (!userId) {
+        return err(
+          "Estado de vinculación inválido o ausente de usuario ancla.",
+          "INVALID_STATE",
+        );
+      }
+
+      const user = await this.authRepo.findUserById(userId);
+      if (!user || user.status !== "active") {
+        return err("Cuenta de usuario inexistente o inactiva.", "ACCOUNT_DISABLED");
+      }
+
+      let providerUserId: string;
+      let providerEmail: string;
+      let displayName: string | null = null;
+      let avatarUrl: string | null = null;
+
+      // 2. Canjear tokens y verificar identidad con el proveedor correspondiente
+      if (input.provider === "google") {
+        let tokens;
+        try {
+          tokens = await this.googleOidcClient.exchangeCodeForTokens({
+            code: input.code,
+            clientId: input.clientId,
+            clientSecret: input.clientSecret,
+            redirectUri: input.redirectUri,
+            codeVerifier,
+          });
+        } catch (error) {
+          if (error instanceof GoogleProviderUnavailableError) {
+            return err("Proveedor temporalmente fuera de servicio", "PROVIDER_UNAVAILABLE");
+          }
+          throw error;
+        }
+
+        let payload;
+        try {
+          payload = await this.googleOidcClient.verifyIdToken(
+            tokens.id_token,
+            nonce ?? "",
+            input.clientId,
+          );
+        } catch (error) {
+          if (error instanceof GoogleTokenValidationError) {
+            return err(error.message, error.code);
+          }
+          throw error;
+        }
+
+        providerUserId = payload.sub;
+        providerEmail = payload.email;
+        displayName = payload.name ?? null;
+        avatarUrl = payload.picture ?? null;
+      } else {
+        let tokens;
+        try {
+          tokens = await this.facebookOAuthClient.exchangeCodeForAccessToken({
+            code: input.code,
+            clientId: input.clientId,
+            clientSecret: input.clientSecret,
+            redirectUri: input.redirectUri,
+          });
+        } catch (error) {
+          if (error instanceof FacebookProviderUnavailableError) {
+            return err("Proveedor temporalmente fuera de servicio", "PROVIDER_UNAVAILABLE");
+          }
+          if (error instanceof FacebookOAuthValidationError) {
+            return err(error.message, error.code);
+          }
+          throw error;
+        }
+
+        let profile;
+        try {
+          profile = await this.facebookOAuthClient.fetchUserProfile(tokens.access_token);
+        } catch (error) {
+          if (error instanceof FacebookProviderUnavailableError) {
+            return err("Proveedor temporalmente fuera de servicio", "PROVIDER_UNAVAILABLE");
+          }
+          if (error instanceof FacebookOAuthValidationError) {
+            return err(error.message, error.code);
+          }
+          throw error;
+        }
+
+        providerUserId = profile.id;
+        providerEmail = profile.email!;
+        displayName = profile.name ?? null;
+        avatarUrl = profile.picture?.data?.url ?? null;
+      }
+
+      // 3. Verificar si la identidad ya está registrada
+      const existingIdentity = await this.authRepo.findIdentityByProvider(
+        input.provider,
+        providerUserId,
+      );
+
+      if (existingIdentity) {
+        if (existingIdentity.userId !== user.id) {
+          return err(
+            "Esta cuenta del proveedor ya se encuentra vinculada a otro usuario.",
+            "IDENTITY_ALREADY_LINKED",
+          );
+        }
+        await this.authRepo.updateIdentityLastLogin(existingIdentity.id);
+      } else {
+        await this.authRepo.createIdentity({
+          userId: user.id,
+          provider: input.provider,
+          providerUserId,
+          providerEmail,
+          emailVerified: true,
+          displayName,
+          avatarUrl,
+        });
+      }
+
+      // 4. Emitir sesión renovada para el usuario vinculado
+      let routingVersion: number | null = null;
+      if (user.activeClientId) {
+        routingVersion = await this.authRepo.getClientRoutingVersion(user.activeClientId);
+      }
+
+      const sessionResult = await this.createSessionForUser(
+        user,
+        input.provider,
+        routingVersion,
+        {
+          clientIp: input.clientIp,
+          userAgent: input.userAgent,
+          pepper: input.pepper,
+        },
+      );
+
+      if (!sessionResult.ok) {
+        return err(sessionResult.error, sessionResult.code);
+      }
+
+      appLogger.info("[AuthService.linkProviderIdentity] Identidad vinculada exitosamente", {
+        userId: user.id,
+        provider: input.provider,
+      });
+
+      return ok({
+        ...sessionResult.data,
+        returnTo: returnTo || "/admin",
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.linkProviderIdentity Error] ${msg}`, error);
+      return err("Proveedor temporalmente fuera de servicio", "PROVIDER_UNAVAILABLE");
+    }
+  }
+
+  /**
+   * Desvincula una identidad federada de un usuario autenticado (AUTH-001 §5.4, T-16).
+   *
+   * Flujo de ejecución:
+   * 1. Consulta el usuario y sus identidades vinculadas.
+   * 2. Reautenticación: si tiene contraseña nativa, valida la contraseña actual provista.
+   * 3. Verifica que la identidad exista para este usuario.
+   * 4. Impide desvincular el último método de acceso a la cuenta (si no tiene contraseña y es su única identidad).
+   * 5. Elimina la identidad de `admin.identities`.
+   * 6. Gestión de sesiones (§5.4): si se desvincula el proveedor usado para la sesión actual, revoca las demás y rota la actual.
+   *
+   * @param input - Parámetros de desvinculación {@link UnlinkIdentityInput}.
+   * @returns Resultado {@link UnlinkIdentityResult}.
+   */
+  async unlinkProviderIdentity(
+    input: UnlinkIdentityInput,
+  ): Promise<UnlinkIdentityResult> {
+    try {
+      const user = await this.authRepo.findUserById(input.userId);
+      if (!user || user.status !== "active") {
+        return err("Usuario inexistente o inactivo.", "ACCOUNT_DISABLED");
+      }
+
+      // 1. Reautenticación con contraseña si la cuenta posee contraseña nativa
+      if (user.passwordHash !== null) {
+        if (!input.currentPassword) {
+          return err(
+            "Debe ingresar su contraseña actual para desvincular.",
+            "PASSWORD_REQUIRED",
+          );
+        }
+        const isPasswordValid = await verifyPassword(
+          input.currentPassword,
+          user.passwordHash,
+        );
+        if (!isPasswordValid) {
+          return err("La contraseña actual es incorrecta.", "INVALID_CREDENTIALS");
+        }
+      }
+
+      // 2. Verificar que la identidad exista para este usuario
+      const userIdentities = await this.authRepo.findIdentitiesByUserId(user.id);
+      const targetIdentity = userIdentities.find((i) => i.provider === input.provider);
+      if (!targetIdentity) {
+        return err(
+          "La identidad federada no está vinculada a esta cuenta.",
+          "IDENTITY_NOT_FOUND",
+        );
+      }
+
+      // 3. Impedir desvincular el último método de acceso (§5.4)
+      if (user.passwordHash === null && userIdentities.length <= 1) {
+        return err(
+          "No es posible desvincular el único método de acceso a la cuenta.",
+          "CANNOT_UNLINK_LAST_METHOD",
+        );
+      }
+
+      // 4. Eliminar la identidad
+      await this.authRepo.deleteIdentity(user.id, input.provider);
+
+      // 5. Gestión de sesiones si el método activo coincide con el desvinculado
+      let rotatedSessionData:
+        | { sid: string; csrfToken: string; expiresAt: string }
+        | undefined;
+
+      if (input.currentAuthMethod === input.provider) {
+        await this.authRepo.revokeAllUserSessions(
+          user.id,
+          "provider_unlinked",
+          input.sessionId,
+        );
+
+        const newSid = generateSessionId();
+        const newCsrfToken = generateCsrfToken();
+        const newSidHash = hashToken(newSid);
+        const newCsrfHash = hashToken(newCsrfToken);
+
+        const rotatedSession = await this.authRepo.rotateSession(
+          input.sessionId,
+          newSidHash,
+          newCsrfHash,
+        );
+
+        rotatedSessionData = {
+          sid: newSid,
+          csrfToken: newCsrfToken,
+          expiresAt: rotatedSession.expiresAt.toISOString(),
+        };
+      }
+
+      appLogger.info("[AuthService.unlinkProviderIdentity] Identidad desvinculada exitosamente", {
+        userId: user.id,
+        provider: input.provider,
+      });
+
+      return ok({
+        message: "Identidad desvinculada exitosamente.",
+        rotatedSession: rotatedSessionData,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.unlinkProviderIdentity Error] ${msg}`, error, {
+        userId: input.userId,
+        provider: input.provider,
+      });
+      return err("Error interno al desvincular la identidad.", "DB_ERROR");
     }
   }
 
@@ -946,6 +1809,505 @@ export class AuthService {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[AuthService.validateSession Error] ${msg}`, error);
       return err("Error interno al validar la sesión.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Genera un nuevo secreto TOTP pendiente y su URI canónica de enrolamiento (AUTH-001 §5.5, T-18).
+   *
+   * Flujo de ejecución:
+   * 1. Consulta el usuario en `admin.users`.
+   * 2. Si el usuario no existe, retorna 404 `USER_NOT_FOUND`.
+   * 3. Si `user.passwordHash === null`, retorna 403 `MFA_NOT_AVAILABLE`
+   *    (la autenticación de doble factor solo está disponible para cuentas con contraseña).
+   * 4. Valida la ventana de reautenticación:
+   *    - Si `reauthAt` es más antiguo de 5 minutos (o no se provee):
+   *      - Exige `input.password`. Si falta, retorna `REAUTH_REQUIRED`.
+   *      - Valida la contraseña con Argon2id. Si es incorrecta, retorna `INVALID_CREDENTIALS`.
+   * 5. Genera secreto aleatorio de 20 bytes (160 bits) codificado en Base32 (32 caracteres).
+   * 6. Cifra el secreto en Base32 con AES-256-GCM usando la clave activa y AAD `user.id:keyId`.
+   * 7. Persiste `totp_pending_secret_ciphertext`, `totp_pending_key_id` y `totp_pending_created_at = now()`.
+   * 8. Genera la URI canónica `otpauth://totp/Mocter:<email>?secret=...`.
+   * 9. Retorna la URI y el secreto en claro con vencimiento a 10 minutos (se muestra una sola vez).
+   */
+  async enroll2fa(input: Enroll2faInput): Promise<Enroll2faResult> {
+    try {
+      const user = await this.authRepo.findUserById(input.userId);
+      if (!user) {
+        return err("Usuario no encontrado.", "USER_NOT_FOUND");
+      }
+
+      // Restricción RF-03 / §5.5: 2FA exclusivo para cuentas con contraseña nativa
+      if (user.passwordHash === null) {
+        return err(
+          "La autenticación de doble factor solo está disponible para cuentas con contraseña.",
+          "MFA_NOT_AVAILABLE",
+        );
+      }
+
+      // Reautenticación: ventana de 5 minutos (AUTH-001 §5.5)
+      const now = Date.now();
+      const reauthWindowExpired =
+        !input.reauthAt || now - new Date(input.reauthAt).getTime() > 5 * 60 * 1000;
+
+      if (reauthWindowExpired || input.password) {
+        if (!input.password) {
+          return err(
+            "Se requiere reautenticación con contraseña para enrolar 2FA.",
+            "REAUTH_REQUIRED",
+          );
+        }
+
+        const isValid = await verifyPassword(input.password, user.passwordHash);
+        if (!isValid) {
+          return err("La contraseña actual es incorrecta.", "INVALID_CREDENTIALS");
+        }
+      }
+
+      // Generación del secreto de 20 bytes (160 bits) en Base32
+      const { base32 } = generateTotpSecret(20);
+
+      // Cifrado AES-256-GCM con AAD inmutable `user.id:keyId`
+      const encrypted = this.totpCrypto.encrypt(base32, user.id);
+
+      // Persistencia del secreto pendiente con timestamp de creación
+      await this.authRepo.updateUserTotpKeys(user.id, {
+        totpPendingSecretCiphertext: encrypted.ciphertext,
+        totpPendingKeyId: encrypted.keyId,
+        totpPendingCreatedAt: new Date(),
+      });
+
+      // Construcción de URI otpauth canónica
+      const otpauthUri = generateOtpauthUri({
+        email: user.email,
+        secretBase32: base32,
+        issuer: "Mocter",
+      });
+
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+      appLogger.info("[AuthService.enroll2fa] Secreto pendiente de 2FA generado exitosamente", {
+        userId: user.id,
+      });
+
+      return ok({
+        otpauthUri,
+        secret: base32,
+        expiresAt,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.enroll2fa Error] ${msg}`, error, {
+        userId: input.userId,
+      });
+      return err("Error interno al generar el enrolamiento 2FA.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Confirma y activa la autenticación 2FA validando el código TOTP inicial (AUTH-001 §5.5, T-18).
+   *
+   * Flujo de ejecución:
+   * 1. Consulta el usuario en `admin.users`.
+   * 2. Si no tiene secreto pendiente o este superó los 10 minutos de vigencia, retorna 401 `INVALID_TOTP_CODE`.
+   * 3. Descifra el secreto pendiente con AES-256-GCM.
+   * 4. Valida el código con tolerancia de ±1 paso (30s) y anti-replay contra `totp_last_used_step`.
+   * 5. Si es inválido, retorna 401 `INVALID_TOTP_CODE`.
+   * 6. Si es válido:
+   *    - Mueve el secreto pendiente a activo (`totp_secret_ciphertext`, `totp_key_id`, `totp_enabled_at = now()`).
+   *    - Limpia los campos pendientes y registra `totp_last_used_step`.
+   *    - Revoca todas las demás sesiones activas del usuario (motivo `mfa_enabled`).
+   *    - Rota la sesión actual fijando `mfa_at = now()`.
+   * 7. Retorna confirmación y los identificadores de la sesión rotada.
+   */
+  async confirm2fa(input: Confirm2faInput): Promise<Confirm2faResult> {
+    try {
+      const user = await this.authRepo.findUserById(input.userId);
+      if (!user) {
+        return err("Usuario no encontrado.", "USER_NOT_FOUND");
+      }
+
+      if (
+        !user.totpPendingSecretCiphertext ||
+        !user.totpPendingKeyId ||
+        !user.totpPendingCreatedAt
+      ) {
+        return err("Código de verificación inválido o vencido.", "INVALID_TOTP_CODE");
+      }
+
+      // TTL de 10 minutos para el secreto pendiente (AUTH-001 §5.5)
+      const pendingAgeMs = Date.now() - new Date(user.totpPendingCreatedAt).getTime();
+      if (pendingAgeMs > 10 * 60 * 1000) {
+        return err("Código de verificación inválido o vencido.", "INVALID_TOTP_CODE");
+      }
+
+      // Descifrado autenticado AES-256-GCM
+      let base32Secret: string;
+      try {
+        base32Secret = this.totpCrypto
+          .decrypt(
+            user.totpPendingSecretCiphertext,
+            user.id,
+            user.totpPendingKeyId,
+          )
+          .toString("utf-8");
+      } catch (decryptError) {
+        appLogger.error(
+          `[AuthService.confirm2fa] Fallo al descifrar secreto pendiente: ${decryptError instanceof Error ? decryptError.message : String(decryptError)}`,
+          decryptError,
+          { userId: user.id },
+        );
+        return err("Código de verificación inválido o vencido.", "INVALID_TOTP_CODE");
+      }
+
+      // Validación con tolerancia ±1 paso y anti-replay
+      const verifyResult = verifyTotpCode(input.code, base32Secret, {
+        window: 1,
+        lastUsedStep: user.totpLastUsedStep,
+      });
+
+      if (!verifyResult.valid || verifyResult.step === undefined) {
+        return err("Código de verificación inválido o vencido.", "INVALID_TOTP_CODE");
+      }
+
+      const now = new Date();
+
+      // Promover secreto pendiente a activo y registrar paso
+      await this.authRepo.updateUserTotpKeys(user.id, {
+        totpSecretCiphertext: user.totpPendingSecretCiphertext,
+        totpKeyId: user.totpPendingKeyId,
+        totpEnabledAt: now,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: verifyResult.step,
+      });
+
+      // Revocar las demás sesiones activas del usuario (AUTH-001 §5.5)
+      await this.authRepo.revokeAllUserSessions(
+        user.id,
+        "mfa_enabled",
+        input.sessionId,
+      );
+
+      // Rotar la sesión actual con mfa_at actualizado
+      const newSid = generateSessionId();
+      const newCsrfToken = generateCsrfToken();
+      const newSidHash = hashToken(newSid);
+      const newCsrfHash = hashToken(newCsrfToken);
+
+      const rotatedSession = await this.authRepo.rotateSession(
+        input.sessionId,
+        newSidHash,
+        newCsrfHash,
+        { mfaAt: now, reauthAt: now },
+      );
+
+      appLogger.info("[AuthService.confirm2fa] 2FA activado y sesión rotada exitosamente", {
+        userId: user.id,
+      });
+
+      return ok({
+        message: "Autenticación de dos factores activada exitosamente.",
+        rotatedSession: {
+          sid: newSid,
+          csrfToken: newCsrfToken,
+          expiresAt: rotatedSession.expiresAt.toISOString(),
+        },
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.confirm2fa Error] ${msg}`, error, {
+        userId: input.userId,
+      });
+      return err("Error interno al confirmar 2FA.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Desactiva la autenticación 2FA previa validación de contraseña actual y código TOTP (AUTH-001 §5.5, T-18).
+   *
+   * Flujo de ejecución:
+   * 1. Consulta el usuario en `admin.users`.
+   * 2. Si no tiene 2FA activo, retorna `MFA_NOT_ENABLED`.
+   * 3. Exige y valida la contraseña actual con Argon2id. Si es incorrecta, retorna 401 `INVALID_CREDENTIALS`.
+   * 4. Exige y valida el código TOTP contra el secreto activo con tolerancia ±1 y anti-replay. Si falla, retorna 401 `INVALID_TOTP_CODE`.
+   * 5. Limpia los secretos TOTP activos y pendientes, y remueve `totp_enabled_at` y `totp_last_used_step`.
+   * 6. Revoca las demás sesiones activas del usuario (motivo `mfa_disabled`).
+   * 7. Rota la sesión actual removiendo `mfa_at` (`mfaAt = null`).
+   * 8. Retorna confirmación y los identificadores de la sesión rotada.
+   */
+  async disable2fa(input: Disable2faInput): Promise<Disable2faResult> {
+    try {
+      const user = await this.authRepo.findUserById(input.userId);
+      if (!user) {
+        return err("Usuario no encontrado.", "USER_NOT_FOUND");
+      }
+
+      if (
+        !user.totpEnabledAt ||
+        !user.totpSecretCiphertext ||
+        !user.totpKeyId
+      ) {
+        return err("La cuenta no tiene 2FA activado.", "MFA_NOT_ENABLED");
+      }
+
+      // Validar contraseña actual
+      if (!input.password || !user.passwordHash) {
+        return err("La contraseña actual es incorrecta.", "INVALID_CREDENTIALS");
+      }
+
+      const isPasswordValid = await verifyPassword(input.password, user.passwordHash);
+      if (!isPasswordValid) {
+        return err("La contraseña actual es incorrecta.", "INVALID_CREDENTIALS");
+      }
+
+      // Validar código TOTP
+      if (!input.code) {
+        return err("Código de verificación inválido o vencido.", "INVALID_TOTP_CODE");
+      }
+
+      let base32Secret: string;
+      try {
+        base32Secret = this.totpCrypto
+          .decrypt(
+            user.totpSecretCiphertext,
+            user.id,
+            user.totpKeyId,
+          )
+          .toString("utf-8");
+      } catch (decryptError) {
+        appLogger.error(
+          `[AuthService.disable2fa] Fallo al descifrar secreto activo: ${decryptError instanceof Error ? decryptError.message : String(decryptError)}`,
+          decryptError,
+          { userId: user.id },
+        );
+        return err("Código de verificación inválido o vencido.", "INVALID_TOTP_CODE");
+      }
+
+      const verifyResult = verifyTotpCode(input.code, base32Secret, {
+        window: 1,
+        lastUsedStep: user.totpLastUsedStep,
+      });
+
+      if (!verifyResult.valid || verifyResult.step === undefined) {
+        return err("Código de verificación inválido o vencido.", "INVALID_TOTP_CODE");
+      }
+
+      // Limpiar secretos TOTP activos y pendientes
+      await this.authRepo.updateUserTotpKeys(user.id, {
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpEnabledAt: null,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: null,
+      });
+
+      // Revocar las demás sesiones activas del usuario (AUTH-001 §5.5)
+      await this.authRepo.revokeAllUserSessions(
+        user.id,
+        "mfa_disabled",
+        input.sessionId,
+      );
+
+      // Rota la sesión actual removiendo mfa_at
+      const newSid = generateSessionId();
+      const newCsrfToken = generateCsrfToken();
+      const newSidHash = hashToken(newSid);
+      const newCsrfHash = hashToken(newCsrfToken);
+
+      const rotatedSession = await this.authRepo.rotateSession(
+        input.sessionId,
+        newSidHash,
+        newCsrfHash,
+        { mfaAt: null, reauthAt: new Date() },
+      );
+
+      appLogger.info("[AuthService.disable2fa] 2FA desactivado y sesión rotada exitosamente", {
+        userId: user.id,
+      });
+
+      return ok({
+        message: "Autenticación de dos factores desactivada exitosamente.",
+        rotatedSession: {
+          sid: newSid,
+          csrfToken: newCsrfToken,
+          expiresAt: rotatedSession.expiresAt.toISOString(),
+        },
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.disable2fa Error] ${msg}`, error, {
+        userId: input.userId,
+      });
+      return err("Error interno al desactivar 2FA.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Resuelve el challenge 2FA en el proceso de inicio de sesión nativo (AUTH-001 §5.5, design §5.2, T-19).
+   *
+   * Flujo de ejecución:
+   * 1. Valida presencia de parámetros `challengeToken` y `code`.
+   * 2. Consulta el challenge en Redis usando el hash SHA-256 del `challengeToken`.
+   * 3. Si no existe o expiró (TTL 5 min), retorna 401 `CHALLENGE_EXPIRED`.
+   * 4. Si tiene 5 o más fallos acumulados, elimina el challenge y retorna 401 `CHALLENGE_EXHAUSTED`.
+   * 5. Resuelve el usuario en su ubicación de identidad (`identityLocation`).
+   * 6. Descifra el secreto TOTP activo con AES-256-GCM y AAD `user_id:key_id`.
+   * 7. Valida el código TOTP con tolerancia ±1 paso y anti-replay contra `totp_last_used_step`.
+   *    - Si es inválido: incrementa los intentos fallidos. Si llega a 5, autodestruye el challenge y retorna `CHALLENGE_EXHAUSTED`.
+   *    - Si no: retorna `INVALID_TOTP_CODE`.
+   * 8. Si es válido:
+   *    - Consume atómicamente el challenge en Redis (anti-replay).
+   *    - Actualiza `totp_last_used_step` en la base de datos.
+   *    - Emite una nueva sesión opaca con `mfa_at = now()` y `reauth_at = now()`.
+   *    - Retorna datos de sesión y usuario.
+   */
+  async verify2faChallenge(input: Verify2faChallengeInput): Promise<Verify2faChallengeResult> {
+    if (!input.challengeToken || !input.code) {
+      return err("Datos de verificación incompletos.", "VALIDATION_ERROR");
+    }
+
+    try {
+      // 1. Consultar challenge en Redis
+      const challenge = await this.mfaChallengeManager.getChallenge(input.challengeToken);
+      if (!challenge) {
+        return err(
+          "El desafío de autenticación ha vencido o no existe.",
+          "CHALLENGE_EXPIRED",
+        );
+      }
+
+      // 2. Verificar que no haya agotado los 5 intentos
+      if (challenge.attempts >= 5) {
+        await this.mfaChallengeManager.deleteChallenge(input.challengeToken);
+        return err(
+          "Ha superado el número máximo de intentos. Inicie sesión de nuevo.",
+          "CHALLENGE_EXHAUSTED",
+        );
+      }
+
+      // 3. Resolver usuario según su identityLocation
+      if (challenge.identityLocation !== "router") {
+        appLogger.warn(
+          "[AuthService.verify2faChallenge] Verificación 2FA en celda dedicada no disponible en esta fase",
+          { userId: challenge.userId, cellId: challenge.identityLocation },
+        );
+        return err("Celda temporalmente fuera de servicio.", "CELL_UNAVAILABLE");
+      }
+
+      const user = await this.authRepo.findUserById(challenge.userId);
+      if (!user || user.status === "disabled") {
+        await this.mfaChallengeManager.deleteChallenge(input.challengeToken);
+        return err("Usuario no encontrado o deshabilitado.", "USER_NOT_FOUND");
+      }
+
+      if (!user.totpEnabledAt || !user.totpSecretCiphertext || !user.totpKeyId) {
+        await this.mfaChallengeManager.deleteChallenge(input.challengeToken);
+        return err("La cuenta no tiene 2FA activado.", "MFA_NOT_ENABLED");
+      }
+
+      // 4. Descifrar secreto activo con AES-256-GCM
+      let base32Secret: string;
+      try {
+        base32Secret = this.totpCrypto
+          .decrypt(user.totpSecretCiphertext, user.id, user.totpKeyId)
+          .toString("utf-8");
+      } catch (decryptError) {
+        appLogger.error(
+          `[AuthService.verify2faChallenge] Fallo al descifrar secreto activo: ${decryptError instanceof Error ? decryptError.message : String(decryptError)}`,
+          decryptError,
+          { userId: user.id },
+        );
+        return err("Código de verificación inválido o vencido.", "INVALID_TOTP_CODE");
+      }
+
+      // 5. Validar código TOTP con ventana ±1 y anti-replay
+      const verifyResult = verifyTotpCode(input.code, base32Secret, {
+        window: 1,
+        lastUsedStep: user.totpLastUsedStep,
+      });
+
+      if (!verifyResult.valid || verifyResult.step === undefined) {
+        const attemptResult = await this.mfaChallengeManager.recordFailedAttempt(input.challengeToken);
+        if (attemptResult.exhausted) {
+          return err(
+            "Ha superado el número máximo de intentos. Inicie sesión de nuevo.",
+            "CHALLENGE_EXHAUSTED",
+          );
+        }
+        return err("Código de verificación inválido o vencido.", "INVALID_TOTP_CODE");
+      }
+
+      // 6. Código válido: consumir challenge (un solo uso, anti-replay)
+      await this.mfaChallengeManager.consumeChallenge(input.challengeToken);
+
+      // 7. Actualizar totp_last_used_step
+      await this.authRepo.updateUserTotpKeys(user.id, {
+        totpLastUsedStep: verifyResult.step,
+      });
+
+      // 8. Crear sesión opaca con mfa_at y reauth_at vigentes (AUTH-001 §5.5, §5.6, T-19)
+      const sid = generateSessionId();
+      const csrfToken = generateCsrfToken();
+      const sidHash = hashToken(sid);
+      const csrfHash = hashToken(csrfToken);
+
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 30 * 60 * 1000); // 30 min inactividad
+      const absoluteExpiresAt = new Date(now.getTime() + 12 * 60 * 60 * 1000); // 12 horas máx
+
+      const ipHash =
+        input.clientIp && input.pepper
+          ? hashIpWithPepper(input.clientIp, input.pepper)
+          : null;
+
+      const userAgentHash =
+        input.userAgent && input.pepper
+          ? hashIpWithPepper(input.userAgent, input.pepper)
+          : null;
+
+      const session = await this.authRepo.createSession({
+        userId: user.id,
+        sidHash,
+        csrfHash,
+        clientId: challenge.clientId,
+        routingVersion: challenge.routingVersion,
+        authMethod: "password",
+        mfaAt: now,
+        reauthAt: now,
+        expiresAt,
+        absoluteExpiresAt,
+        ipHash,
+        userAgentHash,
+      });
+
+      appLogger.info(
+        "[AuthService.verify2faChallenge] Desafío 2FA verificado y sesión emitida exitosamente",
+        { userId: user.id },
+      );
+
+      return ok({
+        user: {
+          id: user.id,
+          email: user.email,
+          fullName: user.displayName,
+          status: user.status,
+        },
+        emailVerified: user.emailVerifiedAt !== null,
+        clientId: challenge.clientId,
+        expiresAt: session.expiresAt.toISOString(),
+        sid,
+        csrfToken,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.verify2faChallenge Error] ${msg}`, error, {
+        challengeToken: input.challengeToken,
+      });
+      return err("Error interno al verificar challenge 2FA.", "DB_ERROR");
     }
   }
 }

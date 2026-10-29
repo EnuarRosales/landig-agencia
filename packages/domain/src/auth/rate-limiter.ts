@@ -62,6 +62,27 @@ export const RATE_LIMIT_RULES = {
   passwordChange: {
     user: { limit: 3, windowSeconds: 60 * 60 },      // 3 cambios en 1 hora
   },
+  oauth: {
+    ip: { limit: 20, windowSeconds: 15 * 60 },       // 20 solicitudes en 15 min por IP (design.md §6.1)
+  },
+  linkIdentity: {
+    user: { limit: 10, windowSeconds: 15 * 60 },     // 10 vinculaciones en 15 min por usuario (design.md §7.3)
+  },
+  unlinkIdentity: {
+    user: { limit: 5, windowSeconds: 15 * 60 },      // 5 desvinculaciones en 15 min por usuario (design.md §7.3)
+  },
+  totpEnroll: {
+    user: { limit: 5, windowSeconds: 15 * 60 },      // 5 peticiones en 15 min por usuario (design.md §6.1)
+  },
+  totpConfirm: {
+    user: { limit: 5, windowSeconds: 15 * 60 },      // 5 peticiones en 15 min por usuario (design.md §6.1)
+  },
+  totpDisable: {
+    user: { limit: 5, windowSeconds: 15 * 60 },      // 5 peticiones en 15 min por usuario (design.md §6.1)
+  },
+  totpChallenge: {
+    challenge: { limit: 5, windowSeconds: 5 * 60 },  // 5 intentos en 5 min por challenge (design.md §6.1)
+  },
 } as const;
 
 /**
@@ -666,6 +687,313 @@ export class AuthRateLimiter {
       if (error instanceof RedisUnavailableError) throw error;
       appLogger.error(
         `[AuthRateLimiter.checkPasswordChangeRateLimit] Error en Redis: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+      );
+      throw new RedisUnavailableError();
+    }
+  }
+
+  /**
+   * Evalúa y consume la cuota para endpoints OAuth federados (AUTH-001 §6.1, T-14, T-15).
+   *
+   * Límite: 20 peticiones por ventana de 15 minutos (900 s) por dirección IP.
+   *
+   * @param params - Proveedor federado ("google" | "facebook"), IP del cliente y pepper del sistema.
+   * @returns Decisión {@link RateLimitDecision}.
+   * @throws {@link RedisUnavailableError} Si Redis no está disponible (Fail-Closed).
+   */
+  async checkOAuthRateLimit(params: {
+    provider: "google" | "facebook";
+    ip: string;
+    pepper: string;
+  }): Promise<RateLimitDecision> {
+    const { provider, ip, pepper } = params;
+    const client = getRedisClient();
+    const ipHash = hashHmacSha256(ip, pepper);
+    const key = `auth:ratelimit:oauth:${provider}:${ipHash}`;
+
+    try {
+      const res = (await client.eval(
+        LUA_CONSUME,
+        1,
+        key,
+        String(RATE_LIMIT_RULES.oauth.ip.limit),
+        String(RATE_LIMIT_RULES.oauth.ip.windowSeconds),
+      )) as [number, number, number];
+
+      const allowed = res[0] === 1;
+      const remaining = Number(res[1]);
+      const ttl = Number(res[2]);
+
+      return {
+        allowed,
+        remaining,
+        resetAt: Date.now() + ttl * 1000,
+        retryAfter: allowed ? 0 : Math.max(1, ttl),
+        blockedBy: allowed ? undefined : "ip",
+      };
+    } catch (error) {
+      if (error instanceof RedisUnavailableError) throw error;
+      appLogger.error(
+        `[AuthRateLimiter.checkOAuthRateLimit] Error en Redis: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+      );
+      throw new RedisUnavailableError();
+    }
+  }
+
+  /**
+   * Evalúa y consume el límite de tasa para vinculación de identidad federada (AUTH-001 §7.3).
+   *
+   * Límite: 10 peticiones por ventana de 15 minutos (900 s) por usuario.
+   *
+   * @param userId - Identificador UUID del usuario autenticado.
+   * @returns Decisión {@link RateLimitDecision}.
+   * @throws {@link RedisUnavailableError} Si Redis no está disponible (Fail-Closed).
+   */
+  async checkLinkIdentityRateLimit(userId: string): Promise<RateLimitDecision> {
+    const client = getRedisClient();
+    const key = `auth:ratelimit:link:user:${userId}`;
+
+    try {
+      const res = (await client.eval(
+        LUA_CONSUME,
+        1,
+        key,
+        String(RATE_LIMIT_RULES.linkIdentity.user.limit),
+        String(RATE_LIMIT_RULES.linkIdentity.user.windowSeconds),
+      )) as [number, number, number];
+
+      const allowed = res[0] === 1;
+      const remaining = Number(res[1]);
+      const ttl = Number(res[2]);
+
+      return {
+        allowed,
+        remaining,
+        resetAt: Date.now() + ttl * 1000,
+        retryAfter: allowed ? 0 : Math.max(1, ttl),
+        blockedBy: allowed ? undefined : "user",
+      };
+    } catch (error) {
+      if (error instanceof RedisUnavailableError) throw error;
+      appLogger.error(
+        `[AuthRateLimiter.checkLinkIdentityRateLimit] Error en Redis: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+      );
+      throw new RedisUnavailableError();
+    }
+  }
+
+  /**
+   * Evalúa y consume el límite de tasa para desvinculación de identidad federada (AUTH-001 §7.3).
+   *
+   * Límite: 5 peticiones por ventana de 15 minutos (900 s) por usuario.
+   *
+   * @param userId - Identificador UUID del usuario autenticado.
+   * @returns Decisión {@link RateLimitDecision}.
+   * @throws {@link RedisUnavailableError} Si Redis no está disponible (Fail-Closed).
+   */
+  async checkUnlinkIdentityRateLimit(userId: string): Promise<RateLimitDecision> {
+    const client = getRedisClient();
+    const key = `auth:ratelimit:unlink:user:${userId}`;
+
+    try {
+      const res = (await client.eval(
+        LUA_CONSUME,
+        1,
+        key,
+        String(RATE_LIMIT_RULES.unlinkIdentity.user.limit),
+        String(RATE_LIMIT_RULES.unlinkIdentity.user.windowSeconds),
+      )) as [number, number, number];
+
+      const allowed = res[0] === 1;
+      const remaining = Number(res[1]);
+      const ttl = Number(res[2]);
+
+      return {
+        allowed,
+        remaining,
+        resetAt: Date.now() + ttl * 1000,
+        retryAfter: allowed ? 0 : Math.max(1, ttl),
+        blockedBy: allowed ? undefined : "user",
+      };
+    } catch (error) {
+      if (error instanceof RedisUnavailableError) throw error;
+      appLogger.error(
+        `[AuthRateLimiter.checkUnlinkIdentityRateLimit] Error en Redis: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+      );
+      throw new RedisUnavailableError();
+    }
+  }
+
+  /**
+   * Evalúa y consume el límite de tasa para solicitudes de enrolamiento 2FA (AUTH-001 §6.1).
+   *
+   * Límite: 5 peticiones por ventana de 15 minutos (900 s) por usuario.
+   *
+   * @param userId - Identificador UUID del usuario autenticado.
+   * @returns Decisión {@link RateLimitDecision}.
+   * @throws {@link RedisUnavailableError} Si Redis no está disponible (Fail-Closed).
+   */
+  async checkTotpEnrollRateLimit(userId: string): Promise<RateLimitDecision> {
+    const client = getRedisClient();
+    const key = `auth:ratelimit:totp:enroll:user:${userId}`;
+
+    try {
+      const res = (await client.eval(
+        LUA_CONSUME,
+        1,
+        key,
+        String(RATE_LIMIT_RULES.totpEnroll.user.limit),
+        String(RATE_LIMIT_RULES.totpEnroll.user.windowSeconds),
+      )) as [number, number, number];
+
+      const allowed = res[0] === 1;
+      const remaining = Number(res[1]);
+      const ttl = Number(res[2]);
+
+      return {
+        allowed,
+        remaining,
+        resetAt: Date.now() + ttl * 1000,
+        retryAfter: allowed ? 0 : Math.max(1, ttl),
+        blockedBy: allowed ? undefined : "user",
+      };
+    } catch (error) {
+      if (error instanceof RedisUnavailableError) throw error;
+      appLogger.error(
+        `[AuthRateLimiter.checkTotpEnrollRateLimit] Error en Redis: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+      );
+      throw new RedisUnavailableError();
+    }
+  }
+
+  /**
+   * Evalúa y consume el límite de tasa para confirmación de enrolamiento 2FA (AUTH-001 §6.1).
+   *
+   * Límite: 5 peticiones por ventana de 15 minutos (900 s) por usuario.
+   *
+   * @param userId - Identificador UUID del usuario autenticado.
+   * @returns Decisión {@link RateLimitDecision}.
+   * @throws {@link RedisUnavailableError} Si Redis no está disponible (Fail-Closed).
+   */
+  async checkTotpConfirmRateLimit(userId: string): Promise<RateLimitDecision> {
+    const client = getRedisClient();
+    const key = `auth:ratelimit:totp:confirm:user:${userId}`;
+
+    try {
+      const res = (await client.eval(
+        LUA_CONSUME,
+        1,
+        key,
+        String(RATE_LIMIT_RULES.totpConfirm.user.limit),
+        String(RATE_LIMIT_RULES.totpConfirm.user.windowSeconds),
+      )) as [number, number, number];
+
+      const allowed = res[0] === 1;
+      const remaining = Number(res[1]);
+      const ttl = Number(res[2]);
+
+      return {
+        allowed,
+        remaining,
+        resetAt: Date.now() + ttl * 1000,
+        retryAfter: allowed ? 0 : Math.max(1, ttl),
+        blockedBy: allowed ? undefined : "user",
+      };
+    } catch (error) {
+      if (error instanceof RedisUnavailableError) throw error;
+      appLogger.error(
+        `[AuthRateLimiter.checkTotpConfirmRateLimit] Error en Redis: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+      );
+      throw new RedisUnavailableError();
+    }
+  }
+
+  /**
+   * Evalúa y consume el límite de tasa para desactivación de 2FA (AUTH-001 §6.1).
+   *
+   * Límite: 5 peticiones por ventana de 15 minutos (900 s) por usuario.
+   *
+   * @param userId - Identificador UUID del usuario autenticado.
+   * @returns Decisión {@link RateLimitDecision}.
+   * @throws {@link RedisUnavailableError} Si Redis no está disponible (Fail-Closed).
+   */
+  async checkTotpDisableRateLimit(userId: string): Promise<RateLimitDecision> {
+    const client = getRedisClient();
+    const key = `auth:ratelimit:totp:disable:user:${userId}`;
+
+    try {
+      const res = (await client.eval(
+        LUA_CONSUME,
+        1,
+        key,
+        String(RATE_LIMIT_RULES.totpDisable.user.limit),
+        String(RATE_LIMIT_RULES.totpDisable.user.windowSeconds),
+      )) as [number, number, number];
+
+      const allowed = res[0] === 1;
+      const remaining = Number(res[1]);
+      const ttl = Number(res[2]);
+
+      return {
+        allowed,
+        remaining,
+        resetAt: Date.now() + ttl * 1000,
+        retryAfter: allowed ? 0 : Math.max(1, ttl),
+        blockedBy: allowed ? undefined : "user",
+      };
+    } catch (error) {
+      if (error instanceof RedisUnavailableError) throw error;
+      appLogger.error(
+        `[AuthRateLimiter.checkTotpDisableRateLimit] Error en Redis: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+      );
+      throw new RedisUnavailableError();
+    }
+  }
+
+  /**
+   * Evalúa y consume los intentos de resolución de un challenge 2FA (AUTH-001 §6.1).
+   *
+   * Límite: 5 intentos por ventana de 5 minutos (300 s) por challenge.
+   *
+   * @param challengeTokenHash - Hash SHA-256 en hexadecimal del token de challenge.
+   * @returns Decisión {@link RateLimitDecision}.
+   * @throws {@link RedisUnavailableError} Si Redis no está disponible (Fail-Closed).
+   */
+  async checkTotpChallengeRateLimit(challengeTokenHash: string): Promise<RateLimitDecision> {
+    const client = getRedisClient();
+    const key = `auth:ratelimit:totp:challenge:${challengeTokenHash}`;
+
+    try {
+      const res = (await client.eval(
+        LUA_CONSUME,
+        1,
+        key,
+        String(RATE_LIMIT_RULES.totpChallenge.challenge.limit),
+        String(RATE_LIMIT_RULES.totpChallenge.challenge.windowSeconds),
+      )) as [number, number, number];
+
+      const allowed = res[0] === 1;
+      const remaining = Number(res[1]);
+      const ttl = Number(res[2]);
+
+      return {
+        allowed,
+        remaining,
+        resetAt: Date.now() + ttl * 1000,
+        retryAfter: allowed ? 0 : Math.max(1, ttl),
+        blockedBy: allowed ? undefined : "account",
+      };
+    } catch (error) {
+      if (error instanceof RedisUnavailableError) throw error;
+      appLogger.error(
+        `[AuthRateLimiter.checkTotpChallengeRateLimit] Error en Redis: ${error instanceof Error ? error.message : String(error)}`,
         error,
       );
       throw new RedisUnavailableError();

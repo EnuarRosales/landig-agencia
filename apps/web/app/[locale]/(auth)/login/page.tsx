@@ -4,7 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { locales } from "@/i18n/routing";
 import { Logo } from "@/components/logo";
 import { FloatingBackground } from "@/components/sections/floating-background";
-import { LoginForm } from "@/components/auth/login-form";
+import { LoginForm, OAuthButtons } from "@/components/auth";
 
 export const instant = false;
 
@@ -39,6 +39,7 @@ export default async function LoginPage({ params, searchParams }: Props) {
   const returnTo =
     typeof sParams?.return_to === "string" ? sParams.return_to : undefined;
   const t = await getTranslations({ locale, namespace: "auth.login" });
+  const tOauth = await getTranslations({ locale, namespace: "auth.oauth" });
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center px-[clamp(18px,4vw,32px)] py-12">
@@ -75,6 +76,15 @@ export default async function LoginPage({ params, searchParams }: Props) {
               submit: t("submit"),
               submitting: t("submitting"),
               unverifiedNotice: t("unverifiedNotice"),
+            }}
+          />
+
+          <OAuthButtons
+            returnTo={returnTo}
+            t={{
+              orDivider: tOauth("orDivider"),
+              googleButton: tOauth("googleButton"),
+              facebookButton: tOauth("facebookButton"),
             }}
           />
 

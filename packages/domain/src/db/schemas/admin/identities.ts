@@ -34,3 +34,6 @@ export const identities = adminSchema.table(
     check("identities_provider_check", sql.raw("provider IN ('google', 'facebook')")),
   ],
 );
+
+export type Identity = typeof identities.$inferSelect;
+export type NewIdentity = typeof identities.$inferInsert;

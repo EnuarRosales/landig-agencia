@@ -14,6 +14,12 @@ export const envSchema = z.object({
   REDIS_URL: z.string().optional(),
   REDIS_PASSWORD: z.string().optional(),
   DEBUG: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z.string().optional(),
+  FACEBOOK_APP_ID: z.string().optional(),
+  FACEBOOK_APP_SECRET: z.string().optional(),
+  FACEBOOK_REDIRECT_URI: z.string().optional(),
 });
 
 /**
@@ -29,6 +35,12 @@ export const env = createEnv({
     REDIS_URL: z.string().optional(),
     REDIS_PASSWORD: z.string().optional(),
     DEBUG: z.string().optional(),
+    GOOGLE_CLIENT_ID: z.string().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().optional(),
+    GOOGLE_REDIRECT_URI: z.string().optional(),
+    FACEBOOK_APP_ID: z.string().optional(),
+    FACEBOOK_APP_SECRET: z.string().optional(),
+    FACEBOOK_REDIRECT_URI: z.string().optional(),
   },
   runtimeEnv: process.env,
   skipValidation: Boolean(

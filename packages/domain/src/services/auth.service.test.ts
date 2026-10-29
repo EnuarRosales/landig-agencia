@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   AuthService,
   GENERIC_REGISTER_SUCCESS_MESSAGE,
@@ -13,13 +13,65 @@ import type {
   EmailVerificationToken,
   PasswordResetToken,
   Session,
+  Identity,
 } from "../db/schemas";
 import { hashPassword } from "../auth/password-hasher";
 import { hashToken } from "../auth/tokens";
+import {
+  type IGoogleOidcClient,
+  GoogleProviderUnavailableError,
+  GoogleTokenValidationError,
+} from "../auth/google-oidc.service";
+import {
+  type IFacebookOAuthClient,
+  FacebookProviderUnavailableError,
+  FacebookOAuthValidationError,
+} from "../auth/facebook-oauth.service";
+import type { OAuthStateManager } from "../auth/oauth-state";
+import { TotpCryptoService } from "../auth/totp-crypto";
+import { generateTotpCode } from "../auth/totp";
+import { mfaChallengeManager, buildChallengeRedisKey } from "../auth/mfa-challenge";
+import { MockRedisClient, createMockRedisClient } from "../redis/mock-redis";
+import { setRedisClientForTesting } from "../redis/client";
+
+function createBaseMockAuthRepo(): IAuthRepository {
+  return {
+    findUserByEmail: vi.fn(),
+    findUserById: vi.fn(),
+    createUserWithConsent: vi.fn(),
+    createEmailVerificationToken: vi.fn(),
+    invalidatePendingEmailVerificationTokens: vi.fn(),
+    createPasswordResetToken: vi.fn(),
+    invalidatePendingPasswordResetTokens: vi.fn(),
+    findEmailVerificationTokenByHash: vi.fn(),
+    consumeEmailVerificationToken: vi.fn(),
+    createSession: vi.fn(),
+    updateUserPasswordHash: vi.fn(),
+    getClientRoutingVersion: vi.fn(),
+    findSessionBySidHash: vi.fn(),
+    revokeSession: vi.fn(),
+    findPasswordResetTokenByHash: vi.fn(),
+    consumePasswordResetToken: vi.fn(),
+    revokeAllUserSessions: vi.fn(),
+    updateUserPassword: vi.fn(),
+    rotateSession: vi.fn(),
+    findIdentityByProvider: vi.fn(),
+    createFederatedUserWithIdentity: vi.fn(),
+    createIdentity: vi.fn(),
+    updateIdentityLastLogin: vi.fn(),
+    findIdentitiesByUserId: vi.fn(),
+    deleteIdentity: vi.fn(),
+    findUsersWithOutdatedTotpKey: vi.fn(),
+    countUsersWithTotpKey: vi.fn(),
+    updateUserTotpKeys: vi.fn(),
+  };
+}
 
 describe("AUTH-001 T-08 · Servicio de Registro Nativo (AuthService)", () => {
   let mockAuthRepo: IAuthRepository;
   let mockMailer: IAuthMailer;
+  let mockGoogleOidcClient: IGoogleOidcClient;
+  let mockStateManager: OAuthStateManager;
   let authService: AuthService;
 
   const validPayload = {
@@ -32,27 +84,7 @@ describe("AUTH-001 T-08 · Servicio de Registro Nativo (AuthService)", () => {
   };
 
   beforeEach(() => {
-    mockAuthRepo = {
-      findUserByEmail: vi.fn(),
-      findUserById: vi.fn(),
-      createUserWithConsent: vi.fn(),
-      createEmailVerificationToken: vi.fn(),
-      invalidatePendingEmailVerificationTokens: vi.fn(),
-      createPasswordResetToken: vi.fn(),
-      invalidatePendingPasswordResetTokens: vi.fn(),
-      findEmailVerificationTokenByHash: vi.fn(),
-      consumeEmailVerificationToken: vi.fn(),
-      createSession: vi.fn(),
-      updateUserPasswordHash: vi.fn(),
-      getClientRoutingVersion: vi.fn(),
-      findSessionBySidHash: vi.fn(),
-      revokeSession: vi.fn(),
-      findPasswordResetTokenByHash: vi.fn(),
-      consumePasswordResetToken: vi.fn(),
-      revokeAllUserSessions: vi.fn(),
-      updateUserPassword: vi.fn(),
-      rotateSession: vi.fn(),
-    };
+    mockAuthRepo = createBaseMockAuthRepo();
 
     mockMailer = {
       sendVerificationEmail: vi.fn(),
@@ -61,7 +93,24 @@ describe("AUTH-001 T-08 · Servicio de Registro Nativo (AuthService)", () => {
       sendAccountAlreadyExistsEmail: vi.fn(),
     };
 
-    authService = new AuthService(mockAuthRepo, mockMailer);
+    mockGoogleOidcClient = {
+      discover: vi.fn(),
+      getAuthorizationUrl: vi.fn(),
+      exchangeCodeForTokens: vi.fn(),
+      verifyIdToken: vi.fn(),
+    };
+
+    mockStateManager = {
+      createState: vi.fn(),
+      consumeState: vi.fn(),
+    } as unknown as OAuthStateManager;
+
+    authService = new AuthService(
+      mockAuthRepo,
+      mockMailer,
+      mockGoogleOidcClient,
+      mockStateManager,
+    );
   });
 
   it("registra un nuevo usuario, genera token de 24h, consentimiento en user_consents y responde con mensaje genérico", async () => {
@@ -350,27 +399,7 @@ describe("AUTH-001 T-09 · Verificación de correo (request y confirm)", () => {
   let authService: AuthService;
 
   beforeEach(() => {
-    mockAuthRepo = {
-      findUserByEmail: vi.fn(),
-      findUserById: vi.fn(),
-      createUserWithConsent: vi.fn(),
-      createEmailVerificationToken: vi.fn(),
-      invalidatePendingEmailVerificationTokens: vi.fn(),
-      createPasswordResetToken: vi.fn(),
-      invalidatePendingPasswordResetTokens: vi.fn(),
-      findEmailVerificationTokenByHash: vi.fn(),
-      consumeEmailVerificationToken: vi.fn(),
-      createSession: vi.fn(),
-      updateUserPasswordHash: vi.fn(),
-      getClientRoutingVersion: vi.fn(),
-      findSessionBySidHash: vi.fn(),
-      revokeSession: vi.fn(),
-      findPasswordResetTokenByHash: vi.fn(),
-      consumePasswordResetToken: vi.fn(),
-      revokeAllUserSessions: vi.fn(),
-      updateUserPassword: vi.fn(),
-      rotateSession: vi.fn(),
-    };
+    mockAuthRepo = createBaseMockAuthRepo();
 
     mockMailer = {
       sendVerificationEmail: vi.fn(),
@@ -571,30 +600,14 @@ describe("AUTH-001 T-09 · Verificación de correo (request y confirm)", () => {
 describe("AUTH-001 T-10 · Inicio de Sesión Nativo (login)", () => {
   let mockAuthRepo: IAuthRepository;
   let mockMailer: IAuthMailer;
+  let mockRedis: MockRedisClient;
   let authService: AuthService;
 
   beforeEach(() => {
-    mockAuthRepo = {
-      findUserByEmail: vi.fn(),
-      findUserById: vi.fn(),
-      createUserWithConsent: vi.fn(),
-      createEmailVerificationToken: vi.fn(),
-      invalidatePendingEmailVerificationTokens: vi.fn(),
-      createPasswordResetToken: vi.fn(),
-      invalidatePendingPasswordResetTokens: vi.fn(),
-      findEmailVerificationTokenByHash: vi.fn(),
-      consumeEmailVerificationToken: vi.fn(),
-      createSession: vi.fn(),
-      updateUserPasswordHash: vi.fn(),
-      getClientRoutingVersion: vi.fn(),
-      findSessionBySidHash: vi.fn(),
-      revokeSession: vi.fn(),
-      findPasswordResetTokenByHash: vi.fn(),
-      consumePasswordResetToken: vi.fn(),
-      revokeAllUserSessions: vi.fn(),
-      updateUserPassword: vi.fn(),
-      rotateSession: vi.fn(),
-    };
+    mockRedis = new MockRedisClient();
+    setRedisClientForTesting(mockRedis as unknown as ReturnType<typeof createMockRedisClient>);
+
+    mockAuthRepo = createBaseMockAuthRepo();
 
     mockMailer = {
       sendVerificationEmail: vi.fn(),
@@ -604,6 +617,10 @@ describe("AUTH-001 T-10 · Inicio de Sesión Nativo (login)", () => {
     };
 
     authService = new AuthService(mockAuthRepo, mockMailer);
+  });
+
+  afterEach(() => {
+    setRedisClientForTesting(null);
   });
 
   const rawPassword = "Password123!";
@@ -859,27 +876,7 @@ describe("AUTH-001 T-11 · Recuperación, establecimiento y cambio de contraseñ
   let authService: AuthService;
 
   beforeEach(() => {
-    mockAuthRepo = {
-      findUserByEmail: vi.fn(),
-      findUserById: vi.fn(),
-      createUserWithConsent: vi.fn(),
-      createEmailVerificationToken: vi.fn(),
-      invalidatePendingEmailVerificationTokens: vi.fn(),
-      createPasswordResetToken: vi.fn(),
-      invalidatePendingPasswordResetTokens: vi.fn(),
-      findEmailVerificationTokenByHash: vi.fn(),
-      consumeEmailVerificationToken: vi.fn(),
-      createSession: vi.fn(),
-      updateUserPasswordHash: vi.fn(),
-      getClientRoutingVersion: vi.fn(),
-      findSessionBySidHash: vi.fn(),
-      revokeSession: vi.fn(),
-      findPasswordResetTokenByHash: vi.fn(),
-      consumePasswordResetToken: vi.fn(),
-      revokeAllUserSessions: vi.fn(),
-      updateUserPassword: vi.fn(),
-      rotateSession: vi.fn(),
-    };
+    mockAuthRepo = createBaseMockAuthRepo();
 
     mockMailer = {
       sendVerificationEmail: vi.fn(),
@@ -1496,4 +1493,2280 @@ describe("AUTH-001 T-11 · Recuperación, establecimiento y cambio de contraseñ
     });
   });
 });
+
+describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithGoogle)", () => {
+  let mockAuthRepo: IAuthRepository;
+  let mockMailer: IAuthMailer;
+  let mockGoogleOidcClient: IGoogleOidcClient;
+  let mockStateManager: OAuthStateManager;
+  let authService: AuthService;
+
+  const rawPassword = "Password123!";
+  const buildMockUser = async (overrides?: Partial<User>): Promise<User> => {
+    const passwordHash = await hashPassword(rawPassword);
+    return {
+      id: "uuid-user-1",
+      email: "carlos@empresa.com",
+      emailVerifiedAt: new Date(),
+      passwordHash,
+      passwordUpdatedAt: new Date(),
+      status: "active",
+      identityLocation: "router",
+      activeClientId: null,
+      totpSecretCiphertext: null,
+      totpKeyId: null,
+      totpEnabledAt: null,
+      totpPendingSecretCiphertext: null,
+      totpPendingKeyId: null,
+      totpPendingCreatedAt: null,
+      totpLastUsedStep: null,
+      displayName: "Carlos Gómez",
+      avatarUrl: null,
+      createdBy: "self",
+      updatedBy: "self",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    };
+  };
+
+  beforeEach(() => {
+    mockAuthRepo = createBaseMockAuthRepo();
+
+    mockMailer = {
+      sendVerificationEmail: vi.fn(),
+      sendPasswordSetupEmail: vi.fn(),
+      sendPasswordResetEmail: vi.fn(),
+      sendAccountAlreadyExistsEmail: vi.fn(),
+    };
+
+    mockGoogleOidcClient = {
+      discover: vi.fn(),
+      getAuthorizationUrl: vi.fn(),
+      exchangeCodeForTokens: vi.fn(),
+      verifyIdToken: vi.fn(),
+    };
+
+    mockStateManager = {
+      createState: vi.fn(),
+      consumeState: vi.fn(),
+    } as unknown as OAuthStateManager;
+
+    authService = new AuthService(
+      mockAuthRepo,
+      mockMailer,
+      mockGoogleOidcClient,
+      mockStateManager,
+    );
+  });
+
+  const defaultGoogleInput = {
+    code: "google-auth-code-123",
+    state: "valid-state-value",
+    clientCookieState: "valid-state-value",
+    clientId: "test-client-id",
+    clientSecret: "test-client-secret",
+    redirectUri: "http://localhost:3000/api/auth/google/callback",
+    clientIp: "127.0.0.1",
+    userAgent: "TestAgent",
+    pepper: "test-pepper",
+  };
+
+    const mockSession: Session = {
+      id: "uuid-session-google",
+      sidHash: Buffer.alloc(32),
+      csrfHash: Buffer.alloc(32),
+      userId: "uuid-user-1",
+      clientId: null,
+      routingVersion: null,
+      authMethod: "google",
+      mfaAt: null,
+      reauthAt: new Date(),
+      lastSeenAt: new Date(),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      revokedAt: null,
+      revokedReason: null,
+      ipHash: null,
+      userAgentHash: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "self",
+      updatedBy: "self",
+    };
+
+    it("falla si el estado OAuth es inválido, expirado o consumido", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: false,
+        code: "INVALID_STATE",
+        error: "El estado de autorización es inválido.",
+      });
+
+      const result = await authService.authenticateWithGoogle(defaultGoogleInput);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("INVALID_STATE");
+      }
+      expect(mockGoogleOidcClient.exchangeCodeForTokens).not.toHaveBeenCalled();
+    });
+
+    it("retorna texto exacto «Proveedor temporalmente fuera de servicio» si Google está caído", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "google",
+          codeVerifier: "verifier-123",
+          codeChallenge: "challenge-123",
+          nonce: "nonce-123",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockGoogleOidcClient.exchangeCodeForTokens).mockRejectedValue(
+        new GoogleProviderUnavailableError("Proveedor temporalmente fuera de servicio"),
+      );
+
+      const result = await authService.authenticateWithGoogle(defaultGoogleInput);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe("Proveedor temporalmente fuera de servicio");
+        expect(result.code).toBe("PROVIDER_UNAVAILABLE");
+      }
+    });
+
+    it("falla si el ID Token no valida claims (emisor, audiencia, nonce, email no verificado)", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "google",
+          codeVerifier: "verifier-123",
+          codeChallenge: "challenge-123",
+          nonce: "nonce-123",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockGoogleOidcClient.exchangeCodeForTokens).mockResolvedValue({
+        access_token: "mock-access",
+        id_token: "mock-id-token",
+        expires_in: 3600,
+        token_type: "Bearer",
+      });
+
+      vi.mocked(mockGoogleOidcClient.verifyIdToken).mockRejectedValue(
+        new GoogleTokenValidationError(
+          "EMAIL_NOT_VERIFIED",
+          "El proveedor no devolvió un correo verificado.",
+        ),
+      );
+
+      const result = await authService.authenticateWithGoogle(defaultGoogleInput);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("EMAIL_NOT_VERIFIED");
+        expect(result.error).toBe("El proveedor no devolvió un correo verificado.");
+      }
+    });
+
+    it("inicia sesión directamente si la identidad federada ya existe en identities", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "google",
+          codeVerifier: "verifier-123",
+          codeChallenge: "challenge-123",
+          nonce: "nonce-123",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockGoogleOidcClient.exchangeCodeForTokens).mockResolvedValue({
+        access_token: "mock-access",
+        id_token: "mock-id-token",
+        expires_in: 3600,
+        token_type: "Bearer",
+      });
+
+      vi.mocked(mockGoogleOidcClient.verifyIdToken).mockResolvedValue({
+        iss: "https://accounts.google.com",
+        sub: "google-sub-123",
+        aud: "test-client-id",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+        nonce: "nonce-123",
+        email: "carlos@empresa.com",
+        email_verified: true,
+      });
+
+      const existingIdentity: Identity = {
+        id: "uuid-identity-1",
+        userId: "uuid-user-1",
+        provider: "google",
+        providerUserId: "google-sub-123",
+        providerEmail: "carlos@empresa.com",
+        emailVerified: true,
+        displayName: "Carlos Gómez",
+        avatarUrl: null,
+        linkedAt: new Date(),
+        lastLoginAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      const user = await buildMockUser({ id: "uuid-user-1", email: "carlos@empresa.com" });
+      vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValue(existingIdentity);
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+      vi.mocked(mockAuthRepo.createSession).mockResolvedValue(mockSession);
+
+      const result = await authService.authenticateWithGoogle(defaultGoogleInput);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.user.id).toBe("uuid-user-1");
+        expect(result.data.sid).toBeDefined();
+        expect(result.data.csrfToken).toBeDefined();
+      }
+      expect(mockAuthRepo.updateIdentityLastLogin).toHaveBeenCalledWith("uuid-identity-1");
+      expect(mockAuthRepo.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "uuid-user-1",
+          authMethod: "google",
+        }),
+      );
+    });
+
+    it("auto-vincula identidad e inicia sesión si existe usuario con correo verificado", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "google",
+          codeVerifier: "verifier-123",
+          codeChallenge: "challenge-123",
+          nonce: "nonce-123",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockGoogleOidcClient.exchangeCodeForTokens).mockResolvedValue({
+        access_token: "mock-access",
+        id_token: "mock-id-token",
+        expires_in: 3600,
+        token_type: "Bearer",
+      });
+
+      vi.mocked(mockGoogleOidcClient.verifyIdToken).mockResolvedValue({
+        iss: "https://accounts.google.com",
+        sub: "google-sub-nuevo",
+        aud: "test-client-id",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+        nonce: "nonce-123",
+        email: "carlos@empresa.com",
+        email_verified: true,
+        name: "Carlos Gómez",
+      });
+
+      const user = await buildMockUser({
+        id: "uuid-user-1",
+        email: "carlos@empresa.com",
+        emailVerifiedAt: new Date(),
+      });
+
+      vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValue(null);
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(user);
+      vi.mocked(mockAuthRepo.createSession).mockResolvedValue(mockSession);
+
+      const result = await authService.authenticateWithGoogle(defaultGoogleInput);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.user.id).toBe("uuid-user-1");
+      }
+      expect(mockAuthRepo.createIdentity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "uuid-user-1",
+          provider: "google",
+          providerUserId: "google-sub-nuevo",
+          emailVerified: true,
+        }),
+      );
+    });
+
+    it("rechaza vincular si el correo coincide con una cuenta existente NO verificada (§5.4)", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "google",
+          codeVerifier: "verifier-123",
+          codeChallenge: "challenge-123",
+          nonce: "nonce-123",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockGoogleOidcClient.exchangeCodeForTokens).mockResolvedValue({
+        access_token: "mock-access",
+        id_token: "mock-id-token",
+        expires_in: 3600,
+        token_type: "Bearer",
+      });
+
+      vi.mocked(mockGoogleOidcClient.verifyIdToken).mockResolvedValue({
+        iss: "https://accounts.google.com",
+        sub: "google-sub-nuevo",
+        aud: "test-client-id",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+        nonce: "nonce-123",
+        email: "carlos@empresa.com",
+        email_verified: true,
+      });
+
+      const unverifiedUser = await buildMockUser({
+        id: "uuid-user-1",
+        email: "carlos@empresa.com",
+        emailVerifiedAt: null,
+      });
+
+      vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValue(null);
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(unverifiedUser);
+
+      const result = await authService.authenticateWithGoogle(defaultGoogleInput);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("EXISTING_USER_UNVERIFIED");
+        expect(result.error).toContain("no ha verificado su correo electrónico");
+      }
+      expect(mockAuthRepo.createIdentity).not.toHaveBeenCalled();
+      expect(mockAuthRepo.createSession).not.toHaveBeenCalled();
+    });
+
+    it("crea nuevo usuario federado e identidad e inicia sesión si la cuenta no existe", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "google",
+          codeVerifier: "verifier-123",
+          codeChallenge: "challenge-123",
+          nonce: "nonce-123",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockGoogleOidcClient.exchangeCodeForTokens).mockResolvedValue({
+        access_token: "mock-access",
+        id_token: "mock-id-token",
+        expires_in: 3600,
+        token_type: "Bearer",
+      });
+
+      vi.mocked(mockGoogleOidcClient.verifyIdToken).mockResolvedValue({
+        iss: "https://accounts.google.com",
+        sub: "google-sub-nuevo",
+        aud: "test-client-id",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+        nonce: "nonce-123",
+        email: "nuevo@empresa.com",
+        email_verified: true,
+        name: "Nuevo Usuario",
+        picture: "https://lh3.googleusercontent.com/avatar",
+      });
+
+      const newUser = await buildMockUser({
+        id: "uuid-user-nuevo",
+        email: "nuevo@empresa.com",
+        emailVerifiedAt: new Date(),
+        displayName: "Nuevo Usuario",
+      });
+
+      const newIdentity: Identity = {
+        id: "uuid-identity-nuevo",
+        userId: "uuid-user-nuevo",
+        provider: "google",
+        providerUserId: "google-sub-nuevo",
+        providerEmail: "nuevo@empresa.com",
+        emailVerified: true,
+        displayName: "Nuevo Usuario",
+        avatarUrl: "https://lh3.googleusercontent.com/avatar",
+        linkedAt: new Date(),
+        lastLoginAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValue(null);
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(null);
+      vi.mocked(mockAuthRepo.createFederatedUserWithIdentity).mockResolvedValue({
+        user: newUser,
+        identity: newIdentity,
+      });
+      vi.mocked(mockAuthRepo.createSession).mockResolvedValue({
+        ...mockSession,
+        userId: "uuid-user-nuevo",
+      });
+
+      const result = await authService.authenticateWithGoogle(defaultGoogleInput);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.user.id).toBe("uuid-user-nuevo");
+        expect(result.data.emailVerified).toBe(true);
+      }
+      expect(mockAuthRepo.createFederatedUserWithIdentity).toHaveBeenCalledWith({
+        email: "nuevo@empresa.com",
+        provider: "google",
+        providerUserId: "google-sub-nuevo",
+        providerEmail: "nuevo@empresa.com",
+        displayName: "Nuevo Usuario",
+        avatarUrl: "https://lh3.googleusercontent.com/avatar",
+      });
+      expect(mockAuthRepo.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "uuid-user-nuevo",
+          authMethod: "google",
+        }),
+      );
+    });
+  });
+
+  describe("AUTH-001 T-15 · Autenticación Federada con Facebook (authenticateWithFacebook)", () => {
+    let mockAuthRepo: IAuthRepository;
+    let mockMailer: IAuthMailer;
+    let mockGoogleOidcClient: IGoogleOidcClient;
+    let mockFacebookOAuthClient: IFacebookOAuthClient;
+    let mockStateManager: OAuthStateManager;
+    let authService: AuthService;
+
+    const rawPassword = "Password123!";
+    const buildMockUser = async (overrides?: Partial<User>): Promise<User> => {
+      const passwordHash = await hashPassword(rawPassword);
+      return {
+        id: "uuid-user-1",
+        email: "carlos@empresa.com",
+        emailVerifiedAt: new Date(),
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        status: "active",
+        identityLocation: "router",
+        activeClientId: null,
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpEnabledAt: null,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: null,
+        displayName: "Carlos Gómez",
+        avatarUrl: null,
+        createdBy: "self",
+        updatedBy: "self",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...overrides,
+      };
+    };
+
+    beforeEach(() => {
+      mockAuthRepo = createBaseMockAuthRepo();
+
+      mockMailer = {
+        sendVerificationEmail: vi.fn(),
+        sendPasswordSetupEmail: vi.fn(),
+        sendPasswordResetEmail: vi.fn(),
+        sendAccountAlreadyExistsEmail: vi.fn(),
+      };
+
+      mockGoogleOidcClient = {
+        discover: vi.fn(),
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForTokens: vi.fn(),
+        verifyIdToken: vi.fn(),
+      };
+
+      mockFacebookOAuthClient = {
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForAccessToken: vi.fn(),
+        fetchUserProfile: vi.fn(),
+      };
+
+      mockStateManager = {
+        createState: vi.fn(),
+        consumeState: vi.fn(),
+      } as unknown as OAuthStateManager;
+
+      authService = new AuthService(
+        mockAuthRepo,
+        mockMailer,
+        mockGoogleOidcClient,
+        mockStateManager,
+        mockFacebookOAuthClient,
+      );
+    });
+
+    const defaultFacebookInput = {
+      code: "facebook-auth-code-123",
+      state: "valid-state-value",
+      clientCookieState: "valid-state-value",
+      clientId: "test-fb-app-id",
+      clientSecret: "test-fb-secret",
+      redirectUri: "http://localhost:3000/api/auth/facebook/callback",
+      clientIp: "127.0.0.1",
+      userAgent: "TestAgent",
+      pepper: "test-pepper",
+    };
+
+    const mockSession: Session = {
+      id: "uuid-session-facebook",
+      sidHash: Buffer.alloc(32),
+      csrfHash: Buffer.alloc(32),
+      userId: "uuid-user-1",
+      clientId: null,
+      routingVersion: null,
+      authMethod: "facebook",
+      mfaAt: null,
+      reauthAt: new Date(),
+      lastSeenAt: new Date(),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      revokedAt: null,
+      revokedReason: null,
+      ipHash: null,
+      userAgentHash: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "self",
+      updatedBy: "self",
+    };
+
+    it("falla si el estado OAuth es inválido, expirado o consumido", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: false,
+        code: "INVALID_STATE",
+        error: "El estado de autorización es inválido.",
+      });
+
+      const result = await authService.authenticateWithFacebook(defaultFacebookInput);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("INVALID_STATE");
+      }
+      expect(mockFacebookOAuthClient.exchangeCodeForAccessToken).not.toHaveBeenCalled();
+    });
+
+    it("retorna texto exacto «Proveedor temporalmente fuera de servicio» si Facebook está caído al canjear código", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "facebook",
+          codeVerifier: "",
+          codeChallenge: "",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockFacebookOAuthClient.exchangeCodeForAccessToken).mockRejectedValue(
+        new FacebookProviderUnavailableError("Proveedor temporalmente fuera de servicio"),
+      );
+
+      const result = await authService.authenticateWithFacebook(defaultFacebookInput);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe("Proveedor temporalmente fuera de servicio");
+        expect(result.code).toBe("PROVIDER_UNAVAILABLE");
+      }
+    });
+
+    it("retorna texto exacto «El proveedor no devolvió un correo verificado.» si Facebook no devuelve email", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "facebook",
+          codeVerifier: "",
+          codeChallenge: "",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockFacebookOAuthClient.exchangeCodeForAccessToken).mockResolvedValue({
+        access_token: "fb-access-token",
+        token_type: "bearer",
+      });
+
+      vi.mocked(mockFacebookOAuthClient.fetchUserProfile).mockRejectedValue(
+        new FacebookOAuthValidationError(
+          "MISSING_OR_UNVERIFIED_EMAIL",
+          "El proveedor no devolvió un correo verificado.",
+        ),
+      );
+
+      const result = await authService.authenticateWithFacebook(defaultFacebookInput);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("MISSING_OR_UNVERIFIED_EMAIL");
+        expect(result.error).toBe("El proveedor no devolvió un correo verificado.");
+      }
+    });
+
+    it("inicia sesión directamente si la identidad federada ya existe en identities", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "facebook",
+          codeVerifier: "",
+          codeChallenge: "",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockFacebookOAuthClient.exchangeCodeForAccessToken).mockResolvedValue({
+        access_token: "fb-access-token",
+        token_type: "bearer",
+      });
+
+      vi.mocked(mockFacebookOAuthClient.fetchUserProfile).mockResolvedValue({
+        id: "fb-user-id-123",
+        name: "Carlos Gómez",
+        email: "carlos@empresa.com",
+      });
+
+      const existingIdentity: Identity = {
+        id: "uuid-identity-fb-1",
+        userId: "uuid-user-1",
+        provider: "facebook",
+        providerUserId: "fb-user-id-123",
+        providerEmail: "carlos@empresa.com",
+        emailVerified: true,
+        displayName: "Carlos Gómez",
+        avatarUrl: null,
+        linkedAt: new Date(),
+        lastLoginAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      const user = await buildMockUser({ id: "uuid-user-1", email: "carlos@empresa.com" });
+      vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValue(existingIdentity);
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+      vi.mocked(mockAuthRepo.createSession).mockResolvedValue(mockSession);
+
+      const result = await authService.authenticateWithFacebook(defaultFacebookInput);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.user.id).toBe("uuid-user-1");
+        expect(result.data.sid).toBeDefined();
+        expect(result.data.csrfToken).toBeDefined();
+      }
+      expect(mockAuthRepo.updateIdentityLastLogin).toHaveBeenCalledWith("uuid-identity-fb-1");
+      expect(mockAuthRepo.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "uuid-user-1",
+          authMethod: "facebook",
+        }),
+      );
+    });
+
+    it("auto-vincula identidad e inicia sesión si existe usuario con correo verificado", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "facebook",
+          codeVerifier: "",
+          codeChallenge: "",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockFacebookOAuthClient.exchangeCodeForAccessToken).mockResolvedValue({
+        access_token: "fb-access-token",
+        token_type: "bearer",
+      });
+
+      vi.mocked(mockFacebookOAuthClient.fetchUserProfile).mockResolvedValue({
+        id: "fb-user-id-nuevo",
+        name: "Carlos Gómez",
+        email: "carlos@empresa.com",
+      });
+
+      const user = await buildMockUser({
+        id: "uuid-user-1",
+        email: "carlos@empresa.com",
+        emailVerifiedAt: new Date(),
+      });
+
+      vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValue(null);
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(user);
+      vi.mocked(mockAuthRepo.createSession).mockResolvedValue(mockSession);
+
+      const result = await authService.authenticateWithFacebook(defaultFacebookInput);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.user.id).toBe("uuid-user-1");
+      }
+      expect(mockAuthRepo.createIdentity).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "uuid-user-1",
+          provider: "facebook",
+          providerUserId: "fb-user-id-nuevo",
+          emailVerified: true,
+        }),
+      );
+    });
+
+    it("rechaza vincular si el correo coincide con una cuenta existente NO verificada (§5.4)", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "facebook",
+          codeVerifier: "",
+          codeChallenge: "",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockFacebookOAuthClient.exchangeCodeForAccessToken).mockResolvedValue({
+        access_token: "fb-access-token",
+        token_type: "bearer",
+      });
+
+      vi.mocked(mockFacebookOAuthClient.fetchUserProfile).mockResolvedValue({
+        id: "fb-user-id-nuevo",
+        name: "Carlos Gómez",
+        email: "carlos@empresa.com",
+      });
+
+      const unverifiedUser = await buildMockUser({
+        id: "uuid-user-1",
+        email: "carlos@empresa.com",
+        emailVerifiedAt: null,
+      });
+
+      vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValue(null);
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(unverifiedUser);
+
+      const result = await authService.authenticateWithFacebook(defaultFacebookInput);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("EXISTING_USER_UNVERIFIED");
+        expect(result.error).toContain("no ha verificado su correo electrónico");
+      }
+      expect(mockAuthRepo.createIdentity).not.toHaveBeenCalled();
+      expect(mockAuthRepo.createSession).not.toHaveBeenCalled();
+    });
+
+    it("crea nuevo usuario federado e identidad e inicia sesión si la cuenta no existe", async () => {
+      vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+        ok: true,
+        data: {
+          provider: "facebook",
+          codeVerifier: "",
+          codeChallenge: "",
+          returnTo: "/admin",
+          action: "login",
+          createdAt: Date.now(),
+        },
+      });
+
+      vi.mocked(mockFacebookOAuthClient.exchangeCodeForAccessToken).mockResolvedValue({
+        access_token: "fb-access-token",
+        token_type: "bearer",
+      });
+
+      vi.mocked(mockFacebookOAuthClient.fetchUserProfile).mockResolvedValue({
+        id: "fb-user-id-nuevo",
+        name: "Nuevo Usuario",
+        email: "nuevo@empresa.com",
+        picture: {
+          data: {
+            url: "https://platform-lookaside.fbsbx.com/avatar.jpg",
+          },
+        },
+      });
+
+      const newUser = await buildMockUser({
+        id: "uuid-user-nuevo",
+        email: "nuevo@empresa.com",
+        emailVerifiedAt: new Date(),
+        displayName: "Nuevo Usuario",
+      });
+
+      const newIdentity: Identity = {
+        id: "uuid-identity-fb-nuevo",
+        userId: "uuid-user-nuevo",
+        provider: "facebook",
+        providerUserId: "fb-user-id-nuevo",
+        providerEmail: "nuevo@empresa.com",
+        emailVerified: true,
+        displayName: "Nuevo Usuario",
+        avatarUrl: "https://platform-lookaside.fbsbx.com/avatar.jpg",
+        linkedAt: new Date(),
+        lastLoginAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValue(null);
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(null);
+      vi.mocked(mockAuthRepo.createFederatedUserWithIdentity).mockResolvedValue({
+        user: newUser,
+        identity: newIdentity,
+      });
+      vi.mocked(mockAuthRepo.createSession).mockResolvedValue({
+        ...mockSession,
+        userId: "uuid-user-nuevo",
+      });
+
+      const result = await authService.authenticateWithFacebook(defaultFacebookInput);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.user.id).toBe("uuid-user-nuevo");
+        expect(result.data.emailVerified).toBe(true);
+      }
+      expect(mockAuthRepo.createFederatedUserWithIdentity).toHaveBeenCalledWith({
+        email: "nuevo@empresa.com",
+        provider: "facebook",
+        providerUserId: "fb-user-id-nuevo",
+        providerEmail: "nuevo@empresa.com",
+        displayName: "Nuevo Usuario",
+        avatarUrl: "https://platform-lookaside.fbsbx.com/avatar.jpg",
+      });
+      expect(mockAuthRepo.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "uuid-user-nuevo",
+          authMethod: "facebook",
+        }),
+      );
+    });
+  });
+
+  describe("AUTH-001 T-16 · Vinculación y Desvinculación de Identidades (link y unlink)", () => {
+    let mockAuthRepo: IAuthRepository;
+    let mockMailer: IAuthMailer;
+    let mockGoogleOidcClient: IGoogleOidcClient;
+    let mockFacebookOAuthClient: IFacebookOAuthClient;
+    let mockStateManager: OAuthStateManager;
+    let authService: AuthService;
+
+    const rawPassword = "Password123!";
+    const buildMockUser = async (overrides?: Partial<User>): Promise<User> => {
+      const passwordHash = await hashPassword(rawPassword);
+      return {
+        id: "uuid-user-1",
+        email: "carlos@empresa.com",
+        emailVerifiedAt: new Date(),
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        status: "active",
+        identityLocation: "router",
+        activeClientId: null,
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpEnabledAt: null,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: null,
+        displayName: "Carlos Gómez",
+        avatarUrl: null,
+        createdBy: "self",
+        updatedBy: "self",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...overrides,
+      };
+    };
+
+    beforeEach(() => {
+      mockAuthRepo = createBaseMockAuthRepo();
+
+      mockMailer = {
+        sendVerificationEmail: vi.fn(),
+        sendPasswordSetupEmail: vi.fn(),
+        sendPasswordResetEmail: vi.fn(),
+        sendAccountAlreadyExistsEmail: vi.fn(),
+      };
+
+      mockGoogleOidcClient = {
+        discover: vi.fn(),
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForTokens: vi.fn(),
+        verifyIdToken: vi.fn(),
+      };
+
+      mockFacebookOAuthClient = {
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForAccessToken: vi.fn(),
+        fetchUserProfile: vi.fn(),
+      };
+
+      mockStateManager = {
+        createState: vi.fn(),
+        consumeState: vi.fn(),
+      } as unknown as OAuthStateManager;
+
+      authService = new AuthService(
+        mockAuthRepo,
+        mockMailer,
+        mockGoogleOidcClient,
+        mockStateManager,
+        mockFacebookOAuthClient,
+      );
+    });
+
+    const mockSession: Session = {
+      id: "uuid-session-link",
+      sidHash: Buffer.alloc(32),
+      csrfHash: Buffer.alloc(32),
+      userId: "uuid-user-1",
+      clientId: null,
+      routingVersion: null,
+      authMethod: "google",
+      mfaAt: null,
+      reauthAt: new Date(),
+      lastSeenAt: new Date(),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      revokedAt: null,
+      revokedReason: null,
+      ipHash: null,
+      userAgentHash: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "self",
+      updatedBy: "self",
+    };
+
+    describe("linkProviderIdentity", () => {
+      it("falla si el estado de vinculación no contiene userId", async () => {
+        vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+          ok: true,
+          data: {
+            provider: "google",
+            codeVerifier: "v",
+            codeChallenge: "c",
+            action: "login", // no vinculación, sin userId
+            returnTo: "/admin",
+            createdAt: Date.now(),
+          },
+        });
+
+        const result = await authService.linkProviderIdentity({
+          provider: "google",
+          code: "c",
+          state: "s",
+          clientCookieState: "s",
+          clientId: "id",
+          clientSecret: "sec",
+          redirectUri: "uri",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_STATE");
+        }
+      });
+
+      it("rechaza si la identidad del proveedor ya está vinculada a OTRO usuario", async () => {
+        vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+          ok: true,
+          data: {
+            provider: "google",
+            codeVerifier: "v",
+            codeChallenge: "c",
+            nonce: "n",
+            action: "link",
+            userId: "uuid-user-1",
+            returnTo: "/admin/settings",
+            createdAt: Date.now(),
+          },
+        });
+
+        const user = await buildMockUser({ id: "uuid-user-1" });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        vi.mocked(mockGoogleOidcClient.exchangeCodeForTokens).mockResolvedValue({
+          access_token: "tok",
+          id_token: "idtok",
+          expires_in: 3600,
+          token_type: "Bearer",
+        });
+
+        vi.mocked(mockGoogleOidcClient.verifyIdToken).mockResolvedValue({
+          iss: "https://accounts.google.com",
+          sub: "google-sub-otro",
+          aud: "id",
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000),
+          email: "otro@empresa.com",
+          email_verified: true,
+        });
+
+        // Identidad ya vinculada a otro usuario (uuid-user-999)
+        const anotherIdentity: Identity = {
+          id: "uuid-identity-other",
+          userId: "uuid-user-999",
+          provider: "google",
+          providerUserId: "google-sub-otro",
+          providerEmail: "otro@empresa.com",
+          emailVerified: true,
+          displayName: null,
+          avatarUrl: null,
+          linkedAt: new Date(),
+          lastLoginAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: "self",
+          updatedBy: "self",
+        };
+
+        vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValue(anotherIdentity);
+
+        const result = await authService.linkProviderIdentity({
+          provider: "google",
+          code: "c",
+          state: "s",
+          clientCookieState: "s",
+          clientId: "id",
+          clientSecret: "sec",
+          redirectUri: "uri",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("IDENTITY_ALREADY_LINKED");
+          expect(result.error).toContain("ya se encuentra vinculada a otro usuario");
+        }
+        expect(mockAuthRepo.createIdentity).not.toHaveBeenCalled();
+      });
+
+      it("vincula exitosamente Google OIDC a la cuenta y emite sesión con returnTo", async () => {
+        vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+          ok: true,
+          data: {
+            provider: "google",
+            codeVerifier: "v",
+            codeChallenge: "c",
+            nonce: "n",
+            action: "link",
+            userId: "uuid-user-1",
+            returnTo: "/admin/profile",
+            createdAt: Date.now(),
+          },
+        });
+
+        const user = await buildMockUser({ id: "uuid-user-1" });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        vi.mocked(mockGoogleOidcClient.exchangeCodeForTokens).mockResolvedValue({
+          access_token: "tok",
+          id_token: "idtok",
+          expires_in: 3600,
+          token_type: "Bearer",
+        });
+
+        vi.mocked(mockGoogleOidcClient.verifyIdToken).mockResolvedValue({
+          iss: "https://accounts.google.com",
+          sub: "google-sub-1",
+          aud: "id",
+          exp: Math.floor(Date.now() / 1000) + 3600,
+          iat: Math.floor(Date.now() / 1000),
+          email: "carlos@empresa.com",
+          email_verified: true,
+          name: "Carlos Gómez",
+        });
+
+        vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValue(null);
+        vi.mocked(mockAuthRepo.createIdentity).mockResolvedValue({
+          id: "uuid-identity-new",
+          userId: "uuid-user-1",
+          provider: "google",
+          providerUserId: "google-sub-1",
+          providerEmail: "carlos@empresa.com",
+          emailVerified: true,
+          displayName: "Carlos Gómez",
+          avatarUrl: null,
+          linkedAt: new Date(),
+          lastLoginAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: "self",
+          updatedBy: "self",
+        });
+        vi.mocked(mockAuthRepo.createSession).mockResolvedValue(mockSession);
+
+        const result = await authService.linkProviderIdentity({
+          provider: "google",
+          code: "c",
+          state: "s",
+          clientCookieState: "s",
+          clientId: "id",
+          clientSecret: "sec",
+          redirectUri: "uri",
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.user.id).toBe("uuid-user-1");
+          expect(result.data.returnTo).toBe("/admin/profile");
+        }
+        expect(mockAuthRepo.createIdentity).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: "uuid-user-1",
+            provider: "google",
+            providerUserId: "google-sub-1",
+            emailVerified: true,
+          }),
+        );
+      });
+
+      it("vincula exitosamente Facebook OAuth a la cuenta y emite sesión", async () => {
+        vi.mocked(mockStateManager.consumeState).mockResolvedValue({
+          ok: true,
+          data: {
+            provider: "facebook",
+            codeVerifier: "",
+            codeChallenge: "",
+            action: "link",
+            userId: "uuid-user-1",
+            returnTo: "/admin/account",
+            createdAt: Date.now(),
+          },
+        });
+
+        const user = await buildMockUser({ id: "uuid-user-1" });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        vi.mocked(mockFacebookOAuthClient.exchangeCodeForAccessToken).mockResolvedValue({
+          access_token: "fb-tok",
+          token_type: "bearer",
+        });
+
+        vi.mocked(mockFacebookOAuthClient.fetchUserProfile).mockResolvedValue({
+          id: "fb-sub-1",
+          name: "Carlos Gómez",
+          email: "carlos@empresa.com",
+        });
+
+        vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValue(null);
+        vi.mocked(mockAuthRepo.createIdentity).mockResolvedValue({
+          id: "uuid-identity-fb-new",
+          userId: "uuid-user-1",
+          provider: "facebook",
+          providerUserId: "fb-sub-1",
+          providerEmail: "carlos@empresa.com",
+          emailVerified: true,
+          displayName: "Carlos Gómez",
+          avatarUrl: null,
+          linkedAt: new Date(),
+          lastLoginAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: "self",
+          updatedBy: "self",
+        });
+        vi.mocked(mockAuthRepo.createSession).mockResolvedValue(mockSession);
+
+        const result = await authService.linkProviderIdentity({
+          provider: "facebook",
+          code: "c",
+          state: "s",
+          clientCookieState: "s",
+          clientId: "id",
+          clientSecret: "sec",
+          redirectUri: "uri",
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.user.id).toBe("uuid-user-1");
+          expect(result.data.returnTo).toBe("/admin/account");
+        }
+        expect(mockAuthRepo.createIdentity).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: "uuid-user-1",
+            provider: "facebook",
+            providerUserId: "fb-sub-1",
+          }),
+        );
+      });
+    });
+
+    describe("unlinkProviderIdentity", () => {
+      it("rechaza desvincular si la cuenta posee contraseña y no se suministra la contraseña actual", async () => {
+        const user = await buildMockUser({ id: "uuid-user-1" });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        const result = await authService.unlinkProviderIdentity({
+          userId: "uuid-user-1",
+          sessionId: "uuid-session-1",
+          provider: "google",
+          // sin currentPassword
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("PASSWORD_REQUIRED");
+        }
+      });
+
+      it("rechaza desvincular si la contraseña actual provista es incorrecta", async () => {
+        const user = await buildMockUser({ id: "uuid-user-1" });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        const result = await authService.unlinkProviderIdentity({
+          userId: "uuid-user-1",
+          sessionId: "uuid-session-1",
+          provider: "google",
+          currentPassword: "WrongPassword!",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_CREDENTIALS");
+        }
+        expect(mockAuthRepo.deleteIdentity).not.toHaveBeenCalled();
+      });
+
+      it("rechaza desvincular el único método de acceso si no tiene contraseña nativa (§5.4)", async () => {
+        const federatedOnlyUser = await buildMockUser({
+          id: "uuid-user-fed",
+          passwordHash: null,
+        });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(federatedOnlyUser);
+
+        // Solo tiene 1 identidad vinculada
+        const onlyIdentity: Identity = {
+          id: "uuid-identity-google",
+          userId: "uuid-user-fed",
+          provider: "google",
+          providerUserId: "google-123",
+          providerEmail: "fed@empresa.com",
+          emailVerified: true,
+          displayName: null,
+          avatarUrl: null,
+          linkedAt: new Date(),
+          lastLoginAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: "self",
+          updatedBy: "self",
+        };
+        vi.mocked(mockAuthRepo.findIdentitiesByUserId).mockResolvedValue([onlyIdentity]);
+
+        const result = await authService.unlinkProviderIdentity({
+          userId: "uuid-user-fed",
+          sessionId: "uuid-session-1",
+          provider: "google",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("CANNOT_UNLINK_LAST_METHOD");
+          expect(result.error).toContain("No es posible desvincular el único método");
+        }
+        expect(mockAuthRepo.deleteIdentity).not.toHaveBeenCalled();
+      });
+
+      it("desvincula exitosamente si el usuario posee contraseña nativa", async () => {
+        const user = await buildMockUser({ id: "uuid-user-1" });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        const identityToUnlink: Identity = {
+          id: "uuid-identity-fb",
+          userId: "uuid-user-1",
+          provider: "facebook",
+          providerUserId: "fb-123",
+          providerEmail: "carlos@empresa.com",
+          emailVerified: true,
+          displayName: null,
+          avatarUrl: null,
+          linkedAt: new Date(),
+          lastLoginAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: "self",
+          updatedBy: "self",
+        };
+        vi.mocked(mockAuthRepo.findIdentitiesByUserId).mockResolvedValue([identityToUnlink]);
+
+        const result = await authService.unlinkProviderIdentity({
+          userId: "uuid-user-1",
+          sessionId: "uuid-session-1",
+          currentAuthMethod: "password", // sesión actual autenticada por password, no por facebook
+          provider: "facebook",
+          currentPassword: rawPassword,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.message).toContain("exitosamente");
+        }
+        expect(mockAuthRepo.deleteIdentity).toHaveBeenCalledWith("uuid-user-1", "facebook");
+        // No requiere rotar sesión porque el login fue por password
+        expect(mockAuthRepo.revokeAllUserSessions).not.toHaveBeenCalled();
+      });
+
+      it("revoca las demás sesiones y rota la actual si se desvincula el método usado para el login activo (§5.4)", async () => {
+        const user = await buildMockUser({ id: "uuid-user-1" });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        const identityGoogle: Identity = {
+          id: "uuid-identity-google",
+          userId: "uuid-user-1",
+          provider: "google",
+          providerUserId: "google-123",
+          providerEmail: "carlos@empresa.com",
+          emailVerified: true,
+          displayName: null,
+          avatarUrl: null,
+          linkedAt: new Date(),
+          lastLoginAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: "self",
+          updatedBy: "self",
+        };
+        vi.mocked(mockAuthRepo.findIdentitiesByUserId).mockResolvedValue([identityGoogle]);
+        vi.mocked(mockAuthRepo.rotateSession).mockResolvedValue({
+          ...mockSession,
+          id: "uuid-session-1",
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        });
+
+        const result = await authService.unlinkProviderIdentity({
+          userId: "uuid-user-1",
+          sessionId: "uuid-session-1",
+          currentAuthMethod: "google", // se desvincula el mismo método de la sesión activa
+          provider: "google",
+          currentPassword: rawPassword,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.rotatedSession).toBeDefined();
+          expect(result.data.rotatedSession?.sid).toBeDefined();
+          expect(result.data.rotatedSession?.csrfToken).toBeDefined();
+        }
+        expect(mockAuthRepo.deleteIdentity).toHaveBeenCalledWith("uuid-user-1", "google");
+        expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+          "uuid-user-1",
+          "provider_unlinked",
+          "uuid-session-1",
+        );
+        expect(mockAuthRepo.rotateSession).toHaveBeenCalledWith(
+          "uuid-session-1",
+          expect.any(Buffer),
+          expect.any(Buffer),
+        );
+      });
+    });
+  });
+
+  describe("AUTH-001 T-18 · Enrolamiento y desenrolamiento 2FA (AuthService)", () => {
+    let mockAuthRepo: IAuthRepository;
+    let mockMailer: IAuthMailer;
+    let mockGoogleOidcClient: IGoogleOidcClient;
+    let mockFacebookOAuthClient: IFacebookOAuthClient;
+    let mockStateManager: OAuthStateManager;
+    let totpCrypto: TotpCryptoService;
+    let authService: AuthService;
+
+    const rawPassword = "Password123!";
+    const buildMockUser = async (overrides?: Partial<User>): Promise<User> => {
+      const passwordHash = await hashPassword(rawPassword);
+      return {
+        id: "uuid-user-1",
+        email: "carlos@empresa.com",
+        emailVerifiedAt: new Date(),
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        status: "active",
+        identityLocation: "router",
+        activeClientId: null,
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpEnabledAt: null,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: null,
+        displayName: "Carlos Gómez",
+        avatarUrl: null,
+        createdBy: "self",
+        updatedBy: "self",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...overrides,
+      };
+    };
+
+    const mockSession: Session = {
+      id: "uuid-session-1",
+      sidHash: Buffer.alloc(32),
+      csrfHash: Buffer.alloc(32),
+      userId: "uuid-user-1",
+      clientId: null,
+      routingVersion: null,
+      authMethod: "password",
+      mfaAt: null,
+      reauthAt: new Date(),
+      lastSeenAt: new Date(),
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      revokedAt: null,
+      revokedReason: null,
+      ipHash: null,
+      userAgentHash: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "self",
+      updatedBy: "self",
+    };
+
+    beforeEach(() => {
+      mockAuthRepo = createBaseMockAuthRepo();
+      mockMailer = {
+        sendVerificationEmail: vi.fn(),
+        sendPasswordSetupEmail: vi.fn(),
+        sendPasswordResetEmail: vi.fn(),
+        sendAccountAlreadyExistsEmail: vi.fn(),
+      };
+      mockGoogleOidcClient = {
+        discover: vi.fn(),
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForTokens: vi.fn(),
+        verifyIdToken: vi.fn(),
+      };
+      mockFacebookOAuthClient = {
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForAccessToken: vi.fn(),
+        fetchUserProfile: vi.fn(),
+      };
+      mockStateManager = {
+        createState: vi.fn(),
+        consumeState: vi.fn(),
+      } as unknown as OAuthStateManager;
+
+      totpCrypto = new TotpCryptoService();
+      totpCrypto.registerKey("test-key-v1", Buffer.alloc(32, 9));
+      authService = new AuthService(
+        mockAuthRepo,
+        mockMailer,
+        mockGoogleOidcClient,
+        mockStateManager,
+        mockFacebookOAuthClient,
+        totpCrypto,
+      );
+    });
+
+    describe("enroll2fa", () => {
+      it("rechaza con MFA_NOT_AVAILABLE si la cuenta no posee contraseña nativa (solo federada)", async () => {
+        const federatedUser = await buildMockUser({
+          id: "uuid-user-fed",
+          passwordHash: null,
+          passwordUpdatedAt: null,
+        });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(federatedUser);
+
+        const result = await authService.enroll2fa({
+          userId: federatedUser.id,
+          sessionId: "uuid-session-1",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("MFA_NOT_AVAILABLE");
+          expect(result.error).toBe(
+            "La autenticación de doble factor solo está disponible para cuentas con contraseña.",
+          );
+        }
+        expect(mockAuthRepo.updateUserTotpKeys).not.toHaveBeenCalled();
+      });
+
+      it("exige reautenticación con contraseña (REAUTH_REQUIRED) si la sesión tiene más de 5 minutos", async () => {
+        const user = await buildMockUser();
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        const expiredReauth = new Date(Date.now() - 6 * 60 * 1000);
+        const result = await authService.enroll2fa({
+          userId: user.id,
+          sessionId: "uuid-session-1",
+          reauthAt: expiredReauth,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("REAUTH_REQUIRED");
+        }
+        expect(mockAuthRepo.updateUserTotpKeys).not.toHaveBeenCalled();
+      });
+
+      it("rechaza si la contraseña suministrada en reautenticación es incorrecta", async () => {
+        const user = await buildMockUser();
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        const expiredReauth = new Date(Date.now() - 6 * 60 * 1000);
+        const result = await authService.enroll2fa({
+          userId: user.id,
+          sessionId: "uuid-session-1",
+          reauthAt: expiredReauth,
+          password: "WrongPassword999!",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_CREDENTIALS");
+        }
+        expect(mockAuthRepo.updateUserTotpKeys).not.toHaveBeenCalled();
+      });
+
+      it("genera el secreto pendiente de 20 bytes en Base32, lo cifra con AES-256-GCM y retorna otpauthUri", async () => {
+        const user = await buildMockUser();
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        const recentReauth = new Date(Date.now() - 1 * 60 * 1000);
+        const result = await authService.enroll2fa({
+          userId: user.id,
+          sessionId: "uuid-session-1",
+          reauthAt: recentReauth,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.secret).toBeDefined();
+          expect(result.data.secret.length).toBe(32);
+          expect(result.data.otpauthUri).toContain("otpauth://totp/Mocter:carlos%40empresa.com?");
+          expect(result.data.otpauthUri).toContain(`secret=${result.data.secret}`);
+          expect(result.data.expiresAt).toBeDefined();
+        }
+
+        expect(mockAuthRepo.updateUserTotpKeys).toHaveBeenCalledWith(
+          user.id,
+          expect.objectContaining({
+            totpPendingSecretCiphertext: expect.any(Buffer),
+            totpPendingKeyId: "test-key-v1",
+            totpPendingCreatedAt: expect.any(Date),
+          }),
+        );
+      });
+    });
+
+    describe("confirm2fa", () => {
+      it("falla con INVALID_TOTP_CODE si no tiene secreto pendiente", async () => {
+        const user = await buildMockUser({
+          totpPendingSecretCiphertext: null,
+          totpPendingKeyId: null,
+          totpPendingCreatedAt: null,
+        });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        const result = await authService.confirm2fa({
+          userId: user.id,
+          sessionId: "uuid-session-1",
+          code: "123456",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_TOTP_CODE");
+        }
+      });
+
+      it("falla con INVALID_TOTP_CODE si el secreto pendiente superó los 10 minutos de vigencia", async () => {
+        const expiredPendingDate = new Date(Date.now() - 11 * 60 * 1000);
+        const user = await buildMockUser();
+        const encrypted = totpCrypto.encrypt("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", user.id);
+        const userWithExpiredPending = {
+          ...user,
+          totpPendingSecretCiphertext: encrypted.ciphertext,
+          totpPendingKeyId: encrypted.keyId,
+          totpPendingCreatedAt: expiredPendingDate,
+        };
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWithExpiredPending);
+
+        const result = await authService.confirm2fa({
+          userId: user.id,
+          sessionId: "uuid-session-1",
+          code: "123456",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_TOTP_CODE");
+        }
+      });
+
+      it("falla con INVALID_TOTP_CODE si el código es incorrecto", async () => {
+        const user = await buildMockUser();
+        const encrypted = totpCrypto.encrypt("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", user.id);
+        const userWithPending = {
+          ...user,
+          totpPendingSecretCiphertext: encrypted.ciphertext,
+          totpPendingKeyId: encrypted.keyId,
+          totpPendingCreatedAt: new Date(),
+        };
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWithPending);
+
+        const result = await authService.confirm2fa({
+          userId: user.id,
+          sessionId: "uuid-session-1",
+          code: "000000",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_TOTP_CODE");
+        }
+      });
+
+      it("activa 2FA, promueve el secreto, revoca las demás sesiones y rota la actual con mfa_at", async () => {
+        const user = await buildMockUser();
+        const base32Secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+        const encrypted = totpCrypto.encrypt(base32Secret, user.id);
+        const userWithPending = {
+          ...user,
+          totpPendingSecretCiphertext: encrypted.ciphertext,
+          totpPendingKeyId: encrypted.keyId,
+          totpPendingCreatedAt: new Date(),
+          totpLastUsedStep: null,
+        };
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWithPending);
+
+        vi.mocked(mockAuthRepo.rotateSession).mockResolvedValue({
+          ...mockSession,
+          id: "uuid-session-1",
+          mfaAt: new Date(),
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        });
+
+        const validCode = generateTotpCode(base32Secret);
+
+        const result = await authService.confirm2fa({
+          userId: user.id,
+          sessionId: "uuid-session-1",
+          code: validCode,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.rotatedSession.sid).toBeDefined();
+          expect(result.data.rotatedSession.csrfToken).toBeDefined();
+        }
+
+        expect(mockAuthRepo.updateUserTotpKeys).toHaveBeenCalledWith(
+          user.id,
+          expect.objectContaining({
+            totpSecretCiphertext: encrypted.ciphertext,
+            totpKeyId: encrypted.keyId,
+            totpEnabledAt: expect.any(Date),
+            totpPendingSecretCiphertext: null,
+            totpPendingKeyId: null,
+            totpPendingCreatedAt: null,
+            totpLastUsedStep: expect.any(Number),
+          }),
+        );
+
+        expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+          user.id,
+          "mfa_enabled",
+          "uuid-session-1",
+        );
+        expect(mockAuthRepo.rotateSession).toHaveBeenCalledWith(
+          "uuid-session-1",
+          expect.any(Buffer),
+          expect.any(Buffer),
+          expect.objectContaining({
+            mfaAt: expect.any(Date),
+            reauthAt: expect.any(Date),
+          }),
+        );
+      });
+    });
+
+    describe("disable2fa", () => {
+      it("falla con MFA_NOT_ENABLED si la cuenta no tiene 2FA activo", async () => {
+        const user = await buildMockUser({
+          totpEnabledAt: null,
+          totpSecretCiphertext: null,
+          totpKeyId: null,
+        });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+        const result = await authService.disable2fa({
+          userId: user.id,
+          sessionId: "uuid-session-1",
+          password: rawPassword,
+          code: "123456",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("MFA_NOT_ENABLED");
+        }
+      });
+
+      it("falla con INVALID_CREDENTIALS si la contraseña es incorrecta", async () => {
+        const user = await buildMockUser();
+        const encrypted = totpCrypto.encrypt("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", user.id);
+        const userWithMfa = {
+          ...user,
+          totpEnabledAt: new Date(),
+          totpSecretCiphertext: encrypted.ciphertext,
+          totpKeyId: encrypted.keyId,
+        };
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWithMfa);
+
+        const result = await authService.disable2fa({
+          userId: user.id,
+          sessionId: "uuid-session-1",
+          password: "WrongPassword999!",
+          code: "123456",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_CREDENTIALS");
+        }
+      });
+
+      it("falla con INVALID_TOTP_CODE si el código TOTP es inválido", async () => {
+        const user = await buildMockUser();
+        const encrypted = totpCrypto.encrypt("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", user.id);
+        const userWithMfa = {
+          ...user,
+          totpEnabledAt: new Date(),
+          totpSecretCiphertext: encrypted.ciphertext,
+          totpKeyId: encrypted.keyId,
+        };
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWithMfa);
+
+        const result = await authService.disable2fa({
+          userId: user.id,
+          sessionId: "uuid-session-1",
+          password: rawPassword,
+          code: "000000",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_TOTP_CODE");
+        }
+      });
+
+      it("desactiva 2FA, remueve secretos, revoca las demás sesiones y rota la actual limpiando mfa_at", async () => {
+        const user = await buildMockUser();
+        const base32Secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+        const encrypted = totpCrypto.encrypt(base32Secret, user.id);
+        const userWithMfa = {
+          ...user,
+          totpEnabledAt: new Date(),
+          totpSecretCiphertext: encrypted.ciphertext,
+          totpKeyId: encrypted.keyId,
+        };
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWithMfa);
+
+        vi.mocked(mockAuthRepo.rotateSession).mockResolvedValue({
+          ...mockSession,
+          id: "uuid-session-1",
+          mfaAt: null,
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        });
+
+        const validCode = generateTotpCode(base32Secret);
+
+        const result = await authService.disable2fa({
+          userId: user.id,
+          sessionId: "uuid-session-1",
+          password: rawPassword,
+          code: validCode,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.rotatedSession.sid).toBeDefined();
+        }
+
+        expect(mockAuthRepo.updateUserTotpKeys).toHaveBeenCalledWith(user.id, {
+          totpSecretCiphertext: null,
+          totpKeyId: null,
+          totpEnabledAt: null,
+          totpPendingSecretCiphertext: null,
+          totpPendingKeyId: null,
+          totpPendingCreatedAt: null,
+          totpLastUsedStep: null,
+        });
+
+        expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+          user.id,
+          "mfa_disabled",
+          "uuid-session-1",
+        );
+
+        expect(mockAuthRepo.rotateSession).toHaveBeenCalledWith(
+          "uuid-session-1",
+          expect.any(Buffer),
+          expect.any(Buffer),
+          expect.objectContaining({
+            mfaAt: null,
+            reauthAt: expect.any(Date),
+          }),
+        );
+      });
+    });
+  });
+
+  describe("AUTH-001 T-19 · Challenge y login 2FA (verify2faChallenge)", () => {
+    let mockAuthRepo: IAuthRepository;
+    let mockMailer: IAuthMailer;
+    let mockGoogleOidcClient: IGoogleOidcClient;
+    let mockFacebookOAuthClient: IFacebookOAuthClient;
+    let mockStateManager: OAuthStateManager;
+    let mockRedis: MockRedisClient;
+    let totpCrypto: TotpCryptoService;
+    let authService: AuthService;
+
+    const buildMockUser = async (overrides?: Partial<User>): Promise<User> => {
+      const passwordHash = await hashPassword("Password123!");
+      return {
+        id: "uuid-user-1",
+        email: "carlos@empresa.com",
+        emailVerifiedAt: new Date(),
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpEnabledAt: null,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: null,
+        identityLocation: "router",
+        activeClientId: null,
+        status: "active",
+        displayName: "Carlos Gómez",
+        avatarUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+        ...overrides,
+      };
+    };
+
+    beforeEach(() => {
+      mockRedis = new MockRedisClient();
+      setRedisClientForTesting(mockRedis as unknown as ReturnType<typeof createMockRedisClient>);
+
+      mockAuthRepo = createBaseMockAuthRepo();
+      mockMailer = {
+        sendVerificationEmail: vi.fn(),
+        sendPasswordSetupEmail: vi.fn(),
+        sendPasswordResetEmail: vi.fn(),
+        sendAccountAlreadyExistsEmail: vi.fn(),
+      };
+      mockGoogleOidcClient = {
+        discover: vi.fn(),
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForTokens: vi.fn(),
+        verifyIdToken: vi.fn(),
+      };
+      mockFacebookOAuthClient = {
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForAccessToken: vi.fn(),
+        fetchUserProfile: vi.fn(),
+      };
+      mockStateManager = {
+        createState: vi.fn(),
+        consumeState: vi.fn(),
+      } as unknown as OAuthStateManager;
+
+      totpCrypto = new TotpCryptoService();
+      totpCrypto.registerKey("test-key-v1", Buffer.alloc(32, 7));
+
+      authService = new AuthService(
+        mockAuthRepo,
+        mockMailer,
+        mockGoogleOidcClient,
+        mockStateManager,
+        mockFacebookOAuthClient,
+        totpCrypto,
+        mfaChallengeManager,
+      );
+    });
+
+    afterEach(() => {
+      setRedisClientForTesting(null);
+    });
+
+    it("login con 2FA habilitado crea challenge en Redis y retorna mfaRequired: true", async () => {
+      const user = await buildMockUser({
+        totpEnabledAt: new Date(),
+        totpSecretCiphertext: Buffer.alloc(32),
+        totpKeyId: "test-key-v1",
+      });
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(user);
+
+      const result = await authService.login({
+        email: user.email,
+        password: "Password123!",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok && "mfaRequired" in result.data) {
+        expect(result.data.mfaRequired).toBe(true);
+        expect(result.data.userId).toBe(user.id);
+        expect(result.data.challengeToken).toBeDefined();
+        expect(result.data.expiresAt).toBeDefined();
+
+        const stored = await mfaChallengeManager.getChallenge(result.data.challengeToken);
+        expect(stored).not.toBeNull();
+        expect(stored!.userId).toBe(user.id);
+      } else {
+        expect.unreachable("Se esperaba mfaRequired");
+      }
+    });
+
+    it("falla con VALIDATION_ERROR si faltan parámetros en verify2faChallenge", async () => {
+      const result = await authService.verify2faChallenge({
+        challengeToken: "",
+        code: "",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("VALIDATION_ERROR");
+      }
+    });
+
+    it("falla con CHALLENGE_EXPIRED si el challenge no existe o expiró en Redis", async () => {
+      const result = await authService.verify2faChallenge({
+        challengeToken: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        code: "123456",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("CHALLENGE_EXPIRED");
+      }
+    });
+
+    it("falla con CHALLENGE_EXHAUSTED y elimina el challenge si tiene 5 o más intentos fallidos", async () => {
+      const user = await buildMockUser();
+      const base32Secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+      const encrypted = totpCrypto.encrypt(base32Secret, user.id);
+
+      const userWith2fa = {
+        ...user,
+        totpEnabledAt: new Date(),
+        totpSecretCiphertext: encrypted.ciphertext,
+        totpKeyId: encrypted.keyId,
+        totpLastUsedStep: null,
+      };
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWith2fa);
+
+      const challenge = await mfaChallengeManager.createChallenge({
+        userId: user.id,
+        clientId: null,
+        routingVersion: null,
+        identityLocation: "router",
+      });
+
+      // Simular 4 intentos fallidos previos
+      for (let i = 0; i < 4; i++) {
+        await mfaChallengeManager.recordFailedAttempt(challenge.challengeToken);
+      }
+
+      // El 5to intento incorrecto debe arrojar CHALLENGE_EXHAUSTED y autodestruir el challenge
+      const result = await authService.verify2faChallenge({
+        challengeToken: challenge.challengeToken,
+        code: "000000",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("CHALLENGE_EXHAUSTED");
+      }
+
+      const check = await mfaChallengeManager.getChallenge(challenge.challengeToken);
+      expect(check).toBeNull();
+    });
+
+    it("falla con USER_NOT_FOUND si el usuario no existe", async () => {
+      const challenge = await mfaChallengeManager.createChallenge({
+        userId: "uuid-inexistente",
+        clientId: null,
+        routingVersion: null,
+        identityLocation: "router",
+      });
+
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(null);
+
+      const result = await authService.verify2faChallenge({
+        challengeToken: challenge.challengeToken,
+        code: "123456",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("USER_NOT_FOUND");
+      }
+    });
+
+    it("falla con MFA_NOT_ENABLED si la cuenta no tiene 2FA habilitado", async () => {
+      const user = await buildMockUser({
+        totpEnabledAt: null,
+      });
+
+      const challenge = await mfaChallengeManager.createChallenge({
+        userId: user.id,
+        clientId: null,
+        routingVersion: null,
+        identityLocation: "router",
+      });
+
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+      const result = await authService.verify2faChallenge({
+        challengeToken: challenge.challengeToken,
+        code: "123456",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("MFA_NOT_ENABLED");
+      }
+    });
+
+    it("falla con INVALID_TOTP_CODE e incrementa intentos si el código TOTP es incorrecto", async () => {
+      const user = await buildMockUser();
+      const base32Secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+      const encrypted = totpCrypto.encrypt(base32Secret, user.id);
+
+      const userWith2fa = {
+        ...user,
+        totpEnabledAt: new Date(),
+        totpSecretCiphertext: encrypted.ciphertext,
+        totpKeyId: encrypted.keyId,
+        totpLastUsedStep: null,
+      };
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWith2fa);
+
+      const challenge = await mfaChallengeManager.createChallenge({
+        userId: user.id,
+        clientId: null,
+        routingVersion: null,
+        identityLocation: "router",
+      });
+
+      const result = await authService.verify2faChallenge({
+        challengeToken: challenge.challengeToken,
+        code: "000000",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("INVALID_TOTP_CODE");
+      }
+
+      const stored = await mfaChallengeManager.getChallenge(challenge.challengeToken);
+      expect(stored).not.toBeNull();
+      expect(stored!.attempts).toBe(1);
+    });
+
+    it("se autodestruye y responde CHALLENGE_EXHAUSTED al quinto fallo consecutivo de código TOTP", async () => {
+      const user = await buildMockUser();
+      const base32Secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+      const encrypted = totpCrypto.encrypt(base32Secret, user.id);
+
+      const userWith2fa = {
+        ...user,
+        totpEnabledAt: new Date(),
+        totpSecretCiphertext: encrypted.ciphertext,
+        totpKeyId: encrypted.keyId,
+        totpLastUsedStep: null,
+      };
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWith2fa);
+
+      const challenge = await mfaChallengeManager.createChallenge({
+        userId: user.id,
+        clientId: null,
+        routingVersion: null,
+        identityLocation: "router",
+      });
+
+      // Fallos 1 a 4
+      for (let i = 1; i <= 4; i++) {
+        const res = await authService.verify2faChallenge({
+          challengeToken: challenge.challengeToken,
+          code: "000000",
+        });
+        expect(res.ok).toBe(false);
+        if (!res.ok) {
+          expect(res.code).toBe("INVALID_TOTP_CODE");
+        }
+      }
+
+      // Fallo 5
+      const res5 = await authService.verify2faChallenge({
+        challengeToken: challenge.challengeToken,
+        code: "000000",
+      });
+      expect(res5.ok).toBe(false);
+      if (!res5.ok) {
+        expect(res5.code).toBe("CHALLENGE_EXHAUSTED");
+      }
+
+      // El challenge fue autodestruido de Redis
+      const check = await mfaChallengeManager.getChallenge(challenge.challengeToken);
+      expect(check).toBeNull();
+    });
+
+    it("rechaza con INVALID_TOTP_CODE si el código es repetido (anti-replay con totpLastUsedStep)", async () => {
+      const user = await buildMockUser();
+      const base32Secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+      const encrypted = totpCrypto.encrypt(base32Secret, user.id);
+
+      const currentStep = Math.floor(Date.now() / 1000 / 30);
+      const userWithReplay = {
+        ...user,
+        totpEnabledAt: new Date(),
+        totpSecretCiphertext: encrypted.ciphertext,
+        totpKeyId: encrypted.keyId,
+        totpLastUsedStep: currentStep, // Ya usado para este paso
+      };
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWithReplay);
+
+      const challenge = await mfaChallengeManager.createChallenge({
+        userId: user.id,
+        clientId: null,
+        routingVersion: null,
+        identityLocation: "router",
+      });
+
+      const currentCode = generateTotpCode(base32Secret);
+
+      const result = await authService.verify2faChallenge({
+        challengeToken: challenge.challengeToken,
+        code: currentCode,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("INVALID_TOTP_CODE");
+      }
+    });
+
+    it("verifica satisfactoriamente código TOTP válido, consume el challenge, actualiza totpLastUsedStep y crea sesión con mfa_at", async () => {
+      const user = await buildMockUser();
+      const base32Secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+      const encrypted = totpCrypto.encrypt(base32Secret, user.id);
+
+      const userWith2fa = {
+        ...user,
+        totpEnabledAt: new Date(),
+        totpSecretCiphertext: encrypted.ciphertext,
+        totpKeyId: encrypted.keyId,
+        totpLastUsedStep: null,
+      };
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWith2fa);
+
+      const challenge = await mfaChallengeManager.createChallenge({
+        userId: user.id,
+        clientId: "client-abc",
+        routingVersion: 3,
+        identityLocation: "router",
+      });
+
+      vi.mocked(mockAuthRepo.createSession).mockResolvedValue({
+        id: "session-mfa-1",
+        userId: user.id,
+        sidHash: Buffer.alloc(32),
+        csrfHash: Buffer.alloc(32),
+        clientId: "client-abc",
+        routingVersion: 3,
+        authMethod: "password",
+        mfaAt: new Date(),
+        reauthAt: new Date(),
+        lastSeenAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+        revokedAt: null,
+        revokedReason: null,
+        ipHash: null,
+        userAgentHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      });
+
+      const validCode = generateTotpCode(base32Secret);
+
+      const result = await authService.verify2faChallenge({
+        challengeToken: challenge.challengeToken,
+        code: validCode,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.user.id).toBe(user.id);
+        expect(result.data.sid).toBeDefined();
+        expect(result.data.csrfToken).toBeDefined();
+        expect(result.data.clientId).toBe("client-abc");
+        expect(result.data.expiresAt).toBeDefined();
+      }
+
+      // Challenge consumido (un solo uso)
+      const check = await mfaChallengeManager.getChallenge(challenge.challengeToken);
+      expect(check).toBeNull();
+
+      // totpLastUsedStep actualizado
+      expect(mockAuthRepo.updateUserTotpKeys).toHaveBeenCalledWith(
+        user.id,
+        expect.objectContaining({
+          totpLastUsedStep: expect.any(Number),
+        }),
+      );
+
+      // Sesión creada con mfaAt y reauthAt vigentes
+      expect(mockAuthRepo.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: user.id,
+          clientId: "client-abc",
+          routingVersion: 3,
+          authMethod: "password",
+          mfaAt: expect.any(Date),
+          reauthAt: expect.any(Date),
+        }),
+      );
+    });
+  });
+
 

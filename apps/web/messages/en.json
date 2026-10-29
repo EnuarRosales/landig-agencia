@@ -322,6 +322,11 @@
       "successMessage": "Your account has been activated. You can now sign in.",
       "goToLogin": "Go to Sign in",
       "backToHome": "Back to home"
+    },
+    "oauth": {
+      "orDivider": "or continue with",
+      "googleButton": "Continue with Google",
+      "facebookButton": "Continue with Facebook"
     }
   }
 }

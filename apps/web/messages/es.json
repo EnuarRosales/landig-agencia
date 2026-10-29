@@ -322,6 +322,11 @@
       "successMessage": "Tu cuenta ha sido activada correctamente. Ya puedes iniciar sesión.",
       "goToLogin": "Ir a Iniciar sesión",
       "backToHome": "Volver al inicio"
+    },
+    "oauth": {
+      "orDivider": "o continúa con",
+      "googleButton": "Continuar con Google",
+      "facebookButton": "Continuar con Facebook"
     }
   }
 }

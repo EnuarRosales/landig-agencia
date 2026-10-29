@@ -4,6 +4,7 @@ import type {
   EmailVerificationToken,
   PasswordResetToken,
   Session,
+  Identity,
 } from "../db/schemas";
 
 /**
@@ -243,13 +244,148 @@ export interface IAuthRepository {
    * @param sessionId - Identificador UUID de la sesión a rotar.
    * @param newSidHash - Nuevo hash binario SHA-256 (32 bytes) del identificador de sesión.
    * @param newCsrfHash - Nuevo hash binario SHA-256 (32 bytes) del token CSRF.
+   * @param options - Opciones opcionales de rotación como `mfaAt` o `reauthAt`.
    * @returns La entidad {@link Session} rotada y actualizada.
    */
   rotateSession(
     sessionId: string,
     newSidHash: Buffer,
     newCsrfHash: Buffer,
+    options?: {
+      mfaAt?: Date | null;
+      reauthAt?: Date;
+    },
   ): Promise<Session>;
+
+  /**
+   * Busca una identidad federada por proveedor y su identificador de sujeto (AUTH-001 §5.3).
+   *
+   * @param provider - Nombre del proveedor ("google" o "facebook").
+   * @param providerUserId - Identificador de sujeto devuelto por el proveedor.
+   * @returns La entidad {@link Identity} o `null` si no existe.
+   */
+  findIdentityByProvider(
+    provider: "google" | "facebook",
+    providerUserId: string,
+  ): Promise<Identity | null>;
+
+  /**
+   * Crea un nuevo usuario federado con correo verificado y su identidad en una sola transacción atómica (AUTH-001 §5.3).
+   *
+   * @param params - Parámetros de creación del usuario y la identidad federada.
+   * @returns Objeto con las entidades {@link User} e {@link Identity} creadas.
+   */
+  createFederatedUserWithIdentity(
+    params: CreateFederatedUserParams,
+  ): Promise<{ user: User; identity: Identity }>;
+
+  /**
+   * Vincula una nueva identidad federada a un usuario existente (AUTH-001 §5.4).
+   *
+   * @param params - Parámetros de la identidad a vincular.
+   * @returns La entidad {@link Identity} creada.
+   */
+  createIdentity(params: CreateIdentityParams): Promise<Identity>;
+
+  /**
+   * Actualiza la fecha y hora del último inicio de sesión de una identidad federada (`last_login_at = now()`).
+   *
+   * @param identityId - Identificador UUID de la identidad.
+   */
+  updateIdentityLastLogin(identityId: string): Promise<void>;
+
+  /**
+   * Lista todas las identidades federadas vinculadas a un usuario (AUTH-001 §5.4).
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @returns Lista de entidades {@link Identity}.
+   */
+  findIdentitiesByUserId(userId: string): Promise<Identity[]>;
+
+  /**
+   * Elimina una identidad federada vinculada a un usuario (AUTH-001 §5.4).
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @param provider - Proveedor a desvincular ("google" o "facebook").
+   */
+  deleteIdentity(userId: string, provider: "google" | "facebook"): Promise<void>;
+
+  /**
+   * Busca usuarios que posean secretos TOTP activos o pendientes cifrados con una clave distinta a la objetivo (AUTH-001 §4.1, T-17).
+   *
+   * @param targetKeyId - Identificador de la clave activa objetivo.
+   * @param limit - Límite de registros a retornar por lote.
+   * @returns Lista de entidades {@link User} desactualizadas.
+   */
+  findUsersWithOutdatedTotpKey(
+    targetKeyId: string,
+    limit?: number,
+  ): Promise<User[]>;
+
+  /**
+   * Cuenta cuántos usuarios poseen secretos activos o pendientes cifrados con un `keyId` específico.
+   *
+   * @param keyId - Identificador de la clave a consultar.
+   * @returns Cantidad de usuarios asociados.
+   */
+  countUsersWithTotpKey(keyId: string): Promise<number>;
+
+  /**
+   * Actualiza las columnas de secretos y claves TOTP de un usuario de forma atómica (AUTH-001 §4.1, T-17).
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @param updates - Columnas de secretos y claves a actualizar.
+   */
+  updateUserTotpKeys(
+    userId: string,
+    updates: {
+      totpSecretCiphertext?: Buffer | null;
+      totpKeyId?: string | null;
+      totpPendingSecretCiphertext?: Buffer | null;
+      totpPendingKeyId?: string | null;
+      totpEnabledAt?: Date | null;
+      totpPendingCreatedAt?: Date | null;
+      totpLastUsedStep?: number | null;
+    },
+  ): Promise<void>;
+}
+
+/**
+ * Parámetros para la creación de un usuario federado y su primera identidad (AUTH-001 §5.3).
+ */
+export interface CreateFederatedUserParams {
+  /** Correo electrónico verificado del usuario. */
+  email: string;
+  /** Proveedor de autenticación federada ("google" o "facebook"). */
+  provider: "google" | "facebook";
+  /** Identificador de sujeto del proveedor. */
+  providerUserId: string;
+  /** Correo original reportado por el proveedor si difiere del principal. */
+  providerEmail?: string | null;
+  /** Nombre visible reportado por el proveedor. */
+  displayName?: string | null;
+  /** URL del avatar o foto de perfil. */
+  avatarUrl?: string | null;
+}
+
+/**
+ * Parámetros para la vinculación de una identidad federada a una cuenta existente (AUTH-001 §5.4).
+ */
+export interface CreateIdentityParams {
+  /** Identificador UUID del usuario de la plataforma. */
+  userId: string;
+  /** Proveedor de autenticación federada ("google" o "facebook"). */
+  provider: "google" | "facebook";
+  /** Identificador de sujeto del proveedor. */
+  providerUserId: string;
+  /** Correo reportado por el proveedor. */
+  providerEmail?: string | null;
+  /** Si el correo fue reportado como verificado por el proveedor. */
+  emailVerified?: boolean;
+  /** Nombre visible reportado por el proveedor. */
+  displayName?: string | null;
+  /** URL del avatar o foto de perfil. */
+  avatarUrl?: string | null;
 }
 
 /**
@@ -268,6 +404,8 @@ export interface CreateSessionParams {
   routingVersion?: number | null;
   /** Método de autenticación utilizado ("password", "google", "facebook"). */
   authMethod: "password" | "google" | "facebook";
+  /** Momento en que la sesión superó la verificación de segundo factor TOTP (nulo si no aplica). */
+  mfaAt?: Date | null;
   /** Momento de reautenticación explícita con credenciales o TOTP. */
   reauthAt: Date;
   /** Fecha y hora UTC de vencimiento por inactividad (30 minutos tras emisión). */

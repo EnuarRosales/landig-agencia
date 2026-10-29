@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { getDb } from "../db/client";
 import * as schema from "../db/schemas";
@@ -9,11 +9,13 @@ import {
   passwordResetTokens,
   sessions,
   clientRouting,
+  identities,
   type User,
   type UserConsent,
   type EmailVerificationToken,
   type PasswordResetToken,
   type Session,
+  type Identity,
 } from "../db/schemas";
 import type {
   IAuthRepository,
@@ -21,6 +23,8 @@ import type {
   CreateEmailVerificationTokenParams,
   CreatePasswordResetTokenParams,
   CreateSessionParams,
+  CreateFederatedUserParams,
+  CreateIdentityParams,
 } from "./auth.repository.interface";
 import { appLogger } from "../utils/logger";
 
@@ -377,6 +381,7 @@ export class DrizzleAuthRepository implements IAuthRepository {
             clientId: params.clientId ?? null,
             routingVersion: params.routingVersion ?? null,
             authMethod: params.authMethod,
+            mfaAt: params.mfaAt ?? null,
             reauthAt: params.reauthAt,
             lastSeenAt: now,
             expiresAt: params.expiresAt,
@@ -664,22 +669,32 @@ export class DrizzleAuthRepository implements IAuthRepository {
     sessionId: string,
     newSidHash: Buffer,
     newCsrfHash: Buffer,
+    options?: {
+      mfaAt?: Date | null;
+      reauthAt?: Date;
+    },
   ): Promise<Session> {
     try {
       const now = new Date();
       const newExpiresAt = new Date(now.getTime() + 30 * 60 * 1000);
 
+      const setValues: Record<string, unknown> = {
+        sidHash: newSidHash,
+        csrfHash: newCsrfHash,
+        reauthAt: options?.reauthAt ?? now,
+        lastSeenAt: now,
+        expiresAt: sql`LEAST(${newExpiresAt}, ${sessions.absoluteExpiresAt})`,
+        updatedAt: now,
+        updatedBy: "self",
+      };
+
+      if (options && "mfaAt" in options) {
+        setValues.mfaAt = options.mfaAt;
+      }
+
       const [updatedSession] = await this.db
         .update(sessions)
-        .set({
-          sidHash: newSidHash,
-          csrfHash: newCsrfHash,
-          reauthAt: now,
-          lastSeenAt: now,
-          expiresAt: sql`LEAST(${newExpiresAt}, ${sessions.absoluteExpiresAt})`,
-          updatedAt: now,
-          updatedBy: "self",
-        })
+        .set(setValues)
         .where(eq(sessions.id, sessionId))
         .returning();
 
@@ -694,6 +709,292 @@ export class DrizzleAuthRepository implements IAuthRepository {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[AuthRepository.rotateSession Failed] ${msg}`, error, {
         sessionId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Busca una identidad federada por proveedor y su identificador de sujeto (AUTH-001 §5.3).
+   */
+  async findIdentityByProvider(
+    provider: "google" | "facebook",
+    providerUserId: string,
+  ): Promise<Identity | null> {
+    try {
+      const rows = await this.db
+        .select()
+        .from(identities)
+        .where(
+          and(
+            eq(identities.provider, provider),
+            eq(identities.providerUserId, providerUserId),
+          ),
+        )
+        .limit(1);
+
+      return rows[0] ?? null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.findIdentityByProvider Failed] ${msg}`, error, {
+        provider,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Crea un nuevo usuario federado con correo verificado y su identidad en una sola transacción atómica (AUTH-001 §5.3).
+   */
+  async createFederatedUserWithIdentity(
+    params: CreateFederatedUserParams,
+  ): Promise<{ user: User; identity: Identity }> {
+    try {
+      const now = new Date();
+      return await this.db.transaction(async (tx) => {
+        const [newUser] = await tx
+          .insert(users)
+          .values({
+            email: params.email.trim().toLowerCase(),
+            emailVerifiedAt: now,
+            passwordHash: null,
+            passwordUpdatedAt: null,
+            status: "active",
+            identityLocation: "router",
+            displayName: params.displayName ?? null,
+            avatarUrl: params.avatarUrl ?? null,
+            createdBy: "self",
+            updatedBy: "self",
+          })
+          .returning();
+
+        if (!newUser) {
+          throw new Error("DrizzleAuthRepository: user creation returned no rows");
+        }
+
+        const [newIdentity] = await tx
+          .insert(identities)
+          .values({
+            userId: newUser.id,
+            provider: params.provider,
+            providerUserId: params.providerUserId,
+            providerEmail: params.providerEmail ?? params.email,
+            emailVerified: true,
+            displayName: params.displayName ?? null,
+            avatarUrl: params.avatarUrl ?? null,
+            linkedAt: now,
+            lastLoginAt: now,
+            createdBy: "self",
+            updatedBy: "self",
+          })
+          .returning();
+
+        if (!newIdentity) {
+          throw new Error("DrizzleAuthRepository: identity creation returned no rows");
+        }
+
+        return { user: newUser, identity: newIdentity };
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(
+        `[AuthRepository.createFederatedUserWithIdentity Failed] ${msg}`,
+        error,
+        { provider: params.provider },
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Vincula una nueva identidad federada a un usuario existente (AUTH-001 §5.4).
+   */
+  async createIdentity(params: CreateIdentityParams): Promise<Identity> {
+    try {
+      const now = new Date();
+      const [newIdentity] = await this.db
+        .insert(identities)
+        .values({
+          userId: params.userId,
+          provider: params.provider,
+          providerUserId: params.providerUserId,
+          providerEmail: params.providerEmail ?? null,
+          emailVerified: params.emailVerified ?? false,
+          displayName: params.displayName ?? null,
+          avatarUrl: params.avatarUrl ?? null,
+          linkedAt: now,
+          lastLoginAt: now,
+          createdBy: "self",
+          updatedBy: "self",
+        })
+        .returning();
+
+      if (!newIdentity) {
+        throw new Error("DrizzleAuthRepository: identity creation returned no rows");
+      }
+
+      return newIdentity;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.createIdentity Failed] ${msg}`, error, {
+        userId: params.userId,
+        provider: params.provider,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Actualiza la fecha y hora del último inicio de sesión de una identidad federada (`last_login_at = now()`).
+   */
+  async updateIdentityLastLogin(identityId: string): Promise<void> {
+    try {
+      const now = new Date();
+      await this.db
+        .update(identities)
+        .set({
+          lastLoginAt: now,
+          updatedAt: now,
+          updatedBy: "self",
+        })
+        .where(eq(identities.id, identityId));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.updateIdentityLastLogin Failed] ${msg}`, error, {
+        identityId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Lista todas las identidades federadas vinculadas a un usuario (AUTH-001 §5.4).
+   */
+  async findIdentitiesByUserId(userId: string): Promise<Identity[]> {
+    try {
+      return await this.db
+        .select()
+        .from(identities)
+        .where(eq(identities.userId, userId));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.findIdentitiesByUserId Failed] ${msg}`, error, {
+        userId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Elimina una identidad federada vinculada a un usuario (AUTH-001 §5.4).
+   */
+  async deleteIdentity(
+    userId: string,
+    provider: "google" | "facebook",
+  ): Promise<void> {
+    try {
+      await this.db
+        .delete(identities)
+        .where(
+          and(
+            eq(identities.userId, userId),
+            eq(identities.provider, provider),
+          ),
+        );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.deleteIdentity Failed] ${msg}`, error, {
+        userId,
+        provider,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Busca usuarios que posean secretos TOTP activos o pendientes cifrados con una clave distinta a la objetivo (AUTH-001 §4.1, T-17).
+   */
+  async findUsersWithOutdatedTotpKey(
+    targetKeyId: string,
+    limit: number = 100,
+  ): Promise<User[]> {
+    try {
+      const rows = await this.db
+        .select()
+        .from(users)
+        .where(
+          or(
+            and(isNotNull(users.totpKeyId), ne(users.totpKeyId, targetKeyId)),
+            and(
+              isNotNull(users.totpPendingKeyId),
+              ne(users.totpPendingKeyId, targetKeyId),
+            ),
+          ),
+        )
+        .limit(limit);
+
+      return rows;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.findUsersWithOutdatedTotpKey Failed] ${msg}`, error, {
+        targetKeyId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Cuenta cuántos usuarios poseen secretos activos o pendientes cifrados con un `keyId` específico.
+   */
+  async countUsersWithTotpKey(keyId: string): Promise<number> {
+    try {
+      const result = await this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(users)
+        .where(
+          or(
+            eq(users.totpKeyId, keyId),
+            eq(users.totpPendingKeyId, keyId),
+          ),
+        );
+
+      return result[0]?.count ?? 0;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.countUsersWithTotpKey Failed] ${msg}`, error, {
+        keyId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Actualiza las columnas de secretos y claves TOTP de un usuario de forma atómica (AUTH-001 §4.1, T-17).
+   */
+  async updateUserTotpKeys(
+    userId: string,
+    updates: {
+      totpSecretCiphertext?: Buffer | null;
+      totpKeyId?: string | null;
+      totpPendingSecretCiphertext?: Buffer | null;
+      totpPendingKeyId?: string | null;
+      totpEnabledAt?: Date | null;
+      totpPendingCreatedAt?: Date | null;
+      totpLastUsedStep?: number | null;
+    },
+  ): Promise<void> {
+    try {
+      await this.db
+        .update(users)
+        .set({
+          ...updates,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, userId));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.updateUserTotpKeys Failed] ${msg}`, error, {
+        userId,
       });
       throw error;
     }
