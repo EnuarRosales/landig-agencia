@@ -1,3 +1,5 @@
+import { env } from "./env";
+
 /**
  * Niveles de severidad admitidos por el sistema de logging estructurado.
  */
@@ -94,7 +96,7 @@ export class Logger {
   constructor(private readonly namespace: string = "Mocter") {}
 
   private log(level: LogLevel, message: string, context?: LogContext, error?: unknown): void {
-    const isProd = process.env.NODE_ENV === "production";
+    const isProd = env.NODE_ENV === "production";
     const timestamp = new Date().toISOString();
     const cleanMessage = redactSensitiveData(message);
     const cleanContext = context ? (sanitizeObject(context) as LogContext) : undefined;
@@ -137,7 +139,7 @@ export class Logger {
    * @param context - Metadatos adicionales para depuración.
    */
   debug(message: string, context?: LogContext): void {
-    if (process.env.NODE_ENV !== "production" || process.env.DEBUG === "true") {
+    if (env.NODE_ENV !== "production" || env.DEBUG === "true") {
       this.log("debug", message, context);
     }
   }

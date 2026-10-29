@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",
+    "@t3-oss/env-core": "^0.13.11",
     "drizzle-orm": "^0.44.0",
     "postgres": "^3.4.0",
     "zod": "^4.6.7"

@@ -5,6 +5,7 @@ import {
   hashIpWithPepper,
   generateSessionId,
   generateCsrfToken,
+  compareHashesConstantTime,
 } from "./tokens";
 
 describe("AUTH-001 T-08 / T-10 · Generación y hashing de tokens seguros", () => {
@@ -60,5 +61,16 @@ describe("AUTH-001 T-08 / T-10 · Generación y hashing de tokens seguros", () =
     // Los hashes correspondientes deben ser de 32 bytes
     expect(hashToken(sid1).length).toBe(32);
     expect(hashToken(csrf1).length).toBe(32);
+  });
+
+  it("compara hashes binarios en tiempo constante correctamente", () => {
+    const hashA = hashToken("token-a");
+    const hashB = hashToken("token-a");
+    const hashC = hashToken("token-b");
+    const differentLength = Buffer.alloc(16);
+
+    expect(compareHashesConstantTime(hashA, hashB)).toBe(true);
+    expect(compareHashesConstantTime(hashA, hashC)).toBe(false);
+    expect(compareHashesConstantTime(hashA, differentLength)).toBe(false);
   });
 });

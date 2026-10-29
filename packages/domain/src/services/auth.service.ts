@@ -2,8 +2,14 @@ import {
   registerUserSchema,
   loginUserSchema,
   authEmailSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  changePasswordSchema,
   type RegisterUserInput,
   type LoginUserInput,
+  type ForgotPasswordInput,
+  type ResetPasswordInput,
+  type ChangePasswordInput,
 } from "../auth/validation";
 import {
   hashPassword,
@@ -17,7 +23,9 @@ import {
   hashIpWithPepper,
   generateSessionId,
   generateCsrfToken,
+  compareHashesConstantTime,
 } from "../auth/tokens";
+import type { Session } from "../db/schemas";
 import type { IAuthRepository } from "../repositories/auth.repository.interface";
 import { defaultAuthRepository } from "../repositories/drizzle-auth.repository";
 import type { IAuthMailer } from "../auth/auth-mailer.interface";
@@ -38,6 +46,50 @@ export const GENERIC_REGISTER_SUCCESS_MESSAGE =
  */
 export const GENERIC_INVALID_CREDENTIALS_MESSAGE =
   "Correo o contraseña incorrectos.";
+
+/**
+ * Mensaje estándar retornado al solicitar recuperación de contraseña (anti-enumeración, AUTH-001 §5.8).
+ */
+export const GENERIC_FORGOT_PASSWORD_MESSAGE =
+  "Si la cuenta existe y tiene contraseña configurada, enviamos un enlace de recuperación.";
+
+/**
+ * Objeto de respuesta para solicitudes de recuperación de contraseña.
+ */
+export interface ForgotPasswordResponseData {
+  message: string;
+}
+
+export type ForgotPasswordResult = Result<ForgotPasswordResponseData>;
+
+/**
+ * Objeto de respuesta para el restablecimiento de contraseña.
+ */
+export interface ResetPasswordResponseData {
+  message: string;
+}
+
+export type ResetPasswordResult = Result<ResetPasswordResponseData>;
+
+/**
+ * Objeto de respuesta para cambio autenticado de contraseña con sesión rotada.
+ */
+export interface ChangePasswordResponseData {
+  message: string;
+  sid: string;
+  csrfToken: string;
+  expiresAt: string;
+}
+
+export type ChangePasswordResult = Result<ChangePasswordResponseData>;
+
+/**
+ * Contexto de sesión requerido para realizar un cambio de contraseña autenticado.
+ */
+export interface ChangePasswordContext {
+  userId: string;
+  sessionId: string;
+}
 
 /**
  * Opciones de contexto adicionales para la solicitud de inicio de sesión (AUTH-001 §5.2, §5.6).
@@ -579,6 +631,321 @@ export class AuthService {
         email,
       });
       return err("Error interno al procesar el inicio de sesión.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Procesa la solicitud de recuperación de contraseña (AUTH-001 T-11, design §5.8).
+   *
+   * Flujo de ejecución:
+   * 1. Valida el correo con {@link forgotPasswordSchema}.
+   * 2. Consulta el usuario en el Router (`admin.users`).
+   * 3. Anti-enumeración: Si el usuario no existe, está deshabilitado o es exclusivamente federado (`passwordHash === null`),
+   *    retorna respuesta genérica exitosa sin emitir token (AUTH-001 §5.8).
+   * 4. Si el usuario existe y posee contraseña nativa:
+   *    - Invalida tokens previos con `purpose = 'reset'`.
+   *    - Genera token de 32 bytes con TTL de 30 minutos.
+   *    - Despacha correo vía {@link IAuthMailer.sendPasswordResetEmail}.
+   * 5. Retorna siempre `GENERIC_FORGOT_PASSWORD_MESSAGE`.
+   */
+  async forgotPassword(
+    rawInput: unknown,
+    options?: RegisterContextOptions,
+  ): Promise<ForgotPasswordResult> {
+    const parseResult = forgotPasswordSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      return err(
+        "El formato del correo electrónico es inválido.",
+        "VALIDATION_ERROR",
+        parseResult.error.issues,
+      );
+    }
+
+    const { email } = parseResult.data;
+
+    try {
+      const user = await this.authRepo.findUserByEmail(email);
+
+      // Si no existe, está disabled o no tiene passwordHash (solo federado), retornar respuesta genérica
+      if (!user || user.status === "disabled" || !user.passwordHash) {
+        appLogger.info(
+          "[AuthService.forgotPassword] Solicitud genérica (usuario inexistente, deshabilitado o federado)",
+          { email },
+        );
+        return ok({ message: GENERIC_FORGOT_PASSWORD_MESSAGE });
+      }
+
+      // Invalidar tokens previos de recuperación para este usuario
+      await this.authRepo.invalidatePendingPasswordResetTokens(user.id, "reset");
+
+      // Generar token seguro de 32 bytes con vencimiento a 30 minutos
+      const rawToken = generateSecureToken(32);
+      const tokenHash = hashToken(rawToken);
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutos
+
+      const requestedIpHash =
+        options?.clientIp && options?.pepper
+          ? hashIpWithPepper(options.clientIp, options.pepper)
+          : null;
+
+      await this.authRepo.createPasswordResetToken({
+        userId: user.id,
+        tokenHash,
+        purpose: "reset",
+        expiresAt,
+        requestedIpHash,
+      });
+
+      await this.mailer.sendPasswordResetEmail(
+        user.email,
+        rawToken,
+        user.displayName ?? undefined,
+      );
+
+      appLogger.info("[AuthService.forgotPassword] Correo de recuperación enviado", {
+        userId: user.id,
+      });
+
+      return ok({ message: GENERIC_FORGOT_PASSWORD_MESSAGE });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.forgotPassword Error] ${msg}`, error, { email });
+      return err("Error interno al procesar la solicitud de recuperación.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Restablece o establece la contraseña de una cuenta utilizando un token válido (AUTH-001 T-11, design §5.8).
+   *
+   * Flujo de ejecución:
+   * 1. Valida la carga útil con {@link resetPasswordSchema}.
+   * 2. Calcula el hash SHA-256 del token y consulta `password_reset_tokens`.
+   * 3. Valida:
+   *    - Existencia del token (400 `INVALID_TOKEN`).
+   *    - No consumido previamente (400 `TOKEN_ALREADY_USED`).
+   *    - No expirado dentro de sus 30 minutos de vigencia (400 `TOKEN_EXPIRED`).
+   * 4. Valida propósito:
+   *    - Si `purpose = 'setup'`: exige que la cuenta NO tenga contraseña previa (400 `PASSWORD_ALREADY_EXISTS`).
+   *    - Si `purpose = 'reset'`: exige que la cuenta YA tenga contraseña nativa previa (400 `NO_NATIVE_PASSWORD`).
+   * 5. Hashea la nueva contraseña con Argon2id.
+   * 6. En una transacción atómica:
+   *    - Consume el token (`consumed_at = now()`).
+   *    - Actualiza `password_hash` y `password_updated_at`.
+   *    - Si `purpose = 'setup'`, marca `email_verified_at = now()` si estaba nulo.
+   *    - Revoca todas las sesiones activas del usuario (`revokedReason = 'password_reset'`).
+   * 7. No inicia sesión automáticamente; el usuario debe autenticarse en el login.
+   */
+  async resetPassword(rawInput: unknown): Promise<ResetPasswordResult> {
+    const parseResult = resetPasswordSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      return err(
+        "Los datos ingresados no cumplen con las políticas de contraseña.",
+        "VALIDATION_ERROR",
+        parseResult.error.issues,
+      );
+    }
+
+    const { token, password } = parseResult.data;
+
+    try {
+      const tokenHash = hashToken(token);
+      const tokenRecord = await this.authRepo.findPasswordResetTokenByHash(tokenHash);
+
+      if (!tokenRecord) {
+        return err(
+          "El enlace de restablecimiento es inválido o no existe.",
+          "INVALID_TOKEN",
+        );
+      }
+
+      if (tokenRecord.consumedAt !== null) {
+        return err(
+          "Este enlace de restablecimiento ya fue utilizado.",
+          "TOKEN_ALREADY_USED",
+        );
+      }
+
+      if (tokenRecord.expiresAt < new Date()) {
+        return err(
+          "El enlace de restablecimiento ha expirado. Por favor solicite uno nuevo.",
+          "TOKEN_EXPIRED",
+        );
+      }
+
+      const user = await this.authRepo.findUserById(tokenRecord.userId);
+      if (!user) {
+        return err("Usuario no encontrado.", "USER_NOT_FOUND");
+      }
+
+      if (tokenRecord.purpose === "setup" && user.passwordHash !== null) {
+        return err(
+          "La cuenta ya cuenta con una contraseña establecida.",
+          "PASSWORD_ALREADY_EXISTS",
+        );
+      }
+
+      if (tokenRecord.purpose === "reset" && user.passwordHash === null) {
+        return err(
+          "La cuenta no cuenta con una contraseña nativa previa para recuperar.",
+          "NO_NATIVE_PASSWORD",
+        );
+      }
+
+      const newPasswordHash = await hashPassword(password);
+
+      await this.authRepo.consumePasswordResetToken(
+        tokenRecord.id,
+        user.id,
+        newPasswordHash,
+        tokenRecord.purpose as "reset" | "setup",
+      );
+
+      appLogger.info("[AuthService.resetPassword] Contraseña actualizada y sesiones revocadas", {
+        userId: user.id,
+        purpose: tokenRecord.purpose,
+      });
+
+      return ok({
+        message: "Contraseña actualizada exitosamente. Ya puedes iniciar sesión.",
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.resetPassword Error] ${msg}`, error);
+      return err("Error interno al restablecer la contraseña.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Cambia la contraseña de una sesión autenticada (AUTH-001 T-11, design §5.8).
+   *
+   * Flujo de ejecución:
+   * 1. Valida la carga útil con {@link changePasswordSchema}.
+   * 2. Consulta el usuario por `context.userId`.
+   * 3. Verifica la contraseña actual con Argon2id. Si es incorrecta, retorna 401 (`INVALID_CREDENTIALS`).
+   * 4. Si la cuenta tiene 2FA activado (`totpEnabledAt !== null`), valida que se suministre `totpCode`.
+   * 5. Hashea la nueva contraseña con Argon2id.
+   * 6. Actualiza `password_hash` y `password_updated_at`.
+   * 7. Revoca todas las demás sesiones activas del usuario (excepto la sesión actual `context.sessionId`).
+   * 8. Rota la sesión actual: genera nuevo `sid` y `csrfToken`, actualiza `sessions` y `reauth_at`.
+   * 9. Retorna nuevo `sid` y `csrfToken` para renovar las cookies del cliente.
+   */
+  async changePassword(
+    rawInput: unknown,
+    context: ChangePasswordContext,
+  ): Promise<ChangePasswordResult> {
+    const parseResult = changePasswordSchema.safeParse(rawInput);
+    if (!parseResult.success) {
+      return err(
+        "Los datos ingresados no cumplen con las políticas requeridas.",
+        "VALIDATION_ERROR",
+        parseResult.error.issues,
+      );
+    }
+
+    const { currentPassword, newPassword, totpCode } = parseResult.data;
+
+    try {
+      const user = await this.authRepo.findUserById(context.userId);
+      if (!user || !user.passwordHash) {
+        return err("No es posible cambiar la contraseña para esta cuenta.", "INVALID_REQUEST");
+      }
+
+      // Validar contraseña actual en tiempo constante
+      const isCurrentValid = await verifyPassword(currentPassword, user.passwordHash);
+      if (!isCurrentValid) {
+        return err("La contraseña actual es incorrecta.", "INVALID_CREDENTIALS");
+      }
+
+      // Si tiene 2FA activado, exigir código TOTP
+      if (user.totpEnabledAt !== null && !totpCode) {
+        return err(
+          "Debe proporcionar el código de autenticación de dos factores.",
+          "MFA_REQUIRED",
+        );
+      }
+
+      // Hashear nueva contraseña
+      const newPasswordHash = await hashPassword(newPassword);
+      await this.authRepo.updateUserPassword(user.id, newPasswordHash);
+
+      // Revocar las demás sesiones del usuario (AUTH-001 §5.8)
+      await this.authRepo.revokeAllUserSessions(
+        user.id,
+        "password_change",
+        context.sessionId,
+      );
+
+      // Rotar la sesión actual (AUTH-001 §5.6 y §5.8)
+      const newSid = generateSessionId();
+      const newCsrfToken = generateCsrfToken();
+      const newSidHash = hashToken(newSid);
+      const newCsrfHash = hashToken(newCsrfToken);
+
+      const rotatedSession = await this.authRepo.rotateSession(
+        context.sessionId,
+        newSidHash,
+        newCsrfHash,
+      );
+
+      appLogger.info("[AuthService.changePassword] Contraseña cambiada y sesión rotada", {
+        userId: user.id,
+      });
+
+      return ok({
+        message: "Contraseña actualizada exitosamente.",
+        sid: newSid,
+        csrfToken: newCsrfToken,
+        expiresAt: rotatedSession.expiresAt.toISOString(),
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.changePassword Error] ${msg}`, error, {
+        userId: context.userId,
+      });
+      return err("Error interno al cambiar la contraseña.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Valida una sesión activa a partir de su `sid` en claro y opcionalmente verifica el token CSRF (AUTH-001 §5.6).
+   *
+   * @param sid - Identificador de sesión en claro extraído de la cookie HTTP.
+   * @param csrfToken - Token CSRF en claro provisto en el encabezado `x-csrf-token` (opcional).
+   * @returns Un {@link Result} con la entidad {@link Session} activa o un error tipado ("UNAUTHORIZED" | "FORBIDDEN" | "DB_ERROR").
+   */
+  async validateSession(
+    sid: string,
+    csrfToken?: string,
+  ): Promise<Result<{ session: Session }, "UNAUTHORIZED" | "FORBIDDEN" | "DB_ERROR">> {
+    if (!sid) {
+      return err("Identificador de sesión ausente.", "UNAUTHORIZED");
+    }
+
+    try {
+      const sidHash = hashToken(sid);
+      const session = await this.authRepo.findSessionBySidHash(sidHash);
+
+      if (!session) {
+        return err("Sesión no encontrada o revocada.", "UNAUTHORIZED");
+      }
+
+      const now = new Date();
+      if (session.revokedAt !== null || session.expiresAt < now) {
+        return err("Sesión expirada o revocada.", "UNAUTHORIZED");
+      }
+
+      if (csrfToken) {
+        const csrfHash = hashToken(csrfToken);
+        if (!compareHashesConstantTime(csrfHash, session.csrfHash)) {
+          return err("Token CSRF inválido.", "FORBIDDEN");
+        }
+      }
+
+      return ok({ session });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.validateSession Error] ${msg}`, error);
+      return err("Error interno al validar la sesión.", "DB_ERROR");
     }
   }
 }

@@ -1,12 +1,35 @@
+import process from "node:process";
+import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
-import { appLogger } from "./logger";
 
 /**
- * Esquema de validación estricto para variables de entorno del sistema.
+ * Esquema de validación estricto para variables de entorno del dominio.
  */
 export const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL es requerida"),
-  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  NODE_ENV: z
+    .enum(["development", "production", "test"])
+    .default("development"),
+  AUTH_RATE_LIMIT_PEPPER: z.string().min(1).default("mocter-dev-pepper"),
+  DEBUG: z.string().optional(),
+});
+
+/**
+ * Instancia tipada centralizada de variables de entorno para @mocter/domain vía @t3-oss/env-core.
+ */
+export const env = createEnv({
+  server: {
+    DATABASE_URL: z.string().min(1, "DATABASE_URL es requerida"),
+    NODE_ENV: z
+      .enum(["development", "production", "test"])
+      .default("development"),
+    AUTH_RATE_LIMIT_PEPPER: z.string().min(1).default("mocter-dev-pepper"),
+    DEBUG: z.string().optional(),
+  },
+  runtimeEnv: process.env,
+  skipValidation: Boolean(
+    process.env.SKIP_ENV_VALIDATION || process.env.NODE_ENV === "test",
+  ),
 });
 
 /**
@@ -23,7 +46,9 @@ let validatedEnv: EnvConfig | null = null;
  * @returns Objeto tipado y validado con las variables requeridas.
  * @throws {Error} Si alguna variable obligatoria falta o tiene un formato inválido.
  */
-export function getValidatedEnv(customEnv?: Record<string, string | undefined>): EnvConfig {
+export function getValidatedEnv(
+  customEnv?: Record<string, string | undefined>,
+): EnvConfig {
   if (validatedEnv && !customEnv) {
     return validatedEnv;
   }
@@ -32,9 +57,12 @@ export function getValidatedEnv(customEnv?: Record<string, string | undefined>):
   const result = envSchema.safeParse(source);
 
   if (!result.success) {
-    const errorDetails = result.error.format();
-    const errorMsg = `[Config Error] Variables de entorno inválidas o ausentes: ${JSON.stringify(errorDetails)}`;
-    appLogger.error(errorMsg);
+    const issues = result.error.issues.map((issue) => ({
+      path: issue.path.join("."),
+      message: issue.message,
+    }));
+    const errorMsg = `[Config Error] Variables de entorno inválidas o ausentes: ${JSON.stringify(issues)}`;
+    console.error(errorMsg);
     throw new Error(errorMsg);
   }
 

@@ -3,6 +3,7 @@ import {
   AuthService,
   GENERIC_REGISTER_SUCCESS_MESSAGE,
   GENERIC_INVALID_CREDENTIALS_MESSAGE,
+  GENERIC_FORGOT_PASSWORD_MESSAGE,
 } from "./auth.service";
 import type { IAuthRepository } from "../repositories/auth.repository.interface";
 import type { IAuthMailer } from "../auth/auth-mailer.interface";
@@ -14,6 +15,7 @@ import type {
   Session,
 } from "../db/schemas";
 import { hashPassword } from "../auth/password-hasher";
+import { hashToken } from "../auth/tokens";
 
 describe("AUTH-001 T-08 · Servicio de Registro Nativo (AuthService)", () => {
   let mockAuthRepo: IAuthRepository;
@@ -45,11 +47,17 @@ describe("AUTH-001 T-08 · Servicio de Registro Nativo (AuthService)", () => {
       getClientRoutingVersion: vi.fn(),
       findSessionBySidHash: vi.fn(),
       revokeSession: vi.fn(),
+      findPasswordResetTokenByHash: vi.fn(),
+      consumePasswordResetToken: vi.fn(),
+      revokeAllUserSessions: vi.fn(),
+      updateUserPassword: vi.fn(),
+      rotateSession: vi.fn(),
     };
 
     mockMailer = {
       sendVerificationEmail: vi.fn(),
       sendPasswordSetupEmail: vi.fn(),
+      sendPasswordResetEmail: vi.fn(),
       sendAccountAlreadyExistsEmail: vi.fn(),
     };
 
@@ -357,11 +365,17 @@ describe("AUTH-001 T-09 · Verificación de correo (request y confirm)", () => {
       getClientRoutingVersion: vi.fn(),
       findSessionBySidHash: vi.fn(),
       revokeSession: vi.fn(),
+      findPasswordResetTokenByHash: vi.fn(),
+      consumePasswordResetToken: vi.fn(),
+      revokeAllUserSessions: vi.fn(),
+      updateUserPassword: vi.fn(),
+      rotateSession: vi.fn(),
     };
 
     mockMailer = {
       sendVerificationEmail: vi.fn(),
       sendPasswordSetupEmail: vi.fn(),
+      sendPasswordResetEmail: vi.fn(),
       sendAccountAlreadyExistsEmail: vi.fn(),
     };
 
@@ -575,11 +589,17 @@ describe("AUTH-001 T-10 · Inicio de Sesión Nativo (login)", () => {
       getClientRoutingVersion: vi.fn(),
       findSessionBySidHash: vi.fn(),
       revokeSession: vi.fn(),
+      findPasswordResetTokenByHash: vi.fn(),
+      consumePasswordResetToken: vi.fn(),
+      revokeAllUserSessions: vi.fn(),
+      updateUserPassword: vi.fn(),
+      rotateSession: vi.fn(),
     };
 
     mockMailer = {
       sendVerificationEmail: vi.fn(),
       sendPasswordSetupEmail: vi.fn(),
+      sendPasswordResetEmail: vi.fn(),
       sendAccountAlreadyExistsEmail: vi.fn(),
     };
 
@@ -832,3 +852,648 @@ describe("AUTH-001 T-10 · Inicio de Sesión Nativo (login)", () => {
       );
     });
   });
+
+describe("AUTH-001 T-11 · Recuperación, establecimiento y cambio de contraseña", () => {
+  let mockAuthRepo: IAuthRepository;
+  let mockMailer: IAuthMailer;
+  let authService: AuthService;
+
+  beforeEach(() => {
+    mockAuthRepo = {
+      findUserByEmail: vi.fn(),
+      findUserById: vi.fn(),
+      createUserWithConsent: vi.fn(),
+      createEmailVerificationToken: vi.fn(),
+      invalidatePendingEmailVerificationTokens: vi.fn(),
+      createPasswordResetToken: vi.fn(),
+      invalidatePendingPasswordResetTokens: vi.fn(),
+      findEmailVerificationTokenByHash: vi.fn(),
+      consumeEmailVerificationToken: vi.fn(),
+      createSession: vi.fn(),
+      updateUserPasswordHash: vi.fn(),
+      getClientRoutingVersion: vi.fn(),
+      findSessionBySidHash: vi.fn(),
+      revokeSession: vi.fn(),
+      findPasswordResetTokenByHash: vi.fn(),
+      consumePasswordResetToken: vi.fn(),
+      revokeAllUserSessions: vi.fn(),
+      updateUserPassword: vi.fn(),
+      rotateSession: vi.fn(),
+    };
+
+    mockMailer = {
+      sendVerificationEmail: vi.fn(),
+      sendPasswordSetupEmail: vi.fn(),
+      sendPasswordResetEmail: vi.fn(),
+      sendAccountAlreadyExistsEmail: vi.fn(),
+    };
+
+    authService = new AuthService(mockAuthRepo, mockMailer);
+  });
+
+  const rawPassword = "Password123!";
+  const newPassword = "NewStrongPassword456!";
+
+  const buildMockUser = async (overrides?: Partial<User>): Promise<User> => {
+    const passwordHash = await hashPassword(rawPassword);
+    return {
+      id: "uuid-user-1",
+      email: "carlos@empresa.com",
+      emailVerifiedAt: new Date(),
+      passwordHash,
+      passwordUpdatedAt: new Date(),
+      totpSecretCiphertext: null,
+      totpKeyId: null,
+      totpEnabledAt: null,
+      totpPendingSecretCiphertext: null,
+      totpPendingKeyId: null,
+      totpPendingCreatedAt: null,
+      totpLastUsedStep: null,
+      identityLocation: "router",
+      activeClientId: null,
+      status: "active",
+      displayName: "Carlos Gómez",
+      avatarUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "system",
+      updatedBy: "system",
+      ...overrides,
+    };
+  };
+
+  describe("forgotPassword", () => {
+    it("genera token de recuperación, despacha correo y retorna mensaje genérico anti-enumeración", async () => {
+      const user = await buildMockUser();
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(user);
+
+      const result = await authService.forgotPassword({ email: "carlos@empresa.com" });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.message).toBe(GENERIC_FORGOT_PASSWORD_MESSAGE);
+      }
+      expect(mockAuthRepo.invalidatePendingPasswordResetTokens).toHaveBeenCalledWith(
+        user.id,
+        "reset",
+      );
+      expect(mockAuthRepo.createPasswordResetToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: user.id,
+          purpose: "reset",
+        }),
+      );
+      expect(mockMailer.sendPasswordResetEmail).toHaveBeenCalledWith(
+        "carlos@empresa.com",
+        expect.any(String),
+        "Carlos Gómez",
+      );
+    });
+
+    it("no despacha correo ni crea token si la cuenta no existe (anti-enumeración)", async () => {
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(null);
+
+      const result = await authService.forgotPassword({ email: "desconocido@empresa.com" });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.message).toBe(GENERIC_FORGOT_PASSWORD_MESSAGE);
+      }
+      expect(mockAuthRepo.createPasswordResetToken).not.toHaveBeenCalled();
+      expect(mockMailer.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    it("no despacha correo si la cuenta es exclusivamente federada (sin passwordHash)", async () => {
+      const federatedUser = await buildMockUser({ passwordHash: null });
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(federatedUser);
+
+      const result = await authService.forgotPassword({ email: "carlos@empresa.com" });
+
+      expect(result.ok).toBe(true);
+      expect(mockAuthRepo.createPasswordResetToken).not.toHaveBeenCalled();
+      expect(mockMailer.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    it("no despacha correo si la cuenta está deshabilitada", async () => {
+      const disabledUser = await buildMockUser({ status: "disabled" });
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(disabledUser);
+
+      const result = await authService.forgotPassword({ email: "carlos@empresa.com" });
+
+      expect(result.ok).toBe(true);
+      expect(mockAuthRepo.createPasswordResetToken).not.toHaveBeenCalled();
+      expect(mockMailer.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    it("rechaza correo con formato inválido", async () => {
+      const result = await authService.forgotPassword({ email: "correo-invalido" });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("VALIDATION_ERROR");
+      }
+    });
+  });
+
+  describe("resetPassword", () => {
+    it("restablece contraseña con éxito, consume el token y revoca sesiones previas", async () => {
+      const user = await buildMockUser();
+      const tokenRecord: PasswordResetToken = {
+        id: "uuid-token-reset",
+        userId: user.id,
+        tokenHash: Buffer.alloc(32),
+        purpose: "reset",
+        expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+        consumedAt: null,
+        requestedIpHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      vi.mocked(mockAuthRepo.findPasswordResetTokenByHash).mockResolvedValue(tokenRecord);
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+      vi.mocked(mockAuthRepo.consumePasswordResetToken).mockResolvedValue({
+        ...user,
+        passwordUpdatedAt: new Date(),
+      });
+
+      const result = await authService.resetPassword({
+        token: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        password: newPassword,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.message).toContain("exitosa");
+      }
+      expect(mockAuthRepo.consumePasswordResetToken).toHaveBeenCalledWith(
+        tokenRecord.id,
+        user.id,
+        expect.stringContaining("$argon2id$"),
+        "reset",
+      );
+    });
+
+    it("establece contraseña para purpose setup cuando la cuenta no tenía contraseña previa", async () => {
+      const federatedUser = await buildMockUser({ passwordHash: null, emailVerifiedAt: null });
+      const tokenRecord: PasswordResetToken = {
+        id: "uuid-token-setup",
+        userId: federatedUser.id,
+        tokenHash: Buffer.alloc(32),
+        purpose: "setup",
+        expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+        consumedAt: null,
+        requestedIpHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      vi.mocked(mockAuthRepo.findPasswordResetTokenByHash).mockResolvedValue(tokenRecord);
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(federatedUser);
+      vi.mocked(mockAuthRepo.consumePasswordResetToken).mockResolvedValue({
+        ...federatedUser,
+        emailVerifiedAt: new Date(),
+        passwordUpdatedAt: new Date(),
+      });
+
+      const result = await authService.resetPassword({
+        token: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        password: newPassword,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(mockAuthRepo.consumePasswordResetToken).toHaveBeenCalledWith(
+        tokenRecord.id,
+        federatedUser.id,
+        expect.stringContaining("$argon2id$"),
+        "setup",
+      );
+    });
+
+    it("falla si el token no existe", async () => {
+      vi.mocked(mockAuthRepo.findPasswordResetTokenByHash).mockResolvedValue(null);
+
+      const result = await authService.resetPassword({
+        token: "token-no-existente",
+        password: newPassword,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("INVALID_TOKEN");
+      }
+    });
+
+    it("falla si el token ya fue consumido", async () => {
+      const tokenRecord: PasswordResetToken = {
+        id: "uuid-token-reset",
+        userId: "uuid-user-1",
+        tokenHash: Buffer.alloc(32),
+        purpose: "reset",
+        expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+        consumedAt: new Date(),
+        requestedIpHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      vi.mocked(mockAuthRepo.findPasswordResetTokenByHash).mockResolvedValue(tokenRecord);
+
+      const result = await authService.resetPassword({
+        token: "token-usado",
+        password: newPassword,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("TOKEN_ALREADY_USED");
+      }
+    });
+
+    it("falla si el token ha expirado", async () => {
+      const tokenRecord: PasswordResetToken = {
+        id: "uuid-token-reset",
+        userId: "uuid-user-1",
+        tokenHash: Buffer.alloc(32),
+        purpose: "reset",
+        expiresAt: new Date(Date.now() - 60 * 1000),
+        consumedAt: null,
+        requestedIpHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      vi.mocked(mockAuthRepo.findPasswordResetTokenByHash).mockResolvedValue(tokenRecord);
+
+      const result = await authService.resetPassword({
+        token: "token-vencido",
+        password: newPassword,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("TOKEN_EXPIRED");
+      }
+    });
+
+    it("falla con PASSWORD_ALREADY_EXISTS si purpose es setup pero el usuario ya tiene contraseña", async () => {
+      const user = await buildMockUser();
+      const tokenRecord: PasswordResetToken = {
+        id: "uuid-token-setup",
+        userId: user.id,
+        tokenHash: Buffer.alloc(32),
+        purpose: "setup",
+        expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+        consumedAt: null,
+        requestedIpHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      vi.mocked(mockAuthRepo.findPasswordResetTokenByHash).mockResolvedValue(tokenRecord);
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+      const result = await authService.resetPassword({
+        token: "token-setup",
+        password: newPassword,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("PASSWORD_ALREADY_EXISTS");
+      }
+    });
+
+    it("falla con NO_NATIVE_PASSWORD si purpose es reset pero el usuario no tiene contraseña nativa", async () => {
+      const user = await buildMockUser({ passwordHash: null });
+      const tokenRecord: PasswordResetToken = {
+        id: "uuid-token-reset",
+        userId: user.id,
+        tokenHash: Buffer.alloc(32),
+        purpose: "reset",
+        expiresAt: new Date(Date.now() + 20 * 60 * 1000),
+        consumedAt: null,
+        requestedIpHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      vi.mocked(mockAuthRepo.findPasswordResetTokenByHash).mockResolvedValue(tokenRecord);
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+      const result = await authService.resetPassword({
+        token: "token-reset",
+        password: newPassword,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("NO_NATIVE_PASSWORD");
+      }
+    });
+
+    it("rechaza si la nueva contraseña no cumple con las políticas", async () => {
+      const result = await authService.resetPassword({
+        token: "token-valido",
+        password: "short",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("VALIDATION_ERROR");
+      }
+    });
+  });
+
+  describe("changePassword", () => {
+    it("cambia contraseña con éxito, revoca otras sesiones y rota la sesión actual", async () => {
+      const user = await buildMockUser();
+      const mockRotatedSession: Session = {
+        id: "uuid-current-session",
+        sidHash: Buffer.alloc(32),
+        csrfHash: Buffer.alloc(32),
+        userId: user.id,
+        clientId: null,
+        routingVersion: null,
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: new Date(),
+        lastSeenAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+        revokedAt: null,
+        revokedReason: null,
+        ipHash: null,
+        userAgentHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+      vi.mocked(mockAuthRepo.rotateSession).mockResolvedValue(mockRotatedSession);
+
+      const result = await authService.changePassword(
+        {
+          currentPassword: rawPassword,
+          newPassword,
+        },
+        {
+          userId: user.id,
+          sessionId: "uuid-current-session",
+        },
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.sid).toBeTypeOf("string");
+        expect(result.data.csrfToken).toBeTypeOf("string");
+        expect(result.data.expiresAt).toBe(mockRotatedSession.expiresAt.toISOString());
+      }
+      expect(mockAuthRepo.updateUserPassword).toHaveBeenCalledWith(
+        user.id,
+        expect.stringContaining("$argon2id$"),
+      );
+      expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+        user.id,
+        "password_change",
+        "uuid-current-session",
+      );
+      expect(mockAuthRepo.rotateSession).toHaveBeenCalledWith(
+        "uuid-current-session",
+        expect.any(Buffer),
+        expect.any(Buffer),
+      );
+    });
+
+    it("falla con INVALID_CREDENTIALS si la contraseña actual es errónea", async () => {
+      const user = await buildMockUser();
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+
+      const result = await authService.changePassword(
+        {
+          currentPassword: "WrongCurrentPassword123!",
+          newPassword,
+        },
+        {
+          userId: user.id,
+          sessionId: "uuid-current-session",
+        },
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("INVALID_CREDENTIALS");
+      }
+      expect(mockAuthRepo.updateUserPassword).not.toHaveBeenCalled();
+      expect(mockAuthRepo.rotateSession).not.toHaveBeenCalled();
+    });
+
+    it("exige código TOTP si el usuario tiene doble factor activo", async () => {
+      const userWithTotp = await buildMockUser({ totpEnabledAt: new Date() });
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(userWithTotp);
+
+      const result = await authService.changePassword(
+        {
+          currentPassword: rawPassword,
+          newPassword,
+        },
+        {
+          userId: userWithTotp.id,
+          sessionId: "uuid-current-session",
+        },
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("MFA_REQUIRED");
+      }
+      expect(mockAuthRepo.updateUserPassword).not.toHaveBeenCalled();
+    });
+
+    it("rechaza si la cuenta no tiene passwordHash (cuenta federada)", async () => {
+      const federatedUser = await buildMockUser({ passwordHash: null });
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(federatedUser);
+
+      const result = await authService.changePassword(
+        {
+          currentPassword: rawPassword,
+          newPassword,
+        },
+        {
+          userId: federatedUser.id,
+          sessionId: "uuid-current-session",
+        },
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("INVALID_REQUEST");
+      }
+    });
+
+    it("rechaza nueva contraseña que no cumple con las políticas", async () => {
+      const result = await authService.changePassword(
+        {
+          currentPassword: rawPassword,
+          newPassword: "short",
+        },
+        {
+          userId: "uuid-user-1",
+          sessionId: "uuid-current-session",
+        },
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("VALIDATION_ERROR");
+      }
+    });
+  });
+
+  describe("validateSession", () => {
+    it("valida satisfactoriamente una sesión activa sin CSRF", async () => {
+      const mockSession: Session = {
+        id: "uuid-session-1",
+        sidHash: Buffer.alloc(32),
+        csrfHash: Buffer.alloc(32),
+        userId: "uuid-user-1",
+        clientId: null,
+        routingVersion: null,
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: new Date(),
+        lastSeenAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+        revokedAt: null,
+        revokedReason: null,
+        ipHash: null,
+        userAgentHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValue(mockSession);
+
+      const result = await authService.validateSession("valid-sid");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.session.id).toBe("uuid-session-1");
+      }
+    });
+
+    it("valida satisfactoriamente sesión activa con CSRF coincidente", async () => {
+      const csrfRaw = "my-csrf-token";
+      const csrfHash = hashToken(csrfRaw);
+      const mockSession: Session = {
+        id: "uuid-session-1",
+        sidHash: Buffer.alloc(32),
+        csrfHash,
+        userId: "uuid-user-1",
+        clientId: null,
+        routingVersion: null,
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: new Date(),
+        lastSeenAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+        revokedAt: null,
+        revokedReason: null,
+        ipHash: null,
+        userAgentHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValue(mockSession);
+
+      const result = await authService.validateSession("valid-sid", csrfRaw);
+      expect(result.ok).toBe(true);
+    });
+
+    it("falla con FORBIDDEN si el CSRF no coincide", async () => {
+      const mockSession: Session = {
+        id: "uuid-session-1",
+        sidHash: Buffer.alloc(32),
+        csrfHash: hashToken("correct-csrf"),
+        userId: "uuid-user-1",
+        clientId: null,
+        routingVersion: null,
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: new Date(),
+        lastSeenAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+        revokedAt: null,
+        revokedReason: null,
+        ipHash: null,
+        userAgentHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValue(mockSession);
+
+      const result = await authService.validateSession("valid-sid", "wrong-csrf");
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("FORBIDDEN");
+      }
+    });
+
+    it("falla con UNAUTHORIZED si la sesión ha expirado", async () => {
+      const expiredSession: Session = {
+        id: "uuid-session-1",
+        sidHash: Buffer.alloc(32),
+        csrfHash: Buffer.alloc(32),
+        userId: "uuid-user-1",
+        clientId: null,
+        routingVersion: null,
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: new Date(),
+        lastSeenAt: new Date(),
+        expiresAt: new Date(Date.now() - 60 * 1000),
+        absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+        revokedAt: null,
+        revokedReason: null,
+        ipHash: null,
+        userAgentHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValue(expiredSession);
+
+      const result = await authService.validateSession("expired-sid");
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("UNAUTHORIZED");
+      }
+    });
+  });
+});
+

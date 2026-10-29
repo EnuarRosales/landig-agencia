@@ -184,6 +184,72 @@ export interface IAuthRepository {
    * @param reason - Motivo descriptivo de la revocación (p. ej. "user_logout", "session_limit").
    */
   revokeSession(sessionId: string, reason: string): Promise<void>;
+
+  /**
+   * Busca un token de restablecimiento o establecimiento de contraseña por su hash SHA-256 binario.
+   *
+   * @param tokenHash - Buffer de 32 bytes con el hash SHA-256.
+   * @returns La entidad {@link PasswordResetToken} o `null` si no existe.
+   */
+  findPasswordResetTokenByHash(
+    tokenHash: Buffer,
+  ): Promise<PasswordResetToken | null>;
+
+  /**
+   * Consume un token de restablecimiento, actualiza la contraseña del usuario y revoca todas sus sesiones activas (AUTH-001 §5.8).
+   *
+   * En caso de `purpose = 'setup'`, establece además `email_verified_at = now()` si no estaba verificado.
+   *
+   * @param tokenId - Identificador UUID del token a consumir.
+   * @param userId - Identificador UUID del usuario.
+   * @param newPasswordHash - Nuevo hash Argon2id a persistir.
+   * @param purpose - Propósito del token ("reset" o "setup").
+   * @returns La entidad {@link User} actualizada.
+   */
+  consumePasswordResetToken(
+    tokenId: string,
+    userId: string,
+    newPasswordHash: string,
+    purpose: "reset" | "setup",
+  ): Promise<User>;
+
+  /**
+   * Revoca todas las sesiones activas de un usuario, opcionalmente excluyendo la sesión actual (AUTH-001 §5.6 y §5.8).
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @param reason - Motivo descriptivo de la revocación (p. ej. "password_reset", "password_change").
+   * @param exceptSessionId - Identificador opcional de la sesión que no debe ser revocada.
+   */
+  revokeAllUserSessions(
+    userId: string,
+    reason: string,
+    exceptSessionId?: string,
+  ): Promise<void>;
+
+  /**
+   * Actualiza la contraseña de un usuario tras un cambio autenticado, actualizando `password_updated_at` (AUTH-001 §5.8).
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @param newPasswordHash - Nuevo hash Argon2id de la contraseña.
+   */
+  updateUserPassword(
+    userId: string,
+    newPasswordHash: string,
+  ): Promise<void>;
+
+  /**
+   * Rota una sesión activa emitiendo nuevos hashes de `sid` y `csrfToken`, renovando su vencimiento por inactividad (AUTH-001 §5.6 y §5.8).
+   *
+   * @param sessionId - Identificador UUID de la sesión a rotar.
+   * @param newSidHash - Nuevo hash binario SHA-256 (32 bytes) del identificador de sesión.
+   * @param newCsrfHash - Nuevo hash binario SHA-256 (32 bytes) del token CSRF.
+   * @returns La entidad {@link Session} rotada y actualizada.
+   */
+  rotateSession(
+    sessionId: string,
+    newSidHash: Buffer,
+    newCsrfHash: Buffer,
+  ): Promise<Session>;
 }
 
 /**

@@ -28,3 +28,4 @@ export * from "./auth/auth-mailer.interface";
 export * from "./repositories/auth.repository.interface";
 export * from "./repositories/drizzle-auth.repository";
 export * from "./services/auth.service";
+export * from "./utils/env";

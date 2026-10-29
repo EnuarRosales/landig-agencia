@@ -127,3 +127,36 @@ export const loginUserSchema = z.object({
 
 export type RegisterUserInput = z.infer<typeof registerUserSchema>;
 export type LoginUserInput = z.infer<typeof loginUserSchema>;
+
+/**
+ * Esquema Zod para solicitud de recuperación de contraseña (AUTH-001 §5.8).
+ */
+export const forgotPasswordSchema = z.object({
+  email: authEmailSchema,
+});
+
+/**
+ * Esquema Zod para restablecimiento o establecimiento de contraseña mediante token (AUTH-001 §5.8).
+ */
+export const resetPasswordSchema = z.object({
+  token: z.string().trim().min(1, "El token de restablecimiento es requerido"),
+  password: authPasswordSchema,
+});
+
+/**
+ * Esquema Zod para cambio autenticado de contraseña (AUTH-001 §5.8).
+ */
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "La contraseña actual es requerida"),
+  newPassword: authPasswordSchema,
+  totpCode: z
+    .string()
+    .trim()
+    .length(6, "El código TOTP debe tener 6 dígitos")
+    .regex(/^\d+$/, "El código TOTP debe contener solo números")
+    .optional(),
+});
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

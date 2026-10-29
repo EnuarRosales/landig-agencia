@@ -25,6 +25,15 @@ export interface IAuthMailer {
   sendPasswordSetupEmail(to: string, rawToken: string, name?: string): Promise<void>;
 
   /**
+   * Envía correo con el enlace de recuperación de contraseña para cuentas nativas existentes.
+   *
+   * @param to - Correo del destinatario.
+   * @param rawToken - Token seguro en claro con propósito "reset".
+   * @param name - Nombre visible opcional del usuario.
+   */
+  sendPasswordResetEmail(to: string, rawToken: string, name?: string): Promise<void>;
+
+  /**
    * Envía correo informativo cuando se intenta registrar una cuenta nativa ya verificada.
    *
    * @param to - Correo del destinatario.
@@ -51,6 +60,14 @@ export class LogAuthMailer implements IAuthMailer {
       to,
       name,
       setupUrl: `/auth/password/setup?token=${rawToken}`,
+    });
+  }
+
+  async sendPasswordResetEmail(to: string, rawToken: string, name?: string): Promise<void> {
+    appLogger.info("[AuthMailer] Enlace de restablecimiento de contraseña generado", {
+      to,
+      name,
+      resetUrl: `/auth/password/reset?token=${rawToken}`,
     });
   }
 

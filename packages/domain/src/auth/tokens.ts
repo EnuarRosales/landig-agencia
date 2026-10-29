@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
  * Genera un token aleatorio criptográficamente seguro de longitud especificada (AUTH-001 §4.1 y §5.7).
@@ -61,4 +61,20 @@ export function generateSessionId(): string {
  */
 export function generateCsrfToken(): string {
   return randomBytes(32).toString("hex");
+}
+
+/**
+ * Compara dos buffers binarios en tiempo constante (AUTH-001 §5.6).
+ *
+ * Previene ataques de temporización (timing attacks) al comparar hashes de tokens de sesión o CSRF.
+ *
+ * @param hashA - Primer buffer binario.
+ * @param hashB - Segundo buffer binario.
+ * @returns `true` si ambos buffers poseen la misma longitud y contenido exacto; `false` en caso contrario.
+ */
+export function compareHashesConstantTime(hashA: Buffer, hashB: Buffer): boolean {
+  if (hashA.length !== hashB.length) {
+    return false;
+  }
+  return timingSafeEqual(hashA, hashB);
 }
