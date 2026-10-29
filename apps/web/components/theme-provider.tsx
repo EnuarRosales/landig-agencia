@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
+import { env } from "@/env";
 
 // Suprimir la advertencia falso-positivo de React 19 provocada por el script inline
 // anti-FOUC (Flash of Unstyled Content) que inyecta internamente next-themes.
-if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+if (typeof window !== "undefined" && env.NEXT_PUBLIC_NODE_ENV === "development") {
   const originalConsoleError = console.error;
   console.error = (...args: unknown[]) => {
     if (

@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations } from "next-intl/server";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ChatwootWidget } from "@/components/chatwoot-widget";
+import { siteConfig } from "@/config/site";
 import "../globals.css";
 
 const sora = Sora({
@@ -18,7 +19,7 @@ const inter = Inter({
   display: "swap",
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mocter.co";
+const SITE_URL = siteConfig.url;
 
 type Props = LayoutProps<"/[locale]">;
 
@@ -71,7 +72,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export const viewport: Viewport = {
-  themeColor: "#05070f",
+  themeColor: siteConfig.theme.color,
 };
 
 export default async function LocaleLayout({ children, params }: Props) {
@@ -88,10 +89,10 @@ export default async function LocaleLayout({ children, params }: Props) {
       {
         "@type": "Organization",
         "@id": `${SITE_URL}/#organization`,
-        name: "Mocter",
-        legalName: "Mocter",
+        name: siteConfig.name,
+        legalName: siteConfig.legalName,
         url: SITE_URL,
-        email: "info@mocter.co",
+        email: siteConfig.supportEmail,
         description: t("description"),
         knowAbout: "Automatización de atención al cliente, agendamiento y ventas con IA por WhatsApp",
       },
@@ -99,18 +100,18 @@ export default async function LocaleLayout({ children, params }: Props) {
         "@type": "WebSite",
         "@id": `${SITE_URL}/#website`,
         url: `${SITE_URL}/${locale}`,
-        name: "Mocter",
+        name: siteConfig.name,
         inLanguage: locale,
         publisher: { "@id": `${SITE_URL}/#organization` },
       },
       {
         "@type": "SoftwareApplication",
         "@id": `${SITE_URL}/#software`,
-        name: "Mocter",
+        name: siteConfig.name,
         applicationCategory: "BusinessApplication",
         operatingSystem: "Web",
         description: t("softwareDescription"),
-        areaServed: "Colombia",
+        areaServed: siteConfig.areaServed,
         inLanguage: locale,
         publisher: { "@id": `${SITE_URL}/#organization` },
         offers: {
@@ -133,9 +134,9 @@ export default async function LocaleLayout({ children, params }: Props) {
       <body className="font-sans" suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
+          defaultTheme={siteConfig.theme.defaultTheme}
           enableSystem={false}
-          storageKey="mocter-theme"
+          storageKey={siteConfig.theme.storageKey}
           disableTransitionOnChange
         >
           <NextIntlClientProvider locale={locale} messages={messages}>

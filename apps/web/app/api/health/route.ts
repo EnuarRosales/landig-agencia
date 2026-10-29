@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkDatabaseConnection } from "@mocter/domain";
-
+import { getRequestLogger } from "@/lib/logger";
 
 /**
  * Route Handler para monitoreo de salud del sistema (Healthcheck).
@@ -17,8 +17,17 @@ import { checkDatabaseConnection } from "@mocter/domain";
  * @returns Respuesta HTTP {@link NextResponse} en formato JSON con estado y latencia de conexión.
  */
 export async function GET(): Promise<NextResponse> {
+  const log = await getRequestLogger();
   const dbHealth = await checkDatabaseConnection();
   const status = dbHealth.ok ? 200 : 503;
+
+  if (!dbHealth.ok) {
+    log.warn({
+      event: "sys.healthcheck_unhealthy",
+      latencyMs: dbHealth.latencyMs,
+      dbError: dbHealth.error,
+    });
+  }
 
   return NextResponse.json(
     {

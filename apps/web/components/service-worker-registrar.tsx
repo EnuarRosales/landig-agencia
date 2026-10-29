@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { env } from "@/env";
 
 /**
  * Registers the lightweight service worker in production only, so that dev
  * caches never interfere with Turbopack HMR.
  */
 export function ServiceWorkerRegistrar() {
-  const [enabled] = useState(() => process.env.NODE_ENV === "production");
+  const [enabled] = useState(() => env.NEXT_PUBLIC_NODE_ENV === "production");
 
   useEffect(() => {
     if (!enabled) return;

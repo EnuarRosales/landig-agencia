@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { leadService } from "@mocter/domain";
 import { checkRateLimit } from "../../../lib/rate-limit";
-
+import { getRequestLogger } from "@/lib/logger";
 
 /**
  * Route Handler REST para la recepción pública de solicitudes de prospectos (leads).
@@ -23,6 +23,9 @@ import { checkRateLimit } from "../../../lib/rate-limit";
  * @returns Respuesta HTTP {@link NextResponse} en formato JSON.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const start = performance.now();
+  const log = await getRequestLogger({ endpoint: "/api/leads" });
+
   // 1. Extracción de IP y verificación de límite de tasa
   const forwarded = req.headers.get("x-forwarded-for");
   const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
@@ -30,6 +33,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const rateLimitResult = checkRateLimit(ip);
   if (!rateLimitResult.allowed) {
     const retryAfter = Math.max(1, Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000));
+    log.warn({ event: "lead.rate_limit_exceeded", ip, retryAfter });
     return NextResponse.json(
       {
         ok: false,
@@ -49,6 +53,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     body = await req.json();
   } catch {
+    log.warn({ event: "lead.invalid_json" });
     return NextResponse.json(
       {
         ok: false,
@@ -63,6 +68,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   if (!result.ok) {
     const status = result.code === "VALIDATION_ERROR" ? 400 : 500;
+    if (status === 500) {
+      log.error({ event: "lead.persistence_failed", code: result.code });
+    } else {
+      log.warn({ event: "lead.validation_failed", code: result.code });
+    }
     return NextResponse.json(
       {
         ok: false,
@@ -73,6 +83,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status },
     );
   }
+
+  log.info({
+    event: "lead.created",
+    durationMs: Math.round(performance.now() - start),
+  });
 
   return NextResponse.json(
     {

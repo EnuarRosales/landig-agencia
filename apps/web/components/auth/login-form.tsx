@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { clientLog } from "@/lib/logger/client";
+import { serializeError } from "@/lib/logger/serialize-error";
 
 export interface LoginFormTranslations {
   emailLabel: string;
@@ -52,6 +54,7 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
       const data = await response.json();
 
       if (!response.ok || !data.ok) {
+        clientLog("warn", "auth.client_login_rejected", { status: response.status });
         setErrorMessage(
           data.error ||
             (locale === "en"
@@ -75,7 +78,8 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
       const target = returnTo || `/${locale}/admin`;
       // Utilizar location.href para asegurar la inicialización completa de la sesión
       window.location.href = target;
-    } catch {
+    } catch (err: unknown) {
+      clientLog("error", "auth.client_login_network_error", { err: serializeError(err) });
       setErrorMessage(
         locale === "en"
           ? "Unable to connect to the authentication server. Please check your connection."

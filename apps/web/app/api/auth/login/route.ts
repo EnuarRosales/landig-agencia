@@ -1,45 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authService, GENERIC_INVALID_CREDENTIALS_MESSAGE } from "@mocter/domain";
+import { unstable_rethrow } from "next/navigation";
+import { authService } from "@mocter/domain";
 import { MemoryRateLimiter } from "@/lib/rate-limit";
+import { isValidOrigin } from "@/lib/origin";
+import { env } from "@/env";
+import { getRequestLogger } from "@/lib/logger";
+import { serializeError } from "@/lib/logger/serialize-error";
 
 // Rate limit para inicio de sesión: 5 intentos por cada 15 minutos por IP (AUTH-001 §5.2, §7.3)
 const loginRateLimiter = new MemoryRateLimiter({
   maxRequests: 10, // 10 en desarrollo / staging
   windowMs: 15 * 60 * 1000,
 });
-
-/**
- * Valida el encabezado Origin contra el host y dominios permitidos (AUTH-001 §5.6).
- *
- * @param req - Solicitud HTTP entrante.
- * @returns `true` si el origen es legítimo; `false` si es sospechoso.
- */
-function isValidOrigin(req: NextRequest): boolean {
-  const origin = req.headers.get("origin");
-  if (!origin) {
-    return true;
-  }
-
-  const host = req.headers.get("host");
-  try {
-    const originUrl = new URL(origin);
-    if (host && originUrl.host === host) {
-      return true;
-    }
-    if (
-      originUrl.hostname === "localhost" ||
-      originUrl.hostname === "127.0.0.1" ||
-      originUrl.hostname === "mocter.co" ||
-      originUrl.hostname.endsWith(".mocter.co")
-    ) {
-      return true;
-    }
-  } catch {
-    return false;
-  }
-
-  return false;
-}
 
 /**
  * Endpoint de Inicio de Sesión Nativo con Credenciales (AUTH-001 T-10, design §5.2).
@@ -58,156 +30,213 @@ function isValidOrigin(req: NextRequest): boolean {
  * @returns Respuesta HTTP {@link NextResponse}.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  // 1. Validación de Origin contra CSRF en formularios de autenticación
-  if (!isValidOrigin(req)) {
-    return NextResponse.json(
-      { ok: false, error: "Origen no autorizado" },
-      { status: 403 },
-    );
-  }
+  const log = await getRequestLogger();
+  const start = performance.now();
 
-  // 2. Limitación de tasa (Rate Limiting)
-  const forwarded = req.headers.get("x-forwarded-for");
-  const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
-
-  const rateLimitResult = loginRateLimiter.check(ip);
-  if (!rateLimitResult.allowed) {
-    const retryAfter = Math.max(
-      1,
-      Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
-    );
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Demasiados intentos fallidos de inicio de sesión. Por favor intente más tarde.",
-      },
-      {
-        status: 429,
-        headers: {
-          "Retry-After": retryAfter.toString(),
-        },
-      },
-    );
-  }
-
-  // 3. Validación de Content-Type y formato JSON
-  let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Formato de carga útil inválido (JSON requerido)",
-      },
-      { status: 400 },
-    );
-  }
-
-  const userAgent = req.headers.get("user-agent") ?? undefined;
-  const pepper = process.env.AUTH_RATE_LIMIT_PEPPER || "mocter-dev-pepper";
-
-  // 4. Delegación al servicio de autenticación de dominio
-  const result = await authService.login(body, {
-    clientIp: ip,
-    userAgent,
-    pepper,
-  });
-
-  if (!result.ok) {
-    if (result.code === "VALIDATION_ERROR") {
+    // 1. Validación de Origin contra CSRF en formularios de autenticación
+    if (!isValidOrigin(req)) {
+      log.warn({ event: "auth.invalid_origin", path: "/api/auth/login" });
       return NextResponse.json(
-        { ok: false, error: result.error, issues: result.issues },
+        { ok: false, error: "Origen no autorizado" },
+        { status: 403 },
+      );
+    }
+
+    // 2. Limitación de tasa (Rate Limiting)
+    const forwarded = req.headers.get("x-forwarded-for");
+    const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
+
+    const rateLimitResult = loginRateLimiter.check(ip);
+    if (!rateLimitResult.allowed) {
+      const retryAfter = Math.max(
+        1,
+        Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
+      );
+      log.warn({
+        event: "auth.rate_limited",
+        clientIp: ip,
+        retryAfter,
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Demasiados intentos fallidos de inicio de sesión. Por favor intente más tarde.",
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": retryAfter.toString(),
+          },
+        },
+      );
+    }
+
+    // 3. Validación de Content-Type y formato JSON
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      log.warn({ event: "auth.validation_failed", reason: "malformed_json" });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Formato de carga útil inválido (JSON requerido)",
+        },
         { status: 400 },
       );
     }
 
-    if (result.code === "INVALID_CREDENTIALS") {
+    const userAgent = req.headers.get("user-agent") ?? undefined;
+    const pepper = env.AUTH_RATE_LIMIT_PEPPER;
+
+    // 4. Delegación al servicio de autenticación de dominio
+    const result = await authService.login(body, {
+      clientIp: ip,
+      userAgent,
+      pepper,
+    });
+
+    const durationMs = Math.round(performance.now() - start);
+
+    if (!result.ok) {
+      if (result.code === "VALIDATION_ERROR") {
+        log.warn({
+          event: "auth.validation_failed",
+          issuesCount: Array.isArray(result.issues) ? result.issues.length : undefined,
+          durationMs,
+        });
+        return NextResponse.json(
+          { ok: false, error: result.error, issues: result.issues },
+          { status: 400 },
+        );
+      }
+
+      if (result.code === "INVALID_CREDENTIALS") {
+        log.warn({
+          event: "auth.login_failed",
+          reason: "invalid_credentials",
+          durationMs,
+        });
+        return NextResponse.json(
+          { ok: false, error: result.error },
+          { status: 401 },
+        );
+      }
+
+      if (
+        result.code === "IDENTITY_INCONSISTENT" ||
+        result.code === "CELL_UNAVAILABLE"
+      ) {
+        log.error({
+          event: "auth.cell_unavailable",
+          code: result.code,
+          durationMs,
+        });
+        return NextResponse.json(
+          { ok: false, error: result.error, code: result.code },
+          { status: 503 },
+        );
+      }
+
+      log.error({
+        event: "auth.login_internal_error",
+        error: result.error,
+        durationMs,
+      });
       return NextResponse.json(
         { ok: false, error: result.error },
-        { status: 401 },
+        { status: 500 },
       );
     }
 
-    if (
-      result.code === "IDENTITY_INCONSISTENT" ||
-      result.code === "CELL_UNAVAILABLE"
-    ) {
-      return NextResponse.json(
-        { ok: false, error: result.error, code: result.code },
-        { status: 503 },
+    // 5. Caso Doble Factor (TOTP activado)
+    const isProduction = env.NODE_ENV === "production";
+
+    if ("mfaRequired" in result.data) {
+      log.info({
+        event: "auth.mfa_required",
+        userId: result.data.userId,
+        durationMs,
+      });
+
+      const challengeCookieName = isProduction
+        ? "__Host-mocter_challenge"
+        : "mocter_challenge";
+
+      const response = NextResponse.json(
+        {
+          ok: true,
+          mfaRequired: true,
+          expiresAt: result.data.expiresAt,
+        },
+        { status: 200 },
       );
+
+      response.cookies.set(challengeCookieName, result.data.challengeToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: "strict",
+        path: "/",
+        maxAge: 300, // 5 minutos
+      });
+
+      return response;
     }
 
-    return NextResponse.json(
-      { ok: false, error: result.error },
-      { status: 500 },
-    );
-  }
+    // 6. Caso Sesión Exitosa
+    log.info({
+      event: "auth.login_success",
+      userId: result.data.user.id,
+      durationMs,
+    });
 
-  // 5. Caso Doble Factor (TOTP activado)
-  if ("mfaRequired" in result.data) {
-    const isProduction = process.env.NODE_ENV === "production";
-    const challengeCookieName = isProduction
-      ? "__Host-mocter_challenge"
-      : "mocter_challenge";
+    const sidCookieName = isProduction ? "__Host-mocter_sid" : "mocter_sid";
+    const csrfCookieName = isProduction ? "__Host-mocter_csrf" : "mocter_csrf";
 
     const response = NextResponse.json(
       {
         ok: true,
-        mfaRequired: true,
-        expiresAt: result.data.expiresAt,
+        data: {
+          user: result.data.user,
+          emailVerified: result.data.emailVerified,
+          clientId: result.data.clientId,
+          expiresAt: result.data.expiresAt,
+        },
       },
       { status: 200 },
     );
 
-    response.cookies.set(challengeCookieName, result.data.challengeToken, {
+    // Cookie opaca de sesión (HttpOnly, SameSite=Strict, 12 horas máx absoluto)
+    response.cookies.set(sidCookieName, result.data.sid, {
       httpOnly: true,
       secure: isProduction,
       sameSite: "strict",
       path: "/",
-      maxAge: 300, // 5 minutos
+      maxAge: 43200, // 12 horas
+    });
+
+    // Cookie CSRF (legible por el cliente para el encabezado X-CSRF-Token)
+    response.cookies.set(csrfCookieName, result.data.csrfToken, {
+      httpOnly: false,
+      secure: isProduction,
+      sameSite: "strict",
+      path: "/",
+      maxAge: 43200,
     });
 
     return response;
+  } catch (e: unknown) {
+    unstable_rethrow(e);
+    log.error({
+      event: "auth.login_unhandled_error",
+      err: serializeError(e),
+      durationMs: Math.round(performance.now() - start),
+    });
+    return NextResponse.json(
+      { ok: false, error: "Error interno del servidor al procesar la solicitud." },
+      { status: 500 },
+    );
   }
-
-  // 6. Caso Sesión Exitosa
-  const isProduction = process.env.NODE_ENV === "production";
-  const sidCookieName = isProduction ? "__Host-mocter_sid" : "mocter_sid";
-  const csrfCookieName = isProduction ? "__Host-mocter_csrf" : "mocter_csrf";
-
-  const response = NextResponse.json(
-    {
-      ok: true,
-      data: {
-        user: result.data.user,
-        emailVerified: result.data.emailVerified,
-        clientId: result.data.clientId,
-        expiresAt: result.data.expiresAt,
-      },
-    },
-    { status: 200 },
-  );
-
-  // Cookie opaca de sesión (HttpOnly, SameSite=Strict, 12 horas máx absoluto)
-  response.cookies.set(sidCookieName, result.data.sid, {
-    httpOnly: true,
-    secure: isProduction,
-    sameSite: "strict",
-    path: "/",
-    maxAge: 43200, // 12 horas
-  });
-
-  // Cookie CSRF (legible por el cliente para el encabezado X-CSRF-Token)
-  response.cookies.set(csrfCookieName, result.data.csrfToken, {
-    httpOnly: false,
-    secure: isProduction,
-    sameSite: "strict",
-    path: "/",
-    maxAge: 43200,
-  });
-
-  return response;
 }

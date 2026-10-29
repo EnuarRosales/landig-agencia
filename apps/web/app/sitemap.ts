@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
+import { siteConfig } from "@/config/site";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mocter.co";
+const SITE_URL = siteConfig.url;
 const LOCALES = ["es", "en"] as const;
 
 const ROUTES = [

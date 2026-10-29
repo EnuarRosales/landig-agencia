@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { siteConfig } from "@/config/site";
 
 export interface BreadcrumbItem {
   label: string;
@@ -10,7 +11,7 @@ interface BreadcrumbsProps {
   className?: string;
 }
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mocter.co";
+const SITE_URL = siteConfig.url;
 
 export function Breadcrumbs({ items, className = "" }: BreadcrumbsProps) {
   const jsonLd = {

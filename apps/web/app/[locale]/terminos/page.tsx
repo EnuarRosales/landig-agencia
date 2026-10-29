@@ -5,10 +5,11 @@ import { Footer } from "@/components/sections/footer";
 import { WhatsappFab } from "@/components/sections/whatsapp-fab";
 import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { siteConfig } from "@/config/site";
 
 import { locales } from "@/i18n/routing";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mocter.co";
+const SITE_URL = siteConfig.url;
 
 type Props = PageProps<"/[locale]">;
 
@@ -73,10 +74,10 @@ export default async function TerminosPage({ params }: Props) {
           <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted/80">
             <span>{isEs ? "Última actualización: Octubre 2026" : "Last updated: October 2026"}</span>
             <span>•</span>
-            <span>{isEs ? "Operador: Mocter" : "Operator: Mocter"}</span>
+            <span>{isEs ? `Operador: ${siteConfig.name}` : `Operator: ${siteConfig.name}`}</span>
             <span>•</span>
-            <a href="mailto:info@mocter.co" className="text-a2 underline hover:opacity-80">
-              info@mocter.co
+            <a href={`mailto:${siteConfig.supportEmail}`} className="text-a2 underline hover:opacity-80">
+              {siteConfig.supportEmail}
             </a>
           </div>
         </header>

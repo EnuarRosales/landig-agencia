@@ -143,7 +143,7 @@ export function DemoForm() {
         </div>
 
         {state?.reason ? (
-          <p role="alert" className="text-[14px] text-hot">
+          <p role="alert" aria-live="polite" className="text-[14px] text-hot">
             {state.reason === "db" ? t("errDb") : t("errUnknown")}
           </p>
         ) : null}

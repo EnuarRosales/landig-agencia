@@ -5,10 +5,11 @@ import { Footer } from "@/components/sections/footer";
 import { WhatsappFab } from "@/components/sections/whatsapp-fab";
 import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { siteConfig } from "@/config/site";
 
 import { locales } from "@/i18n/routing";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mocter.co";
+const SITE_URL = siteConfig.url;
 
 type Props = PageProps<"/[locale]">;
 

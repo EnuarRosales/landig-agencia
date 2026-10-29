@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { Plan } from "@mocter/domain";
+import { clientLog } from "@/lib/logger/client";
+import { serializeError } from "@/lib/logger/serialize-error";
 
 export interface RegisterFormTranslations {
   nameLabel: string;
@@ -80,11 +82,14 @@ export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
       if (res.status === 202) {
         setIsSuccess(true);
       } else if (res.status === 422) {
+        clientLog("warn", "auth.client_register_validation_failed");
         setErrorMessage(data.error || "Datos inválidos.");
       } else {
+        clientLog("warn", "auth.client_register_rejected", { status: res.status });
         setErrorMessage(data.error || "Ocurrió un error inesperado.");
       }
-    } catch {
+    } catch (err: unknown) {
+      clientLog("error", "auth.client_register_network_error", { err: serializeError(err) });
       setErrorMessage(
         locale === "en"
           ? "Connection error. Please try again."

@@ -1,8 +1,10 @@
 "use server";
 
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { leadService } from "@mocter/domain";
 import { checkRateLimit } from "../../lib/rate-limit";
+import { getRequestLogger } from "@/lib/logger";
 import type { DemoFormState } from "./types";
 
 export type { DemoFormState };
@@ -47,6 +49,9 @@ export async function submitDemoRequest(
   _prevState: DemoFormState,
   formData: FormData,
 ): Promise<DemoFormState> {
+  const start = performance.now();
+  const log = await getRequestLogger({ action: "submitDemoRequest" });
+
   // 1. Verificación de tasa por dirección IP (RF-04.2)
   try {
     const reqHeaders = await headers();
@@ -54,6 +59,7 @@ export async function submitDemoRequest(
     const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
     const rateLimit = checkRateLimit(ip);
     if (!rateLimit.allowed) {
+      log.warn({ event: "lead.rate_limited", ip });
       return {
         status: "idle",
         fieldErrors: {},
@@ -79,8 +85,7 @@ export async function submitDemoRequest(
   if (!result.ok) {
     if (result.code === "VALIDATION_ERROR" && Array.isArray(result.issues)) {
       const fieldErrors: DemoFormState["fieldErrors"] = {};
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const issue of result.issues as any[]) {
+      for (const issue of result.issues as Array<{ path: (string | number)[]; code: string }>) {
         const field = issue.path[0];
         const code = codeForIssue(issue.code);
         if (field === "name") {
@@ -93,12 +98,45 @@ export async function submitDemoRequest(
           fieldErrors.message = "max";
         }
       }
+
+      log.warn({
+        event: "lead.validation_failed",
+        fieldErrors,
+        durationMs: Math.round(performance.now() - start),
+      });
+
       return { status: "idle", fieldErrors };
     }
+
+    log.error({
+      event: "lead.persistence_failed",
+      code: result.code,
+      durationMs: Math.round(performance.now() - start),
+    });
 
     // Degradación elegante: mantiene la entrada del usuario, indicando fallo de persistencia
     return { status: "idle", fieldErrors: {}, reason: "db" };
   }
 
+  // Telemetría no bloqueante post-respuesta
+  const emitSuccessTelemetry = () => {
+    try {
+      log.info({
+        event: "lead.registered_successfully",
+        durationMs: Math.round(performance.now() - start),
+      });
+    } catch {
+      // El fallo de logging jamás interrumpe la respuesta
+    }
+  };
+
+  try {
+    after(emitSuccessTelemetry);
+  } catch {
+    // Si se ejecuta fuera del contexto de petición de Next.js (ej. testing unitario en vitest)
+    emitSuccessTelemetry();
+  }
+
   return { status: "success", fieldErrors: {} };
 }
+
