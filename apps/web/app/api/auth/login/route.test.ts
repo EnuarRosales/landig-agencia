@@ -1,6 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
-import { authService, GENERIC_INVALID_CREDENTIALS_MESSAGE } from "@mocter/domain";
+import {
+  authService,
+  GENERIC_INVALID_CREDENTIALS_MESSAGE,
+  MockRedisClient,
+  setRedisClientForTesting,
+  createMockRedisClient,
+} from "@mocter/domain";
 import { POST } from "./route";
 
 vi.mock("@mocter/domain", async (importOriginal) => {
@@ -13,9 +19,17 @@ vi.mock("@mocter/domain", async (importOriginal) => {
   };
 });
 
-describe("POST /api/auth/login", () => {
+describe("POST /api/auth/login (AUTH-001 T-10, T-12)", () => {
+  let mockRedis: MockRedisClient;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRedis = new MockRedisClient();
+    setRedisClientForTesting(mockRedis as unknown as ReturnType<typeof createMockRedisClient>);
+  });
+
+  afterEach(() => {
+    setRedisClientForTesting(null);
   });
 
   function createMockRequest(
@@ -75,7 +89,7 @@ describe("POST /api/auth/login", () => {
     expect(csrfCookie?.value).toBe("raw-csrf-token-hex");
   });
 
-  it("responde 401 Unauthorized ante credenciales incorrectas", async () => {
+  it("responde 401 Unauthorized ante credenciales incorrectas e incrementa contadores de fallo", async () => {
     vi.mocked(authService.login).mockResolvedValue({
       ok: false,
       error: GENERIC_INVALID_CREDENTIALS_MESSAGE,
@@ -93,6 +107,97 @@ describe("POST /api/auth/login", () => {
     expect(res.status).toBe(401);
     expect(data.ok).toBe(false);
     expect(data.error).toBe(GENERIC_INVALID_CREDENTIALS_MESSAGE);
+  });
+
+  it("el sexto intento consecutivo falla con HTTP 429 y Retry-After (AUTH-001 T-12)", async () => {
+    vi.mocked(authService.login).mockResolvedValue({
+      ok: false,
+      error: GENERIC_INVALID_CREDENTIALS_MESSAGE,
+      code: "INVALID_CREDENTIALS",
+    });
+
+    const credentials = {
+      email: "carlos@empresa.com",
+      password: "WrongPassword999!",
+    };
+
+    // 5 intentos fallidos
+    for (let i = 0; i < 5; i++) {
+      const res = await POST(createMockRequest(credentials));
+      expect(res.status).toBe(401);
+    }
+
+    // El sexto intento debe ser bloqueado por rate limit antes de consultar authService
+    const resBlocked = await POST(createMockRequest(credentials));
+    const dataBlocked = await resBlocked.json();
+
+    expect(resBlocked.status).toBe(429);
+    expect(dataBlocked.ok).toBe(false);
+    expect(dataBlocked.code).toBe("RATE_LIMIT_EXCEEDED");
+    expect(resBlocked.headers.get("Retry-After")).toBeDefined();
+    const retryAfter = Number(resBlocked.headers.get("Retry-After"));
+    expect(retryAfter).toBeGreaterThan(0);
+  });
+
+  it("el login exitoso reinicia el contador de cuenta+IP permitiendo accesos posteriores", async () => {
+    vi.mocked(authService.login).mockResolvedValue({
+      ok: false,
+      error: GENERIC_INVALID_CREDENTIALS_MESSAGE,
+      code: "INVALID_CREDENTIALS",
+    });
+
+    const credentials = {
+      email: "carlos@empresa.com",
+      password: "Password123!",
+    };
+
+    // 3 intentos fallidos
+    for (let i = 0; i < 3; i++) {
+      await POST(createMockRequest(credentials));
+    }
+
+    // Éxito de login
+    vi.mocked(authService.login).mockResolvedValue({
+      ok: true,
+      data: {
+        user: {
+          id: "uuid-user-1",
+          email: "carlos@empresa.com",
+          fullName: "Carlos Gómez",
+          status: "active",
+        },
+        emailVerified: true,
+        clientId: "uuid-client-1",
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        sid: "raw-session-id-base64url",
+        csrfToken: "raw-csrf-token-hex",
+      },
+    });
+
+    const resSuccess = await POST(createMockRequest(credentials));
+    expect(resSuccess.status).toBe(200);
+
+    // Verificamos que el contador de cuenta+IP fue purgado
+    const keys = mockRedis.getAllKeys();
+    const accountIpKey = keys.find((k) => k.includes("account_ip"));
+    expect(accountIpKey).toBeUndefined();
+  });
+
+  it("responde 503 Service Unavailable (Fail-Closed) si Redis está caído (AUTH-001 T-12)", async () => {
+    mockRedis.simulateFailure(true);
+
+    const req = createMockRequest({
+      email: "carlos@empresa.com",
+      password: "Password123!",
+    });
+
+    const res = await POST(req);
+    const data = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(data.ok).toBe(false);
+    expect(data.code).toBe("REDIS_UNAVAILABLE");
+    expect(data.error).toContain("temporalmente no disponible");
   });
 
   it("responde 400 Bad Request cuando el body es JSON inválido", async () => {

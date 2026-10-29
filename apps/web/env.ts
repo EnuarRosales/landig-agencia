@@ -29,7 +29,7 @@ export const env = createEnv({
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
     DATABASE_URL: process.env.DATABASE_URL,
-    AUTH_RATE_LIMIT_PEPPER: process.env.AUTH_RATE_LIMIT_PEPPER,
+    AUTH_RATE_LIMIT_PEPPER: process.env.AUTH_RATE_LIMIT_PEPPER ?? "mocter-dev-pepper",
     ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS,
     REDIS_URL: process.env.REDIS_URL,
     REDIS_PASSWORD: process.env.REDIS_PASSWORD,

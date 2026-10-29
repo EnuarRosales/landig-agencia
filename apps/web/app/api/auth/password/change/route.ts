@@ -1,26 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { unstable_rethrow } from "next/navigation";
-import { authService } from "@mocter/domain";
-import { MemoryRateLimiter } from "@/lib/rate-limit";
+import { authService, authRateLimiter, RedisUnavailableError } from "@mocter/domain";
 import { isValidOrigin } from "@/lib/origin";
 import { env } from "@/env";
 import { getRequestLogger } from "@/lib/logger";
 import { serializeError } from "@/lib/logger/serialize-error";
 
-// Rate limit: 5 intentos por cada 15 minutos por IP (AUTH-001 §5.8)
-const changePasswordRateLimiter = new MemoryRateLimiter({
-  maxRequests: 5,
-  windowMs: 15 * 60 * 1000,
-});
-
 /**
- * Endpoint para cambio autenticado de contraseña (AUTH-001 T-11, design §5.8).
+ * Endpoint para cambio autenticado de contraseña (AUTH-001 T-11, T-12, design §5.8, §7.3).
  *
  * - **Método:** `POST`
  * - **Ruta:** `/api/auth/password/change`
  * - **Políticas aplicadas:**
  *   - Verificación de encabezado `Origin` contra allowlist.
  *   - Verificación estricta de sesión activa (`sid`) y token CSRF (`x-csrf-token`).
+ *   - Limitación de tasa distribuida en Redis (`redis-control`): 3 cambios por usuario en 1 hora con clave HMAC.
+ *   - Política Fail-Closed: si Redis no responde, retorna HTTP 503 sin usar memoria local.
  *   - Verificación de contraseña actual mediante Argon2id en tiempo constante.
  *   - Exigencia de código TOTP si la cuenta posee doble factor activado.
  *   - Revocación de todas las demás sesiones activas del usuario (`exceptSessionId`).
@@ -39,34 +34,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json(
         { ok: false, error: "Origen no autorizado" },
         { status: 403 },
-      );
-    }
-
-    const forwarded = req.headers.get("x-forwarded-for");
-    const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
-
-    const rateLimitResult = changePasswordRateLimiter.check(ip);
-    if (!rateLimitResult.allowed) {
-      const retryAfter = Math.max(
-        1,
-        Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
-      );
-      log.warn({
-        event: "auth.rate_limited",
-        clientIp: ip,
-        retryAfter,
-      });
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Demasiados intentos. Por favor intente más tarde.",
-        },
-        {
-          status: 429,
-          headers: {
-            "Retry-After": retryAfter.toString(),
-          },
-        },
       );
     }
 
@@ -112,6 +79,57 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const { session } = sessionValidation.data;
+    const pepper = env.AUTH_RATE_LIMIT_PEPPER;
+
+    // 4. Limitación de tasa distribuida en Redis por usuario autenticado (Fail-Closed)
+    try {
+      const rateLimitResult = await authRateLimiter.checkPasswordChangeRateLimit({
+        userId: session.userId,
+        pepper,
+      });
+
+      if (!rateLimitResult.allowed) {
+        log.warn({
+          event: "auth.rate_limited",
+          userId: session.userId,
+          retryAfter: rateLimitResult.retryAfter,
+          blockedBy: rateLimitResult.blockedBy,
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Demasiados intentos. Por favor intente más tarde.",
+            code: "RATE_LIMIT_EXCEEDED",
+          },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": rateLimitResult.retryAfter.toString(),
+            },
+          },
+        );
+      }
+    } catch (err: unknown) {
+      if (
+        err instanceof RedisUnavailableError ||
+        (err as { name?: string })?.name === "RedisUnavailableError"
+      ) {
+        log.error({
+          event: "auth.redis_unavailable",
+          path: "/api/auth/password/change",
+          err: serializeError(err),
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Servicio temporalmente no disponible. Por favor intente más tarde.",
+            code: "REDIS_UNAVAILABLE",
+          },
+          { status: 503 },
+        );
+      }
+      throw err;
+    }
 
     // 4. Procesar carga útil
     let body: unknown;
@@ -210,6 +228,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return response;
   } catch (e: unknown) {
     unstable_rethrow(e);
+    if (
+      e instanceof RedisUnavailableError ||
+      (e as { name?: string })?.name === "RedisUnavailableError"
+    ) {
+      log.error({
+        event: "auth.redis_unavailable",
+        path: "/api/auth/password/change",
+        err: serializeError(e),
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Servicio temporalmente no disponible. Por favor intente más tarde.",
+          code: "REDIS_UNAVAILABLE",
+        },
+        { status: 503 },
+      );
+    }
     log.error({
       event: "auth.password_change_unhandled_error",
       err: serializeError(e),

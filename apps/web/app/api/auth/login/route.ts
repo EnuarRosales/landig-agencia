@@ -1,30 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { unstable_rethrow } from "next/navigation";
-import { authService } from "@mocter/domain";
-import { MemoryRateLimiter } from "@/lib/rate-limit";
+import { authService, authRateLimiter, RedisUnavailableError } from "@mocter/domain";
 import { isValidOrigin } from "@/lib/origin";
 import { env } from "@/env";
 import { getRequestLogger } from "@/lib/logger";
 import { serializeError } from "@/lib/logger/serialize-error";
 
-// Rate limit para inicio de sesión: 5 intentos por cada 15 minutos por IP (AUTH-001 §5.2, §7.3)
-const loginRateLimiter = new MemoryRateLimiter({
-  maxRequests: 10, // 10 en desarrollo / staging
-  windowMs: 15 * 60 * 1000,
-});
-
 /**
- * Endpoint de Inicio de Sesión Nativo con Credenciales (AUTH-001 T-10, design §5.2).
+ * Endpoint de Inicio de Sesión Nativo con Credenciales (AUTH-001 T-10, T-12, design §5.2, §7.3).
  *
  * - **Método:** `POST`
  * - **Ruta:** `/api/auth/login`
  * - **Políticas aplicadas:**
  *   - Verificación de encabezado `Origin` contra allowlist exacta.
- *   - Limitación de tasa (Rate Limiting) por dirección IP.
+ *   - Limitación de tasa distribuida en Redis (`redis-control`) con claves HMAC y TTL.
+ *   - Política Fail-Closed: si Redis no responde, retorna HTTP 503 sin usar memoria local.
  *   - Mitigación de temporización (timing attacks) con verificación ficticia de tiempo constante.
  *   - Rehash transparente de contraseñas ante algoritmos o parámetros obsoletos.
  *   - Creación de sesión opaca con CSRF (`__Host-mocter_sid`, `__Host-mocter_csrf`).
  *   - Challenge de doble factor si la cuenta tiene TOTP activado.
+ *   - Reinicio automático del contador de fallos de cuenta+IP ante login exitoso.
  *
  * @param req - Objeto {@link NextRequest} con la carga útil JSON (`email`, `password`).
  * @returns Respuesta HTTP {@link NextResponse}.
@@ -43,37 +38,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // 2. Limitación de tasa (Rate Limiting)
-    const forwarded = req.headers.get("x-forwarded-for");
-    const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
-
-    const rateLimitResult = loginRateLimiter.check(ip);
-    if (!rateLimitResult.allowed) {
-      const retryAfter = Math.max(
-        1,
-        Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
-      );
-      log.warn({
-        event: "auth.rate_limited",
-        clientIp: ip,
-        retryAfter,
-      });
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Demasiados intentos fallidos de inicio de sesión. Por favor intente más tarde.",
-        },
-        {
-          status: 429,
-          headers: {
-            "Retry-After": retryAfter.toString(),
-          },
-        },
-      );
-    }
-
-    // 3. Validación de Content-Type y formato JSON
+    // 2. Validación de Content-Type y formato JSON previo
     let body: unknown;
     try {
       body = await req.json();
@@ -88,8 +53,67 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
+    const forwarded = req.headers.get("x-forwarded-for");
+    const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
     const userAgent = req.headers.get("user-agent") ?? undefined;
     const pepper = env.AUTH_RATE_LIMIT_PEPPER;
+
+    const email =
+      typeof body === "object" && body !== null && "email" in body
+        ? String((body as { email: unknown }).email)
+        : "";
+
+    // 3. Limitación de tasa distribuida en Redis (Fail-Closed, design.md §7.3, §7.4)
+    try {
+      const rateLimitResult = await authRateLimiter.checkLoginRateLimit({
+        email,
+        ip,
+        pepper,
+      });
+
+      if (!rateLimitResult.allowed) {
+        log.warn({
+          event: "auth.rate_limited",
+          clientIp: ip,
+          retryAfter: rateLimitResult.retryAfter,
+          blockedBy: rateLimitResult.blockedBy,
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Demasiados intentos fallidos de inicio de sesión. Por favor intente más tarde.",
+            code: "RATE_LIMIT_EXCEEDED",
+          },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": rateLimitResult.retryAfter.toString(),
+            },
+          },
+        );
+      }
+    } catch (err: unknown) {
+      if (
+        err instanceof RedisUnavailableError ||
+        (err as { name?: string })?.name === "RedisUnavailableError"
+      ) {
+        log.error({
+          event: "auth.redis_unavailable",
+          path: "/api/auth/login",
+          err: serializeError(err),
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Servicio temporalmente no disponible. Por favor intente más tarde.",
+            code: "REDIS_UNAVAILABLE",
+          },
+          { status: 503 },
+        );
+      }
+      throw err;
+    }
 
     // 4. Delegación al servicio de autenticación de dominio
     const result = await authService.login(body, {
@@ -114,6 +138,31 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
 
       if (result.code === "INVALID_CREDENTIALS") {
+        // Registro atómico de intento fallido en Redis
+        try {
+          await authRateLimiter.recordLoginFailure({ email, ip, pepper });
+        } catch (err: unknown) {
+          if (
+            err instanceof RedisUnavailableError ||
+            (err as { name?: string })?.name === "RedisUnavailableError"
+          ) {
+            log.error({
+              event: "auth.redis_unavailable",
+              path: "/api/auth/login",
+              err: serializeError(err),
+            });
+            return NextResponse.json(
+              {
+                ok: false,
+                error: "Servicio temporalmente no disponible. Por favor intente más tarde.",
+                code: "REDIS_UNAVAILABLE",
+              },
+              { status: 503 },
+            );
+          }
+          throw err;
+        }
+
         log.warn({
           event: "auth.login_failed",
           reason: "invalid_credentials",
@@ -151,7 +200,32 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // 5. Caso Doble Factor (TOTP activado)
+    // 5. Reinicio del contador de fallos de cuenta+IP ante autenticación exitosa (T-12)
+    try {
+      await authRateLimiter.resetLoginFailure({ email, ip, pepper });
+    } catch (err: unknown) {
+      if (
+        err instanceof RedisUnavailableError ||
+        (err as { name?: string })?.name === "RedisUnavailableError"
+      ) {
+        log.error({
+          event: "auth.redis_unavailable",
+          path: "/api/auth/login",
+          err: serializeError(err),
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Servicio temporalmente no disponible. Por favor intente más tarde.",
+            code: "REDIS_UNAVAILABLE",
+          },
+          { status: 503 },
+        );
+      }
+      throw err;
+    }
+
+    // 6. Caso Doble Factor (TOTP activado)
     const isProduction = env.NODE_ENV === "production";
 
     if ("mfaRequired" in result.data) {
@@ -185,7 +259,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return response;
     }
 
-    // 6. Caso Sesión Exitosa
+    // 7. Caso Sesión Exitosa
     log.info({
       event: "auth.login_success",
       userId: result.data.user.id,
@@ -229,6 +303,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return response;
   } catch (e: unknown) {
     unstable_rethrow(e);
+    if (
+      e instanceof RedisUnavailableError ||
+      (e as { name?: string })?.name === "RedisUnavailableError"
+    ) {
+      log.error({
+        event: "auth.redis_unavailable",
+        path: "/api/auth/login",
+        err: serializeError(e),
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Servicio temporalmente no disponible. Por favor intente más tarde.",
+          code: "REDIS_UNAVAILABLE",
+        },
+        { status: 503 },
+      );
+    }
     log.error({
       event: "auth.login_unhandled_error",
       err: serializeError(e),

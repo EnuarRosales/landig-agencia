@@ -1,6 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
-import { authService, GENERIC_REGISTER_SUCCESS_MESSAGE } from "@mocter/domain";
+import {
+  authService,
+  GENERIC_REGISTER_SUCCESS_MESSAGE,
+  MockRedisClient,
+  setRedisClientForTesting,
+  createMockRedisClient,
+} from "@mocter/domain";
 import { POST } from "./route";
 
 vi.mock("@mocter/domain", async (importOriginal) => {
@@ -13,9 +19,17 @@ vi.mock("@mocter/domain", async (importOriginal) => {
   };
 });
 
-describe("POST /api/auth/register", () => {
+describe("POST /api/auth/register (AUTH-001 T-08, T-12)", () => {
+  let mockRedis: MockRedisClient;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRedis = new MockRedisClient();
+    setRedisClientForTesting(mockRedis as unknown as ReturnType<typeof createMockRedisClient>);
+  });
+
+  afterEach(() => {
+    setRedisClientForTesting(null);
   });
 
   function createMockRequest(body: unknown, headers?: Record<string, string>): NextRequest {
@@ -53,6 +67,57 @@ describe("POST /api/auth/register", () => {
     expect(data.ok).toBe(true);
     expect(data.message).toBe(GENERIC_REGISTER_SUCCESS_MESSAGE);
     expect(data).not.toHaveProperty("token");
+  });
+
+  it("responde 429 Too Many Requests cuando se superan 5 registros por IP en 1 hora (AUTH-001 T-12)", async () => {
+    vi.mocked(authService.register).mockResolvedValue({
+      ok: true,
+      data: {
+        message: GENERIC_REGISTER_SUCCESS_MESSAGE,
+      },
+    });
+
+    const validPayload = {
+      name: "Carlos Gómez",
+      email: "carlos@empresa.com",
+      password: "Password123!",
+      treatmentConsent: true,
+    };
+
+    // 5 registros permitidos
+    for (let i = 0; i < 5; i++) {
+      const res = await POST(createMockRequest(validPayload));
+      expect(res.status).toBe(202);
+    }
+
+    // 6to registro bloqueado
+    const resBlocked = await POST(createMockRequest(validPayload));
+    const dataBlocked = await resBlocked.json();
+
+    expect(resBlocked.status).toBe(429);
+    expect(dataBlocked.ok).toBe(false);
+    expect(dataBlocked.code).toBe("RATE_LIMIT_EXCEEDED");
+    expect(resBlocked.headers.get("Retry-After")).toBeDefined();
+    const retryAfter = Number(resBlocked.headers.get("Retry-After"));
+    expect(retryAfter).toBeGreaterThan(0);
+  });
+
+  it("responde 503 Service Unavailable (Fail-Closed) si Redis no está disponible", async () => {
+    mockRedis.simulateFailure(true);
+
+    const req = createMockRequest({
+      name: "Carlos Gómez",
+      email: "carlos@empresa.com",
+      password: "Password123!",
+      treatmentConsent: true,
+    });
+
+    const res = await POST(req);
+    const data = await res.json();
+
+    expect(res.status).toBe(503);
+    expect(data.ok).toBe(false);
+    expect(data.code).toBe("REDIS_UNAVAILABLE");
   });
 
   it("responde 422 Unprocessable Entity cuando falla la validación o falta consentimiento", async () => {

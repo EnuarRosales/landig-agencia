@@ -1,9 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import {
   authService,
   GENERIC_FORGOT_PASSWORD_MESSAGE,
   type Session,
+  MockRedisClient,
+  setRedisClientForTesting,
+  createMockRedisClient,
 } from "@mocter/domain";
 import { POST as forgotPost } from "./forgot/route";
 import { POST as resetPost } from "./reset/route";
@@ -22,9 +25,17 @@ vi.mock("@mocter/domain", async (importOriginal) => {
   };
 });
 
-describe("AUTH-001 T-11 · Rutas de recuperación y cambio de contraseña", () => {
+describe("AUTH-001 T-11, T-12 · Rutas de recuperación y cambio de contraseña con Redis Rate Limiting", () => {
+  let mockRedis: MockRedisClient;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRedis = new MockRedisClient();
+    setRedisClientForTesting(mockRedis as unknown as ReturnType<typeof createMockRedisClient>);
+  });
+
+  afterEach(() => {
+    setRedisClientForTesting(null);
   });
 
   function createMockRequest(
@@ -90,6 +101,44 @@ describe("AUTH-001 T-11 · Rutas de recuperación y cambio de contraseña", () =
       expect(data.ok).toBe(false);
     });
 
+    it("responde 429 cuando se superan 3 solicitudes de recuperación para una cuenta", async () => {
+      vi.mocked(authService.forgotPassword).mockResolvedValue({
+        ok: true,
+        data: { message: GENERIC_FORGOT_PASSWORD_MESSAGE },
+      });
+
+      const payload = { email: "carlos@empresa.com" };
+
+      for (let i = 0; i < 3; i++) {
+        const res = await forgotPost(
+          createMockRequest("http://localhost:3001/api/auth/password/forgot", payload),
+        );
+        expect(res.status).toBe(202);
+      }
+
+      const blockedRes = await forgotPost(
+        createMockRequest("http://localhost:3001/api/auth/password/forgot", payload),
+      );
+      const blockedData = await blockedRes.json();
+
+      expect(blockedRes.status).toBe(429);
+      expect(blockedData.code).toBe("RATE_LIMIT_EXCEEDED");
+    });
+
+    it("responde 503 Fail-Closed si Redis no está disponible en forgot password", async () => {
+      mockRedis.simulateFailure(true);
+
+      const req = createMockRequest("http://localhost:3001/api/auth/password/forgot", {
+        email: "carlos@empresa.com",
+      });
+
+      const res = await forgotPost(req);
+      const data = await res.json();
+
+      expect(res.status).toBe(503);
+      expect(data.code).toBe("REDIS_UNAVAILABLE");
+    });
+
     it("responde 403 Forbidden ante un Origin malicioso", async () => {
       const req = createMockRequest(
         "http://localhost:3001/api/auth/password/forgot",
@@ -139,6 +188,50 @@ describe("AUTH-001 T-11 · Rutas de recuperación y cambio de contraseña", () =
       expect(res.status).toBe(400);
       expect(data.ok).toBe(false);
       expect(data.code).toBe("TOKEN_EXPIRED");
+    });
+
+    it("bloquea con 429 tras superar el límite de 5 intentos por token", async () => {
+      vi.mocked(authService.resetPassword).mockResolvedValue({
+        ok: false,
+        error: "Token inválido",
+        code: "INVALID_TOKEN",
+      });
+
+      const payload = {
+        token: "token-reset-limit-12345",
+        password: "NewPassword123!",
+      };
+
+      for (let i = 0; i < 5; i++) {
+        const res = await resetPost(
+          createMockRequest("http://localhost:3001/api/auth/password/reset", payload),
+        );
+        expect(res.status).toBe(400);
+      }
+
+      const blockedRes = await resetPost(
+        createMockRequest("http://localhost:3001/api/auth/password/reset", payload),
+      );
+      const blockedData = await blockedRes.json();
+
+      expect(blockedRes.status).toBe(429);
+      expect(blockedData.code).toBe("RATE_LIMIT_EXCEEDED");
+      expect(blockedRes.headers.get("Retry-After")).toBeDefined();
+    });
+
+    it("responde 503 Fail-Closed si Redis no está disponible en reset password", async () => {
+      mockRedis.simulateFailure(true);
+
+      const req = createMockRequest("http://localhost:3001/api/auth/password/reset", {
+        token: "some-token",
+        password: "NewPassword123!",
+      });
+
+      const res = await resetPost(req);
+      const data = await res.json();
+
+      expect(res.status).toBe(503);
+      expect(data.code).toBe("REDIS_UNAVAILABLE");
     });
   });
 
@@ -275,5 +368,75 @@ describe("AUTH-001 T-11 · Rutas de recuperación y cambio de contraseña", () =
       expect(res.status).toBe(403);
       expect(data.code).toBe("MFA_REQUIRED");
     });
+
+    it("bloquea con 429 tras superar el límite de 3 cambios por usuario en 1 hora", async () => {
+      const mockSession = {
+        id: "uuid-session-1",
+        userId: "uuid-user-1",
+      } as unknown as Session;
+
+      vi.mocked(authService.validateSession).mockResolvedValue({
+        ok: true,
+        data: { session: mockSession },
+      });
+
+      vi.mocked(authService.changePassword).mockResolvedValue({
+        ok: true,
+        data: {
+          message: "Contraseña actualizada exitosamente.",
+          sid: "new-rotated-sid",
+          csrfToken: "new-rotated-csrf",
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        },
+      });
+
+      const reqFactory = () =>
+        createMockRequest(
+          "http://localhost:3001/api/auth/password/change",
+          { currentPassword: "Password123!", newPassword: "NewPassword456!" },
+          { "x-csrf-token": "valid-csrf" },
+          { mocter_sid: "valid-sid" },
+        );
+
+      for (let i = 0; i < 3; i++) {
+        const res = await changePost(reqFactory());
+        expect(res.status).toBe(200);
+      }
+
+      const blockedRes = await changePost(reqFactory());
+      const blockedData = await blockedRes.json();
+
+      expect(blockedRes.status).toBe(429);
+      expect(blockedData.code).toBe("RATE_LIMIT_EXCEEDED");
+      expect(blockedRes.headers.get("Retry-After")).toBeDefined();
+    });
+
+    it("responde 503 Fail-Closed si Redis no está disponible en change password", async () => {
+      const mockSession = {
+        id: "uuid-session-1",
+        userId: "uuid-user-1",
+      } as unknown as Session;
+
+      vi.mocked(authService.validateSession).mockResolvedValue({
+        ok: true,
+        data: { session: mockSession },
+      });
+
+      mockRedis.simulateFailure(true);
+
+      const req = createMockRequest(
+        "http://localhost:3001/api/auth/password/change",
+        { currentPassword: "Password123!", newPassword: "NewPassword456!" },
+        { "x-csrf-token": "valid-csrf" },
+        { mocter_sid: "valid-sid" },
+      );
+
+      const res = await changePost(req);
+      const data = await res.json();
+
+      expect(res.status).toBe(503);
+      expect(data.code).toBe("REDIS_UNAVAILABLE");
+    });
   });
 });
+

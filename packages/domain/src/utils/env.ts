@@ -11,6 +11,8 @@ export const envSchema = z.object({
     .enum(["development", "production", "test"])
     .default("development"),
   AUTH_RATE_LIMIT_PEPPER: z.string().min(1).default("mocter-dev-pepper"),
+  REDIS_URL: z.string().optional(),
+  REDIS_PASSWORD: z.string().optional(),
   DEBUG: z.string().optional(),
 });
 
@@ -24,6 +26,8 @@ export const env = createEnv({
       .enum(["development", "production", "test"])
       .default("development"),
     AUTH_RATE_LIMIT_PEPPER: z.string().min(1).default("mocter-dev-pepper"),
+    REDIS_URL: z.string().optional(),
+    REDIS_PASSWORD: z.string().optional(),
     DEBUG: z.string().optional(),
   },
   runtimeEnv: process.env,

@@ -1,23 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { unstable_rethrow } from "next/navigation";
-import { authService } from "@mocter/domain";
-import { MemoryRateLimiter } from "@/lib/rate-limit";
+import { authService, authRateLimiter, RedisUnavailableError } from "@mocter/domain";
 import { isValidOrigin } from "@/lib/origin";
+import { env } from "@/env";
 import { getRequestLogger } from "@/lib/logger";
 import { serializeError } from "@/lib/logger/serialize-error";
 
-// Rate limit: 10 peticiones por hora por IP (AUTH-001 §5.7)
-const verifyRequestRateLimiter = new MemoryRateLimiter({
-  maxRequests: 10,
-  windowMs: 60 * 60 * 1000,
-});
-
 /**
- * Endpoint para solicitar reenvío de enlace de verificación de correo (AUTH-001 T-09).
+ * Endpoint para solicitar reenvío de enlace de verificación de correo (AUTH-001 T-09, T-12, design §5.7, §7.3).
  *
  * - **Método:** `POST`
  * - **Ruta:** `/api/auth/email/verify/request`
- * - Responde siempre HTTP 202 con mensaje genérico uniforme (anti-enumeración).
+ * - **Políticas aplicadas:**
+ *   - Verificación de encabezado `Origin` contra allowlist.
+ *   - Limitación de tasa distribuida en Redis (`redis-control`): 3 por usuario en 15 min y 10 por IP en 1 hora.
+ *   - Política Fail-Closed: si Redis no responde, retorna HTTP 503 sin usar memoria local.
+ *   - Responde siempre HTTP 202 con mensaje genérico uniforme (anti-enumeración).
+ *
+ * @param req - Objeto {@link NextRequest} con JSON conteniendo `email`.
+ * @returns Respuesta HTTP {@link NextResponse}.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const log = await getRequestLogger();
@@ -29,31 +30,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json(
         { ok: false, error: "Origen no autorizado" },
         { status: 403 },
-      );
-    }
-
-    const forwarded = req.headers.get("x-forwarded-for");
-    const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
-
-    const rateLimitResult = verifyRequestRateLimiter.check(ip);
-    if (!rateLimitResult.allowed) {
-      const retryAfter = Math.max(1, Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000));
-      log.warn({
-        event: "auth.rate_limited",
-        clientIp: ip,
-        retryAfter,
-      });
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Demasiadas solicitudes. Por favor intente más tarde.",
-        },
-        {
-          status: 429,
-          headers: {
-            "Retry-After": retryAfter.toString(),
-          },
-        },
       );
     }
 
@@ -74,6 +50,61 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { ok: false, error: "El correo electrónico es requerido" },
         { status: 422 },
       );
+    }
+
+    const forwarded = req.headers.get("x-forwarded-for");
+    const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
+    const pepper = env.AUTH_RATE_LIMIT_PEPPER;
+
+    // Limitación de tasa distribuida en Redis (Fail-Closed)
+    try {
+      const rateLimitResult = await authRateLimiter.checkEmailVerifyRequestRateLimit({
+        user: body.email,
+        ip,
+        pepper,
+      });
+
+      if (!rateLimitResult.allowed) {
+        log.warn({
+          event: "auth.rate_limited",
+          clientIp: ip,
+          retryAfter: rateLimitResult.retryAfter,
+          blockedBy: rateLimitResult.blockedBy,
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Demasiadas solicitudes. Por favor intente más tarde.",
+            code: "RATE_LIMIT_EXCEEDED",
+          },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": rateLimitResult.retryAfter.toString(),
+            },
+          },
+        );
+      }
+    } catch (err: unknown) {
+      if (
+        err instanceof RedisUnavailableError ||
+        (err as { name?: string })?.name === "RedisUnavailableError"
+      ) {
+        log.error({
+          event: "auth.redis_unavailable",
+          path: "/api/auth/email/verify/request",
+          err: serializeError(err),
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Servicio temporalmente no disponible. Por favor intente más tarde.",
+            code: "REDIS_UNAVAILABLE",
+          },
+          { status: 503 },
+        );
+      }
+      throw err;
     }
 
     const result = await authService.requestEmailVerification(body.email, { clientIp: ip });
@@ -102,6 +133,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   } catch (e: unknown) {
     unstable_rethrow(e);
+    if (
+      e instanceof RedisUnavailableError ||
+      (e as { name?: string })?.name === "RedisUnavailableError"
+    ) {
+      log.error({
+        event: "auth.redis_unavailable",
+        path: "/api/auth/email/verify/request",
+        err: serializeError(e),
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Servicio temporalmente no disponible. Por favor intente más tarde.",
+          code: "REDIS_UNAVAILABLE",
+        },
+        { status: 503 },
+      );
+    }
     log.error({
       event: "auth.email_verify_request_unhandled_error",
       err: serializeError(e),
