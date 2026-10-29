@@ -10,8 +10,8 @@ import { normalizeEmail } from "./validation";
  * según lo exigido por AUTH-001 §7.4 y AGENTS.md.
  */
 export class RedisUnavailableError extends Error {
-  constructor(message = "Redis del plano de control no disponible") {
-    super(message);
+  constructor(message = "Redis del plano de control no disponible", cause?: unknown) {
+    super(message, cause !== undefined ? { cause } : undefined);
     this.name = "RedisUnavailableError";
     Object.setPrototypeOf(this, new.target.prototype);
   }

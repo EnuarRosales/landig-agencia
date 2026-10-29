@@ -91,10 +91,11 @@
 
 ## Fase 2 · Federación
 
-- [ ] **T-13 · Implementar state, PKCE y cookies de OAuth**
+- [x] **T-13 · Implementar state, PKCE y cookies de OAuth**
   - Generar state, verificador S256 y nonce; guardar en Redis con TTL 10 min; cookies `SameSite=Lax` con `Path` por proveedor. En vinculación, la entrada de Redis guarda el `user_id` y el callback no depende de la cookie de sesión.
   - Validar `return_to` relativo y redirect URI exacta; consumir el state una sola vez.
   - Verificación: state inválido, reutilizado o de otro proveedor falla; una URL absoluta en `return_to` se rechaza; el callback de vinculación funciona sin cookie de sesión; el state no se escribe en logs.
+  - Evidencia: 2026-10-28 — Implementado `OAuthStateManager`, funciones criptográficas para `state` (32 bytes), `code_verifier` (RFC 7636), `code_challenge` (S256) y `nonce` OIDC en `packages/domain/src/auth/oauth-state.ts`. Persistencia atómica en Redis bajo `auth:oauth:<provider>:<sha256(state)>` con TTL de 10 min (600s) y script Lua para lectura y consumo atómico de un solo uso (anti-replay). Sanitización estricta de `return_to` contra ataques de Open Redirect. Configuración canónica de cookies `SameSite=Lax` con `Path` acotado (`/auth/<provider>` o `/auth/link`) según `design.md` §6.2. Soporte completo de vinculación preservando `userId` en Redis para independizar el callback de la cookie `SameSite=Strict`. Cobertura de 22 pruebas unitarias pasando en `oauth-state.test.ts`. Tipado estricto `tsc --noEmit` y linter ESLint en verde.
 
 - [ ] **T-14 · Implementar Google OIDC**
   - Discovery, code exchange, validación de emisor, audiencia, `exp`, `nonce` y `email_verified`; crear o vincular usuario.

@@ -29,6 +29,7 @@ export * from "./repositories/auth.repository.interface";
 export * from "./repositories/drizzle-auth.repository";
 export * from "./services/auth.service";
 export * from "./auth/rate-limiter";
+export * from "./auth/oauth-state";
 export * from "./redis/client";
 export * from "./redis/mock-redis";
 export * from "./utils/env";

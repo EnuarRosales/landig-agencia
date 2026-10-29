@@ -66,7 +66,7 @@ export class MockRedisClient extends EventEmitter {
     }
 
     // 1. Script de pre-verificación (check sin consumir / GET)
-    if (script.includes("GET") && !script.includes("INCR")) {
+    if (script.includes("GET") && !script.includes("INCR") && !script.includes("DEL")) {
       const limit = Number(args[0] ?? 0);
       const entry = this.store.get(key);
       const current = entry ? Number(entry.value) : 0;
@@ -125,12 +125,40 @@ export class MockRedisClient extends EventEmitter {
     }
 
     // 4. Script de eliminación (DEL)
-    if (script.includes("DEL")) {
+    if (script.includes("DEL") && !script.includes("GET")) {
       const deleted = this.store.delete(key) ? 1 : 0;
       return deleted;
     }
 
+    // 5. Script de lectura y consumo atómico (GET + DEL)
+    if (script.includes("GET") && script.includes("DEL")) {
+      const entry = this.store.get(key);
+      if (!entry) return null;
+      if (entry.expiresAt !== null && entry.expiresAt <= now) {
+        this.store.delete(key);
+        return null;
+      }
+      this.store.delete(key);
+      return entry.value;
+    }
+
     return [1, 0, 0];
+  }
+
+  /**
+   * Almacena una clave con valor y opción de expiración TTL.
+   */
+  async set(key: string, value: string, ...args: unknown[]): Promise<string> {
+    this.checkFailure();
+    let ttlSeconds: number | null = null;
+    for (let i = 0; i < args.length; i++) {
+      if (typeof args[i] === "string" && (args[i] as string).toUpperCase() === "EX") {
+        ttlSeconds = Number(args[i + 1]);
+      }
+    }
+    const expiresAt = ttlSeconds !== null ? Date.now() + ttlSeconds * 1000 : null;
+    this.store.set(key, { value, expiresAt });
+    return "OK";
   }
 
   /**
