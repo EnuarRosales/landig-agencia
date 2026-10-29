@@ -38,7 +38,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // 2. Validación de Content-Type y formato JSON previo
+    // 2. Validación de Content-Type y formato JSON previo (AUTH-001 design §5.6)
+    const contentType = req.headers.get("content-type");
+    if (!contentType || !contentType.toLowerCase().includes("application/json")) {
+      log.warn({ event: "auth.invalid_content_type", path: "/api/auth/login" });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Formato de carga útil inválido (JSON requerido)",
+          code: "INVALID_CONTENT_TYPE",
+        },
+        { status: 415 },
+      );
+    }
+
     let body: unknown;
     try {
       body = await req.json();

@@ -8,6 +8,7 @@ import {
   RedisUnavailableError,
 } from "@mocter/domain";
 import { env } from "@/env";
+import { isValidOrigin } from "@/lib/origin";
 import { getRequestLogger } from "@/lib/logger";
 import { serializeError } from "@/lib/logger/serialize-error";
 
@@ -23,6 +24,7 @@ interface RouteParams {
  * - **Método:** `POST`
  * - **Ruta:** `/api/auth/link/:provider/start` (y reescrita desde `/auth/link/:provider/start`)
  * - **Políticas aplicadas:**
+ *   - Verificación de encabezado `Origin` contra allowlist exacta.
  *   - Requiere sesión activa (`__Host-mocter_sid`) y token CSRF (`x-csrf-token`).
  *   - Límite de tasa distribuido en Redis (10 vinculaciones / 15 min por usuario).
  *   - Persiste en Redis el `userId`, proveedor y `return_to` bajo `auth:oauth:<provider>:<hash(state)>`.
@@ -37,6 +39,14 @@ export async function POST(
   const start = performance.now();
 
   try {
+    if (!isValidOrigin(req)) {
+      log.warn({ event: "auth.invalid_origin", path: "/api/auth/link/start" });
+      return NextResponse.json(
+        { ok: false, error: "Origen no autorizado.", code: "INVALID_ORIGIN" },
+        { status: 403 },
+      );
+    }
+
     const resolvedParams = await params;
     const provider = resolvedParams.provider.toLowerCase();
 

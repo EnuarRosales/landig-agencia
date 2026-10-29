@@ -31,6 +31,7 @@ export const siteConfig = {
     "http://127.0.0.1:3001",
     "http://127.0.0.1:3003",
     "https://mocter.co",
+    "https://admin.mocter.co",
     "https://staging.mocter.co",
   ],
   navLinks: [

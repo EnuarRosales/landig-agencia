@@ -11,17 +11,34 @@ import { env } from "@/env";
  * @param req - Solicitud HTTP entrante.
  * @returns `true` si el origen es legítimo; `false` si es sospechoso o malicioso.
  */
-export function isValidOrigin(req: NextRequest): boolean {
+export function isValidOrigin(
+  req: NextRequest,
+  options?: { requireOrigin?: boolean },
+): boolean {
+  // Si no se incluyó el encabezado Origin en la petición
+  if (!req.headers.has("origin")) {
+    if (options?.requireOrigin) {
+      return false;
+    }
+    return true;
+  }
+
   const origin = req.headers.get("origin");
   if (!origin) {
-    return true;
+    return false;
+  }
+
+  // Rechazo explícito de origen nulo, comodín o cadenas vacías (AUTH-001 design §5.6)
+  const trimmed = origin.trim();
+  if (!trimmed || trimmed === "null" || trimmed === "*") {
+    return false;
   }
 
   const host = req.headers.get("host");
   try {
-    const originUrl = new URL(origin);
+    const originUrl = new URL(trimmed);
 
-    // Mismo host que la solicitud entrante
+    // Mismo host y puerto que la solicitud entrante
     if (host && originUrl.host === host) {
       return true;
     }
