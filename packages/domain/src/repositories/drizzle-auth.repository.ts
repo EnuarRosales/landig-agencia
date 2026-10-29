@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { getDb } from "../db/client";
 import * as schema from "../db/schemas";
@@ -351,24 +351,34 @@ export class DrizzleAuthRepository implements IAuthRepository {
       return await this.db.transaction(async (tx) => {
         const now = new Date();
 
-        // 1. Límite de 10 sesiones activas por usuario (AUTH-001 §5.6)
+        // 1. Límite de 10 sesiones activas por usuario (AUTH-001 §5.6, T-23)
         const activeSessions = await tx
           .select({ id: sessions.id })
           .from(sessions)
-          .where(and(eq(sessions.userId, params.userId), isNull(sessions.revokedAt)))
+          .where(
+            and(
+              eq(sessions.userId, params.userId),
+              isNull(sessions.revokedAt),
+              gt(sessions.expiresAt, now),
+              gt(sessions.absoluteExpiresAt, now),
+            ),
+          )
           .orderBy(asc(sessions.createdAt));
 
         if (activeSessions.length >= 10) {
-          const oldest = activeSessions[0];
-          await tx
-            .update(sessions)
-            .set({
-              revokedAt: now,
-              revokedReason: "session_limit",
-              updatedAt: now,
-              updatedBy: "system",
-            })
-            .where(eq(sessions.id, oldest.id));
+          const toRevokeCount = activeSessions.length - 9;
+          const toRevoke = activeSessions.slice(0, toRevokeCount);
+          for (const s of toRevoke) {
+            await tx
+              .update(sessions)
+              .set({
+                revokedAt: now,
+                revokedReason: "session_limit",
+                updatedAt: now,
+                updatedBy: "system",
+              })
+              .where(eq(sessions.id, s.id));
+          }
         }
 
         // 2. Inserción de la nueva sesión opaca
@@ -528,6 +538,75 @@ export class DrizzleAuthRepository implements IAuthRepository {
       appLogger.error(`[AuthRepository.touchSession Failed] ${msg}`, error, {
         sessionId,
       });
+      throw error;
+    }
+  }
+
+  /**
+   * Busca una sesión por su identificador público UUID (AUTH-001 §5.6, T-23).
+   */
+  async findSessionById(sessionId: string): Promise<Session | null> {
+    try {
+      const rows = await this.db
+        .select()
+        .from(sessions)
+        .where(eq(sessions.id, sessionId))
+        .limit(1);
+
+      return rows[0] ?? null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.findSessionById Failed] ${msg}`, error, { sessionId });
+      throw error;
+    }
+  }
+
+  /**
+   * Lista todas las sesiones activas y vigentes de un usuario ordenadas por última actividad (AUTH-001 §5.6, T-23).
+   */
+  async listActiveSessionsByUserId(userId: string): Promise<Session[]> {
+    try {
+      const now = new Date();
+      return await this.db
+        .select()
+        .from(sessions)
+        .where(
+          and(
+            eq(sessions.userId, userId),
+            isNull(sessions.revokedAt),
+            gt(sessions.expiresAt, now),
+            gt(sessions.absoluteExpiresAt, now),
+          ),
+        )
+        .orderBy(desc(sessions.lastSeenAt));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.listActiveSessionsByUserId Failed] ${msg}`, error, { userId });
+      throw error;
+    }
+  }
+
+  /**
+   * Purga sesiones vencidas o revocadas de la base de datos (AUTH-001 §5.6, T-23).
+   * No elimina sesiones vigentes (revoked_at IS NULL y expires_at > now y absolute_expires_at > now).
+   */
+  async purgeExpiredSessions(now: Date = new Date()): Promise<number> {
+    try {
+      const deletedRows = await this.db
+        .delete(sessions)
+        .where(
+          or(
+            isNotNull(sessions.revokedAt),
+            lte(sessions.expiresAt, now),
+            lte(sessions.absoluteExpiresAt, now),
+          ),
+        )
+        .returning({ id: sessions.id });
+
+      return deletedRows.length;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.purgeExpiredSessions Failed] ${msg}`, error);
       throw error;
     }
   }

@@ -201,6 +201,31 @@ export interface IAuthRepository {
   ): Promise<void>;
 
   /**
+   * Busca una sesión por su identificador público UUID (AUTH-001 §5.6, T-23).
+   *
+   * @param sessionId - Identificador UUID público de la sesión.
+   * @returns La entidad {@link Session} o `null` si no existe.
+   */
+  findSessionById(sessionId: string): Promise<Session | null>;
+
+  /**
+   * Lista todas las sesiones activas y vigentes de un usuario ordenadas por última actividad (AUTH-001 §5.6, T-23).
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @returns Lista de entidades {@link Session} no revocadas ni expiradas.
+   */
+  listActiveSessionsByUserId(userId: string): Promise<Session[]>;
+
+  /**
+   * Purga sesiones vencidas o revocadas de la base de datos (AUTH-001 §5.6, T-23).
+   * No elimina sesiones vigentes (revoked_at IS NULL y expires_at > now y absolute_expires_at > now).
+   *
+   * @param now - Fecha de corte actual (por defecto la fecha del sistema).
+   * @returns Número de registros de sesión eliminados.
+   */
+  purgeExpiredSessions(now?: Date): Promise<number>;
+
+  /**
    * Busca un token de restablecimiento o establecimiento de contraseña por su hash SHA-256 binario.
    *
    * @param tokenHash - Buffer de 32 bytes con el hash SHA-256.

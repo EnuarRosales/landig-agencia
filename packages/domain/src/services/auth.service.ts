@@ -84,6 +84,28 @@ export const GENERIC_FORGOT_PASSWORD_MESSAGE =
   "Si la cuenta existe y tiene contraseña configurada, enviamos un enlace de recuperación.";
 
 /**
+ * Resumen público y sanitizado de una sesión activa (AUTH-001 §5.6, T-23).
+ *
+ * No expone hashes de sesión, CSRF, IP ni tokens criptográficos.
+ */
+export interface SessionSummaryDto {
+  /** Identificador público UUID de la sesión */
+  id: string;
+  /** Método de autenticación utilizado ("password" | "google" | "facebook") */
+  authMethod: "password" | "google" | "facebook";
+  /** Fecha ISO de verificación de segundo factor, o null si no se utilizó */
+  mfaAt: string | null;
+  /** Fecha ISO de creación de la sesión */
+  createdAt: string;
+  /** Fecha ISO del último acceso registrado */
+  lastSeenAt: string;
+  /** Fecha ISO de vencimiento de la sesión */
+  expiresAt: string;
+  /** Indica si corresponde a la sesión desde la que se realiza la consulta */
+  isCurrent: boolean;
+}
+
+/**
  * Objeto de respuesta para solicitudes de recuperación de contraseña.
  */
 export interface ForgotPasswordResponseData {
@@ -2104,6 +2126,102 @@ export class AuthService {
     const timestamp =
       typeof reauthAt === "string" ? new Date(reauthAt).getTime() : reauthAt.getTime();
     return Date.now() - timestamp <= maxAgeSeconds * 1000;
+  }
+
+  /**
+   * Lista todas las sesiones activas y vigentes del usuario con formato sanitizado DTO (AUTH-001 §5.6, T-23).
+   *
+   * Garantiza que el `sid_hash`, `csrf_hash`, `ip_hash` y tokens sensibles jamás sean expuestos.
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @param currentSessionId - Identificador opcional de la sesión en curso para marcar `isCurrent`.
+   * @returns Lista de entidades {@link SessionSummaryDto}.
+   */
+  async listUserSessions(
+    userId: string,
+    currentSessionId?: string,
+  ): Promise<Result<SessionSummaryDto[], "DB_ERROR">> {
+    try {
+      const activeSessions = await this.authRepo.listActiveSessionsByUserId(userId);
+
+      const dtoList: SessionSummaryDto[] = activeSessions.map((s) => ({
+        id: s.id,
+        authMethod: s.authMethod as "password" | "google" | "facebook",
+        mfaAt: s.mfaAt ? s.mfaAt.toISOString() : null,
+        createdAt: s.createdAt.toISOString(),
+        lastSeenAt: s.lastSeenAt.toISOString(),
+        expiresAt: s.expiresAt.toISOString(),
+        isCurrent: Boolean(currentSessionId && s.id === currentSessionId),
+      }));
+
+      return ok(dtoList);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.listUserSessions Error] ${msg}`, error, { userId });
+      return err("Error interno al listar sesiones de usuario.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Revoca una sesión específica por su ID público UUID verificando pertenencia al usuario (AUTH-001 §5.6, T-23).
+   *
+   * Invalida el registro en base de datos y la clave correspondiente en la caché de Redis.
+   *
+   * @param userId - Identificador UUID del usuario autenticado.
+   * @param sessionId - Identificador UUID público de la sesión a revocar.
+   * @returns Un {@link Result} con confirmación o error.
+   */
+  async revokeSessionById(
+    userId: string,
+    sessionId: string,
+  ): Promise<Result<{ message: string }, "NOT_FOUND" | "DB_ERROR">> {
+    try {
+      const session = await this.authRepo.findSessionById(sessionId);
+      if (!session || session.userId !== userId || session.revokedAt !== null) {
+        return err("Sesión no encontrada o ya revocada.", "NOT_FOUND");
+      }
+
+      await this.authRepo.revokeSession(sessionId, "user_revoked");
+      await this.sessionCache.deleteSession(session.sidHash.toString("hex"), userId);
+
+      appLogger.info("[AuthService.revokeSessionById] Sesión revocada por el usuario", {
+        userId,
+        sessionId,
+      });
+
+      return ok({ message: "Sesión revocada exitosamente." });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.revokeSessionById Error] ${msg}`, error, {
+        userId,
+        sessionId,
+      });
+      return err("Error interno al revocar la sesión.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Ejecuta la purga de sesiones vencidas o revocadas en base de datos (AUTH-001 §5.6, T-23).
+   *
+   * No elimina sesiones vigentes (revoked_at IS NULL y expires_at > now y absolute_expires_at > now).
+   *
+   * @param now - Fecha de corte actual.
+   * @returns Cantidad de sesiones purgadas.
+   */
+  async purgeExpiredSessions(
+    now: Date = new Date(),
+  ): Promise<Result<{ purgedCount: number }, "DB_ERROR">> {
+    try {
+      const purgedCount = await this.authRepo.purgeExpiredSessions(now);
+      appLogger.info("[AuthService.purgeExpiredSessions] Purga de sesiones ejecutada exitosamente", {
+        purgedCount,
+      });
+      return ok({ purgedCount });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.purgeExpiredSessions Error] ${msg}`, error);
+      return err("Error interno al purgar sesiones.", "DB_ERROR");
+    }
   }
 
   /**
