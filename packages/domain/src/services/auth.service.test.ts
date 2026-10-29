@@ -38,6 +38,11 @@ import {
 } from "../auth/session-cache";
 import { MockRedisClient, createMockRedisClient } from "../redis/mock-redis";
 import { setRedisClientForTesting } from "../redis/client";
+import {
+  signChatwootJwt,
+  verifyChatwootJwt,
+  type ChatwootSsoClaims,
+} from "../auth/chatwoot-sso";
 
 function createBaseMockAuthRepo(): IAuthRepository {
   return {
@@ -4777,19 +4782,24 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
         createState: vi.fn(),
         consumeState: vi.fn(),
       } as unknown as OAuthStateManager;
-      mockRedis = createMockRedisClient();
-      setRedisClientForTesting(mockRedis);
+      mockRedis = new MockRedisClient();
+      setRedisClientForTesting(mockRedis as unknown as any);
       sessionCache = new SessionCacheManager();
 
       authService = new AuthService(
         mockAuthRepo,
         mockMailer,
         mockGoogleOidcClient,
-        mockFacebookOAuthClient,
         mockStateManager,
+        mockFacebookOAuthClient,
+        undefined,
         undefined,
         sessionCache,
       );
+    });
+
+    afterEach(() => {
+      setRedisClientForTesting(null);
     });
 
     describe("bindSessionToClient", () => {
@@ -5086,5 +5096,332 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
       });
     });
   });
+
+  describe("AUTH-001 T-25 · SSO a Chatwoot (issueChatwootSso, verifyAndConsumeChatwootSsoToken)", () => {
+    let mockAuthRepo: IAuthRepository;
+    let mockMailer: IAuthMailer;
+    let mockGoogleOidcClient: IGoogleOidcClient;
+    let mockFacebookOAuthClient: IFacebookOAuthClient;
+    let mockStateManager: OAuthStateManager;
+    let mockRedis: MockRedisClient;
+    let sessionCache: SessionCacheManager;
+    let authService: AuthService;
+
+    const testSecret = "super-secret-test-chatwoot-sso-key-32b";
+    const targetClientId = "client-uuid-mocter-chatwoot";
+
+    const baseUser: User = {
+      id: "uuid-user-chatwoot-1",
+      email: "agente@mocter.co",
+      displayName: "Agente Mocter",
+      avatarUrl: null,
+      passwordHash: "some-argon2id-hash",
+      passwordUpdatedAt: new Date(),
+      identityLocation: "router",
+      activeClientId: targetClientId,
+      emailVerifiedAt: new Date(),
+      status: "active",
+      totpEnabledAt: null,
+      totpSecretCiphertext: null,
+      totpKeyId: null,
+      totpPendingSecretCiphertext: null,
+      totpPendingKeyId: null,
+      totpPendingCreatedAt: null,
+      totpLastUsedStep: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "system",
+      updatedBy: "system",
+    };
+
+    beforeEach(() => {
+      mockAuthRepo = createBaseMockAuthRepo();
+      mockMailer = {
+        sendVerificationEmail: vi.fn(),
+        sendPasswordResetEmail: vi.fn(),
+        sendPasswordSetupEmail: vi.fn(),
+        sendAccountAlreadyExistsEmail: vi.fn(),
+      };
+      mockGoogleOidcClient = {
+        discover: vi.fn(),
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForTokens: vi.fn(),
+        verifyIdToken: vi.fn(),
+      };
+      mockFacebookOAuthClient = {
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForAccessToken: vi.fn(),
+        fetchUserProfile: vi.fn(),
+      };
+      mockStateManager = {
+        createState: vi.fn(),
+        consumeState: vi.fn(),
+      } as unknown as OAuthStateManager;
+      mockRedis = new MockRedisClient();
+      setRedisClientForTesting(mockRedis as unknown as any);
+      sessionCache = new SessionCacheManager();
+
+      authService = new AuthService(
+        mockAuthRepo,
+        mockMailer,
+        mockGoogleOidcClient,
+        mockStateManager,
+        mockFacebookOAuthClient,
+        undefined,
+        undefined,
+        sessionCache,
+      );
+    });
+
+    afterEach(() => {
+      setRedisClientForTesting(null);
+    });
+
+    describe("issueChatwootSso", () => {
+      it("falla con SSO_SECRET_MISSING si no se provee secret ni existe en process.env", async () => {
+        const originalSecret = process.env.CHATWOOT_SSO_SECRET;
+        delete process.env.CHATWOOT_SSO_SECRET;
+
+        try {
+          const result = await authService.issueChatwootSso(baseUser.id, targetClientId);
+          expect(result.ok).toBe(false);
+          if (!result.ok) {
+            expect(result.code).toBe("SSO_SECRET_MISSING");
+          }
+        } finally {
+          if (originalSecret !== undefined) {
+            process.env.CHATWOOT_SSO_SECRET = originalSecret;
+          }
+        }
+      });
+
+      it("falla con USER_NOT_FOUND si el usuario no existe", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(null);
+
+        const result = await authService.issueChatwootSso(
+          baseUser.id,
+          targetClientId,
+          { secret: testSecret },
+        );
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("USER_NOT_FOUND");
+        }
+      });
+
+      it("falla con ACCOUNT_NOT_ACTIVE si la cuenta del usuario está deshabilitada", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce({
+          ...baseUser,
+          status: "disabled",
+        });
+
+        const result = await authService.issueChatwootSso(
+          baseUser.id,
+          targetClientId,
+          { secret: testSecret },
+        );
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("ACCOUNT_NOT_ACTIVE");
+        }
+      });
+
+      it("falla con INVALID_CLIENT_MEMBERSHIP si el usuario no tiene activeClientId", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce({
+          ...baseUser,
+          activeClientId: null,
+        });
+
+        const result = await authService.issueChatwootSso(
+          baseUser.id,
+          targetClientId,
+          { secret: testSecret },
+        );
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_CLIENT_MEMBERSHIP");
+        }
+      });
+
+      it("falla con INVALID_CLIENT_MEMBERSHIP si el usuario pertenece a otro inquilino (aislamiento multi-inquilino)", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce({
+          ...baseUser,
+          activeClientId: "otro-cliente-ajeno",
+        });
+
+        const result = await authService.issueChatwootSso(
+          baseUser.id,
+          targetClientId,
+          { secret: testSecret },
+        );
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_CLIENT_MEMBERSHIP");
+        }
+      });
+
+      it("emite exitosamente un JWT HS256 con claims correctas, TTL 5 min y jti único", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(baseUser);
+
+        const result = await authService.issueChatwootSso(
+          baseUser.id,
+          targetClientId,
+          { secret: testSecret },
+        );
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.token).toBeTypeOf("string");
+          expect(result.data.token.split(".")).toHaveLength(3);
+          expect(result.data.claims.email).toBe(baseUser.email);
+          expect(result.data.claims.name).toBe(baseUser.displayName);
+          expect(result.data.claims.identifier).toBe(baseUser.id);
+          expect(result.data.claims.jti).toBeDefined();
+          expect(result.data.claims.exp - result.data.claims.iat).toBe(300);
+
+          // Verificación criptográfica con la utilidad
+          const verified = verifyChatwootJwt(result.data.token, testSecret);
+          expect(verified.identifier).toBe(baseUser.id);
+          expect(verified.email).toBe(baseUser.email);
+        }
+      });
+
+      it("soporta el paso de parámetros como objeto IssueChatwootSsoParams", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(baseUser);
+
+        const result = await authService.issueChatwootSso({
+          userId: baseUser.id,
+          clientId: targetClientId,
+          secret: testSecret,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.claims.email).toBe(baseUser.email);
+        }
+      });
+
+      it("retorna DB_ERROR si la base de datos lanza una excepción", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockRejectedValueOnce(
+          new Error("DB connection failure"),
+        );
+
+        const result = await authService.issueChatwootSso(
+          baseUser.id,
+          targetClientId,
+          { secret: testSecret },
+        );
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("DB_ERROR");
+        }
+      });
+    });
+
+    describe("verifyAndConsumeChatwootSsoToken", () => {
+      it("falla con SSO_SECRET_MISSING si no se provee secret ni existe en process.env", async () => {
+        const originalSecret = process.env.CHATWOOT_SSO_SECRET;
+        delete process.env.CHATWOOT_SSO_SECRET;
+
+        try {
+          const result = await authService.verifyAndConsumeChatwootSsoToken("any.jwt.token");
+          expect(result.ok).toBe(false);
+          if (!result.ok) {
+            expect(result.code).toBe("SSO_SECRET_MISSING");
+          }
+        } finally {
+          if (originalSecret !== undefined) {
+            process.env.CHATWOOT_SSO_SECRET = originalSecret;
+          }
+        }
+      });
+
+      it("falla con INVALID_TOKEN si el token tiene firma incorrecta o está adulterado", async () => {
+        const validToken = signChatwootJwt(
+          {
+            email: baseUser.email,
+            name: baseUser.displayName!,
+            identifier: baseUser.id,
+            jti: "test-jti-1",
+            iat: Math.floor(Date.now() / 1000),
+            exp: Math.floor(Date.now() / 1000) + 300,
+          },
+          testSecret,
+        );
+
+        const result = await authService.verifyAndConsumeChatwootSsoToken(validToken, {
+          secret: "wrong-secret-key-that-will-fail",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_TOKEN");
+        }
+      });
+
+      it("falla con TOKEN_EXPIRED si el token superó su tiempo de expiración", async () => {
+        const expiredToken = signChatwootJwt(
+          {
+            email: baseUser.email,
+            name: baseUser.displayName!,
+            identifier: baseUser.id,
+            jti: "test-jti-expired",
+            iat: Math.floor(Date.now() / 1000) - 400,
+            exp: Math.floor(Date.now() / 1000) - 100,
+          },
+          testSecret,
+        );
+
+        const result = await authService.verifyAndConsumeChatwootSsoToken(expiredToken, {
+          secret: testSecret,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("TOKEN_EXPIRED");
+        }
+      });
+
+      it("permite el primer consumo del token y rechaza el segundo intento con TOKEN_ALREADY_USED", async () => {
+        const validToken = signChatwootJwt(
+          {
+            email: baseUser.email,
+            name: baseUser.displayName!,
+            identifier: baseUser.id,
+            jti: "single-use-jti-12345",
+            iat: Math.floor(Date.now() / 1000),
+            exp: Math.floor(Date.now() / 1000) + 300,
+          },
+          testSecret,
+        );
+
+        // 1. Primer consumo: exitoso
+        const firstResult = await authService.verifyAndConsumeChatwootSsoToken(validToken, {
+          secret: testSecret,
+        });
+        expect(firstResult.ok).toBe(true);
+        if (firstResult.ok) {
+          expect(firstResult.data.claims.email).toBe(baseUser.email);
+          expect(firstResult.data.claims.identifier).toBe(baseUser.id);
+        }
+
+        // 2. Segundo consumo con el mismo token: debe fallar con TOKEN_ALREADY_USED
+        const secondResult = await authService.verifyAndConsumeChatwootSsoToken(validToken, {
+          secret: testSecret,
+        });
+        expect(secondResult.ok).toBe(false);
+        if (!secondResult.ok) {
+          expect(secondResult.code).toBe("TOKEN_ALREADY_USED");
+          expect(secondResult.error).toContain("ya ha sido utilizado");
+        }
+      });
+    });
+  });
+
 
 

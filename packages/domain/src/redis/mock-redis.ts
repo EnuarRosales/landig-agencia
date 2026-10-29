@@ -170,17 +170,31 @@ export class MockRedisClient extends EventEmitter {
   }
 
   /**
-   * Almacena una clave con valor y opción de expiración TTL.
+   * Almacena una clave con valor y opción de expiración TTL y/o condición NX.
    */
-  async set(key: string, value: string, ...args: unknown[]): Promise<string> {
+  async set(key: string, value: string, ...args: unknown[]): Promise<string | null> {
     this.checkFailure();
     let ttlSeconds: number | null = null;
+    let nx = false;
+
     for (let i = 0; i < args.length; i++) {
       if (typeof args[i] === "string" && (args[i] as string).toUpperCase() === "EX") {
         ttlSeconds = Number(args[i + 1]);
       }
+      if (typeof args[i] === "string" && (args[i] as string).toUpperCase() === "NX") {
+        nx = true;
+      }
     }
-    const expiresAt = ttlSeconds !== null ? Date.now() + ttlSeconds * 1000 : null;
+
+    const now = Date.now();
+    if (nx && this.store.has(key)) {
+      const existing = this.store.get(key);
+      if (existing && (existing.expiresAt === null || existing.expiresAt > now)) {
+        return null;
+      }
+    }
+
+    const expiresAt = ttlSeconds !== null ? now + ttlSeconds * 1000 : null;
     this.store.set(key, { value, expiresAt });
     return "OK";
   }

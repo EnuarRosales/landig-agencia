@@ -36,6 +36,7 @@ export * from "./auth/totp-crypto";
 export * from "./auth/totp";
 export * from "./auth/mfa-challenge";
 export * from "./auth/session-cache";
+export * from "./auth/chatwoot-sso";
 export * from "./redis/client";
 export * from "./redis/mock-redis";
 export * from "./utils/env";

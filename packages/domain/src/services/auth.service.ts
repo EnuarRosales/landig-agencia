@@ -17,6 +17,7 @@ import {
   verifyDummyPassword,
   needsRehash,
 } from "../auth/password-hasher";
+import { randomUUID } from "node:crypto";
 import {
   generateSecureToken,
   hashToken,
@@ -25,6 +26,14 @@ import {
   generateCsrfToken,
   compareHashesConstantTime,
 } from "../auth/tokens";
+import {
+  type ChatwootSsoClaims,
+  type IssueChatwootSsoParams,
+  type ChatwootSsoErrorCode,
+  signChatwootJwt,
+  verifyChatwootJwt,
+  consumeChatwootSsoJti,
+} from "../auth/chatwoot-sso";
 import type { Session, User } from "../db/schemas";
 import type { IAuthRepository } from "../repositories/auth.repository.interface";
 import { defaultAuthRepository } from "../repositories/drizzle-auth.repository";
@@ -2424,6 +2433,160 @@ export class AuthService {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[AuthService.revokeClientSessions Error] ${msg}`, error, { clientId, reason });
       return err("Error interno al revocar las sesiones del inquilino.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Emite un token JWT firmado (HS256) con TTL de 5 minutos para el inicio de sesión único (SSO) en Chatwoot (AUTH-001 §5.10, T-25).
+   *
+   * Reglas estrictas:
+   * 1. Valida que el usuario exista y su cuenta esté en estado `active`.
+   * 2. Valida que el `clientId` solicitado coincida exactamente con la membresía activa del usuario (`user.activeClientId`).
+   * 3. Utiliza el secreto `CHATWOOT_SSO_SECRET` compartido con la instancia de Chatwoot.
+   * 4. Incluye claims requeridas: `email`, `name`, `identifier` (el `userId`), `iat`, `exp` (exactamente 5 min), y `jti` para uso único.
+   * 5. Principio de cero persistencia: el token jamás se guarda en base de datos ni se escribe en logs.
+   *
+   * @param userIdOrParams - Identificador UUID del usuario, o un objeto {@link IssueChatwootSsoParams}.
+   * @param maybeClientId - Identificador UUID del cliente/inquilino.
+   * @param options - Opciones opcionales como el secreto a utilizar.
+   * @returns Un {@link Result} con el token generado y su fecha de expiración.
+   */
+  async issueChatwootSso(
+    userIdOrParams: string | IssueChatwootSsoParams,
+    maybeClientId?: string,
+    options?: { secret?: string },
+  ): Promise<Result<{ token: string; expiresAt: Date; claims: ChatwootSsoClaims }, ChatwootSsoErrorCode>> {
+    try {
+      let userId: string;
+      let clientId: string;
+      let secret: string | undefined;
+
+      if (typeof userIdOrParams === "string") {
+        userId = userIdOrParams;
+        clientId = maybeClientId!;
+        secret = options?.secret;
+      } else {
+        userId = userIdOrParams.userId;
+        clientId = userIdOrParams.clientId;
+        secret = userIdOrParams.secret ?? options?.secret;
+      }
+
+      if (!secret) {
+        secret = process.env.CHATWOOT_SSO_SECRET;
+      }
+
+      if (!secret) {
+        appLogger.error("[AuthService.issueChatwootSso] Secreto CHATWOOT_SSO_SECRET no configurado");
+        return err("Secreto de SSO de Chatwoot no configurado.", "SSO_SECRET_MISSING");
+      }
+
+      // 1. Resolver usuario
+      const user = await this.authRepo.findUserById(userId);
+      if (!user) {
+        return err("Usuario no encontrado.", "USER_NOT_FOUND");
+      }
+
+      if (user.status !== "active") {
+        return err("La cuenta del usuario no se encuentra activa.", "ACCOUNT_NOT_ACTIVE");
+      }
+
+      // 2. Validar que el cliente solicitado coincida con la membresía activa del usuario
+      if (!user.activeClientId || user.activeClientId !== clientId) {
+        return err(
+          "El usuario no posee una membresía activa en el inquilino especificado.",
+          "INVALID_CLIENT_MEMBERSHIP",
+        );
+      }
+
+      // 3. Construir claims según especificación §5.10
+      const nowSec = Math.floor(Date.now() / 1000);
+      const expSec = nowSec + 300; // 5 minutos de vigencia estricta
+      const jti = randomUUID();
+
+      const claims: ChatwootSsoClaims = {
+        email: user.email,
+        name: user.displayName || user.email.split("@")[0] || "Usuario Mocter",
+        identifier: user.id,
+        jti,
+        iat: nowSec,
+        exp: expSec,
+      };
+
+      // 4. Firmar con HS256
+      const token = signChatwootJwt(claims, secret);
+
+      // Cero persistencia y cero logging del token o datos sensibles
+      appLogger.info("[AuthService.issueChatwootSso] Token SSO emitido exitosamente", {
+        userId,
+        clientId,
+        expiresAt: new Date(expSec * 1000).toISOString(),
+      });
+
+      return ok({
+        token,
+        expiresAt: new Date(expSec * 1000),
+        claims,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.issueChatwootSso Error] ${msg}`, error, {
+        userIdOrParams,
+      });
+      return err("Error interno al emitir token SSO.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Verifica la autenticidad, vigencia y condición de un solo uso de un token SSO de Chatwoot (AUTH-001 §5.10, T-25).
+   *
+   * @param token - Token JWT compacto a verificar.
+   * @param options - Opciones opcionales como el secreto.
+   * @returns Un {@link Result} con las claims verificadas o el código de error.
+   */
+  async verifyAndConsumeChatwootSsoToken(
+    token: string,
+    options?: { secret?: string },
+  ): Promise<Result<{ claims: ChatwootSsoClaims }, ChatwootSsoErrorCode>> {
+    try {
+      const secret = options?.secret || process.env.CHATWOOT_SSO_SECRET;
+      if (!secret) {
+        return err("Secreto de SSO de Chatwoot no configurado.", "SSO_SECRET_MISSING");
+      }
+
+      let claims: ChatwootSsoClaims;
+      try {
+        claims = verifyChatwootJwt(token, secret);
+      } catch (jwtError) {
+        const msg = jwtError instanceof Error ? jwtError.message : String(jwtError);
+        if (msg.includes("expirado")) {
+          return err("El token JWT ha expirado.", "TOKEN_EXPIRED");
+        }
+        return err("Firma o formato de token JWT inválido.", "INVALID_TOKEN");
+      }
+
+      // Validar condición de un solo uso si posee jti
+      if (claims.jti) {
+        const isFirstUse = await consumeChatwootSsoJti(claims.jti);
+        if (!isFirstUse) {
+          appLogger.warn(
+            "[AuthService.verifyAndConsumeChatwootSsoToken] Intento de segundo uso de token SSO detectado",
+            {
+              jti: claims.jti,
+              identifier: claims.identifier,
+            },
+          );
+          return err(
+            "El token SSO ya ha sido utilizado (un solo uso permitido).",
+            "TOKEN_ALREADY_USED",
+          );
+        }
+      }
+
+      return ok({ claims });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.verifyAndConsumeChatwootSsoToken Error] ${msg}`, error);
+      return err("Error interno al verificar el token SSO.", "DB_ERROR");
     }
   }
 

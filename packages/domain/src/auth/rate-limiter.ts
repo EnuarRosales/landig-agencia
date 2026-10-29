@@ -83,6 +83,9 @@ export const RATE_LIMIT_RULES = {
   totpChallenge: {
     challenge: { limit: 5, windowSeconds: 5 * 60 },  // 5 intentos en 5 min por challenge (design.md §6.1)
   },
+  chatwootSso: {
+    user: { limit: 30, windowSeconds: 15 * 60 },     // 30 peticiones en 15 min por usuario (design.md §7.3, T-25)
+  },
 } as const;
 
 /**
@@ -994,6 +997,49 @@ export class AuthRateLimiter {
       if (error instanceof RedisUnavailableError) throw error;
       appLogger.error(
         `[AuthRateLimiter.checkTotpChallengeRateLimit] Error en Redis: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+      );
+      throw new RedisUnavailableError();
+    }
+  }
+
+  /**
+   * Evalúa y consume la cuota de solicitudes de tokens SSO a Chatwoot por usuario (AUTH-001 §7.3, T-25).
+   *
+   * Límite: 30 peticiones por ventana de 15 minutos (900 s) por usuario.
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @returns Decisión {@link RateLimitDecision}.
+   * @throws {@link RedisUnavailableError} Si Redis no está disponible (Fail-Closed).
+   */
+  async checkChatwootSsoRateLimit(userId: string): Promise<RateLimitDecision> {
+    const client = getRedisClient();
+    const key = `auth:ratelimit:chatwoot_sso:${userId}`;
+
+    try {
+      const res = (await client.eval(
+        LUA_CONSUME,
+        1,
+        key,
+        String(RATE_LIMIT_RULES.chatwootSso.user.limit),
+        String(RATE_LIMIT_RULES.chatwootSso.user.windowSeconds),
+      )) as [number, number, number];
+
+      const allowed = res[0] === 1;
+      const remaining = Number(res[1]);
+      const ttl = Number(res[2]);
+
+      return {
+        allowed,
+        remaining,
+        resetAt: Date.now() + ttl * 1000,
+        retryAfter: allowed ? 0 : Math.max(1, ttl),
+        blockedBy: allowed ? undefined : "account",
+      };
+    } catch (error) {
+      if (error instanceof RedisUnavailableError) throw error;
+      appLogger.error(
+        `[AuthRateLimiter.checkChatwootSsoRateLimit] Error en Redis: ${error instanceof Error ? error.message : String(error)}`,
         error,
       );
       throw new RedisUnavailableError();
