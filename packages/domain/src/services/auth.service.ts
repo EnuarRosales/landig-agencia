@@ -56,6 +56,10 @@ import {
   MfaChallengeManager,
   mfaChallengeManager as defaultMfaChallengeManager,
 } from "../auth/mfa-challenge";
+import {
+  SessionCacheManager,
+  sessionCacheManager as defaultSessionCacheManager,
+} from "../auth/session-cache";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 
@@ -403,6 +407,7 @@ export class AuthService {
    * @param facebookOAuthClient - Cliente OAuth para interacción con Facebook (por defecto {@link defaultFacebookOAuthClient}).
    * @param totpCrypto - Servicio criptográfico para cifrado de secretos TOTP (por defecto {@link defaultTotpCryptoService}).
    * @param mfaChallengeManager - Gestor de challenges 2FA en Redis (por defecto {@link defaultMfaChallengeManager}).
+   * @param sessionCache - Gestor de caché de sesiones en Redis (por defecto {@link defaultSessionCacheManager}).
    */
   constructor(
     private readonly authRepo: IAuthRepository = defaultAuthRepository,
@@ -412,6 +417,7 @@ export class AuthService {
     private readonly facebookOAuthClient: IFacebookOAuthClient = defaultFacebookOAuthClient,
     private readonly totpCrypto: TotpCryptoService = defaultTotpCryptoService,
     private readonly mfaChallengeManager: MfaChallengeManager = defaultMfaChallengeManager,
+    private readonly sessionCache: SessionCacheManager = defaultSessionCacheManager,
   ) {}
 
   /**
@@ -868,6 +874,9 @@ export class AuthService {
       ipHash,
       userAgentHash,
     });
+
+    // Poblar caché de Redis con TTL de inactividad (AUTH-001 §5.6, T-21)
+    await this.sessionCache.cacheSession(session, sidHash.toString("hex"));
 
     return ok({
       user: {
@@ -1750,6 +1759,10 @@ export class AuthService {
         newCsrfHash,
       );
 
+      // Cachear sesión rotada e invalidar demás sesiones en Redis (AUTH-001 §5.6, T-21)
+      await this.sessionCache.cacheSession(rotatedSession, newSidHash.toString("hex"));
+      await this.sessionCache.deleteAllUserSessions(user.id, newSidHash.toString("hex"));
+
       appLogger.info("[AuthService.changePassword] Contraseña cambiada y sesión rotada", {
         userId: user.id,
       });
@@ -1770,30 +1783,157 @@ export class AuthService {
   }
 
   /**
-   * Valida una sesión activa a partir de su `sid` en claro y opcionalmente verifica el token CSRF (AUTH-001 §5.6).
+   * Valida una sesión activa a partir de su `sid` en claro y opcionalmente verifica el token CSRF (AUTH-001 §5.6, T-21).
+   *
+   * Flujo de ejecución:
+   * 1. Consulta la caché en Redis `auth:session:<sha256(sid)>`.
+   * 2. Si hay acierto en caché:
+   *    - Valida CSRF si se proveyó `csrfToken`.
+   *    - Consulta el usuario en Postgres (la autoridad definitiva). Fail-Closed: si Postgres falla, retorna 503 `DB_ERROR`.
+   *    - Si el usuario está deshabilitado o `activeClientId` no coincide con la sesión, revoca la sesión y retorna `UNAUTHORIZED`.
+   *    - Si han pasado >= 60s desde `last_seen_at`, actualiza `last_seen_at` y extiende `expires_at = min(now + 30m, absolute_expires_at)`.
+   *    - Retorna la sesión y el usuario.
+   * 3. Si no está en caché (o Redis no responde):
+   *    - Consulta la sesión en Postgres por su hash SHA-256.
+   *    - Valida revocación y vencimiento por inactividad / absoluto.
+   *    - Valida CSRF y estado del usuario en Postgres.
+   *    - Si han pasado >= 60s, actualiza actividad y extiende vencimiento.
+   *    - Repuebla la caché de Redis con TTL dinámico.
+   *    - Retorna la sesión y el usuario.
    *
    * @param sid - Identificador de sesión en claro extraído de la cookie HTTP.
    * @param csrfToken - Token CSRF en claro provisto en el encabezado `x-csrf-token` (opcional).
-   * @returns Un {@link Result} con la entidad {@link Session} activa o un error tipado ("UNAUTHORIZED" | "FORBIDDEN" | "DB_ERROR").
+   * @returns Un {@link Result} con la sesión activa y usuario, o un error tipado ("UNAUTHORIZED" | "FORBIDDEN" | "DB_ERROR").
    */
   async validateSession(
     sid: string,
     csrfToken?: string,
-  ): Promise<Result<{ session: Session }, "UNAUTHORIZED" | "FORBIDDEN" | "DB_ERROR">> {
+  ): Promise<Result<{ session: Session; user?: User }, "UNAUTHORIZED" | "FORBIDDEN" | "DB_ERROR">> {
     if (!sid) {
       return err("Identificador de sesión ausente.", "UNAUTHORIZED");
     }
 
     try {
       const sidHash = hashToken(sid);
-      const session = await this.authRepo.findSessionBySidHash(sidHash);
+      const sidHashHex = sidHash.toString("hex");
+
+      // 1. Consultar la caché en Redis (AUTH-001 §5.6)
+      const cached = await this.sessionCache.getCachedSession(sidHashHex);
+
+      if (cached) {
+        // Validar CSRF si fue provisto
+        if (csrfToken) {
+          const csrfHash = hashToken(csrfToken);
+          const cachedCsrfHash = Buffer.from(cached.csrfHashHex, "hex");
+          if (!compareHashesConstantTime(csrfHash, cachedCsrfHash)) {
+            return err("Token CSRF inválido.", "FORBIDDEN");
+          }
+        }
+
+        // Autoridad en Postgres: resolver usuario (Fail-Closed)
+        let user: User | null = null;
+        try {
+          user = await this.authRepo.findUserById(cached.userId);
+        } catch (pgError) {
+          appLogger.error(
+            `[AuthService.validateSession Postgres Error] ${pgError instanceof Error ? pgError.message : String(pgError)}`,
+            pgError,
+          );
+          return err("Error interno al validar la sesión.", "DB_ERROR");
+        }
+
+        if (!user || user.status === "disabled") {
+          await this.revokeSession(sid, "account_disabled");
+          return err("Sesión no encontrada o revocada.", "UNAUTHORIZED");
+        }
+
+        if (user.activeClientId !== cached.clientId) {
+          await this.revokeSession(sid, "client_id_mismatch");
+          return err("Sesión no encontrada o revocada.", "UNAUTHORIZED");
+        }
+
+        // Ventana deslizante de inactividad (touchSession cada >= 60s)
+        const now = new Date();
+        const lastSeenAt = new Date(cached.lastSeenAt);
+        const absoluteExpiresAt = new Date(cached.absoluteExpiresAt);
+        let currentExpiresAt = new Date(cached.expiresAt);
+        let currentLastSeenAt = lastSeenAt;
+
+        if (now.getTime() - lastSeenAt.getTime() >= 60 * 1000) {
+          const potentialExpiresAt = new Date(now.getTime() + 30 * 60 * 1000);
+          currentExpiresAt =
+            potentialExpiresAt > absoluteExpiresAt
+              ? absoluteExpiresAt
+              : potentialExpiresAt;
+          currentLastSeenAt = now;
+
+          try {
+            await this.authRepo.touchSession(
+              cached.id,
+              currentLastSeenAt,
+              currentExpiresAt,
+            );
+          } catch (touchError) {
+            appLogger.warn(
+              `[AuthService.validateSession] Error al actualizar touchSession en Postgres: ${touchError instanceof Error ? touchError.message : String(touchError)}`,
+            );
+          }
+
+          await this.sessionCache.touchSession(
+            sidHashHex,
+            currentLastSeenAt,
+            currentExpiresAt,
+          );
+        }
+
+        const session: Session = {
+          id: cached.id,
+          userId: cached.userId,
+          clientId: cached.clientId,
+          routingVersion: cached.routingVersion,
+          sidHash,
+          csrfHash: Buffer.from(cached.csrfHashHex, "hex"),
+          authMethod: cached.authMethod as "password" | "google" | "facebook",
+          mfaAt: cached.mfaAt ? new Date(cached.mfaAt) : null,
+          reauthAt: cached.reauthAt ? new Date(cached.reauthAt) : null,
+          lastSeenAt: currentLastSeenAt,
+          expiresAt: currentExpiresAt,
+          absoluteExpiresAt,
+          revokedAt: null,
+          revokedReason: null,
+          ipHash: null,
+          userAgentHash: null,
+          createdAt: lastSeenAt,
+          updatedAt: currentLastSeenAt,
+          createdBy: cached.userId,
+          updatedBy: cached.userId,
+        };
+
+        return ok({ session, user });
+      }
+
+      // 2. Cache miss o fallo de Redis: consultar Postgres
+      let session: Session | null = null;
+      try {
+        session = await this.authRepo.findSessionBySidHash(sidHash);
+      } catch (pgError) {
+        appLogger.error(
+          `[AuthService.validateSession Postgres Error] ${pgError instanceof Error ? pgError.message : String(pgError)}`,
+          pgError,
+        );
+        return err("Error interno al validar la sesión.", "DB_ERROR");
+      }
 
       if (!session) {
         return err("Sesión no encontrada o revocada.", "UNAUTHORIZED");
       }
 
       const now = new Date();
-      if (session.revokedAt !== null || session.expiresAt < now) {
+      if (
+        session.revokedAt !== null ||
+        session.expiresAt <= now ||
+        session.absoluteExpiresAt <= now
+      ) {
         return err("Sesión expirada o revocada.", "UNAUTHORIZED");
       }
 
@@ -1804,12 +1944,166 @@ export class AuthService {
         }
       }
 
-      return ok({ session });
+      let user: User | null = null;
+      try {
+        user = await this.authRepo.findUserById(session.userId);
+      } catch (pgError) {
+        appLogger.error(
+          `[AuthService.validateSession Postgres Error] ${pgError instanceof Error ? pgError.message : String(pgError)}`,
+          pgError,
+        );
+        return err("Error interno al validar la sesión.", "DB_ERROR");
+      }
+
+      if (!user || user.status === "disabled") {
+        await this.revokeSession(sid, "account_disabled");
+        return err("Sesión no encontrada o revocada.", "UNAUTHORIZED");
+      }
+
+      if (user.activeClientId !== session.clientId) {
+        await this.revokeSession(sid, "client_id_mismatch");
+        return err("Sesión no encontrada o revocada.", "UNAUTHORIZED");
+      }
+
+      let currentExpiresAt = session.expiresAt;
+      let currentLastSeenAt = session.lastSeenAt;
+
+      if (now.getTime() - session.lastSeenAt.getTime() >= 60 * 1000) {
+        const potentialExpiresAt = new Date(now.getTime() + 30 * 60 * 1000);
+        currentExpiresAt =
+          potentialExpiresAt > session.absoluteExpiresAt
+            ? session.absoluteExpiresAt
+            : potentialExpiresAt;
+        currentLastSeenAt = now;
+
+        try {
+          await this.authRepo.touchSession(
+            session.id,
+            currentLastSeenAt,
+            currentExpiresAt,
+          );
+        } catch (touchError) {
+          appLogger.warn(
+            `[AuthService.validateSession] Error al actualizar touchSession en Postgres: ${touchError instanceof Error ? touchError.message : String(touchError)}`,
+          );
+        }
+
+        session.lastSeenAt = currentLastSeenAt;
+        session.expiresAt = currentExpiresAt;
+      }
+
+      // Repoblar caché en Redis con TTL de inactividad
+      await this.sessionCache.cacheSession(session, sidHashHex);
+
+      return ok({ session, user });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[AuthService.validateSession Error] ${msg}`, error);
       return err("Error interno al validar la sesión.", "DB_ERROR");
     }
+  }
+
+  /**
+   * Revoca una sesión por su `sid` en claro e invalida su caché en Redis (AUTH-001 §5.6, §6.4).
+   *
+   * @param sid - Identificador opaco de sesión en claro extraído de la cookie.
+   * @param reason - Motivo descriptivo de la revocación.
+   * @returns Un {@link Result} con confirmación o error de persistencia.
+   */
+  async revokeSession(
+    sid: string,
+    reason: string,
+  ): Promise<Result<{ message: string }, "DB_ERROR">> {
+    try {
+      const sidHash = hashToken(sid);
+      const sidHashHex = sidHash.toString("hex");
+
+      const cached = await this.sessionCache.getCachedSession(sidHashHex);
+      let sessionId = cached?.id;
+      let userId = cached?.userId;
+
+      if (!sessionId) {
+        const dbSession = await this.authRepo.findSessionBySidHash(sidHash);
+        if (dbSession) {
+          sessionId = dbSession.id;
+          userId = dbSession.userId;
+        }
+      }
+
+      if (sessionId) {
+        await this.authRepo.revokeSession(sessionId, reason);
+      }
+
+      await this.sessionCache.deleteSession(sidHashHex, userId);
+
+      appLogger.info("[AuthService.revokeSession] Sesión revocada exitosamente", {
+        sessionId,
+        userId,
+        reason,
+      });
+
+      return ok({ message: "Sesión revocada exitosamente." });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.revokeSession Error] ${msg}`, error);
+      return err("Error interno al revocar la sesión.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Revoca todas las sesiones activas de un usuario en Postgres y Redis (AUTH-001 §5.6, §6.4).
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @param reason - Motivo descriptivo de la revocación.
+   * @param exceptSid - Identificador opcional de sesión en claro que no debe ser revocada.
+   * @returns Un {@link Result} con confirmación o error de persistencia.
+   */
+  async revokeUserSessions(
+    userId: string,
+    reason: string,
+    exceptSid?: string,
+  ): Promise<Result<{ message: string }, "DB_ERROR">> {
+    try {
+      let exceptSessionId: string | undefined = undefined;
+      let exceptSidHashHex: string | undefined = undefined;
+
+      if (exceptSid) {
+        const exceptHash = hashToken(exceptSid);
+        exceptSidHashHex = exceptHash.toString("hex");
+        const exceptSession = await this.authRepo.findSessionBySidHash(exceptHash);
+        exceptSessionId = exceptSession?.id;
+      }
+
+      await this.authRepo.revokeAllUserSessions(userId, reason, exceptSessionId);
+      await this.sessionCache.deleteAllUserSessions(userId, exceptSidHashHex);
+
+      appLogger.info("[AuthService.revokeUserSessions] Sesiones de usuario revocadas", {
+        userId,
+        reason,
+        exceptSessionId,
+      });
+
+      return ok({ message: "Sesiones de usuario revocadas exitosamente." });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.revokeUserSessions Error] ${msg}`, error);
+      return err("Error interno al revocar las sesiones del usuario.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Comprueba si la marca de reautenticación `reauth_at` es válida dentro de una ventana de tiempo (AUTH-001 §5.5, §5.6, T-21).
+   *
+   * Por defecto, la ventana para operaciones sensibles (cambio de contraseña, enrolar 2FA, etc.) es de 5 minutos (300 segundos).
+   *
+   * @param reauthAt - Marca de tiempo de última reautenticación explícita.
+   * @param maxAgeSeconds - Tiempo de vigencia permitido en segundos (por defecto 300 = 5 minutos).
+   * @returns `true` si la reautenticación sigue vigente, `false` en caso contrario.
+   */
+  isReauthValid(reauthAt: Date | string, maxAgeSeconds = 300): boolean {
+    const timestamp =
+      typeof reauthAt === "string" ? new Date(reauthAt).getTime() : reauthAt.getTime();
+    return Date.now() - timestamp <= maxAgeSeconds * 1000;
   }
 
   /**
@@ -2003,6 +2297,10 @@ export class AuthService {
         { mfaAt: now, reauthAt: now },
       );
 
+      // Cachear sesión rotada e invalidar demás sesiones en Redis (AUTH-001 §5.6, T-21)
+      await this.sessionCache.cacheSession(rotatedSession, newSidHash.toString("hex"));
+      await this.sessionCache.deleteAllUserSessions(user.id, newSidHash.toString("hex"));
+
       appLogger.info("[AuthService.confirm2fa] 2FA activado y sesión rotada exitosamente", {
         userId: user.id,
       });
@@ -2124,6 +2422,10 @@ export class AuthService {
         newCsrfHash,
         { mfaAt: null, reauthAt: new Date() },
       );
+
+      // Cachear sesión rotada e invalidar demás sesiones en Redis (AUTH-001 §5.6, T-21)
+      await this.sessionCache.cacheSession(rotatedSession, newSidHash.toString("hex"));
+      await this.sessionCache.deleteAllUserSessions(user.id, newSidHash.toString("hex"));
 
       appLogger.info("[AuthService.disable2fa] 2FA desactivado y sesión rotada exitosamente", {
         userId: user.id,
@@ -2283,6 +2585,9 @@ export class AuthService {
         ipHash,
         userAgentHash,
       });
+
+      // Poblar caché de Redis con TTL de inactividad (AUTH-001 §5.6, T-21)
+      await this.sessionCache.cacheSession(session, sidHash.toString("hex"));
 
       appLogger.info(
         "[AuthService.verify2faChallenge] Desafío 2FA verificado y sesión emitida exitosamente",

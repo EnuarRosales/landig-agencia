@@ -15,6 +15,7 @@ interface MockEntry {
  */
 export class MockRedisClient extends EventEmitter {
   private store = new Map<string, MockEntry>();
+  private setStore = new Map<string, Set<string>>();
   private shouldFail = false;
 
   constructor() {
@@ -194,8 +195,70 @@ export class MockRedisClient extends EventEmitter {
       if (this.store.delete(key)) {
         count++;
       }
+      if (this.setStore.delete(key)) {
+        count++;
+      }
     }
     return count;
+  }
+
+  /**
+   * Agrega uno o más miembros a un conjunto (Set) en Redis.
+   */
+  async sadd(key: string, ...members: (string | number)[]): Promise<number> {
+    this.checkFailure();
+    let set = this.setStore.get(key);
+    if (!set) {
+      set = new Set<string>();
+      this.setStore.set(key, set);
+    }
+    let added = 0;
+    for (const m of members) {
+      const str = String(m);
+      if (!set.has(str)) {
+        set.add(str);
+        added++;
+      }
+    }
+    return added;
+  }
+
+  /**
+   * Retorna todos los miembros de un conjunto (Set).
+   */
+  async smembers(key: string): Promise<string[]> {
+    this.checkFailure();
+    const set = this.setStore.get(key);
+    return set ? Array.from(set) : [];
+  }
+
+  /**
+   * Remueve uno o más miembros de un conjunto (Set).
+   */
+  async srem(key: string, ...members: (string | number)[]): Promise<number> {
+    this.checkFailure();
+    const set = this.setStore.get(key);
+    if (!set) return 0;
+    let removed = 0;
+    for (const m of members) {
+      if (set.delete(String(m))) {
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  /**
+   * Establece el tiempo de expiración (TTL) en segundos para una clave.
+   */
+  async expire(key: string, seconds: number): Promise<number> {
+    this.checkFailure();
+    const entry = this.store.get(key);
+    if (entry) {
+      entry.expiresAt = Date.now() + seconds * 1000;
+      return 1;
+    }
+    return this.setStore.has(key) ? 1 : 0;
   }
 
   /**
@@ -218,6 +281,7 @@ export class MockRedisClient extends EventEmitter {
   async flushall(): Promise<string> {
     this.checkFailure();
     this.store.clear();
+    this.setStore.clear();
     return "OK";
   }
 

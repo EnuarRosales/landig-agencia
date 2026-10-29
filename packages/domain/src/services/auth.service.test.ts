@@ -16,7 +16,7 @@ import type {
   Identity,
 } from "../db/schemas";
 import { hashPassword } from "../auth/password-hasher";
-import { hashToken } from "../auth/tokens";
+import { hashToken, generateSessionId, generateCsrfToken } from "../auth/tokens";
 import {
   type IGoogleOidcClient,
   GoogleProviderUnavailableError,
@@ -31,6 +31,11 @@ import type { OAuthStateManager } from "../auth/oauth-state";
 import { TotpCryptoService } from "../auth/totp-crypto";
 import { generateTotpCode } from "../auth/totp";
 import { mfaChallengeManager, buildChallengeRedisKey } from "../auth/mfa-challenge";
+import {
+  SessionCacheManager,
+  buildSessionRedisKey,
+  buildUserSessionsRedisKey,
+} from "../auth/session-cache";
 import { MockRedisClient, createMockRedisClient } from "../redis/mock-redis";
 import { setRedisClientForTesting } from "../redis/client";
 
@@ -64,6 +69,7 @@ function createBaseMockAuthRepo(): IAuthRepository {
     findUsersWithOutdatedTotpKey: vi.fn(),
     countUsersWithTotpKey: vi.fn(),
     updateUserTotpKeys: vi.fn(),
+    touchSession: vi.fn(),
   };
 }
 
@@ -1361,6 +1367,34 @@ describe("AUTH-001 T-11 · Recuperación, establecimiento y cambio de contraseñ
   });
 
   describe("validateSession", () => {
+    const mockUser: User = {
+      id: "uuid-user-1",
+      email: "test@example.com",
+      displayName: "Test User",
+      passwordHash: "some-hash",
+      passwordUpdatedAt: new Date(),
+      avatarUrl: null,
+      identityLocation: "router",
+      activeClientId: null,
+      emailVerifiedAt: new Date(),
+      status: "active",
+      totpEnabledAt: null,
+      totpSecretCiphertext: null,
+      totpKeyId: null,
+      totpPendingSecretCiphertext: null,
+      totpPendingKeyId: null,
+      totpPendingCreatedAt: null,
+      totpLastUsedStep: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "self",
+      updatedBy: "self",
+    };
+
+    beforeEach(() => {
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(mockUser);
+    });
+
     it("valida satisfactoriamente una sesión activa sin CSRF", async () => {
       const mockSession: Session = {
         id: "uuid-session-1",
@@ -3766,6 +3800,627 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
           reauthAt: expect.any(Date),
         }),
       );
+    });
+  });
+
+  describe("AUTH-001 T-21 · Creación, validación y revocación de sesión con caché Redis (SessionCacheManager)", () => {
+    let mockAuthRepo: IAuthRepository;
+    let mockMailer: IAuthMailer;
+    let mockGoogleOidcClient: IGoogleOidcClient;
+    let mockStateManager: OAuthStateManager;
+    let mockFacebookOAuthClient: IFacebookOAuthClient;
+    let totpCrypto: TotpCryptoService;
+    let sessionCache: SessionCacheManager;
+    let mockRedis: MockRedisClient;
+    let authService: AuthService;
+
+    let testUser: User;
+    const testPassword = "SecurePassword123!";
+
+    beforeEach(async () => {
+      mockAuthRepo = createBaseMockAuthRepo();
+      mockMailer = {
+        sendVerificationEmail: vi.fn(),
+        sendPasswordSetupEmail: vi.fn(),
+        sendPasswordResetEmail: vi.fn(),
+        sendAccountAlreadyExistsEmail: vi.fn(),
+      };
+      mockGoogleOidcClient = {
+        discover: vi.fn(),
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForTokens: vi.fn(),
+        verifyIdToken: vi.fn(),
+      };
+      mockFacebookOAuthClient = {
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForAccessToken: vi.fn(),
+        fetchUserProfile: vi.fn(),
+      };
+      mockStateManager = {
+        createState: vi.fn(),
+        consumeState: vi.fn(),
+      } as unknown as OAuthStateManager;
+      totpCrypto = new TotpCryptoService();
+      totpCrypto.registerKey("k1", Buffer.alloc(32, 0x01));
+
+      mockRedis = new MockRedisClient();
+      setRedisClientForTesting(mockRedis as unknown as any);
+      sessionCache = new SessionCacheManager();
+
+      authService = new AuthService(
+        mockAuthRepo,
+        mockMailer,
+        mockGoogleOidcClient,
+        mockStateManager,
+        mockFacebookOAuthClient,
+        totpCrypto,
+        mfaChallengeManager,
+        sessionCache,
+      );
+
+      const passwordHash = await hashPassword(testPassword);
+      testUser = {
+        id: "uuid-user-t21",
+        email: "user.t21@mocter.co",
+        displayName: "T21 User",
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        avatarUrl: null,
+        identityLocation: "router",
+        activeClientId: "client-uuid-t21",
+        emailVerifiedAt: new Date(),
+        status: "active",
+        totpEnabledAt: null,
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(testUser);
+    });
+
+    afterEach(() => {
+      setRedisClientForTesting(null);
+    });
+
+    it("crea sesión en Postgres y puebla la caché en Redis bajo auth:session:<sha256(sid)> y auth:user:sessions:<userId>", async () => {
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValue(testUser);
+      vi.mocked(mockAuthRepo.getClientRoutingVersion).mockResolvedValue(2);
+
+      const createdSession: Session = {
+        id: "session-uuid-1",
+        sidHash: Buffer.alloc(32),
+        csrfHash: Buffer.alloc(32),
+        userId: testUser.id,
+        clientId: testUser.activeClientId,
+        routingVersion: 2,
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: new Date(),
+        lastSeenAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+        revokedAt: null,
+        revokedReason: null,
+        ipHash: null,
+        userAgentHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: testUser.id,
+        updatedBy: testUser.id,
+      };
+      vi.mocked(mockAuthRepo.createSession).mockResolvedValue(createdSession);
+
+      const result = await authService.login({
+        email: testUser.email,
+        password: testPassword,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok || "mfaRequired" in result.data) {
+        throw new Error("Login failed unexpectedly");
+      }
+
+      const sid = result.data.sid;
+      expect(sid).toBeDefined();
+      expect(sid).toHaveLength(43); // 32 bytes en base64url
+
+      // La cookie/sid no contiene clientId ni roles (token opaco)
+      expect(sid).not.toContain(testUser.activeClientId!);
+      expect(sid).not.toContain("tenant_owner");
+
+      const sidHashHex = hashToken(sid).toString("hex");
+
+      // Clave en Redis poblada
+      const redisKey = buildSessionRedisKey(sidHashHex);
+      const rawCached = await mockRedis.get(redisKey);
+      expect(rawCached).not.toBeNull();
+
+      const parsed = JSON.parse(rawCached!);
+      expect(parsed.id).toBe(createdSession.id);
+      expect(parsed.userId).toBe(testUser.id);
+      expect(parsed.clientId).toBe(testUser.activeClientId);
+      expect(parsed.csrfHashHex).toBeDefined();
+
+      // Ni en Redis ni en Postgres se guarda el sid en claro
+      expect(rawCached).not.toContain(sid);
+      expect(mockAuthRepo.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sidHash: expect.any(Buffer),
+        }),
+      );
+      const createSessionCall = vi.mocked(mockAuthRepo.createSession).mock.calls[0][0];
+      expect(createSessionCall.sidHash.toString("hex")).toBe(sidHashHex);
+
+      // Conjunto de usuario auth:user:sessions:<userId> en Redis
+      const userKey = buildUserSessionsRedisKey(testUser.id);
+      const members = await mockRedis.smembers(userKey);
+      expect(members).toContain(sidHashHex);
+    });
+
+    it("valida satisfactoriamente desde caché Redis sin consultar findSessionBySidHash en Postgres pero verificando el usuario", async () => {
+      const sid = generateSessionId();
+      const sidHashHex = hashToken(sid).toString("hex");
+      const csrfToken = generateCsrfToken();
+      const csrfHash = hashToken(csrfToken);
+
+      const now = new Date();
+      const cachedData = {
+        id: "session-uuid-cache",
+        userId: testUser.id,
+        clientId: testUser.activeClientId,
+        routingVersion: 2,
+        csrfHashHex: csrfHash.toString("hex"),
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: now.toISOString(),
+        lastSeenAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+        absoluteExpiresAt: new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString(),
+      };
+
+      await mockRedis.set(
+        buildSessionRedisKey(sidHashHex),
+        JSON.stringify(cachedData),
+        "EX",
+        1800,
+      );
+
+      const result = await authService.validateSession(sid, csrfToken);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.session.id).toBe("session-uuid-cache");
+        expect(result.data.user?.id).toBe(testUser.id);
+      }
+
+      // No consulta sesión a Postgres (cache hit)
+      expect(mockAuthRepo.findSessionBySidHash).not.toHaveBeenCalled();
+      // Consulta obligatoria de usuario en Postgres (autoridad final)
+      expect(mockAuthRepo.findUserById).toHaveBeenCalledWith(testUser.id);
+    });
+
+    it("falla cerrado con DB_ERROR (503) si Postgres cae, aun cuando la sesión esté en caché de Redis", async () => {
+      const sid = generateSessionId();
+      const sidHashHex = hashToken(sid).toString("hex");
+
+      const now = new Date();
+      const cachedData = {
+        id: "session-uuid-cache-2",
+        userId: testUser.id,
+        clientId: testUser.activeClientId,
+        routingVersion: 2,
+        csrfHashHex: hashToken("csrf").toString("hex"),
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: now.toISOString(),
+        lastSeenAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+        absoluteExpiresAt: new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString(),
+      };
+
+      await mockRedis.set(
+        buildSessionRedisKey(sidHashHex),
+        JSON.stringify(cachedData),
+        "EX",
+        1800,
+      );
+
+      // Simular falla de Postgres (Fail-Closed)
+      vi.mocked(mockAuthRepo.findUserById).mockRejectedValueOnce(
+        new Error("Connection terminated unexpectedly"),
+      );
+
+      const result = await authService.validateSession(sid);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("DB_ERROR");
+        expect(result.error).toBe("Error interno al validar la sesión.");
+      }
+    });
+
+    it("revoca la sesión y retorna UNAUTHORIZED si el usuario está deshabilitado en Postgres", async () => {
+      const sid = generateSessionId();
+      const sidHashHex = hashToken(sid).toString("hex");
+
+      const now = new Date();
+      const cachedData = {
+        id: "session-uuid-disabled",
+        userId: testUser.id,
+        clientId: testUser.activeClientId,
+        routingVersion: 2,
+        csrfHashHex: hashToken("csrf").toString("hex"),
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: now.toISOString(),
+        lastSeenAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+        absoluteExpiresAt: new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString(),
+      };
+
+      await mockRedis.set(
+        buildSessionRedisKey(sidHashHex),
+        JSON.stringify(cachedData),
+        "EX",
+        1800,
+      );
+
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce({
+        ...testUser,
+        status: "disabled",
+      });
+
+      const result = await authService.validateSession(sid);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("UNAUTHORIZED");
+      }
+
+      // Sesión revocada en Postgres y eliminada de Redis
+      expect(mockAuthRepo.revokeSession).toHaveBeenCalledWith(
+        "session-uuid-disabled",
+        "account_disabled",
+      );
+      const inRedis = await mockRedis.get(buildSessionRedisKey(sidHashHex));
+      expect(inRedis).toBeNull();
+    });
+
+    it("revoca la sesión y retorna UNAUTHORIZED si el activeClientId de la sesión no coincide con el usuario", async () => {
+      const sid = generateSessionId();
+      const sidHashHex = hashToken(sid).toString("hex");
+
+      const now = new Date();
+      const cachedData = {
+        id: "session-uuid-mismatch",
+        userId: testUser.id,
+        clientId: "old-client-uuid",
+        routingVersion: 2,
+        csrfHashHex: hashToken("csrf").toString("hex"),
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: now.toISOString(),
+        lastSeenAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+        absoluteExpiresAt: new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString(),
+      };
+
+      await mockRedis.set(
+        buildSessionRedisKey(sidHashHex),
+        JSON.stringify(cachedData),
+        "EX",
+        1800,
+      );
+
+      // Usuario tiene otro client_id activo
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce({
+        ...testUser,
+        activeClientId: "new-client-uuid",
+      });
+
+      const result = await authService.validateSession(sid);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("UNAUTHORIZED");
+      }
+
+      expect(mockAuthRepo.revokeSession).toHaveBeenCalledWith(
+        "session-uuid-mismatch",
+        "client_id_mismatch",
+      );
+    });
+
+    it("rechaza con FORBIDDEN si el token CSRF provisto no coincide en tiempo constante", async () => {
+      const sid = generateSessionId();
+      const sidHashHex = hashToken(sid).toString("hex");
+
+      const now = new Date();
+      const cachedData = {
+        id: "session-uuid-csrf",
+        userId: testUser.id,
+        clientId: testUser.activeClientId,
+        routingVersion: 2,
+        csrfHashHex: hashToken("correct-csrf").toString("hex"),
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: now.toISOString(),
+        lastSeenAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+        absoluteExpiresAt: new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString(),
+      };
+
+      await mockRedis.set(
+        buildSessionRedisKey(sidHashHex),
+        JSON.stringify(cachedData),
+        "EX",
+        1800,
+      );
+
+      const result = await authService.validateSession(sid, "wrong-csrf");
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("FORBIDDEN");
+        expect(result.error).toBe("Token CSRF inválido.");
+      }
+    });
+
+    it("actualiza last_seen_at y extiende expires_at si pasaron >= 60 segundos (touchSession)", async () => {
+      const sid = generateSessionId();
+      const sidHashHex = hashToken(sid).toString("hex");
+
+      // lastSeenAt hace 65 segundos
+      const sixtyFiveSecsAgo = new Date(Date.now() - 65 * 1000);
+      const oldExpiresAt = new Date(Date.now() + 25 * 60 * 1000);
+      const absoluteExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+
+      const cachedData = {
+        id: "session-uuid-touch",
+        userId: testUser.id,
+        clientId: testUser.activeClientId,
+        routingVersion: 2,
+        csrfHashHex: hashToken("csrf").toString("hex"),
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: sixtyFiveSecsAgo.toISOString(),
+        lastSeenAt: sixtyFiveSecsAgo.toISOString(),
+        expiresAt: oldExpiresAt.toISOString(),
+        absoluteExpiresAt: absoluteExpiresAt.toISOString(),
+      };
+
+      await mockRedis.set(
+        buildSessionRedisKey(sidHashHex),
+        JSON.stringify(cachedData),
+        "EX",
+        1800,
+      );
+
+      const result = await authService.validateSession(sid);
+
+      expect(result.ok).toBe(true);
+      expect(mockAuthRepo.touchSession).toHaveBeenCalledWith(
+        "session-uuid-touch",
+        expect.any(Date),
+        expect.any(Date),
+      );
+
+      const updatedRaw = await mockRedis.get(buildSessionRedisKey(sidHashHex));
+      const updatedData = JSON.parse(updatedRaw!);
+      expect(new Date(updatedData.lastSeenAt).getTime()).toBeGreaterThan(
+        sixtyFiveSecsAgo.getTime(),
+      );
+      expect(new Date(updatedData.expiresAt).getTime()).toBeGreaterThan(
+        oldExpiresAt.getTime(),
+      );
+    });
+
+    it("si Redis no contiene la sesión (cache miss), consulta Postgres y repuebla la caché", async () => {
+      const sid = generateSessionId();
+      const sidHash = hashToken(sid);
+      const sidHashHex = sidHash.toString("hex");
+
+      const dbSession: Session = {
+        id: "session-uuid-from-db",
+        sidHash,
+        csrfHash: Buffer.alloc(32),
+        userId: testUser.id,
+        clientId: testUser.activeClientId,
+        routingVersion: 2,
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: new Date(),
+        lastSeenAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+        revokedAt: null,
+        revokedReason: null,
+        ipHash: null,
+        userAgentHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: testUser.id,
+        updatedBy: testUser.id,
+      };
+
+      vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValue(dbSession);
+
+      const result = await authService.validateSession(sid);
+
+      expect(result.ok).toBe(true);
+      expect(mockAuthRepo.findSessionBySidHash).toHaveBeenCalledWith(sidHash);
+
+      // Repobló la caché en Redis
+      const cached = await mockRedis.get(buildSessionRedisKey(sidHashHex));
+      expect(cached).not.toBeNull();
+      const parsed = JSON.parse(cached!);
+      expect(parsed.id).toBe("session-uuid-from-db");
+    });
+
+    it("si Redis está caído, la validación contra Postgres continúa con éxito (resiliencia)", async () => {
+      const sid = generateSessionId();
+      const sidHash = hashToken(sid);
+
+      const dbSession: Session = {
+        id: "session-uuid-resilient",
+        sidHash,
+        csrfHash: Buffer.alloc(32),
+        userId: testUser.id,
+        clientId: testUser.activeClientId,
+        routingVersion: 2,
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: new Date(),
+        lastSeenAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        absoluteExpiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+        revokedAt: null,
+        revokedReason: null,
+        ipHash: null,
+        userAgentHash: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: testUser.id,
+        updatedBy: testUser.id,
+      };
+
+      vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValue(dbSession);
+
+      // Simular Redis completamente caído
+      mockRedis.simulateFailure(true);
+
+      const result = await authService.validateSession(sid);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.session.id).toBe("session-uuid-resilient");
+      }
+
+      mockRedis.simulateFailure(false);
+    });
+
+    it("revokeSession revoca en Postgres y elimina la clave de Redis inmediatamente", async () => {
+      const sid = generateSessionId();
+      const sidHashHex = hashToken(sid).toString("hex");
+
+      const now = new Date();
+      const cachedData = {
+        id: "session-uuid-to-revoke",
+        userId: testUser.id,
+        clientId: testUser.activeClientId,
+        routingVersion: 2,
+        csrfHashHex: hashToken("csrf").toString("hex"),
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: now.toISOString(),
+        lastSeenAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+        absoluteExpiresAt: new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString(),
+      };
+
+      await mockRedis.set(
+        buildSessionRedisKey(sidHashHex),
+        JSON.stringify(cachedData),
+        "EX",
+        1800,
+      );
+      await mockRedis.sadd(buildUserSessionsRedisKey(testUser.id), sidHashHex);
+
+      const revResult = await authService.revokeSession(sid, "user_logout");
+
+      expect(revResult.ok).toBe(true);
+      expect(mockAuthRepo.revokeSession).toHaveBeenCalledWith(
+        "session-uuid-to-revoke",
+        "user_logout",
+      );
+
+      // Clave eliminada de Redis y removida del conjunto de usuario
+      const checkRedis = await mockRedis.get(buildSessionRedisKey(sidHashHex));
+      expect(checkRedis).toBeNull();
+      const members = await mockRedis.smembers(buildUserSessionsRedisKey(testUser.id));
+      expect(members).not.toContain(sidHashHex);
+    });
+
+    it("revokeUserSessions revoca todas las sesiones del usuario en Postgres y Redis", async () => {
+      const sid1 = generateSessionId();
+      const sid2 = generateSessionId();
+      const hash1 = hashToken(sid1).toString("hex");
+      const hash2 = hashToken(sid2).toString("hex");
+
+      await mockRedis.set(buildSessionRedisKey(hash1), JSON.stringify({ id: "s1" }), "EX", 1800);
+      await mockRedis.set(buildSessionRedisKey(hash2), JSON.stringify({ id: "s2" }), "EX", 1800);
+      const userKey = buildUserSessionsRedisKey(testUser.id);
+      await mockRedis.sadd(userKey, hash1, hash2);
+
+      const revResult = await authService.revokeUserSessions(
+        testUser.id,
+        "membership_changed",
+      );
+
+      expect(revResult.ok).toBe(true);
+      expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+        testUser.id,
+        "membership_changed",
+        undefined,
+      );
+
+      // Todas las claves borradas
+      expect(await mockRedis.get(buildSessionRedisKey(hash1))).toBeNull();
+      expect(await mockRedis.get(buildSessionRedisKey(hash2))).toBeNull();
+      expect(await mockRedis.get(userKey)).toBeNull();
+    });
+
+    it("revokeUserSessions con exceptSid revoca todas excepto la sesión indicada", async () => {
+      const sid1 = generateSessionId();
+      const sid2 = generateSessionId();
+      const hash1 = hashToken(sid1).toString("hex");
+      const hash2 = hashToken(sid2).toString("hex");
+
+      await mockRedis.set(buildSessionRedisKey(hash1), JSON.stringify({ id: "s1" }), "EX", 1800);
+      await mockRedis.set(buildSessionRedisKey(hash2), JSON.stringify({ id: "s2" }), "EX", 1800);
+      const userKey = buildUserSessionsRedisKey(testUser.id);
+      await mockRedis.sadd(userKey, hash1, hash2);
+
+      vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce({
+        id: "s1",
+      } as any);
+
+      const revResult = await authService.revokeUserSessions(
+        testUser.id,
+        "password_change",
+        sid1,
+      );
+
+      expect(revResult.ok).toBe(true);
+      expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+        testUser.id,
+        "password_change",
+        "s1",
+      );
+
+      // sid2 fue borrado, sid1 se conserva
+      expect(await mockRedis.get(buildSessionRedisKey(hash2))).toBeNull();
+      expect(await mockRedis.get(buildSessionRedisKey(hash1))).not.toBeNull();
+    });
+
+    it("isReauthValid evalúa correctamente la ventana de 5 minutos (300 segundos)", () => {
+      // Menos de 5 minutos: válida
+      const fourMinutesAgo = new Date(Date.now() - 4 * 60 * 1000);
+      expect(authService.isReauthValid(fourMinutesAgo)).toBe(true);
+      expect(authService.isReauthValid(fourMinutesAgo.toISOString())).toBe(true);
+
+      // Más de 5 minutos: inválida
+      const sixMinutesAgo = new Date(Date.now() - 6 * 60 * 1000);
+      expect(authService.isReauthValid(sixMinutesAgo)).toBe(false);
+      expect(authService.isReauthValid(sixMinutesAgo.toISOString())).toBe(false);
     });
   });
 

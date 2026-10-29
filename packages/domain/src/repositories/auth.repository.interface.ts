@@ -183,8 +183,22 @@ export interface IAuthRepository {
    *
    * @param sessionId - Identificador UUID de la sesión.
    * @param reason - Motivo descriptivo de la revocación (p. ej. "user_logout", "session_limit").
+   * @returns La entidad {@link Session} revocada o `null` si no existía.
    */
-  revokeSession(sessionId: string, reason: string): Promise<void>;
+  revokeSession(sessionId: string, reason: string): Promise<Session | null>;
+
+  /**
+   * Actualiza el registro de actividad y extiende el vencimiento por inactividad de una sesión activa (AUTH-001 §5.6).
+   *
+   * @param sessionId - Identificador UUID de la sesión.
+   * @param lastSeenAt - Marca de tiempo de la última interacción.
+   * @param expiresAt - Nueva fecha de vencimiento por inactividad (sin superar absolute_expires_at).
+   */
+  touchSession(
+    sessionId: string,
+    lastSeenAt: Date,
+    expiresAt: Date,
+  ): Promise<void>;
 
   /**
    * Busca un token de restablecimiento o establecimiento de contraseña por su hash SHA-256 binario.

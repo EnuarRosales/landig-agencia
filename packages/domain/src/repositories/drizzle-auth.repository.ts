@@ -481,10 +481,10 @@ export class DrizzleAuthRepository implements IAuthRepository {
   /**
    * Revoca una sesión específica marcando `revoked_at = now()`.
    */
-  async revokeSession(sessionId: string, reason: string): Promise<void> {
+  async revokeSession(sessionId: string, reason: string): Promise<Session | null> {
     try {
       const now = new Date();
-      await this.db
+      const [updated] = await this.db
         .update(sessions)
         .set({
           revokedAt: now,
@@ -492,12 +492,41 @@ export class DrizzleAuthRepository implements IAuthRepository {
           updatedAt: now,
           updatedBy: "self",
         })
-        .where(eq(sessions.id, sessionId));
+        .where(eq(sessions.id, sessionId))
+        .returning();
+
+      return updated ?? null;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[AuthRepository.revokeSession Failed] ${msg}`, error, {
         sessionId,
         reason,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Actualiza el registro de actividad y extiende el vencimiento por inactividad de una sesión activa (AUTH-001 §5.6).
+   */
+  async touchSession(
+    sessionId: string,
+    lastSeenAt: Date,
+    expiresAt: Date,
+  ): Promise<void> {
+    try {
+      await this.db
+        .update(sessions)
+        .set({
+          lastSeenAt,
+          expiresAt: sql`LEAST(${expiresAt}, ${sessions.absoluteExpiresAt})`,
+          updatedAt: lastSeenAt,
+        })
+        .where(and(eq(sessions.id, sessionId), isNull(sessions.revokedAt)));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.touchSession Failed] ${msg}`, error, {
+        sessionId,
       });
       throw error;
     }
