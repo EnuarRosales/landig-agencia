@@ -1107,6 +1107,80 @@ export class DrizzleAuthRepository implements IAuthRepository {
       throw error;
     }
   }
+
+  /**
+   * Asocia una sesión activa a un inquilino (`client_id`) y actualiza su versión de enrutamiento (AUTH-001 §5.6, §5.9, T-24).
+   */
+  async bindSessionToClient(
+    sessionId: string,
+    clientId: string,
+    routingVersion?: number | null,
+  ): Promise<Session> {
+    try {
+      const now = new Date();
+      const [updated] = await this.db
+        .update(sessions)
+        .set({
+          clientId,
+          routingVersion: routingVersion ?? null,
+          updatedAt: now,
+          updatedBy: "system",
+        })
+        .where(and(eq(sessions.id, sessionId), isNull(sessions.revokedAt)))
+        .returning();
+
+      if (!updated) {
+        throw new Error(
+          "DrizzleAuthRepository: session not found or already revoked to bind client",
+        );
+      }
+
+      return updated;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.bindSessionToClient Failed] ${msg}`, error, {
+        sessionId,
+        clientId,
+        routingVersion,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Revoca masivamente todas las sesiones activas asociadas a un inquilino en Postgres (AUTH-001 §5.6, T-24).
+   */
+  async revokeSessionsByClientId(
+    clientId: string,
+    reason: string,
+  ): Promise<Array<{ id: string; userId: string; sidHash: Buffer }>> {
+    try {
+      const now = new Date();
+      const revoked = await this.db
+        .update(sessions)
+        .set({
+          revokedAt: now,
+          revokedReason: reason,
+          updatedAt: now,
+          updatedBy: "system",
+        })
+        .where(and(eq(sessions.clientId, clientId), isNull(sessions.revokedAt)))
+        .returning({
+          id: sessions.id,
+          userId: sessions.userId,
+          sidHash: sessions.sidHash,
+        });
+
+      return revoked;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.revokeSessionsByClientId Failed] ${msg}`, error, {
+        clientId,
+        reason,
+      });
+      throw error;
+    }
+  }
 }
 
 /** Instancia singleton por defecto de {@link DrizzleAuthRepository}. */

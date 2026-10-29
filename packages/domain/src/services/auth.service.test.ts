@@ -73,6 +73,8 @@ function createBaseMockAuthRepo(): IAuthRepository {
     findSessionById: vi.fn(),
     listActiveSessionsByUserId: vi.fn(),
     purgeExpiredSessions: vi.fn(),
+    bindSessionToClient: vi.fn(),
+    revokeSessionsByClientId: vi.fn(),
   };
 }
 
@@ -4683,6 +4685,404 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
         if (!result.ok) {
           expect(result.code).toBe("DB_ERROR");
         }
+      });
+    });
+  });
+
+  describe("AUTH-001 T-24 · Integrar membresía y revocación con ADM-001 (bindSessionToClient, revokeClientSessions, revokeUserSessions)", () => {
+    let mockAuthRepo: IAuthRepository;
+    let mockMailer: IAuthMailer;
+    let mockGoogleOidcClient: IGoogleOidcClient;
+    let mockFacebookOAuthClient: IFacebookOAuthClient;
+    let mockStateManager: OAuthStateManager;
+    let mockRedis: MockRedisClient;
+    let sessionCache: SessionCacheManager;
+    let authService: AuthService;
+
+    const testUser: User = {
+      id: "uuid-user-t24",
+      email: "owner@mocter.co",
+      emailVerifiedAt: new Date(),
+      passwordHash: "$argon2id$v=19$m=65536,t=3,p=4$dummy",
+      passwordUpdatedAt: new Date(),
+      totpSecretCiphertext: null,
+      totpKeyId: null,
+      totpEnabledAt: null,
+      totpPendingSecretCiphertext: null,
+      totpPendingKeyId: null,
+      totpPendingCreatedAt: null,
+      totpLastUsedStep: null,
+      identityLocation: "router",
+      activeClientId: null,
+      status: "active",
+      displayName: "Owner Mocter",
+      avatarUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "system",
+      updatedBy: "system",
+    };
+
+    const rawSid = "12345678901234567890123456789012";
+    const sidHash = hashToken(rawSid);
+    const csrfToken = "csrf1234567890123456789012345678";
+    const csrfHash = hashToken(csrfToken);
+
+    const now = new Date();
+    const mockSession: Session = {
+      id: "session-uuid-t24",
+      userId: testUser.id,
+      clientId: null,
+      routingVersion: null,
+      sidHash,
+      csrfHash,
+      authMethod: "password",
+      mfaAt: null,
+      reauthAt: now,
+      lastSeenAt: now,
+      expiresAt: new Date(now.getTime() + 30 * 60 * 1000),
+      absoluteExpiresAt: new Date(now.getTime() + 12 * 60 * 60 * 1000),
+      revokedAt: null,
+      revokedReason: null,
+      ipHash: null,
+      userAgentHash: null,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: "system",
+      updatedBy: "system",
+    };
+
+    const targetClientId = "client-uuid-mocter-1";
+
+    beforeEach(() => {
+      mockAuthRepo = createBaseMockAuthRepo();
+      mockMailer = {
+        sendVerificationEmail: vi.fn(),
+        sendPasswordResetEmail: vi.fn(),
+        sendPasswordSetupEmail: vi.fn(),
+        sendAccountAlreadyExistsEmail: vi.fn(),
+      };
+      mockGoogleOidcClient = {
+        discover: vi.fn(),
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForTokens: vi.fn(),
+        verifyIdToken: vi.fn(),
+      };
+      mockFacebookOAuthClient = {
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForAccessToken: vi.fn(),
+        fetchUserProfile: vi.fn(),
+      };
+      mockStateManager = {
+        createState: vi.fn(),
+        consumeState: vi.fn(),
+      } as unknown as OAuthStateManager;
+      mockRedis = createMockRedisClient();
+      setRedisClientForTesting(mockRedis);
+      sessionCache = new SessionCacheManager();
+
+      authService = new AuthService(
+        mockAuthRepo,
+        mockMailer,
+        mockGoogleOidcClient,
+        mockFacebookOAuthClient,
+        mockStateManager,
+        undefined,
+        sessionCache,
+      );
+    });
+
+    describe("bindSessionToClient", () => {
+      it("rechaza con SESSION_NOT_FOUND si la sesión no existe", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(null);
+
+        const result = await authService.bindSessionToClient(rawSid, targetClientId);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("SESSION_NOT_FOUND");
+        }
+        expect(mockAuthRepo.bindSessionToClient).not.toHaveBeenCalled();
+      });
+
+      it("rechaza con SESSION_NOT_FOUND si la sesión ya fue revocada", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce({
+          ...mockSession,
+          revokedAt: new Date(),
+          revokedReason: "user_logout",
+        });
+
+        const result = await authService.bindSessionToClient(rawSid, targetClientId);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("SESSION_NOT_FOUND");
+        }
+        expect(mockAuthRepo.bindSessionToClient).not.toHaveBeenCalled();
+      });
+
+      it("rechaza con SESSION_EXPIRED si la sesión expiró por inactividad", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce({
+          ...mockSession,
+          expiresAt: new Date(Date.now() - 1000),
+        });
+
+        const result = await authService.bindSessionToClient(rawSid, targetClientId);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("SESSION_EXPIRED");
+        }
+        expect(mockAuthRepo.bindSessionToClient).not.toHaveBeenCalled();
+      });
+
+      it("rechaza con SESSION_EXPIRED si la sesión expiró por tiempo absoluto", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce({
+          ...mockSession,
+          absoluteExpiresAt: new Date(Date.now() - 1000),
+        });
+
+        const result = await authService.bindSessionToClient(rawSid, targetClientId);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("SESSION_EXPIRED");
+        }
+        expect(mockAuthRepo.bindSessionToClient).not.toHaveBeenCalled();
+      });
+
+      it("rechaza con USER_NOT_FOUND si el usuario no existe", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(null);
+
+        const result = await authService.bindSessionToClient(rawSid, targetClientId);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("USER_NOT_FOUND");
+        }
+        expect(mockAuthRepo.bindSessionToClient).not.toHaveBeenCalled();
+      });
+
+      it("rechaza con USER_DISABLED si el usuario se encuentra deshabilitado", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce({
+          ...testUser,
+          status: "disabled",
+        });
+
+        const result = await authService.bindSessionToClient(rawSid, targetClientId);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("USER_DISABLED");
+        }
+        expect(mockAuthRepo.bindSessionToClient).not.toHaveBeenCalled();
+      });
+
+      it("rechaza con MEMBERSHIP_CONFLICT si el usuario ya posee una membresía activa en otro inquilino (anti-segunda membresía)", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce({
+          ...testUser,
+          activeClientId: "otro-cliente-uuid",
+        });
+
+        const result = await authService.bindSessionToClient(rawSid, targetClientId);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("MEMBERSHIP_CONFLICT");
+        }
+        // Verificación de contrato: NO altera la sesión ni revoca las demás
+        expect(mockAuthRepo.bindSessionToClient).not.toHaveBeenCalled();
+        expect(mockAuthRepo.revokeAllUserSessions).not.toHaveBeenCalled();
+      });
+
+      it("vincula exitosamente en onboarding: actualiza la sesión, revoca las demás y sincroniza Redis", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce({
+          ...testUser,
+          activeClientId: null, // Nuevo onboarding
+        });
+        vi.mocked(mockAuthRepo.getClientRoutingVersion).mockResolvedValueOnce(1);
+
+        const updatedSession: Session = {
+          ...mockSession,
+          clientId: targetClientId,
+          routingVersion: 1,
+        };
+        vi.mocked(mockAuthRepo.bindSessionToClient).mockResolvedValueOnce(updatedSession);
+
+        const result = await authService.bindSessionToClient(rawSid, targetClientId);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.session.clientId).toBe(targetClientId);
+          expect(result.data.session.routingVersion).toBe(1);
+        }
+
+        // 1. Actualizó la sesión en Postgres
+        expect(mockAuthRepo.bindSessionToClient).toHaveBeenCalledWith(
+          mockSession.id,
+          targetClientId,
+          1,
+        );
+
+        // 2. Revocó las demás sesiones del usuario con motivo membership_onboarding
+        expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+          testUser.id,
+          "membership_onboarding",
+          mockSession.id,
+        );
+
+        // 3. Verificación de caché en Redis
+        const cachedRaw = await mockRedis.get(buildSessionRedisKey(sidHash.toString("hex")));
+        expect(cachedRaw).not.toBeNull();
+        const cachedData = JSON.parse(cachedRaw!);
+        expect(cachedData.clientId).toBe(targetClientId);
+        expect(cachedData.routingVersion).toBe(1);
+      });
+
+      it("vincula exitosamente recibiendo un objeto con sessionId y routingVersion explícito", async () => {
+        vi.mocked(mockAuthRepo.findSessionById).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(testUser);
+
+        const updatedSession: Session = {
+          ...mockSession,
+          clientId: targetClientId,
+          routingVersion: 2,
+        };
+        vi.mocked(mockAuthRepo.bindSessionToClient).mockResolvedValueOnce(updatedSession);
+
+        const result = await authService.bindSessionToClient({
+          sessionId: mockSession.id,
+          clientId: targetClientId,
+          routingVersion: 2,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(mockAuthRepo.bindSessionToClient).toHaveBeenCalledWith(
+          mockSession.id,
+          targetClientId,
+          2,
+        );
+        expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+          testUser.id,
+          "membership_onboarding",
+          mockSession.id,
+        );
+      });
+
+      it("permite revinculación idempotente si el activeClientId coincide con el clientId objetivo", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce({
+          ...testUser,
+          activeClientId: targetClientId, // Mismo cliente
+        });
+        vi.mocked(mockAuthRepo.getClientRoutingVersion).mockResolvedValueOnce(1);
+
+        const updatedSession: Session = {
+          ...mockSession,
+          clientId: targetClientId,
+          routingVersion: 1,
+        };
+        vi.mocked(mockAuthRepo.bindSessionToClient).mockResolvedValueOnce(updatedSession);
+
+        const result = await authService.bindSessionToClient(rawSid, targetClientId);
+
+        expect(result.ok).toBe(true);
+        expect(mockAuthRepo.bindSessionToClient).toHaveBeenCalled();
+      });
+
+      it("retorna DB_ERROR si la base de datos falla al actualizar la sesión", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(testUser);
+        vi.mocked(mockAuthRepo.getClientRoutingVersion).mockResolvedValueOnce(1);
+        vi.mocked(mockAuthRepo.bindSessionToClient).mockRejectedValueOnce(
+          new Error("DB connection terminated"),
+        );
+
+        const result = await authService.bindSessionToClient(rawSid, targetClientId);
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("DB_ERROR");
+        }
+      });
+    });
+
+    describe("revokeClientSessions", () => {
+      it("revoca masivamente todas las sesiones activas del inquilino en Postgres y purga Redis", async () => {
+        const s1Hash = hashToken("sid1");
+        const s2Hash = hashToken("sid2");
+
+        // Poblar claves en Redis
+        await mockRedis.set(buildSessionRedisKey(s1Hash.toString("hex")), JSON.stringify({ id: "s1" }));
+        await mockRedis.set(buildSessionRedisKey(s2Hash.toString("hex")), JSON.stringify({ id: "s2" }));
+
+        vi.mocked(mockAuthRepo.revokeSessionsByClientId).mockResolvedValueOnce([
+          { id: "s1", userId: "u1", sidHash: s1Hash },
+          { id: "s2", userId: "u2", sidHash: s2Hash },
+        ]);
+
+        const result = await authService.revokeClientSessions(targetClientId, "tenant_suspended");
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.revokedCount).toBe(2);
+        }
+
+        expect(mockAuthRepo.revokeSessionsByClientId).toHaveBeenCalledWith(
+          targetClientId,
+          "tenant_suspended",
+        );
+
+        // Claves purgadas en Redis
+        const s1Cached = await mockRedis.get(buildSessionRedisKey(s1Hash.toString("hex")));
+        const s2Cached = await mockRedis.get(buildSessionRedisKey(s2Hash.toString("hex")));
+        expect(s1Cached).toBeNull();
+        expect(s2Cached).toBeNull();
+      });
+
+      it("retorna DB_ERROR si la revocación masiva del inquilino arroja un error", async () => {
+        vi.mocked(mockAuthRepo.revokeSessionsByClientId).mockRejectedValueOnce(
+          new Error("Deadlock detected"),
+        );
+
+        const result = await authService.revokeClientSessions(targetClientId, "tenant_decommissioned");
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("DB_ERROR");
+        }
+      });
+    });
+
+    describe("revokeUserSessions", () => {
+      it("revoca todas las sesiones con motivo membership_changed al cambiar active_client_id", async () => {
+        const result = await authService.revokeUserSessions(testUser.id, "membership_changed");
+
+        expect(result.ok).toBe(true);
+        expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+          testUser.id,
+          "membership_changed",
+          undefined,
+        );
+      });
+
+      it("revoca sesiones con exceptSessionId preservando la sesión indicada", async () => {
+        vi.mocked(mockAuthRepo.findSessionById).mockResolvedValueOnce(mockSession);
+
+        const result = await authService.revokeUserSessions(testUser.id, "membership_changed", {
+          exceptSessionId: mockSession.id,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+          testUser.id,
+          "membership_changed",
+          mockSession.id,
+        );
       });
     });
   });

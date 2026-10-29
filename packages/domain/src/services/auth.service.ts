@@ -106,6 +106,31 @@ export interface SessionSummaryDto {
 }
 
 /**
+ * Parámetros de entrada para vincular una sesión a un inquilino durante onboarding/invitación (AUTH-001 §5.6, §5.9, T-24).
+ */
+export interface BindSessionToClientInput {
+  /** Identificador opaco de sesión en claro (cookie). */
+  sid?: string;
+  /** Identificador UUID público de la sesión. */
+  sessionId?: string;
+  /** Identificador UUID del cliente/inquilino al que se vincula la membresía. */
+  clientId: string;
+  /** Versión de enrutamiento opcional; si se omite, se consulta client_routing. */
+  routingVersion?: number | null;
+}
+
+/**
+ * Códigos de error para el flujo de vinculación de sesión con inquilino (AUTH-001 T-24).
+ */
+export type BindSessionToClientErrorCode =
+  | "SESSION_NOT_FOUND"
+  | "SESSION_EXPIRED"
+  | "USER_NOT_FOUND"
+  | "USER_DISABLED"
+  | "MEMBERSHIP_CONFLICT"
+  | "DB_ERROR";
+
+/**
  * Objeto de respuesta para solicitudes de recuperación de contraseña.
  */
 export interface ForgotPasswordResponseData {
@@ -2073,27 +2098,40 @@ export class AuthService {
   }
 
   /**
-   * Revoca todas las sesiones activas de un usuario en Postgres y Redis (AUTH-001 §5.6, §6.4).
+   * Revoca todas las sesiones activas de un usuario en Postgres y Redis (AUTH-001 §5.6, §6.4, T-24).
    *
    * @param userId - Identificador UUID del usuario.
    * @param reason - Motivo descriptivo de la revocación.
-   * @param exceptSid - Identificador opcional de sesión en claro que no debe ser revocada.
+   * @param exceptSidOrOptions - Identificador opcional de sesión en claro o identificador UUID que no debe ser revocada.
    * @returns Un {@link Result} con confirmación o error de persistencia.
    */
   async revokeUserSessions(
     userId: string,
     reason: string,
-    exceptSid?: string,
+    exceptSidOrOptions?: string | { exceptSid?: string; exceptSessionId?: string },
   ): Promise<Result<{ message: string }, "DB_ERROR">> {
     try {
       let exceptSessionId: string | undefined = undefined;
       let exceptSidHashHex: string | undefined = undefined;
 
-      if (exceptSid) {
-        const exceptHash = hashToken(exceptSid);
+      if (typeof exceptSidOrOptions === "string") {
+        const exceptHash = hashToken(exceptSidOrOptions);
         exceptSidHashHex = exceptHash.toString("hex");
         const exceptSession = await this.authRepo.findSessionBySidHash(exceptHash);
         exceptSessionId = exceptSession?.id;
+      } else if (typeof exceptSidOrOptions === "object" && exceptSidOrOptions !== null) {
+        if (exceptSidOrOptions.exceptSid) {
+          const exceptHash = hashToken(exceptSidOrOptions.exceptSid);
+          exceptSidHashHex = exceptHash.toString("hex");
+          const exceptSession = await this.authRepo.findSessionBySidHash(exceptHash);
+          exceptSessionId = exceptSession?.id;
+        } else if (exceptSidOrOptions.exceptSessionId) {
+          exceptSessionId = exceptSidOrOptions.exceptSessionId;
+          const session = await this.authRepo.findSessionById(exceptSessionId);
+          if (session) {
+            exceptSidHashHex = session.sidHash.toString("hex");
+          }
+        }
       }
 
       await this.authRepo.revokeAllUserSessions(userId, reason, exceptSessionId);
@@ -2221,6 +2259,171 @@ export class AuthService {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[AuthService.purgeExpiredSessions Error] ${msg}`, error);
       return err("Error interno al purgar sesiones.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Asocia una sesión activa al inquilino resultante de un flujo de onboarding o invitación,
+   * y revoca todas las demás sesiones del usuario (AUTH-001 §5.6, §5.9, T-24).
+   *
+   * Reglas estrictas:
+   * 1. Una segunda membresía se rechaza de inmediato si el usuario ya posee un `active_client_id` diferente,
+   *    sin alterar la sesión existente.
+   * 2. Si es válida, actualiza `client_id` y `routing_version` en `sessions` y en la caché de Redis.
+   * 3. Revoca todas las demás sesiones activas del usuario con motivo "membership_onboarding" en Postgres y Redis.
+   *
+   * @param sidOrInput - `sid` en claro, o un objeto {@link BindSessionToClientInput}.
+   * @param maybeClientId - UUID del cliente si el primer argumento es un string `sid`.
+   * @param maybeRoutingVersion - Versión de enrutamiento si el primer argumento es un string `sid`.
+   * @returns Un {@link Result} con la sesión actualizada o el código de error correspondiente.
+   */
+  async bindSessionToClient(
+    sidOrInput: string | BindSessionToClientInput,
+    maybeClientId?: string,
+    maybeRoutingVersion?: number | null,
+  ): Promise<Result<{ session: Session }, BindSessionToClientErrorCode>> {
+    try {
+      let sid: string | undefined;
+      let sessionId: string | undefined;
+      let clientId: string;
+      let routingVersion: number | null | undefined;
+
+      if (typeof sidOrInput === "string") {
+        sid = sidOrInput;
+        clientId = maybeClientId!;
+        routingVersion = maybeRoutingVersion;
+      } else {
+        sid = sidOrInput.sid;
+        sessionId = sidOrInput.sessionId;
+        clientId = sidOrInput.clientId;
+        routingVersion = sidOrInput.routingVersion;
+      }
+
+      if (!clientId) {
+        return err("Identificador de cliente inválido.", "DB_ERROR");
+      }
+
+      // 1. Resolver sesión activa
+      let session: Session | null = null;
+      let sidHashHex: string | undefined;
+
+      if (sid) {
+        const sidHash = hashToken(sid);
+        sidHashHex = sidHash.toString("hex");
+        session = await this.authRepo.findSessionBySidHash(sidHash);
+      } else if (sessionId) {
+        session = await this.authRepo.findSessionById(sessionId);
+        if (session) {
+          sidHashHex = session.sidHash.toString("hex");
+        }
+      }
+
+      if (!session || session.revokedAt !== null) {
+        return err("Sesión no encontrada o ya revocada.", "SESSION_NOT_FOUND");
+      }
+
+      const now = new Date();
+      if (session.expiresAt <= now || session.absoluteExpiresAt <= now) {
+        return err("La sesión ha expirado.", "SESSION_EXPIRED");
+      }
+
+      // 2. Resolver usuario y validar restricciones
+      const user = await this.authRepo.findUserById(session.userId);
+      if (!user) {
+        return err("Usuario no encontrado.", "USER_NOT_FOUND");
+      }
+
+      if (user.status === "disabled") {
+        return err("El usuario se encuentra deshabilitado.", "USER_DISABLED");
+      }
+
+      // 3. Regla canónica de membresía única (ADM-001 D-15 / AUTH-001 §5.9):
+      // Si el usuario ya tiene un activeClientId distinto, una segunda membresía se rechaza
+      // terminantemente y NO altera la sesión existente.
+      if (user.activeClientId && user.activeClientId !== clientId) {
+        return err(
+          "El usuario ya posee una membresía activa en otro inquilino.",
+          "MEMBERSHIP_CONFLICT",
+        );
+      }
+
+      // 4. Resolver versión de enrutamiento si no fue provista
+      let resolvedRoutingVersion = routingVersion;
+      if (resolvedRoutingVersion === undefined || resolvedRoutingVersion === null) {
+        resolvedRoutingVersion = await this.authRepo.getClientRoutingVersion(clientId);
+      }
+
+      // 5. Actualizar la sesión en Postgres
+      const updatedSession = await this.authRepo.bindSessionToClient(
+        session.id,
+        clientId,
+        resolvedRoutingVersion,
+      );
+
+      // 6. Revocar todas las demás sesiones activas del usuario (AUTH-001 §5.6, §5.9, T-24)
+      await this.authRepo.revokeAllUserSessions(
+        session.userId,
+        "membership_onboarding",
+        session.id,
+      );
+
+      // 7. Sincronizar caché de Redis: invalidar otras sesiones y refrescar la actual
+      if (sidHashHex) {
+        await this.sessionCache.deleteAllUserSessions(session.userId, sidHashHex);
+        await this.sessionCache.cacheSession(updatedSession, sidHashHex);
+      } else {
+        await this.sessionCache.deleteAllUserSessions(session.userId);
+      }
+
+      appLogger.info("[AuthService.bindSessionToClient] Sesión vinculada exitosamente al cliente", {
+        sessionId: session.id,
+        userId: session.userId,
+        clientId,
+        routingVersion: resolvedRoutingVersion,
+      });
+
+      return ok({ session: updatedSession });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.bindSessionToClient Error] ${msg}`, error);
+      return err("Error interno al vincular la sesión con el inquilino.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Revoca todas las sesiones activas asociadas a un inquilino cuando este se suspende o se da de baja (AUTH-001 §5.6, T-24).
+   *
+   * Invalida los registros en Postgres y elimina de forma inmediata las claves correspondientes en Redis
+   * para garantizar que ningún usuario conserve acceso al inquilino suspendido a través de réplicas.
+   *
+   * @param clientId - Identificador UUID del cliente/inquilino.
+   * @param reason - Motivo de la revocación (p. ej. "tenant_suspended", "tenant_decommissioned").
+   * @returns Un {@link Result} con la cantidad de sesiones revocadas.
+   */
+  async revokeClientSessions(
+    clientId: string,
+    reason: string = "tenant_suspended",
+  ): Promise<Result<{ revokedCount: number }, "DB_ERROR">> {
+    try {
+      const revokedSessions = await this.authRepo.revokeSessionsByClientId(clientId, reason);
+
+      // Invalidar inmediatamente en Redis cada sesión revocada
+      for (const s of revokedSessions) {
+        const sidHashHex = s.sidHash.toString("hex");
+        await this.sessionCache.deleteSession(sidHashHex, s.userId);
+      }
+
+      appLogger.info("[AuthService.revokeClientSessions] Sesiones de inquilino revocadas", {
+        clientId,
+        reason,
+        revokedCount: revokedSessions.length,
+      });
+
+      return ok({ revokedCount: revokedSessions.length });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.revokeClientSessions Error] ${msg}`, error, { clientId, reason });
+      return err("Error interno al revocar las sesiones del inquilino.", "DB_ERROR");
     }
   }
 

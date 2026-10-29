@@ -387,6 +387,36 @@ export interface IAuthRepository {
       totpLastUsedStep?: number | null;
     },
   ): Promise<void>;
+
+  /**
+   * Asocia una sesión activa a un inquilino (`client_id`) y actualiza su versión de enrutamiento (AUTH-001 §5.6, §5.9, T-24).
+   *
+   * Utilizado exclusivamente en los flujos de onboarding o aceptación de invitación de ADM-001.
+   *
+   * @param sessionId - Identificador UUID de la sesión a actualizar.
+   * @param clientId - Identificador UUID del cliente/inquilino.
+   * @param routingVersion - Versión de enrutamiento asignada (opcional).
+   * @returns La entidad {@link Session} actualizada.
+   */
+  bindSessionToClient(
+    sessionId: string,
+    clientId: string,
+    routingVersion?: number | null,
+  ): Promise<Session>;
+
+  /**
+   * Revoca masivamente todas las sesiones activas asociadas a un inquilino en Postgres (AUTH-001 §5.6, T-24).
+   *
+   * Utilizado cuando un inquilino es suspendido o dado de baja en ADM-001.
+   *
+   * @param clientId - Identificador UUID del inquilino/cliente.
+   * @param reason - Motivo descriptivo de la revocación (p. ej. "tenant_suspended", "tenant_decommissioned").
+   * @returns Lista de sesiones revocadas con sus identificadores para invalidación en caché.
+   */
+  revokeSessionsByClientId(
+    clientId: string,
+    reason: string,
+  ): Promise<Array<{ id: string; userId: string; sidHash: Buffer }>>;
 }
 
 /**
