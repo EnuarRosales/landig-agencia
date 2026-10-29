@@ -6,19 +6,19 @@
 
 ## 1. Contexto del proyecto
 
-| Elemento | Valor |
-|---|---|
-| Repositorio | `EnuarRosales/landig-agencia` (público) |
-| Tipo | Monorepo pnpm + Turborepo |
-| Aplicación | `apps/web` (`@mocter/web`) · Next.js 16 (**App Router exclusivo**, React 19) en modo `standalone` |
-| Dominio / datos | `packages/domain` (`@mocter/domain`) · Drizzle ORM |
-| Enrutamiento | Next.js App Router (`apps/web/app/`). Prohibido el uso de Pages Router (`pages/`). |
-| Base de datos | PostgreSQL 18 con pgvector (`pgvector/pgvector:pg18`) |
-| Runtime | Node.js 24 (alpine en contenedor) |
-| Imagen | `ghcr.io/enuarrosales/mocter-web` (única: aplicación + migrador) |
-| CI/CD | GitHub Actions (`.github/workflows/ci.yml`, `cd.yml`, `deploy.yml`) |
-| Producción | VPS Hostinger · Traefik v2.11 · `mocter.co` |
-| Pruebas | VPS proyectado, despliegue desactivado (`STAGING_ENABLED=false`) |
+| Elemento        | Valor                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------- |
+| Repositorio     | `EnuarRosales/landig-agencia` (público)                                                           |
+| Tipo            | Monorepo pnpm + Turborepo                                                                         |
+| Aplicación      | `apps/web` (`@mocter/web`) · Next.js 16 (**App Router exclusivo**, React 19) en modo `standalone` |
+| Dominio / datos | `packages/domain` (`@mocter/domain`) · Drizzle ORM                                                |
+| Enrutamiento    | Next.js App Router (`apps/web/app/`). Prohibido el uso de Pages Router (`pages/`).                |
+| Base de datos   | PostgreSQL 18 con pgvector (`pgvector/pgvector:pg18`)                                             |
+| Runtime         | Node.js 24 (alpine en contenedor)                                                                 |
+| Imagen          | `ghcr.io/enuarrosales/mocter-web` (única: aplicación + migrador)                                  |
+| CI/CD           | GitHub Actions (`.github/workflows/ci.yml`, `cd.yml`, `deploy.yml`)                               |
+| Producción      | VPS Hostinger · Traefik v2.11 · `mocter.co`                                                       |
+| Pruebas         | VPS proyectado, despliegue desactivado (`STAGING_ENABLED=false`)                                  |
 
 ## 2. Metodología: Spec-Driven Development (SDD)
 
@@ -29,35 +29,35 @@
 2. Orden de lectura obligatorio: `AGENTS.md` → `requirements.md` → `design.md` → `tasks.md`.
 3. Ejecuta las tareas **en el orden de `tasks.md`**. Marca `[x]` solo cuando su verificación pase.
 4. Si encuentras una contradicción entre documentos, prevalece: `AGENTS.md` > `requirements.md` > `design.md` > `tasks.md`. Reporta la contradicción.
-5. No amplíes el alcance. Lo que no esté en `requirements.md` va a la sección *Hallazgos* del reporte, no al código.
+5. No amplíes el alcance. Lo que no esté en `requirements.md` va a la sección _Hallazgos_ del reporte, no al código.
 6. Las tareas marcadas **[HUMANO]** no se ejecutan; se documentan como pendientes.
 
 ## 3. Restricciones (no negociables)
 
-| ID | Restricción |
-|---|---|
-| R-01 | No versionar secretos, `.env` reales, llaves SSH ni contraseñas. |
-| R-02 | No modificar código de la aplicación (`apps/web`, `packages/domain/src`) salvo que una especificación lo indique explícitamente. |
-| R-03 | No cambiar nombre de imagen, redes Docker, routers de Traefik ni rutas del servidor definidos en las especificaciones. |
-| R-04 | No usar la etiqueta `latest` para desplegar. El servidor siempre ejecuta una etiqueta explícita (`vX.Y.Z` o `sha-xxxxxxx`). |
-| R-05 | No ampliar permisos de workflows más allá de los declarados. No cambiar *Workflow permissions* a *Read and write*. |
-| R-06 | No agregar acciones de terceros distintas de `actions/*`, `docker/*` y `pnpm/action-setup`. |
-| R-07 | No modificar el compose de desarrollo local (`docker-compose.yml`) salvo solicitud expresa. |
-| R-08 | No usar `drizzle-kit push` en workflows, scripts de despliegue ni imágenes. Solo se permite en desarrollo local. |
-| R-09 | No editar ni eliminar migraciones SQL ya versionadas en `packages/domain/drizzle`. Para corregir, generar una nueva. |
+| ID   | Restricción                                                                                                                                                                                                                              |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R-01 | No versionar secretos, `.env` reales, llaves SSH ni contraseñas.                                                                                                                                                                         |
+| R-02 | No modificar código de la aplicación (`apps/web`, `packages/domain/src`) salvo que una especificación lo indique explícitamente.                                                                                                         |
+| R-03 | No cambiar nombre de imagen, redes Docker, routers de Traefik ni rutas del servidor definidos en las especificaciones.                                                                                                                   |
+| R-04 | No usar la etiqueta `latest` para desplegar. El servidor siempre ejecuta una etiqueta explícita (`vX.Y.Z` o `sha-xxxxxxx`).                                                                                                              |
+| R-05 | No ampliar permisos de workflows más allá de los declarados. No cambiar _Workflow permissions_ a _Read and write_.                                                                                                                       |
+| R-06 | No agregar acciones de terceros distintas de `actions/*`, `docker/*` y `pnpm/action-setup`.                                                                                                                                              |
+| R-07 | No modificar el compose de desarrollo local (`docker-compose.yml`) salvo solicitud expresa.                                                                                                                                              |
+| R-08 | No usar `drizzle-kit push` en workflows, scripts de despliegue ni imágenes. Solo se permite en desarrollo local.                                                                                                                         |
+| R-09 | No editar ni eliminar migraciones SQL ya versionadas en `packages/domain/drizzle`. Para corregir, generar una nueva.                                                                                                                     |
 | R-10 | En **staging y producción**, ningún servicio Docker de Mocter publica puertos en el host; todo el tráfico entra por Traefik. En **desarrollo local** se permite publicar puertos solo en `127.0.0.1` (loopback), sin exposición externa. |
 
 ## 4. Convenciones
 
 ### 4.1 Ramas y versiones
 
-| Rama / ref | Uso |
-|---|---|
-| `feat/*`, `fix/*` | Trabajo; PR hacia `develop` |
-| `develop` | Integración; despliega a pruebas (cuando esté habilitado) |
-| `main` | Estable; no despliega por sí sola |
-| Tag `vX.Y.Z` sobre `main` | Libera a producción (con aprobación manual) |
-| Tag `vX.Y.Z-rc.N` | Construye imagen, no despliega |
+| Rama / ref                | Uso                                                       |
+| ------------------------- | --------------------------------------------------------- |
+| `feat/*`, `fix/*`         | Trabajo; PR hacia `develop`                               |
+| `develop`                 | Integración; despliega a pruebas (cuando esté habilitado) |
+| `main`                    | Estable; no despliega por sí sola                         |
+| Tag `vX.Y.Z` sobre `main` | Libera a producción (con aprobación manual)               |
+| Tag `vX.Y.Z-rc.N`         | Construye imagen, no despliega                            |
 
 Mensajes de commit: Conventional Commits (`feat:`, `fix:`, `ci:`, `chore:`, `docs:`, `refactor:`).
 
@@ -116,9 +116,28 @@ El usuario del inquilino trabaja en **una sola plataforma**: `mocter-admin` es e
 
 Queda estrictamente prohibido introducir o conservar código, APIs o dependencias marcadas formalmente como `@deprecated` (en anotaciones JSDoc/TSDoc, advertencias del compilador o linters). Ante cualquier deprecación detectada (como `setRequestLocale` en `next-intl`), se debe migrar de inmediato a la alternativa canónica recomendada (`next/root-params` u homólogo vigente). Consulte la directiva completa en [rules/rules-for-no-deprecated-code.md](rules/rules-for-no-deprecated-code.md).
 
+### 4.12 Prohibición de hardcoding y validación estricta de entorno (@t3-oss/env-nextjs)
+
+Queda estrictamente prohibido usar valores fijos (hardcoded) o acceder directamente a `process.env` en cualquier archivo del proyecto. Toda configuración externa debe ser procesada a través del módulo centralizado de entorno (`env.ts`) tipado, validado y segmentado estrictamente entre Cliente y Servidor mediante `@t3-oss/env-nextjs` (o `@t3-oss/env-core`) y `zod`. Los datos estáticos de la UI deben extraerse a `config/site.ts`. Consulte la directiva completa en [rules/rules-for-env-and-no-hardcoding.md](rules/rules-for-env-and-no-hardcoding.md).
+
+### 4.13 Gestión estructurada de logs y trazabilidad (Next.js 16 + TypeScript)
+
+Queda prohibido el uso de `console.*` en código de aplicación de Next.js 16. Todo log se emite como evento estructurado JSON tipado (`LogEvent`) con nivel estricto, correlacionado obligatoriamente por `requestId` (`x-request-id` propagado por `proxy.ts` vía `AsyncLocalStorage`), protegido contra datos sensibles mediante rutas de redacción centralizadas, separado estrictamente por runtime (`server-only` vs `client-only`), no bloqueante en auditorías usando `after()`, y con captura centralizada de errores no controlados en `onRequestError`. Consulte la directiva completa en sus dos partes complementarias y vinculantes:
+
+- Parte 1 (Núcleo, Correlación y Servidor): [rules/rules-for-logging-core-and-server.md](rules/rules-for-logging-core-and-server.md).
+- Parte 2 (Cliente, Operaciones y Manejo de Errores): [rules/rules-for-logging-client-and-errors.md](rules/rules-for-logging-client-and-errors.md).
+
+### 4.14 Gestión y manejo de excepciones (Next.js 16 + TypeScript)
+
+Todo error en el proyecto pertenece estrictamente a una de tres categorías inmutables: **esperado de negocio** (retorno tipado `Result`, nunca se lanza), **interrupción de control** (`notFound()`, `redirect()`, lanzado por el framework y nunca capturado sin `unstable_rethrow`) o **inesperado** (`throw` hacia error boundaries con `retry`/`digest` y `onRequestError`). Los Route Handlers se envuelven obligatoriamente en `handle()` respondiendo con formato RFC 9457 Problem Details (`application/problem+json`). Prohibido `catch (e: any)`, `throw` de tipos no `Error` y exponer detalles internos o `message` de servidor al usuario final. Consulte la directiva completa en sus dos partes complementarias y vinculantes:
+
+- Parte 1 (Clasificación, Tipos y Servidor): [rules/rules-for-exceptions-core-and-server.md](rules/rules-for-exceptions-core-and-server.md).
+- Parte 2 (Rutas, UI y Verificación): [rules/rules-for-exceptions-routes-and-ui.md](rules/rules-for-exceptions-routes-and-ui.md).
+
 ## 5. Formato del reporte del agente
 
 Al terminar una especificación, entrega:
+
 1. Resultado de las tareas de descubrimiento.
 2. Tareas completadas `[x]` y pendientes `[ ]` de `tasks.md`.
 3. Archivos creados / modificados y desviaciones (con justificación).
@@ -128,31 +147,29 @@ Al terminar una especificación, entrega:
 
 ## 6. Índice de especificaciones
 
-| ID | Nombre | Estado |
-|---|---|---|
-| MIG-001 | [Migración Next.js 16](docs/specs/mig-001-nextjs-migration/requirements.md) | Implementada · Estable |
-| CD-001 | [Despliegue continuo](docs/specs/cd-001-despliegue-continuo/requirements.md) | Implementada · Primer release desplegado (2026-10-24) |
-| CORE-002 | [Optimización del cascarón](docs/specs/core-002-optimizacion-cascaron/requirements.md) | Implementada · Estable |
-| API-001 | [Documentación OpenAPI (Swagger)](docs/specs/api-001-openapi-swagger/requirements.md) | Implementada · Estable |
-| ADM-001 | [mocter-admin — núcleo administrativo de inquilinos](docs/specs/adm-001-mocter-admin/requirements.md) | Aprobada · 2026-10-27 (v1.4); D-15 (membresía 1:0..1), D-30 (Router Global), D-31 (roles/scopes), D-32 (Chatwoot embebido), onboarding con `plan_code` → UUID, bandeja `/admin/leads` y multimedia con SeaweedFS v4.51 + imgproxy v4.0.20; bucket `media` y límites de transformación documentados |
-| AUTH-001 | [Sistema híbrido de autenticación y autorización](docs/specs/auth-001-autenticacion-hibrida/requirements.md) | Aprobada · 2026-10-22; AUTH-D-01 a AUTH-D-07 cerradas |
-| CHW-001 | [Inventario técnico de Chatwoot](docs/specs/chw-001-inventario-chatwoot/requirements.md) | Aprobada · 2026-10-27; Chatwoot `v4.19.1` canónico con digest de producción observado, sincronización alineada con membresía 1:0..1 y embedding iframe pendiente de laboratorio (T-17/T-18); commit upstream por fijar en T-01A |
-| DAT-001 | [Arquitectura de datos multi-inquilino basada en celdas](docs/specs/dat-001-arquitectura-datos-multiinquilino/requirements.md) | Aprobada · 2026-10-27; alineada con AUTH-D-06, membresía 1:0..1, modelo canónico de `plans` (UUID + `code`) y entrega de medios por imgproxy con S3 interno; Chatwoot con almacenamiento local en producción |
-| OPS-001 | [Operación, continuidad y observabilidad](docs/specs/ops-001-operacion-continuidad-observabilidad/requirements.md) | Aprobada · 2026-10-27 (v1.6); O-01 a O-06 cerradas, SeaweedFS v4.51 e imgproxy v4.0.20 monitoreados, límites de imgproxy y smoke S3 del deploy, respaldo de adjuntos de Chatwoot agregado; lab T-02, T-03, T-08 y T-18 pendientes |
-| BOT-001 | [Bot de atención automatizada con LLM e inferencia como servicio](docs/specs/bot-001-atencion-automatizada-llm/requirements.md) | Aprobada · 2026-10-24; día uno BYOK; billetera y spread parametrizables (Wompi+Stripe, USD interno, 30% default, prepago estricto + fallback BYOK, bot + asistente); decisiones O-01 a O-07 cerradas |
-| BOT-002 | [Motor de atención y composición dinámica de prompts](docs/specs/bot-002-motor-atencion-prompts/requirements.md) | Aprobada · 2026-10-25; prompt compuesto en runtime, clasificación de leads, captura de pedido, RNF/BDD/i18n y contrato `registrar_pedido` |
-| ORD-001 | [Pedidos y fulfillment](docs/specs/ord-001-pedidos-fulfillment/requirements.md) | Aprobada · 2026-10-25; pedido desde bot y manual, estados, idempotencia, pago, envío, devoluciones y RNF/BDD/i18n |
-| BILL-001 | [Facturación SaaS, pagos y comprobantes](docs/specs/bill-001-facturacion-saas/requirements.md) | Aprobada · 2026-10-25; pasarela dual Wompi/Stripe, `plan_id uuid`, `payment_methods` tokenizados, prorrateo por días, datos Matías API, comprobantes Excel/PDF, sin retenciones v1 y créditos de referidos |
-| REF-001 | [Programa de referidos](docs/specs/ref-001-programa-referidos/requirements.md) | Borrador · 2026-10-25; Modelo A (crédito) unilateral, recompensa parametrizable (monto fijo o porcentaje), crédito único por referido con vigencia 365 días, tope configurable sin valor fijo por defecto, ventana de 60 días y toggle activo/pausado; sin decisiones abiertas, pendiente aprobación final |
-| CRM-001 | [Prospectos y gestión comercial](docs/specs/crm-001-prospectos-gestion-comercial/requirements.md) | Aprobada · 2026-10-25; maestro de prospectos en Mocter, Chatwoot como proyección, Habeas Data (Ley 1581 de 2012); dos propósitos de consentimiento, aviso editable versionado y captura por botones + enlace; sin decisiones abiertas |
-| AI-001 | [Asistente AI de configuración](docs/specs/ai-001-asistente-ai-configuracion/requirements.md) | Aprobada · 2026-10-25; prompts maestros por campo, «Mejorar con AI» con BYOK o billetera Mocter, modelo propio configurable y sin límite mensual separado; sin decisiones abiertas |
-| REP-001 | [Informes y dashboards](docs/specs/rep-001-informes-dashboards/requirements.md) | Aprobada · 2026-10-25; cálculo en caliente sin snapshots, roles D-31 (`tenant_owner`/`tenant_agent`, sin `tenant_admin`), 5 criterios BDD y exportación nativa Excel/PDF |
-| DSN-001 | [Sistema de diseño y look & feel](docs/specs/dsn-001-sistema-diseno/requirements.md) | Aprobada · 2026-10-25; Mobile First, catálogo `/design-system`, HUD sutil + acentos de marca, tipografía solo Top/Enterprise y tema que sigue al sistema con fallback oscuro; sin decisiones abiertas |
-| LND-001 | [Landing page, planes comerciales y accesos](docs/specs/lnd-001-landing-planes-comerciales/requirements.md) | Aprobada · 2026-10-25; planes dinámicos condicionales con `plan_code` y resolución a UUID, botón acceso header, login/register interconectados y upgrade en backoffice |
-| NTF-001 | [Notificaciones transaccionales y plantillas de correo](docs/specs/ntf-001-notificaciones-plantillas/requirements.md) | Aprobada · 2026-10-25; remitentes múltiples, SMTP, catálogo de eventos, plantillas TipTap versionadas y **outbox + RabbitMQ + worker no bloqueante**; si la notificación falla, el negocio continúa; administración en `/admin/settings/notifications` |
+| ID       | Nombre                                                                                                                          | Estado                                                                                                                                                                                                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MIG-001  | [Migración Next.js 16](docs/specs/mig-001-nextjs-migration/requirements.md)                                                     | Implementada · Estable                                                                                                                                                                                                                                                                                     |
+| CD-001   | [Despliegue continuo](docs/specs/cd-001-despliegue-continuo/requirements.md)                                                    | Implementada · Primer release desplegado (2026-10-24)                                                                                                                                                                                                                                                      |
+| CORE-002 | [Optimización del cascarón](docs/specs/core-002-optimizacion-cascaron/requirements.md)                                          | Implementada · Estable                                                                                                                                                                                                                                                                                     |
+| API-001  | [Documentación OpenAPI (Swagger)](docs/specs/api-001-openapi-swagger/requirements.md)                                           | Implementada · Estable                                                                                                                                                                                                                                                                                     |
+| ADM-001  | [mocter-admin — núcleo administrativo de inquilinos](docs/specs/adm-001-mocter-admin/requirements.md)                           | Aprobada · 2026-10-27 (v1.4); D-15 (membresía 1:0..1), D-30 (Router Global), D-31 (roles/scopes), D-32 (Chatwoot embebido), onboarding con `plan_code` → UUID, bandeja `/admin/leads` y multimedia con SeaweedFS v4.51 + imgproxy v4.0.20; bucket `media` y límites de transformación documentados         |
+| AUTH-001 | [Sistema híbrido de autenticación y autorización](docs/specs/auth-001-autenticacion-hibrida/requirements.md)                    | Aprobada · 2026-10-22; AUTH-D-01 a AUTH-D-07 cerradas                                                                                                                                                                                                                                                      |
+| CHW-001  | [Inventario técnico de Chatwoot](docs/specs/chw-001-inventario-chatwoot/requirements.md)                                        | Aprobada · 2026-10-27; Chatwoot `v4.19.1` canónico con digest de producción observado, sincronización alineada con membresía 1:0..1 y embedding iframe pendiente de laboratorio (T-17/T-18); commit upstream por fijar en T-01A                                                                            |
+| DAT-001  | [Arquitectura de datos multi-inquilino basada en celdas](docs/specs/dat-001-arquitectura-datos-multiinquilino/requirements.md)  | Aprobada · 2026-10-27; alineada con AUTH-D-06, membresía 1:0..1, modelo canónico de `plans` (UUID + `code`) y entrega de medios por imgproxy con S3 interno; Chatwoot con almacenamiento local en producción                                                                                               |
+| OPS-001  | [Operación, continuidad y observabilidad](docs/specs/ops-001-operacion-continuidad-observabilidad/requirements.md)              | Aprobada · 2026-10-27 (v1.6); O-01 a O-06 cerradas, SeaweedFS v4.51 e imgproxy v4.0.20 monitoreados, límites de imgproxy y smoke S3 del deploy, respaldo de adjuntos de Chatwoot agregado; lab T-02, T-03, T-08 y T-18 pendientes                                                                          |
+| BOT-001  | [Bot de atención automatizada con LLM e inferencia como servicio](docs/specs/bot-001-atencion-automatizada-llm/requirements.md) | Aprobada · 2026-10-24; día uno BYOK; billetera y spread parametrizables (Wompi+Stripe, USD interno, 30% default, prepago estricto + fallback BYOK, bot + asistente); decisiones O-01 a O-07 cerradas                                                                                                       |
+| BOT-002  | [Motor de atención y composición dinámica de prompts](docs/specs/bot-002-motor-atencion-prompts/requirements.md)                | Aprobada · 2026-10-25; prompt compuesto en runtime, clasificación de leads, captura de pedido, RNF/BDD/i18n y contrato `registrar_pedido`                                                                                                                                                                  |
+| ORD-001  | [Pedidos y fulfillment](docs/specs/ord-001-pedidos-fulfillment/requirements.md)                                                 | Aprobada · 2026-10-25; pedido desde bot y manual, estados, idempotencia, pago, envío, devoluciones y RNF/BDD/i18n                                                                                                                                                                                          |
+| BILL-001 | [Facturación SaaS, pagos y comprobantes](docs/specs/bill-001-facturacion-saas/requirements.md)                                  | Aprobada · 2026-10-25; pasarela dual Wompi/Stripe, `plan_id uuid`, `payment_methods` tokenizados, prorrateo por días, datos Matías API, comprobantes Excel/PDF, sin retenciones v1 y créditos de referidos                                                                                                 |
+| REF-001  | [Programa de referidos](docs/specs/ref-001-programa-referidos/requirements.md)                                                  | Borrador · 2026-10-25; Modelo A (crédito) unilateral, recompensa parametrizable (monto fijo o porcentaje), crédito único por referido con vigencia 365 días, tope configurable sin valor fijo por defecto, ventana de 60 días y toggle activo/pausado; sin decisiones abiertas, pendiente aprobación final |
+| CRM-001  | [Prospectos y gestión comercial](docs/specs/crm-001-prospectos-gestion-comercial/requirements.md)                               | Aprobada · 2026-10-25; maestro de prospectos en Mocter, Chatwoot como proyección, Habeas Data (Ley 1581 de 2012); dos propósitos de consentimiento, aviso editable versionado y captura por botones + enlace; sin decisiones abiertas                                                                      |
+| AI-001   | [Asistente AI de configuración](docs/specs/ai-001-asistente-ai-configuracion/requirements.md)                                   | Aprobada · 2026-10-25; prompts maestros por campo, «Mejorar con AI» con BYOK o billetera Mocter, modelo propio configurable y sin límite mensual separado; sin decisiones abiertas                                                                                                                         |
+| REP-001  | [Informes y dashboards](docs/specs/rep-001-informes-dashboards/requirements.md)                                                 | Aprobada · 2026-10-25; cálculo en caliente sin snapshots, roles D-31 (`tenant_owner`/`tenant_agent`, sin `tenant_admin`), 5 criterios BDD y exportación nativa Excel/PDF                                                                                                                                   |
+| DSN-001  | [Sistema de diseño y look & feel](docs/specs/dsn-001-sistema-diseno/requirements.md)                                            | Aprobada · 2026-10-25; Mobile First, catálogo `/design-system`, HUD sutil + acentos de marca, tipografía solo Top/Enterprise y tema que sigue al sistema con fallback oscuro; sin decisiones abiertas                                                                                                      |
+| LND-001  | [Landing page, planes comerciales y accesos](docs/specs/lnd-001-landing-planes-comerciales/requirements.md)                     | Aprobada · 2026-10-25; planes dinámicos condicionales con `plan_code` y resolución a UUID, botón acceso header, login/register interconectados y upgrade en backoffice                                                                                                                                     |
+| NTF-001  | [Notificaciones transaccionales y plantillas de correo](docs/specs/ntf-001-notificaciones-plantillas/requirements.md)           | Aprobada · 2026-10-25; remitentes múltiples, SMTP, catálogo de eventos, plantillas TipTap versionadas y **outbox + RabbitMQ + worker no bloqueante**; si la notificación falla, el negocio continúa; administración en `/admin/settings/notifications`                                                     |
 
 ## 7. Referencia de producción
 
 - [Servicios de producción · inventario observado](docs/reference/production-services.md): contenedores, imágenes/digests, redes, volúmenes, healthchecks y brechas verificadas de `mocter-media` y `mocter-chatwoot` al 2026-10-27. Es la fuente para el contrato de integración de código; no reemplaza las specs ni contiene secretos.
-
-
