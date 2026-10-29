@@ -299,6 +299,7 @@ export class MockRedisClient extends EventEmitter {
     return "OK";
   }
 
+
   /**
    * Cierra la conexión simulada.
    */

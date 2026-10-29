@@ -13,13 +13,19 @@ import type {
 export interface CreateUserWithConsentParams {
   /** Correo normalizado en minúsculas. */
   email: string;
-  /** Hash Argon2id con parámetros embebidos. */
-  passwordHash: string;
+  /** Hash Argon2id con parámetros embebidos (opcional si es cuenta sin contraseña inicial). */
+  passwordHash?: string | null;
   /** Nombre visible del usuario. */
   displayName?: string | null;
+  /** Inquilino activo inicial si se crea durante un alta manual (AUTH-001 §5.9, T-26). */
+  activeClientId?: string | null;
+  /** Fecha de verificación de correo si ya está verificado. */
+  emailVerifiedAt?: Date | null;
+  /** Creador del registro ("self", "platform_sales", "system"). */
+  createdBy?: string;
   /** Versión del aviso de privacidad y tratamiento de datos aceptada (p. ej. "v1.0"). */
   policyVersion: string;
-  /** Canal de captura del consentimiento (p. ej. "register_form"). */
+  /** Canal de captura del consentimiento (p. ej. "register_form", "manual_sales"). */
   channel: string;
 }
 
@@ -417,6 +423,28 @@ export interface IAuthRepository {
     clientId: string,
     reason: string,
   ): Promise<Array<{ id: string; userId: string; sidHash: Buffer }>>;
+
+  /**
+   * Reserva atómicamente la membresía del usuario (`active_client_id`) si no tiene una asignada (AUTH-001 §5.9, T-26).
+   *
+   * Ejecuta: `UPDATE admin.users SET active_client_id = $clientId, updated_at = now() WHERE id = $userId AND active_client_id IS NULL`
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @param clientId - Identificador UUID del cliente/inquilino a reservar.
+   * @returns `true` si se reservó exitosamente (1 fila modificada o ya reservado para el mismo cliente); `false` si ya tenía otra membresía o no existe.
+   */
+  reserveUserActiveClient(userId: string, clientId: string): Promise<boolean>;
+
+  /**
+   * Libera la reserva de membresía (`active_client_id = NULL`) de un usuario si coincide con el cliente esperado (AUTH-001 §5.9, T-26).
+   *
+   * Utilizado para rollback cuando una transacción de alta u onboarding en ADM-001 es cancelada o falla.
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @param clientId - Identificador UUID del cliente/inquilino cuya reserva se va a cancelar.
+   * @returns `true` si se liberó la reserva (afectó 1 fila); `false` en caso contrario.
+   */
+  clearUserActiveClient(userId: string, clientId: string): Promise<boolean>;
 }
 
 /**

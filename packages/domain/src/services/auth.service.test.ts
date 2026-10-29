@@ -80,6 +80,8 @@ function createBaseMockAuthRepo(): IAuthRepository {
     purgeExpiredSessions: vi.fn(),
     bindSessionToClient: vi.fn(),
     revokeSessionsByClientId: vi.fn(),
+    reserveUserActiveClient: vi.fn(),
+    clearUserActiveClient: vi.fn(),
   };
 }
 
@@ -1443,7 +1445,7 @@ describe("AUTH-001 T-11 · Recuperación, establecimiento y cambio de contraseñ
       const csrfHash = hashToken(csrfRaw);
       const mockSession: Session = {
         id: "uuid-session-1",
-        sidHash: Buffer.alloc(32),
+        sidHash: hashToken("valid-sid-csrf"),
         csrfHash,
         userId: "uuid-user-1",
         clientId: null,
@@ -1466,7 +1468,7 @@ describe("AUTH-001 T-11 · Recuperación, establecimiento y cambio de contraseñ
 
       vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValue(mockSession);
 
-      const result = await authService.validateSession("valid-sid", csrfRaw);
+      const result = await authService.validateSession("valid-sid-csrf", csrfRaw);
       expect(result.ok).toBe(true);
     });
 
@@ -5419,6 +5421,557 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
           expect(secondResult.code).toBe("TOKEN_ALREADY_USED");
           expect(secondResult.error).toContain("ya ha sido utilizado");
         }
+      });
+    });
+  });
+
+  describe("AUTH-001 T-26 · Integrar onboarding e invitaciones con ADM-001 (validateOnboardingSession, reserveMembershipForOnboarding, releaseMembershipReservation, provisionUserForManualSales)", () => {
+    let mockAuthRepo: IAuthRepository;
+    let mockMailer: IAuthMailer;
+    let mockGoogleOidcClient: IGoogleOidcClient;
+    let mockFacebookOAuthClient: IFacebookOAuthClient;
+    let mockStateManager: OAuthStateManager;
+    let mockRedis: MockRedisClient;
+    let sessionCache: SessionCacheManager;
+    let authService: AuthService;
+
+    const baseVerifiedUser: User = {
+      id: "uuid-user-t26-verified",
+      email: "onboarding.owner@mocter.co",
+      emailVerifiedAt: new Date(),
+      passwordHash: "$argon2id$v=19$m=65536,t=3,p=4$dummy",
+      passwordUpdatedAt: new Date(),
+      totpSecretCiphertext: null,
+      totpKeyId: null,
+      totpEnabledAt: null,
+      totpPendingSecretCiphertext: null,
+      totpPendingKeyId: null,
+      totpPendingCreatedAt: null,
+      totpLastUsedStep: null,
+      identityLocation: "router",
+      activeClientId: null,
+      status: "active",
+      displayName: "Onboarding Owner",
+      avatarUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "system",
+      updatedBy: "system",
+    };
+
+    const unverifiedUser: User = {
+      ...baseVerifiedUser,
+      id: "uuid-user-t26-unverified",
+      email: "unverified@mocter.co",
+      emailVerifiedAt: null,
+    };
+
+    const disabledUser: User = {
+      ...baseVerifiedUser,
+      id: "uuid-user-t26-disabled",
+      email: "disabled@mocter.co",
+      status: "disabled",
+    };
+
+    const userWithExistingClient: User = {
+      ...baseVerifiedUser,
+      id: "uuid-user-t26-with-client",
+      email: "already.member@mocter.co",
+      activeClientId: "existing-client-uuid-999",
+    };
+
+    const rawSid = "t26-sid-123456789012345678901234";
+    const sidHash = hashToken(rawSid);
+    const csrfToken = "t26-csrf-1234567890123456789012";
+    const csrfHash = hashToken(csrfToken);
+
+    const now = new Date();
+    const mockSession: Session = {
+      id: "session-uuid-t26",
+      userId: baseVerifiedUser.id,
+      clientId: null,
+      routingVersion: null,
+      sidHash,
+      csrfHash,
+      authMethod: "password",
+      mfaAt: null,
+      reauthAt: now,
+      lastSeenAt: now,
+      expiresAt: new Date(now.getTime() + 30 * 60 * 1000),
+      absoluteExpiresAt: new Date(now.getTime() + 12 * 60 * 60 * 1000),
+      revokedAt: null,
+      revokedReason: null,
+      ipHash: null,
+      userAgentHash: null,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: "system",
+      updatedBy: "system",
+    };
+
+    beforeEach(() => {
+      mockAuthRepo = createBaseMockAuthRepo();
+      mockMailer = {
+        sendVerificationEmail: vi.fn(),
+        sendPasswordSetupEmail: vi.fn(),
+        sendPasswordResetEmail: vi.fn(),
+        sendAccountAlreadyExistsEmail: vi.fn(),
+      };
+      mockGoogleOidcClient = {
+        verifyIdToken: vi.fn(),
+      };
+      mockFacebookOAuthClient = {
+        exchangeCodeForToken: vi.fn(),
+        getUserProfile: vi.fn(),
+      };
+      mockStateManager = {} as OAuthStateManager;
+      mockRedis = new MockRedisClient();
+      setRedisClientForTesting(mockRedis as unknown as any);
+      sessionCache = new SessionCacheManager();
+
+      authService = new AuthService(
+        mockAuthRepo,
+        mockMailer,
+        mockGoogleOidcClient,
+        mockFacebookOAuthClient,
+        mockStateManager,
+        undefined,
+        undefined,
+        sessionCache,
+      );
+    });
+
+    afterEach(() => {
+      setRedisClientForTesting(null);
+    });
+
+    describe("validateOnboardingSession", () => {
+      it("falla con UNAUTHORIZED si el sid está ausente", async () => {
+        const result = await authService.validateOnboardingSession({ sid: "" });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("UNAUTHORIZED");
+          expect(result.error).toContain("Identificador de sesión ausente");
+        }
+      });
+
+      it("falla con UNAUTHORIZED si la sesión no existe en base de datos ni caché", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(null);
+
+        const result = await authService.validateOnboardingSession({ sid: rawSid });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("UNAUTHORIZED");
+        }
+      });
+
+      it("falla con UNAUTHORIZED si el usuario de la sesión no existe", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(null);
+
+        const result = await authService.validateOnboardingSession({ sid: rawSid });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("UNAUTHORIZED");
+        }
+      });
+
+      it("falla con UNAUTHORIZED si la cuenta del usuario está deshabilitada", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(disabledUser);
+
+        const result = await authService.validateOnboardingSession({ sid: rawSid });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("UNAUTHORIZED");
+        }
+      });
+
+      it("falla con EMAIL_NOT_VERIFIED si el correo del usuario no ha sido verificado", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce({
+          ...mockSession,
+          userId: unverifiedUser.id,
+        });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(unverifiedUser);
+
+        const result = await authService.validateOnboardingSession({ sid: rawSid });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("EMAIL_NOT_VERIFIED");
+          expect(result.error).toContain("verificado");
+        }
+      });
+
+      it("falla con SESSION_EMAIL_MISMATCH si el correo de la sesión difiere del correo invitado", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(baseVerifiedUser);
+
+        const result = await authService.validateOnboardingSession({
+          sid: rawSid,
+          expectedEmail: "different.invitee@mocter.co",
+        });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("SESSION_EMAIL_MISMATCH");
+          expect(result.error).toContain("no coincide con el correo invitado");
+        }
+      });
+
+      it("falla con MEMBERSHIP_CONFLICT si el usuario ya posee una membresía activa en otro inquilino", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce({
+          ...mockSession,
+          userId: userWithExistingClient.id,
+          clientId: userWithExistingClient.activeClientId,
+        });
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(userWithExistingClient);
+
+        const result = await authService.validateOnboardingSession({ sid: rawSid });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("MEMBERSHIP_CONFLICT");
+          expect(result.error).toContain("ya posee una membresía activa");
+        }
+      });
+
+      it("valida exitosamente la sesión para onboarding e invitación cuando se cumplen todos los requisitos", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(baseVerifiedUser);
+
+        const result = await authService.validateOnboardingSession({
+          sid: rawSid,
+          expectedEmail: "onboarding.owner@mocter.co",
+          csrfToken,
+        });
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.user.id).toBe(baseVerifiedUser.id);
+          expect(result.data.session.id).toBe(mockSession.id);
+        }
+      });
+    });
+
+    describe("reserveMembershipForOnboarding", () => {
+      const targetClientId = "client-target-uuid-123";
+
+      it("falla con USER_NOT_FOUND si el usuario no existe", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(null);
+
+        const result = await authService.reserveMembershipForOnboarding(
+          "non-existent-user",
+          targetClientId,
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("USER_NOT_FOUND");
+        }
+        expect(mockAuthRepo.reserveUserActiveClient).not.toHaveBeenCalled();
+      });
+
+      it("falla con USER_DISABLED si el usuario se encuentra deshabilitado", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(disabledUser);
+
+        const result = await authService.reserveMembershipForOnboarding(
+          disabledUser.id,
+          targetClientId,
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("USER_DISABLED");
+        }
+        expect(mockAuthRepo.reserveUserActiveClient).not.toHaveBeenCalled();
+      });
+
+      it("falla con EMAIL_NOT_VERIFIED si el correo del usuario no está verificado", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(unverifiedUser);
+
+        const result = await authService.reserveMembershipForOnboarding(
+          unverifiedUser.id,
+          targetClientId,
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("EMAIL_NOT_VERIFIED");
+          expect(result.error).toContain("verificado");
+        }
+        expect(mockAuthRepo.reserveUserActiveClient).not.toHaveBeenCalled();
+      });
+
+      it("falla con MEMBERSHIP_CONFLICT si el usuario ya posee un activeClientId de otro inquilino", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(userWithExistingClient);
+
+        const result = await authService.reserveMembershipForOnboarding(
+          userWithExistingClient.id,
+          targetClientId,
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("MEMBERSHIP_CONFLICT");
+          expect(result.error).toContain("ya posee una membresía activa");
+        }
+        expect(mockAuthRepo.reserveUserActiveClient).not.toHaveBeenCalled();
+      });
+
+      it("falla con MEMBERSHIP_CONFLICT si la base de datos reporta 0 filas afectadas (colisión o carrera)", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(baseVerifiedUser);
+        vi.mocked(mockAuthRepo.reserveUserActiveClient).mockResolvedValueOnce(false);
+
+        const result = await authService.reserveMembershipForOnboarding(
+          baseVerifiedUser.id,
+          targetClientId,
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("MEMBERSHIP_CONFLICT");
+        }
+        expect(mockAuthRepo.reserveUserActiveClient).toHaveBeenCalledWith(
+          baseVerifiedUser.id,
+          targetClientId,
+        );
+      });
+
+      it("reserva exitosamente la membresía en users.active_client_id", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(baseVerifiedUser);
+        vi.mocked(mockAuthRepo.reserveUserActiveClient).mockResolvedValueOnce(true);
+
+        const result = await authService.reserveMembershipForOnboarding(
+          baseVerifiedUser.id,
+          targetClientId,
+        );
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.reserved).toBe(true);
+          expect(result.data.userId).toBe(baseVerifiedUser.id);
+          expect(result.data.clientId).toBe(targetClientId);
+        }
+        expect(mockAuthRepo.reserveUserActiveClient).toHaveBeenCalledWith(
+          baseVerifiedUser.id,
+          targetClientId,
+        );
+      });
+
+      it("retorna DB_ERROR si la base de datos arroja una excepción no controlada", async () => {
+        vi.mocked(mockAuthRepo.findUserById).mockRejectedValueOnce(new Error("Connection reset"));
+
+        const result = await authService.reserveMembershipForOnboarding(
+          baseVerifiedUser.id,
+          targetClientId,
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("DB_ERROR");
+        }
+      });
+    });
+
+    describe("releaseMembershipReservation", () => {
+      const targetClientId = "client-target-uuid-123";
+
+      it("libera exitosamente la reserva de membresía en Postgres", async () => {
+        vi.mocked(mockAuthRepo.clearUserActiveClient).mockResolvedValueOnce(true);
+
+        const result = await authService.releaseMembershipReservation(
+          baseVerifiedUser.id,
+          targetClientId,
+        );
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.released).toBe(true);
+        }
+        expect(mockAuthRepo.clearUserActiveClient).toHaveBeenCalledWith(
+          baseVerifiedUser.id,
+          targetClientId,
+        );
+      });
+
+      it("retorna DB_ERROR si la base de datos arroja un error al liberar", async () => {
+        vi.mocked(mockAuthRepo.clearUserActiveClient).mockRejectedValueOnce(
+          new Error("DB Deadlock"),
+        );
+
+        const result = await authService.releaseMembershipReservation(
+          baseVerifiedUser.id,
+          targetClientId,
+        );
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("DB_ERROR");
+        }
+      });
+    });
+
+    describe("provisionUserForManualSales", () => {
+      const targetClientId = "client-manual-sales-uuid-555";
+
+      it("rechaza con VALIDATION_ERROR si el correo o el clientId son inválidos", async () => {
+        const result1 = await authService.provisionUserForManualSales({
+          email: "invalid-email",
+          clientId: targetClientId,
+        });
+        expect(result1.ok).toBe(false);
+        if (!result1.ok) {
+          expect(result1.code).toBe("VALIDATION_ERROR");
+        }
+
+        const result2 = await authService.provisionUserForManualSales({
+          email: "valid@mocter.co",
+          clientId: "",
+        });
+        expect(result2.ok).toBe(false);
+        if (!result2.ok) {
+          expect(result2.code).toBe("VALIDATION_ERROR");
+        }
+      });
+
+      it("reutiliza la identidad existente si el correo ya existe en users", async () => {
+        vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValueOnce(baseVerifiedUser);
+        vi.mocked(mockAuthRepo.reserveUserActiveClient).mockResolvedValueOnce(true);
+
+        const result = await authService.provisionUserForManualSales({
+          email: baseVerifiedUser.email,
+          clientId: targetClientId,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.isNew).toBe(false);
+          expect(result.data.user.id).toBe(baseVerifiedUser.id);
+          expect(result.data.user.activeClientId).toBe(targetClientId);
+          expect(result.data.setupPasswordToken).toBeNull();
+        }
+        expect(mockAuthRepo.createUserWithConsent).not.toHaveBeenCalled();
+        expect(mockAuthRepo.reserveUserActiveClient).toHaveBeenCalledWith(
+          baseVerifiedUser.id,
+          targetClientId,
+        );
+      });
+
+      it("rechaza con USER_DISABLED si la identidad existente se encuentra deshabilitada", async () => {
+        vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValueOnce(disabledUser);
+
+        const result = await authService.provisionUserForManualSales({
+          email: disabledUser.email,
+          clientId: targetClientId,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("USER_DISABLED");
+        }
+        expect(mockAuthRepo.reserveUserActiveClient).not.toHaveBeenCalled();
+      });
+
+      it("rechaza con MEMBERSHIP_CONFLICT si la identidad existente ya pertenece a otro cliente", async () => {
+        vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValueOnce(userWithExistingClient);
+
+        const result = await authService.provisionUserForManualSales({
+          email: userWithExistingClient.email,
+          clientId: targetClientId,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("MEMBERSHIP_CONFLICT");
+          expect(result.error).toContain("ya posee una membresía activa");
+        }
+        expect(mockAuthRepo.reserveUserActiveClient).not.toHaveBeenCalled();
+      });
+
+      it("rechaza con MEMBERSHIP_CONFLICT si la reserva atómica en la identidad existente falla", async () => {
+        vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValueOnce(baseVerifiedUser);
+        vi.mocked(mockAuthRepo.reserveUserActiveClient).mockResolvedValueOnce(false);
+
+        const result = await authService.provisionUserForManualSales({
+          email: baseVerifiedUser.email,
+          clientId: targetClientId,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("MEMBERSHIP_CONFLICT");
+        }
+      });
+
+      it("crea un nuevo usuario con activeClientId, correo verificado y token de setup de contraseña si no existe", async () => {
+        const newEmail = "new.client.owner@mocter.co";
+        const createdUser: User = {
+          ...baseVerifiedUser,
+          id: "uuid-user-newly-created",
+          email: newEmail,
+          activeClientId: targetClientId,
+        };
+
+        vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValueOnce(null);
+        vi.mocked(mockAuthRepo.createUserWithConsent).mockResolvedValueOnce({
+          user: createdUser,
+          consent: {} as any,
+        });
+        vi.mocked(mockAuthRepo.createPasswordResetToken).mockResolvedValueOnce({} as any);
+
+        const result = await authService.provisionUserForManualSales({
+          email: newEmail,
+          clientId: targetClientId,
+          displayName: "New Owner",
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.isNew).toBe(true);
+          expect(result.data.user.id).toBe(createdUser.id);
+          expect(result.data.setupPasswordToken).toBeDefined();
+          expect(typeof result.data.setupPasswordToken).toBe("string");
+        }
+
+        expect(mockAuthRepo.createUserWithConsent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            email: newEmail,
+            activeClientId: targetClientId,
+            emailVerifiedAt: expect.any(Date),
+            displayName: "New Owner",
+          }),
+        );
+
+        expect(mockAuthRepo.createPasswordResetToken).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userId: createdUser.id,
+            purpose: "setup",
+          }),
+        );
+
+        expect(mockMailer.sendPasswordSetupEmail).toHaveBeenCalledWith(
+          newEmail,
+          expect.any(String),
+        );
+      });
+
+      it("retorna DB_ERROR si la base de datos arroja un error en el alta manual", async () => {
+        vi.mocked(mockAuthRepo.findUserByEmail).mockRejectedValueOnce(new Error("DB Timeout"));
+
+        const result = await authService.provisionUserForManualSales({
+          email: "error@mocter.co",
+          clientId: targetClientId,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("DB_ERROR");
+        }
+      });
+    });
+
+    describe("bindSessionToClient (verificación de correo T-26)", () => {
+      const targetClientId = "client-target-uuid-123";
+
+      it("rechaza con EMAIL_NOT_VERIFIED si el usuario no tiene correo verificado al intentar vincular la sesión", async () => {
+        vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(mockSession);
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(unverifiedUser);
+
+        const result = await authService.bindSessionToClient(rawSid, targetClientId);
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("EMAIL_NOT_VERIFIED");
+          expect(result.error).toContain("verificado");
+        }
+        expect(mockAuthRepo.bindSessionToClient).not.toHaveBeenCalled();
       });
     });
   });

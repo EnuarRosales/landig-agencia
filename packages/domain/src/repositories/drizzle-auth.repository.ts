@@ -92,17 +92,21 @@ export class DrizzleAuthRepository implements IAuthRepository {
   ): Promise<{ user: User; consent: UserConsent }> {
     try {
       return await this.db.transaction(async (tx) => {
+        const now = new Date();
+        const createdBy = params.createdBy ?? "self";
         const [user] = await tx
           .insert(users)
           .values({
             email: params.email.trim().toLowerCase(),
-            passwordHash: params.passwordHash,
-            passwordUpdatedAt: new Date(),
+            passwordHash: params.passwordHash ?? null,
+            passwordUpdatedAt: params.passwordHash ? now : null,
             displayName: params.displayName || null,
+            activeClientId: params.activeClientId ?? null,
+            emailVerifiedAt: params.emailVerifiedAt ?? null,
             status: "active",
             identityLocation: "router",
-            createdBy: "self",
-            updatedBy: "self",
+            createdBy,
+            updatedBy: createdBy,
           })
           .returning();
 
@@ -1177,6 +1181,70 @@ export class DrizzleAuthRepository implements IAuthRepository {
       appLogger.error(`[AuthRepository.revokeSessionsByClientId Failed] ${msg}`, error, {
         clientId,
         reason,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Reserva atómicamente la membresía del usuario (`active_client_id`) si no tiene una asignada (AUTH-001 §5.9, T-26).
+   */
+  async reserveUserActiveClient(userId: string, clientId: string): Promise<boolean> {
+    try {
+      const now = new Date();
+      const updated = await this.db
+        .update(users)
+        .set({
+          activeClientId: clientId,
+          updatedAt: now,
+          updatedBy: "system",
+        })
+        .where(
+          and(
+            eq(users.id, userId),
+            or(isNull(users.activeClientId), eq(users.activeClientId, clientId)),
+          ),
+        )
+        .returning({ id: users.id });
+
+      return updated.length === 1;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.reserveUserActiveClient Failed] ${msg}`, error, {
+        userId,
+        clientId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Libera la reserva de membresía (`active_client_id = NULL`) de un usuario si coincide con el cliente esperado (AUTH-001 §5.9, T-26).
+   */
+  async clearUserActiveClient(userId: string, clientId: string): Promise<boolean> {
+    try {
+      const now = new Date();
+      const updated = await this.db
+        .update(users)
+        .set({
+          activeClientId: null,
+          updatedAt: now,
+          updatedBy: "system",
+        })
+        .where(
+          and(
+            eq(users.id, userId),
+            eq(users.activeClientId, clientId),
+          ),
+        )
+        .returning({ id: users.id });
+
+      return updated.length === 1;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.clearUserActiveClient Failed] ${msg}`, error, {
+        userId,
+        clientId,
       });
       throw error;
     }

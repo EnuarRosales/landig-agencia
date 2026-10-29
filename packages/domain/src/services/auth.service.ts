@@ -129,15 +129,104 @@ export interface BindSessionToClientInput {
 }
 
 /**
- * Códigos de error para el flujo de vinculación de sesión con inquilino (AUTH-001 T-24).
+ * Códigos de error para el flujo de vinculación de sesión con inquilino (AUTH-001 T-24, T-26).
  */
 export type BindSessionToClientErrorCode =
   | "SESSION_NOT_FOUND"
   | "SESSION_EXPIRED"
   | "USER_NOT_FOUND"
   | "USER_DISABLED"
+  | "EMAIL_NOT_VERIFIED"
   | "MEMBERSHIP_CONFLICT"
   | "DB_ERROR";
+
+/**
+ * Parámetros de entrada para la validación de sesión en flujos de onboarding o invitaciones (AUTH-001 §5.9, T-26).
+ */
+export interface ValidateOnboardingSessionInput {
+  /** Identificador de sesión o cookie `sid`. */
+  sid: string;
+  /** Correo esperado de la invitación (opcional). */
+  expectedEmail?: string;
+  /** Token CSRF opcional para validación conjunta. */
+  csrfToken?: string;
+}
+
+/**
+ * Códigos de error para la validación de sesión de onboarding o invitaciones (AUTH-001 §5.9, T-26).
+ */
+export type ValidateOnboardingSessionErrorCode =
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "USER_NOT_FOUND"
+  | "USER_DISABLED"
+  | "EMAIL_NOT_VERIFIED"
+  | "SESSION_EMAIL_MISMATCH"
+  | "MEMBERSHIP_CONFLICT"
+  | "DB_ERROR";
+
+/**
+ * Datos retornados tras validar exitosamente una sesión para onboarding o invitación.
+ */
+export interface OnboardingSessionValidationData {
+  user: User;
+  session: Session;
+}
+
+/**
+ * Códigos de error para la reserva atómica de membresía de inquilino (AUTH-001 §5.9, T-26).
+ */
+export type ReserveMembershipErrorCode =
+  | "USER_NOT_FOUND"
+  | "USER_DISABLED"
+  | "EMAIL_NOT_VERIFIED"
+  | "MEMBERSHIP_CONFLICT"
+  | "DB_ERROR";
+
+/**
+ * Datos retornados tras reservar exitosamente la membresía de un inquilino.
+ */
+export interface ReserveMembershipData {
+  reserved: boolean;
+  userId: string;
+  clientId: string;
+}
+
+/**
+ * Parámetros de entrada para el aprovisionamiento manual de usuario por ventas de plataforma (AUTH-001 §5.9, T-26).
+ */
+export interface ProvisionUserForManualSalesInput {
+  /** Correo electrónico del usuario a vincular o crear. */
+  email: string;
+  /** Identificador UUID del cliente/inquilino al que se asignará. */
+  clientId: string;
+  /** Nombre visible opcional del usuario. */
+  displayName?: string | null;
+  /** Identificador o nombre del operador/sistema que realiza el alta. */
+  createdBy?: string;
+  /** Versión del aviso de privacidad y tratamiento de datos aceptada (por defecto "v1.0"). */
+  policyVersion?: string;
+  /** Canal de captura del consentimiento (por defecto "manual_sales"). */
+  channel?: string;
+}
+
+/**
+ * Códigos de error para el aprovisionamiento manual de usuario por ventas de plataforma (AUTH-001 §5.9, T-26).
+ */
+export type ProvisionUserForManualSalesErrorCode =
+  | "VALIDATION_ERROR"
+  | "USER_DISABLED"
+  | "MEMBERSHIP_CONFLICT"
+  | "DB_ERROR";
+
+/**
+ * Datos retornados tras aprovisionar un usuario en alta manual.
+ */
+export interface ProvisionUserForManualSalesData {
+  user: User;
+  isNew: boolean;
+  setupPasswordToken: string | null;
+}
 
 /**
  * Objeto de respuesta para solicitudes de recuperación de contraseña.
@@ -2346,6 +2435,15 @@ export class AuthService {
         return err("El usuario se encuentra deshabilitado.", "USER_DISABLED");
       }
 
+      // Regla canónica de correo verificado (AUTH-001 §5.9, T-26):
+      // No se permite vincular una sesión a un inquilino si el correo no está verificado.
+      if (user.emailVerifiedAt === null) {
+        return err(
+          "El correo electrónico del usuario debe estar verificado antes de vincular la sesión con un inquilino.",
+          "EMAIL_NOT_VERIFIED",
+        );
+      }
+
       // 3. Regla canónica de membresía única (ADM-001 D-15 / AUTH-001 §5.9):
       // Si el usuario ya tiene un activeClientId distinto, una segunda membresía se rechaza
       // terminantemente y NO altera la sesión existente.
@@ -2433,6 +2531,306 @@ export class AuthService {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[AuthService.revokeClientSessions Error] ${msg}`, error, { clientId, reason });
       return err("Error interno al revocar las sesiones del inquilino.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Valida que la sesión actual cumpla los requisitos estrictos para flujos de onboarding o invitaciones (AUTH-001 §5.9, T-26).
+   *
+   * Reglas:
+   * 1. La sesión debe ser válida, no revocada y vigente (verificada vía `validateSession`).
+   * 2. El usuario debe existir y su estado no debe ser `disabled`.
+   * 3. El usuario debe poseer correo electrónico verificado (`email_verified_at IS NOT NULL`).
+   * 4. Si se especifica `expectedEmail`, el correo del usuario debe coincidir exactamente (ignorando mayúsculas/minúsculas).
+   * 5. El usuario NO debe poseer ya una membresía activa en otro inquilino (`active_client_id IS NULL`), preservando la regla 1:0..1.
+   *
+   * @param input - Parámetros con el identificador de sesión y correo esperado opcional.
+   * @returns Un {@link Result} con las entidades {@link User} y {@link Session} o el código de error correspondiente.
+   */
+  async validateOnboardingSession(
+    input: ValidateOnboardingSessionInput,
+  ): Promise<Result<OnboardingSessionValidationData, ValidateOnboardingSessionErrorCode>> {
+    try {
+      if (!input.sid) {
+        return err("Identificador de sesión ausente.", "UNAUTHORIZED");
+      }
+
+      // 1. Validar la sesión a través de validateSession (evalúa Redis + Postgres + CSRF)
+      const sessionResult = await this.validateSession(input.sid, input.csrfToken);
+      if (!sessionResult.ok) {
+        return err(sessionResult.error, sessionResult.code);
+      }
+
+      const { session } = sessionResult.data;
+      let user: User | null | undefined = sessionResult.data.user;
+      if (!user) {
+        user = await this.authRepo.findUserById(session.userId);
+      }
+
+      if (!user) {
+        return err("Usuario no encontrado.", "USER_NOT_FOUND");
+      }
+
+      if (user.status === "disabled") {
+        return err("El usuario se encuentra deshabilitado.", "USER_DISABLED");
+      }
+
+      // 2. Exigir correo electrónico verificado (AUTH-001 §5.9, T-26)
+      if (user.emailVerifiedAt === null) {
+        return err(
+          "El correo electrónico del usuario debe estar verificado para completar el onboarding o aceptar invitaciones.",
+          "EMAIL_NOT_VERIFIED",
+        );
+      }
+
+      // 3. Exigir que la sesión coincida con el correo esperado si se suministró (invitación)
+      if (input.expectedEmail) {
+        const normalizedSessionEmail = user.email.trim().toLowerCase();
+        const normalizedExpectedEmail = input.expectedEmail.trim().toLowerCase();
+        if (normalizedSessionEmail !== normalizedExpectedEmail) {
+          return err(
+            "El correo de la sesión no coincide con el correo invitado.",
+            "SESSION_EMAIL_MISMATCH",
+          );
+        }
+      }
+
+      // 4. Exigir que el usuario no posea ya una membresía activa en otro inquilino (anti-segunda membresía)
+      if (user.activeClientId !== null) {
+        return err(
+          "El usuario ya posee una membresía activa en un inquilino.",
+          "MEMBERSHIP_CONFLICT",
+        );
+      }
+
+      return ok({ user, session });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.validateOnboardingSession Error] ${msg}`, error);
+      return err("Error interno al validar la sesión de onboarding.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Reserva atómicamente el apuntador `users.active_client_id` para un nuevo inquilino antes de crear `tenant_users` (AUTH-001 §5.9, T-26).
+   *
+   * Reglas:
+   * 1. Verifica que el usuario exista, esté activo y con correo verificado.
+   * 2. Si el usuario ya tiene asignado un inquilino distinto, rechaza de inmediato con `MEMBERSHIP_CONFLICT`.
+   * 3. Ejecuta la actualización atómica en la base de datos garantizando que no se viole el contrato de membresía única (1:0..1).
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @param clientId - Identificador UUID del cliente/inquilino a reservar.
+   * @returns Un {@link Result} confirmando la reserva.
+   */
+  async reserveMembershipForOnboarding(
+    userId: string,
+    clientId: string,
+  ): Promise<Result<ReserveMembershipData, ReserveMembershipErrorCode>> {
+    try {
+      if (!userId || !clientId) {
+        return err("Parámetros de usuario o cliente inválidos.", "DB_ERROR");
+      }
+
+      const user = await this.authRepo.findUserById(userId);
+      if (!user) {
+        return err("Usuario no encontrado.", "USER_NOT_FOUND");
+      }
+
+      if (user.status === "disabled") {
+        return err("El usuario se encuentra deshabilitado.", "USER_DISABLED");
+      }
+
+      if (user.emailVerifiedAt === null) {
+        return err(
+          "El correo electrónico del usuario debe estar verificado antes de reservar membresía.",
+          "EMAIL_NOT_VERIFIED",
+        );
+      }
+
+      if (user.activeClientId !== null && user.activeClientId !== clientId) {
+        return err(
+          "El usuario ya posee una membresía activa en otro inquilino.",
+          "MEMBERSHIP_CONFLICT",
+        );
+      }
+
+      const reserved = await this.authRepo.reserveUserActiveClient(userId, clientId);
+      if (!reserved) {
+        return err(
+          "El usuario ya posee una membresía activa en otro inquilino o no fue posible reservar.",
+          "MEMBERSHIP_CONFLICT",
+        );
+      }
+
+      appLogger.info("[AuthService.reserveMembershipForOnboarding] Membresía reservada exitosamente", {
+        userId,
+        clientId,
+      });
+
+      return ok({ reserved: true, userId, clientId });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.reserveMembershipForOnboarding Error] ${msg}`, error, {
+        userId,
+        clientId,
+      });
+      return err("Error interno al reservar la membresía.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Libera la reserva del apuntador `users.active_client_id` si una transacción de alta falla o se cancela (AUTH-001 §5.9, T-26).
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @param clientId - Identificador UUID del cliente/inquilino cuya reserva se va a anular.
+   * @returns Un {@link Result} indicando si la liberación fue realizada.
+   */
+  async releaseMembershipReservation(
+    userId: string,
+    clientId: string,
+  ): Promise<Result<{ released: boolean }, "DB_ERROR">> {
+    try {
+      const released = await this.authRepo.clearUserActiveClient(userId, clientId);
+      appLogger.info("[AuthService.releaseMembershipReservation] Reserva liberada", {
+        userId,
+        clientId,
+        released,
+      });
+      return ok({ released });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.releaseMembershipReservation Error] ${msg}`, error, {
+        userId,
+        clientId,
+      });
+      return err("Error interno al liberar la reserva de membresía.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Aprovisiona un usuario para un inquilino durante el alta manual por ventas de plataforma (AUTH-001 §5.9, T-26).
+   *
+   * Reglas:
+   * 1. Reutiliza la identidad existente si el correo ya existe; nunca crea registros duplicados en `admin.users`.
+   * 2. Si el usuario ya existe pero tiene un `active_client_id` asignado a otro cliente, la operación falla con `MEMBERSHIP_CONFLICT`.
+   * 3. Si el usuario existe y no tiene membresía, reserva atómicamente `active_client_id = clientId`.
+   * 4. Si el usuario no existe, lo crea con estado `active`, `active_client_id = clientId`, correo verificado,
+   *    genera un token para establecer su contraseña inicial (`purpose: 'setup'`) y despacha el correo de invitación.
+   *
+   * @param input - Datos del usuario y cliente para el alta manual.
+   * @returns Un {@link Result} con la información del usuario aprovisionado.
+   */
+  async provisionUserForManualSales(
+    input: ProvisionUserForManualSalesInput,
+  ): Promise<Result<ProvisionUserForManualSalesData, ProvisionUserForManualSalesErrorCode>> {
+    try {
+      const email = input.email.trim().toLowerCase();
+      if (!email || !email.includes("@")) {
+        return err("Formato de correo electrónico inválido.", "VALIDATION_ERROR");
+      }
+
+      if (!input.clientId) {
+        return err("Identificador de cliente inválido.", "VALIDATION_ERROR");
+      }
+
+      const existingUser = await this.authRepo.findUserByEmail(email);
+
+      if (existingUser) {
+        // Caso 1: El usuario ya existe en la plataforma (reutilización de identidad)
+        if (existingUser.status === "disabled") {
+          return err("El usuario se encuentra deshabilitado.", "USER_DISABLED");
+        }
+
+        if (existingUser.activeClientId !== null && existingUser.activeClientId !== input.clientId) {
+          return err(
+            "El usuario ya posee una membresía activa en otro inquilino.",
+            "MEMBERSHIP_CONFLICT",
+          );
+        }
+
+        const reserved = await this.authRepo.reserveUserActiveClient(existingUser.id, input.clientId);
+        if (!reserved) {
+          return err(
+            "El usuario ya posee una membresía activa en otro inquilino o no fue posible reservar.",
+            "MEMBERSHIP_CONFLICT",
+          );
+        }
+
+        appLogger.info(
+          "[AuthService.provisionUserForManualSales] Identidad existente reutilizada para inquilino",
+          {
+            userId: existingUser.id,
+            email,
+            clientId: input.clientId,
+          },
+        );
+
+        return ok({
+          user: {
+            ...existingUser,
+            activeClientId: input.clientId,
+          },
+          isNew: false,
+          setupPasswordToken: null,
+        });
+      }
+
+      // Caso 2: Nuevo usuario a registrar en la plataforma
+      const createdBy = input.createdBy ?? "platform_sales";
+      const { user: newUser } = await this.authRepo.createUserWithConsent({
+        email,
+        passwordHash: null,
+        displayName: input.displayName || null,
+        activeClientId: input.clientId,
+        emailVerifiedAt: new Date(),
+        createdBy,
+        policyVersion: input.policyVersion ?? "v1.0",
+        channel: input.channel ?? "manual_sales",
+      });
+
+      // Emitir token para que configure su primera contraseña (setup)
+      const rawToken = generateSecureToken();
+      const tokenHash = hashToken(rawToken);
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+
+      await this.authRepo.createPasswordResetToken({
+        userId: newUser.id,
+        tokenHash,
+        purpose: "setup",
+        expiresAt,
+      });
+
+      // Notificar por correo
+      try {
+        await this.mailer.sendPasswordSetupEmail(newUser.email, rawToken);
+      } catch (mailError) {
+        appLogger.warn(
+          `[AuthService.provisionUserForManualSales] Error al enviar correo de setup de contraseña: ${mailError instanceof Error ? mailError.message : String(mailError)}`,
+        );
+      }
+
+      appLogger.info(
+        "[AuthService.provisionUserForManualSales] Nuevo usuario aprovisionado exitosamente para inquilino",
+        {
+          userId: newUser.id,
+          email,
+          clientId: input.clientId,
+        },
+      );
+
+      return ok({
+        user: newUser,
+        isNew: true,
+        setupPasswordToken: rawToken,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.provisionUserForManualSales Error] ${msg}`, error, {
+        email: input.email,
+        clientId: input.clientId,
+      });
+      return err("Error interno al aprovisionar el usuario para el inquilino.", "DB_ERROR");
     }
   }
 
