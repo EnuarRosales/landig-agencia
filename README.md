@@ -207,7 +207,7 @@ landig-agencia/
 
 ## 6. Variables de Entorno y Configuración
 
-El proyecto utiliza un **único archivo `.env` en la raíz** del repositorio como fuente de verdad. No deben crearse archivos `.env` duplicados en subdirectorios.
+El proyecto utiliza un **único archivo `.env` en la raíz** del repositorio como fuente de verdad (basado en la plantilla [.env.example](.env.example)). No deben crearse archivos `.env` duplicados en subdirectorios.
 
 | Variable | Tipo | Descripción | Valor por Defecto (Dev) | Obligatoria en Prod |
 | :--- | :---: | :--- | :--- | :---: |
@@ -217,7 +217,43 @@ El proyecto utiliza un **único archivo `.env` en la raíz** del repositorio com
 | `POSTGRES_PASSWORD` | String | Clave de acceso a la base de datos | `M0ct3rP0rt4LDev2026` | **Sí** |
 | `POSTGRES_DB` | String | Nombre de la base de datos relacional | `db-portal` | **Sí** |
 | `POSTGRES_PORT` | Integer | Puerto expuesto en el host para la base de datos local | `54321` | Solo Dev |
+| `REDIS_PASSWORD` | String | Contraseña de autenticación de Redis plano de control | — | **Sí** |
+| `AUTH_RATE_LIMIT_PEPPER` | String | Sal secreta para cálculo de hashes de IP en rate limiting | `mocter-dev-pepper` | **Sí** |
+| `ALLOWED_ORIGINS` | String | Orígenes autorizados separados por coma para CORS/Origin | `http://localhost:3001,http://127.0.0.1:3001` | **Sí** |
+| `CHATWOOT_SSO_SECRET` | String | Secreto compartido HMAC-SHA256 para emisión de tokens JWT de SSO | — | **Sí** |
 | `TAG` | String | Etiqueta / versión de la imagen Docker en GHCR | — | **Sí** (en prod/test) |
+
+### 6.1 Obtención y Sincronización de `CHATWOOT_SSO_SECRET`
+
+En la arquitectura de Mocter ([AUTH-001 §5.10](docs/specs/auth-001-autenticacion-hibrida/design.md#510-sso-a-chatwoot)), el módulo de autenticación emite tokens JWT HS256 con TTL de 5 minutos para el inicio de sesión único hacia la instancia de Chatwoot (`v4.19.1`).
+
+Al ser Chatwoot una aplicación basada en Ruby on Rails, su clave simétrica de firma y validación criptográfica es su variable maestra **`SECRET_KEY_BASE`**. Por consiguiente, `CHATWOOT_SSO_SECRET` en Mocter debe coincidir exactamente con el valor de `SECRET_KEY_BASE` configurado en el contenedor de Chatwoot del ambiente correspondiente.
+
+#### A. Ambiente de Desarrollo Local (Docker)
+Con el stack local en ejecución, ejecutar en la terminal para extraer el valor configurado en el contenedor `mocter-chatwoot-rails-1`:
+
+```powershell
+# En PowerShell (Windows):
+docker inspect mocter-chatwoot-rails-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | findstr SECRET_KEY_BASE
+
+# En Bash / WSL:
+docker inspect mocter-chatwoot-rails-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep SECRET_KEY_BASE
+```
+*(Alternativamente, consultar el archivo `.env` del compose local de Chatwoot).*
+
+#### B. Ambientes de Pruebas y Producción (Docker + Traefik en VPS Hostinger)
+En los servidores de producción y pruebas (donde Chatwoot reside bajo `/opt/mocter-chatwoot/`, documentado en [docs/reference/production-services.md](docs/reference/production-services.md)), conectarse por SSH y extraer el valor por cualquiera de las siguientes vías:
+
+```bash
+# Opción 1: Consulta directa al contenedor en ejecución
+docker inspect mocter-chatwoot-rails-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep SECRET_KEY_BASE
+
+# Opción 2: Lectura directa del archivo de configuración del host
+grep SECRET_KEY_BASE /opt/mocter-chatwoot/.env
+```
+
+El valor obtenido se asigna a la variable `CHATWOOT_SSO_SECRET` en el archivo `.env` de Mocter en dicho entorno.
+
 
 ---
 
