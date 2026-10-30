@@ -13,6 +13,11 @@ export interface RegisterFormTranslations {
   emailPlaceholder: string;
   passwordLabel: string;
   passwordPlaceholder: string;
+  passwordHint?: string;
+  ruleMinLength?: string;
+  ruleUppercase?: string;
+  ruleNumber?: string;
+  ruleSpecial?: string;
   termsPrefix: string;
   termsLink: string;
   termsSuffix: string;
@@ -29,12 +34,15 @@ interface RegisterFormProps {
   t: RegisterFormTranslations;
 }
 
+/** Expresión regular para caracteres especiales ASCII estándar (AUTH-001 T-06). */
+const ASCII_SPECIAL_REGEX = /[!-/:-@[-`{-~]/;
+
 /**
  * Formulario interactivo HUD para el registro nativo de inquilinos (AUTH-001 T-08).
  *
  * Captura nombre, correo corporativo, contraseña y la autorización explícita de tratamiento de datos personales
- * (Ley 1581 de 2012). Al enviarse, invoca el endpoint `/api/auth/register` y despliega la confirmación genérica
- * anti-enumeración de cuentas.
+ * (Ley 1581 de 2012). Valida dinámicamente las políticas de complejidad de contraseña en tiempo real,
+ * desglosa errores específicos de campos de la API y despliega la confirmación genérica anti-enumeración.
  */
 export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
   const [name, setName] = useState("");
@@ -43,17 +51,35 @@ export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
   const [treatmentConsent, setTreatmentConsent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [isSuccess, setIsSuccess] = useState(false);
+
+  // Validación en tiempo real de políticas de contraseña (AUTH-001 T-06)
+  const hasMinLength = password.length >= 7;
+  const hasUppercase = /[A-Z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecial = ASCII_SPECIAL_REGEX.test(password);
+  const isPasswordValid = hasMinLength && hasUppercase && hasNumber && hasSpecial;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMessage(null);
+    setFieldErrors({});
 
     if (!treatmentConsent) {
       setErrorMessage(
         locale === "en"
           ? "You must authorize personal data processing to proceed."
           : "Debe autorizar el tratamiento de datos personales para continuar.",
+      );
+      return;
+    }
+
+    if (!isPasswordValid) {
+      setErrorMessage(
+        locale === "en"
+          ? "The password does not meet the security requirements."
+          : "La contraseña no cumple con los requisitos mínimos de seguridad.",
       );
       return;
     }
@@ -83,7 +109,21 @@ export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
         setIsSuccess(true);
       } else if (res.status === 422) {
         clientLog("warn", "auth.client_register_validation_failed");
-        setErrorMessage(data.error || "Datos inválidos.");
+        const grouped: Record<string, string[]> = {};
+        if (Array.isArray(data.issues)) {
+          for (const issue of data.issues) {
+            const field = Array.isArray(issue.path) && issue.path[0] ? String(issue.path[0]) : "general";
+            if (!grouped[field]) grouped[field] = [];
+            if (issue.message) grouped[field].push(issue.message);
+          }
+        }
+        setFieldErrors(grouped);
+        const passIssues = grouped.password;
+        if (passIssues && passIssues.length > 0) {
+          setErrorMessage(passIssues.join(". "));
+        } else {
+          setErrorMessage(data.error || "Datos ingresados no válidos.");
+        }
       } else {
         clientLog("warn", "auth.client_register_rejected", { status: res.status });
         setErrorMessage(data.error || "Ocurrió un error inesperado.");
@@ -150,10 +190,22 @@ export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
           autoComplete="name"
           required
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value);
+            if (fieldErrors.name) {
+              setFieldErrors((prev) => ({ ...prev, name: [] }));
+            }
+          }}
           placeholder={t.namePlaceholder}
-          className="w-full rounded-xl border border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1"
+          className={`w-full rounded-xl border ${
+            fieldErrors.name?.length ? "border-red-500/70" : "border-stroke"
+          } bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1`}
         />
+        {fieldErrors.name?.map((err, i) => (
+          <p key={i} className="mt-1 text-xs text-red-400">
+            {err}
+          </p>
+        ))}
       </div>
 
       <div>
@@ -170,10 +222,22 @@ export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
           autoComplete="email"
           required
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            if (fieldErrors.email) {
+              setFieldErrors((prev) => ({ ...prev, email: [] }));
+            }
+          }}
           placeholder={t.emailPlaceholder}
-          className="w-full rounded-xl border border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1"
+          className={`w-full rounded-xl border ${
+            fieldErrors.email?.length ? "border-red-500/70" : "border-stroke"
+          } bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1`}
         />
+        {fieldErrors.email?.map((err, i) => (
+          <p key={i} className="mt-1 text-xs text-red-400">
+            {err}
+          </p>
+        ))}
       </div>
 
       <div>
@@ -191,10 +255,58 @@ export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
           required
           minLength={7}
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            if (fieldErrors.password) {
+              setFieldErrors((prev) => ({ ...prev, password: [] }));
+            }
+          }}
           placeholder={t.passwordPlaceholder}
-          className="w-full rounded-xl border border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1"
+          className={`w-full rounded-xl border ${
+            fieldErrors.password?.length ? "border-red-500/70" : "border-stroke"
+          } bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1`}
         />
+
+        {/* Requisitos visuales dinámicos de complejidad de contraseña (AUTH-001 T-06) */}
+        <div className="mt-2.5 space-y-1.5 rounded-lg border border-stroke/40 bg-bg2/30 p-2.5 text-[11px]">
+          <p className="font-semibold text-muted">
+            {t.passwordHint || (locale === "en" ? "Security requirements:" : "Requisitos de seguridad:")}
+          </p>
+          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+            <span
+              className={`flex items-center gap-1.5 transition-colors ${
+                hasMinLength ? "font-medium text-emerald-400" : "text-muted"
+              }`}
+            >
+              <span>{hasMinLength ? "✓" : "○"}</span>
+              <span>{t.ruleMinLength || (locale === "en" ? "At least 7 characters" : "Al menos 7 caracteres")}</span>
+            </span>
+            <span
+              className={`flex items-center gap-1.5 transition-colors ${
+                hasUppercase ? "font-medium text-emerald-400" : "text-muted"
+              }`}
+            >
+              <span>{hasUppercase ? "✓" : "○"}</span>
+              <span>{t.ruleUppercase || (locale === "en" ? "At least 1 uppercase letter" : "Al menos 1 mayúscula (A-Z)")}</span>
+            </span>
+            <span
+              className={`flex items-center gap-1.5 transition-colors ${
+                hasNumber ? "font-medium text-emerald-400" : "text-muted"
+              }`}
+            >
+              <span>{hasNumber ? "✓" : "○"}</span>
+              <span>{t.ruleNumber || (locale === "en" ? "At least 1 number" : "Al menos 1 número (0-9)")}</span>
+            </span>
+            <span
+              className={`flex items-center gap-1.5 transition-colors ${
+                hasSpecial ? "font-medium text-emerald-400" : "text-muted"
+              }`}
+            >
+              <span>{hasSpecial ? "✓" : "○"}</span>
+              <span>{t.ruleSpecial || (locale === "en" ? "At least 1 special char" : "Al menos 1 símbolo (!@#$%...)")}</span>
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Checkbox obligatorio de Tratamiento de Datos Personales (Ley 1581) */}

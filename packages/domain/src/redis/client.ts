@@ -36,7 +36,7 @@ export function getRedisClient(): RedisType {
       enableOfflineQueue: false,
       connectTimeout: 2000,
       maxRetriesPerRequest: 1,
-      lazyConnect: true,
+      lazyConnect: false,
       password: env.REDIS_PASSWORD,
     };
 
