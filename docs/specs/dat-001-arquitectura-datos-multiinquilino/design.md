@@ -14,60 +14,74 @@
 **Tres planos, una clave de tenencia, cero claves foráneas cruzadas.**
 
 ```text
-                         ┌──────────────────────────────┐
-                         │      PLANO DE SOPORTE        │
-                         │  Chatwoot (web + workers)    │
-                         │  Redis 7+ · pg-chatwoot      │
-                         │  PostgreSQL 18 + pgvector    │
-                         └──────────────┬───────────────┘
-                                        │ APIs (sin acceso a la base)
-                                        │
-┌──────────────────────────────┐        │
-│     PLANO DE CONTROL         │◀───────┘
-│  Router Global               │
-│  landing + mocter-admin      │
-│  clients · plans · routing   │
-│  media_catalog · audits      │
-│  PostgreSQL 18 + pgvector    │
-│  Redis 7+ (dedicado)         │
-└──────────────┬───────────────┘
-               │ client_id → cell_id
-               │ routing_version
-     ┌─────────┴─────────┐
-     ▼                   ▼
-┌──────────────┐   ┌──────────────┐
-│   CELDA 01   │   │   CELDA N    │
-│ PgBouncer    │   │ PgBouncer    │
-│ PG18+pgvector│   │ PG18+pgvector│
-│ RLS + LIST   │   │ RLS + LIST   │
-└──────────────┘   └──────────────┘
-
-  N8N (externo, fuera de alcance) ──▶ API ──▶ Mocter
+                         ┌──────────────────────────────────────────┐
+                         │   PLANO DE SOPORTE AISLADO (SINGLETON)   │
+                         │  Instancias Únicas para toda la Plataforma│
+                         │  Chatwoot (multi-account) · Redis 7+     │
+                         │  pg-chatwoot (PostgreSQL 18 + pgvector)  │
+                         │  n8n (orquestador único de flujos)       │
+                         │  pg-n8n (PostgreSQL 18 dedicado)         │
+                         └────────────────────┬─────────────────────┘
+                                              │ APIs y Webhooks (sin acceso directo a BD)
+                                              │
+┌─────────────────────────────────────────────┴──────────┐
+│              PLANO DE CONTROL GLOBAL                   │
+│  Router Global · Landing · mocter-admin Global         │
+│  pg-control-plane (PostgreSQL 18 + pgvector)           │
+│  clients · plans · client_routing · media_catalog      │
+│  billing (BILL-001) · referrals (REF-001)              │
+│  communities & community_members (módulo transversal)  │
+│  Redis 7+ (dedicado: routing, Pub/Sub, rate limit)     │
+└─────────────────────────────┬──────────────────────────┘
+                              │ client_id → cell_id (enrutamiento de borde)
+                              │ routing_version
+        ┌─────────────────────┴─────────────────────┐
+        ▼                                           ▼
+┌─────────────────────────────────┐   ┌─────────────────────────────────┐
+│     CELDA AUTÓNOMA 01           │   │     CELDA AUTÓNOMA N            │
+│  ┌───────────────────────────┐  │   │  ┌───────────────────────────┐  │
+│  │ Capa de Aplicación        │  │   │  │ Capa de Aplicación        │  │
+│  │ (mocter-admin Inquilino)  │  │   │  │ (mocter-admin Inquilino)  │  │
+│  └─────────────┬─────────────┘  │   │  └─────────────┬─────────────┘  │
+│                ▼                │   │                ▼                │
+│  PgBouncer (modo transaction)   │   │  PgBouncer (modo transaction)   │
+│  pg-cell-01 (PG18 + pgvector)   │   │  pg-cell-N (PG18 + pgvector)    │
+│  - 3 particiones: contacts,     │   │  - 3 particiones: contacts,     │
+│    product_embeddings,          │   │    product_embeddings,          │
+│    contact_memories (halfvec)   │   │    contact_memories (halfvec)   │
+│  - Compartidas: products, users,│   │  - Compartidas: products, users,│
+│    orders, audit_logs (RLS)     │   │    orders, audit_logs (RLS)     │
+└─────────────────────────────────┘   └─────────────────────────────────┘
 ```
 
 Reglas del principio rector:
 
 1. `client_id` es la única clave de tenencia. No se usa `tenant_id`.
 2. La entidad inquilino es `clients.id` (UUIDv7). Las tablas hijas la referencian como `client_id`.
-3. Chatwoot conserva `account_id` y su propio esquema. La correlación vive en una tabla de Mocter.
-4. No hay claves foráneas entre bases. Las referencias son identificadores.
-5. N8N no forma parte de la arquitectura de datos: solo se lo nombra como actor externo.
+3. **Celda Autónoma (Data Plane):** Cada celda agrupa entre 50 y 100 inquilinos e incluye **tanto la base de datos (`pg-cell-XX` + PgBouncer en modo `transaction`) como su capa de aplicación (Backend/Admin del inquilino)** para evitar cuellos de botella en el router global.
+4. **Control Plane Global (`pg-control-plane`):** Aloja el enrutador de celdas (`client_id -> cell_id`), facturación (`BILL-001`), referidos (`REF-001`) y el **módulo de Comunidades (Líderes y Members)**, permitiendo que inquilinos alojados en distintas celdas pertenezcan a una misma comunidad y se comuniquen transversalmente.
+5. **Plano de Soporte Aislado (Instancias Únicas Globales):** Chatwoot (`pg-chatwoot`) y n8n (`pg-n8n`) son **instancias únicas de plataforma compartidas por todos los inquilinos** (no se duplican por celda ni por inquilino). Chatwoot aísla lógicamente mediante `Account` y mantiene su propia base de datos; n8n mantiene su base `pg-n8n`. Los mensajes y notificaciones omnicanal viven en la base de datos de Chatwoot, no en la celda. n8n interactúa por REST API/webhooks y nunca accede directamente a las bases celulares ni de control.
+6. **Regla de Particionamiento en Celda (Solo 3 Tablas):** Se particionan mediante `PARTITION BY LIST (client_id)` + RLS únicamente: `contacts`, `product_embeddings` y `contact_memories`.
+7. **Tablas No Particionadas (Esquema Compartido + RLS Forzado):** `products`, `users`, `audit_logs`, `orders`, `roles` y `configs` no se particionan; usan PK compuesta o índice B-Tree liderado por `client_id`, `FORCE ROW LEVEL SECURITY` e inyección de contexto por transacción con `SELECT set_config('app.current_client_id', $client_id, true)`.
+8. Chatwoot conserva `account_id` y su propio esquema. La correlación vive en una tabla de Mocter.
+9. No hay claves foráneas entre bases. Las referencias son identificadores.
 
 ## 2. Topología
 
 | Plano | Componentes | Motor | Responsabilidad |
 |---|---|---|---|
-| Soporte | Chatwoot web, workers/Sidekiq, Redis 7+, `pg-chatwoot` | PostgreSQL 18 + pgvector | Conversaciones, mensajes, adjuntos operativos y SSO |
-| Control | Router Global, landing, `mocter-admin`, Redis 7+ dedicado, caché de enrutamiento | PostgreSQL 18 + pgvector | Inquilinos, planes, cuotas, enrutamiento, catálogo global de archivos y auditoría |
-| Datos | Celdas `cell_01`…`cell_n`, PgBouncer | PostgreSQL 18 + pgvector | Usuarios, productos, embeddings, vínculos de archivos y datos operativos del inquilino |
+| Soporte Aislado (Singleton Global) | Chatwoot web (multi-account), workers/Sidekiq, Redis 7+, `pg-chatwoot`, n8n (instancia única), `pg-n8n` | PostgreSQL 18 + pgvector (Chatwoot); PostgreSQL 18 (n8n) | Instancias únicas compartidas transversalmente por todos los inquilinos: conversaciones omnicanal, mensajes, adjuntos operativos, SSO y orquestación de flujos externos |
+| Control Global | Router Global, landing, `mocter-admin` global, Redis 7+ dedicado, `pg-control-plane` | PostgreSQL 18 + pgvector | Inquilinos, enrutamiento `client_id -> cell_id`, planes, facturación, referidos, módulo de Comunidades y catálogo multimedia |
+| Datos (Celdas Autónomas) | Capa de aplicación del inquilino (`mocter-admin`), PgBouncer (transaction mode), `pg-cell-XX` | PostgreSQL 18 + pgvector (50-100 inquilinos por celda) | Aplicación del inquilino, contactos particionados, embeddings de producto (`halfvec(1536)`), memorias de contacto (`profile`/`episode`), catálogo de productos, pedidos y usuarios |
 
 ### 2.1 Aislamiento
 
-- Cada plano tiene su propia instancia PostgreSQL. No se comparte una instancia entre planos.
+- **Chatwoot y n8n son instancias únicas de plataforma (singleton / shared multi-tenant):** No se replica una instancia de Chatwoot ni de n8n por celda ni por inquilino. Todos los inquilinos de todas las celdas comparten la misma instancia de Chatwoot (aislados lógicamente por su `chatwoot_account_id`) y la misma instancia de n8n (aislados lógicamente por credenciales y scopes de API).
+- Cada plano tiene su propia instancia PostgreSQL (`pg-chatwoot`, `pg-n8n`, `pg-control-plane`, `pg-cell-XX`). No se comparte una instancia entre planos.
 - El plano de control tiene su propia instancia Redis 7+, separada de la de Chatwoot. No comparten instancia, credenciales ni política de evicción.
-- Cada celda tiene su propia instancia y su propio PgBouncer.
-- Chatwoot no accede a la base de Mocter y Mocter no accede a la base de Chatwoot.
-- N8N, si existe, se conecta por API. No comparte base, esquema ni credenciales con Mocter.
+- Cada celda autónoma agrupa su propia capa de aplicación, su propio PgBouncer multiplexor y su propia base de datos.
+- Chatwoot y n8n no acceden a la base de las celdas ni del plano de control; Mocter no accede a las bases de soporte directamente. Todo se canaliza por APIs y webhooks seguros.
+- n8n, como orquestador externo, interactúa exclusivamente por REST API y webhooks; no comparte base, esquema ni credenciales con Mocter.
 
 ### 2.2 Versiones
 
@@ -108,14 +122,15 @@ Todas las tablas siguen la directiva: nombre plural, PK `id`, FK `<entidad>_id`,
 | `client_plan_overrides` | Topes negociados | `id`, `client_id`, `dimension`, `value`, `valid_from`, `valid_to`, `negotiated_by`, `updated_by`, `created_at`, `updated_at` |
 | `media_catalog` | Catálogo global de archivos | `id`, `content_hash` (bytes almacenados o URL externa), `storage_pool_id`, `storage_key`, `size_bytes`, `media_kind`, `mime_type`, `source_format`, `original_filename`, `width`, `height`, `duration_ms`, `processing_status`, `storage_type`, `source_url`, `provider`, `created_at` |
 | `chatwoot_accounts` | Correlación con Chatwoot | `id`, `client_id`, `chatwoot_account_id`, `state`, `idempotency_key`, `last_error`, `synced_at` |
-| `organizations` | Comunidades u organizaciones | `id`, `name`, `created_at` |
-| `organization_members` | Membresías | `id`, `organization_id`, `client_id`, `role`, `created_at` |
+| `communities` | Módulo de Comunidades | `id`, `code`, `name`, `leader_client_id`, `description`, `status`, `created_at`, `updated_at` |
+| `community_members` | Membresías de comunidad | `id`, `community_id`, `client_id`, `role`, `joined_at` |
 
 Reglas:
 
-- `clients.id` es la PK del inquilino y se expone como `client_id` en las tablas hijas. Las tablas hijas no generan un `client_id` nuevo: copian el valor de `clients.id`. En el plano de control es una FK física; en las celdas es una clave lógica porque no hay FK entre bases. En tablas particionadas, la PK es `(client_id, id)`; en las no particionadas, la PK es `id`.
+- `clients.id` es la PK del inquilino y se expone como `client_id` en las tablas hijas. Las tablas hijas no generan un `client_id` nuevo: copian el valor de `clients.id`. En el plano de control es una FK física; en las celdas es una clave lógica porque no hay FK entre bases. En tablas particionadas, la PK es `(client_id, id)`; en las no particionadas, la PK es `id` o `(client_id, id)`.
 - `client_routing.client_id` es único.
 - `chatwoot_accounts.client_id` es único; `chatwoot_accounts.chatwoot_account_id` es único.
+- **Módulo de Comunidades transversal:** `communities` y `community_members` residen exclusivamente en el plano de control (`pg-control-plane`). El `leader_client_id` y los `client_id` de los miembros son FK físicas a `clients(id)`. Esto permite que inquilinos alojados en distintas celdas autónomas pertenezcan a la misma comunidad y se comuniquen transversalmente sin requerir consultas distribuidas ni enlaces directos entre bases celulares.
 - `media_catalog` tiene unicidad por `(content_hash, storage_pool_id)` y no tiene `client_id` ni atributos de negocio. `content_hash` corresponde a los bytes almacenados: original de imagen/audio/PDF, canónico de video o URL normalizada en externos. `storage_pool_id` referencia un pool de almacenamiento (SeaweedFS) definido en la implementación; su catálogo no se detalla en esta spec.
 - `media_catalog` no guarda URLs públicas de entrega. La capa de aplicación resuelve `storage_key` a una URL firmada de imgproxy; SeaweedFS v4.51 e imgproxy v4.0.20 son servicios de plataforma ya aprovisionados. SeaweedFS S3 permanece en la red interna y no recibe tráfico del navegador. Las variantes de imagen se generan al vuelo y no se registran en `media_variants`.
 - **Producción actual (2026-10-27):** los adjuntos de Chatwoot están en el volumen local de Chatwoot, no en `media_catalog` ni en SeaweedFS. Si se activa ActiveStorage S3-compatible, el bucket debe ser separado y quedar fuera de la cuota de producto. Inventario observado: [`docs/reference/production-services.md`](../../reference/production-services.md).
@@ -222,6 +237,28 @@ CREATE TABLE client_migrations (
     completed_at      timestamptz,
     CONSTRAINT client_migrations_state_check CHECK (state IN ('initiated', 'replicating', 'cutover_locked', 'completed', 'failed'))
 );
+
+CREATE TABLE communities (
+    id                uuid PRIMARY KEY DEFAULT uuidv7(),
+    code              text NOT NULL UNIQUE,
+    name              text NOT NULL,
+    leader_client_id  uuid NOT NULL REFERENCES clients(id),
+    description       text,
+    status            text NOT NULL DEFAULT 'active',
+    created_at        timestamptz NOT NULL DEFAULT now(),
+    updated_at        timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT communities_status_check CHECK (status IN ('active', 'suspended', 'archived'))
+);
+
+CREATE TABLE community_members (
+    id              uuid PRIMARY KEY DEFAULT uuidv7(),
+    community_id    uuid NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
+    client_id       uuid NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+    role            text NOT NULL DEFAULT 'member',
+    joined_at       timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (community_id, client_id),
+    CONSTRAINT community_members_role_check CHECK (role IN ('leader', 'member', 'moderator'))
+);
 ```
 
 Los comentarios `COMMENT ON TABLE` y `COMMENT ON COLUMN` se agregan en la migración SQL, conforme a la directiva.
@@ -231,9 +268,9 @@ Los comentarios `COMMENT ON TABLE` y `COMMENT ON COLUMN` se agregan en la migrac
 El alta cruza dos bases, así que no puede ser una única transacción. Se modela como saga con compensación:
 
 1. **Plano de control**: insertar `clients` con `lifecycle_status='alta'` y `client_routing` con `routing_status='pending'`; reservar la celda con `FOR UPDATE SKIP LOCKED`.
-2. **Celda**: crear las particiones y políticas de `products` y `product_embeddings` con `create_client_partitions` (operación privilegiada).
+2. **Celda**: crear las 3 particiones (`contacts`, `product_embeddings`, `contact_memories`) y sus políticas con `create_client_partitions` (operación privilegiada).
 3. **Plano de control**: activar `client_routing.routing_status='active'`, incrementar `cells.current_clients` y registrar la versión de enrutamiento.
-4. **Fallo**: marcar `client_routing.routing_status='failed'`, registrar el error y ejecutar la compensación (drop de particiones, decremento del contador si se había incrementado).
+4. **Fallo**: marcar `client_routing.routing_status='failed'`, registrar el error y ejecutar la compensación (drop de las 3 particiones, decremento del contador si se había incrementado).
 
 ```sql
 BEGIN;
@@ -262,7 +299,7 @@ VALUES (v_client_id, v_cell_id, 'pending', 1);
 COMMIT;
 ```
 
-La reserva de celda no incrementa `current_clients`; el incremento ocurre cuando la celda confirma que las particiones de `products` y `product_embeddings` y sus políticas están listas, mediante `create_client_partitions`. Así se evita contar capacidad que todavía no existe.
+La reserva de celda no incrementa `current_clients`; el incremento ocurre cuando la celda confirma que las 3 particiones (`contacts`, `product_embeddings`, `contact_memories`) y sus políticas están listas, mediante `create_client_partitions`. Así se evita contar capacidad que todavía no existe.
 
 ### 3.5 Reconciliación de capacidad
 
@@ -429,41 +466,59 @@ Las credenciales (`password_hash`), secretos TOTP, identidades OAuth y membresí
 
 | Tabla | Particionada | Estrategia |
 |---|---|---|
-| `tenant_users` | No | `id` + `client_id` + `user_id` + índice `(client_id, user_id)` + único parcial de `user_id` activo + RLS; historial de membresía del inquilino |
-| `users` | No | `client_id` + índice compuesto + RLS |
-| `roles` | No | `client_id` + índice compuesto + RLS |
-| `settings` | No | `client_id` + índice compuesto + RLS |
-| `products` | Sí | `PARTITION BY LIST (client_id)` |
-| `client_media` | No | `client_id` + único `(client_id, media_id)` + RLS; archivo distinto por inquilino |
-| `product_media` | No | `client_id` + índice compuesto + RLS; vínculo producto–archivo |
-| `client_usage` | No | `client_id` + único `(client_id, dimension)` + RLS; contador autoritativo de consumo |
-| `product_embeddings` | Sí | `PARTITION BY LIST (client_id)` |
-| `audit_logs` | Sí, si el volumen lo justifica | `PARTITION BY LIST (client_id)` |
+| `contacts` | Sí (1 de 3) | `PARTITION BY LIST (client_id)` + RLS; leads multicanal (WhatsApp, Web, Correo) de crecimiento exponencial |
+| `product_embeddings` | Sí (2 de 3) | `PARTITION BY LIST (client_id)` + RLS + `halfvec(1536)` + HNSW; desacoplada de `products` para re-indexación asíncrona |
+| `contact_memories` | Sí (3 de 3) | `PARTITION BY LIST (client_id)` + RLS + `halfvec(1536)` + HNSW + `memory_type`; desacoplada de `contacts` |
+| `products` | No | Esquema compartido con `client_id`, PK `id`, índices B-Tree liderados por `client_id` y `FORCE RLS` (óptimo para 1.000 a 5.000+ productos por comercio) |
+| `users` | No | Esquema compartido con `client_id`, índices compuestos y `FORCE RLS` (volumen bajo y altamente cacheable) |
+| `tenant_users` | No | Esquema compartido con `client_id`, índice `(client_id, user_id)` y `FORCE RLS` |
+| `roles` | No | Esquema compartido con `client_id`, índices compuestos y `FORCE RLS` |
+| `settings` | No | Esquema compartido con `client_id`, índices compuestos y `FORCE RLS` |
+| `orders` | No | Esquema compartido con `client_id`, índices compuestos y `FORCE RLS` |
+| `audit_logs` | No | Esquema compartido con `client_id`, índices compuestos y `FORCE RLS` |
+| `client_media` | No | Esquema compartido con `client_id`, único `(client_id, media_id)` y `FORCE RLS` |
+| `product_media` | No | Esquema compartido con `client_id`, índice compuesto y `FORCE RLS` |
+| `client_usage` | No | Esquema compartido con `client_id`, único `(client_id, dimension)` y `FORCE RLS` |
 
-`products` se particiona porque es el candidato principal para vectorización; `product_embeddings` también. El resto de las tablas de inquilino no se particiona y se protege con RLS. Ese es el particionado híbrido: la normalización es lógica y el particionado es físico. `ADM-001` RF-05.2 ya coincide con esta decisión; no requiere enmienda por particionado.
+**Regla de Particionamiento Selectivo (Exactamente 3 Tablas):**
+1. `contacts`: Por crecimiento exponencial de leads multicanal (WhatsApp, Web, Correo).
+2. `product_embeddings`: Separada de `products` para que actualizaciones frecuentes de stock o precio no ensucien el índice vectorial HNSW, permitiendo múltiples fragmentos (*chunks*) por producto y re-indexación asíncrona usando `halfvec(1536)`.
+3. `contact_memories`: Separada de `contacts` para evitar que actualizaciones operativas (`last_seen_at`, etiquetas, estado) degraden el índice HNSW.
+
+**Tablas No Particionadas (Esquema Compartido + RLS Forzado):**
+- `products` (Catálogo transaccional): No se particiona (incluso catálogos de 1.000 a 5.000+ productos por comercio operan de forma óptima con índices B-Tree).
+- `users` (Usuarios del inquilino): No se particiona (el volumen de administradores, agentes y operadores por comercio es bajo y de acceso altamente cacheable).
+- `audit_logs` y tablas operativas (`orders`, `roles`, `configs`): No se particionan por ser de volumen moderado o de consulta no recurrente.
+- **Reglas obligatorias:** Llave primaria compuesta o `id` + índice B-Tree liderado por `client_id`, `FORCE ROW LEVEL SECURITY` e inyección de contexto por transacción con `SELECT set_config('app.current_client_id', $client_id, true)`.
 
 ### 6.2 Presupuesto de particiones
 
 ```text
-particiones_totales = clientes_por_celda × tablas_particionadas
+particiones_totales = clientes_por_celda × 3 tablas_particionadas
 ```
 
-Con 100 clientes y dos tablas particionadas (`products` y `product_embeddings`), el total es 200. Si se suma `audit_logs`, son 300. El límite de 10.000 deja margen para crecer o para sumar tablas. La estrategia es `LIST`; al llegar a 100 clientes se abre una celda nueva, o antes si se cumple otro disparador de §9.3 (relaciones, HNSW o CPU). `HASH` queda como evaluación futura solo si el costo de más celdas o el volumen de particiones lo justifica; cambiar a `HASH` requiere rediseñar el ciclo de vida por tenant (baja y migración con `DELETE`/copia, no `DROP PARTITION`).
+Con la capacidad nominal de 100 clientes y exactamente 3 tablas particionadas (`contacts`, `product_embeddings` y `contact_memories`), el total es **exactamente 300 particiones físicas por celda**. Este valor se sitúa holgadamente por debajo del límite operativo de 10.000 relaciones en `pg_class`, eliminando la sobrecarga en el planificador de PostgreSQL y garantizando alta velocidad en migraciones y respaldos.
 
-### 6.3 Particiones de productos y embeddings
-
-`products` es el candidato principal para vectorización y se particiona por `client_id`. `product_embeddings` también. Las columnas de negocio de `products` se detallan en ADM-001; aquí se fija la clave de partición, la PK, un ejemplo de restricción única que incluye la clave de partición y la política de aislamiento.
+### 6.3 DDL en PostgreSQL 18 para Catálogo, Contactos y Vectores
 
 ```sql
+-- 1. Catálogo transaccional (No particionado, compartido con RLS forzado)
 CREATE TABLE products (
-    id          uuid NOT NULL DEFAULT uuidv7(),
+    id          uuid PRIMARY KEY DEFAULT uuidv7(),
     client_id   uuid NOT NULL,
     name        text NOT NULL,
     slug        text NOT NULL,
+    price_cents bigint NOT NULL DEFAULT 0,
+    stock       integer NOT NULL DEFAULT 0,
+    status      text NOT NULL DEFAULT 'active',
     created_at  timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (client_id, id),
-    UNIQUE (client_id, slug)
-) PARTITION BY LIST (client_id);
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (client_id, slug),
+    CONSTRAINT products_status_check CHECK (status IN ('active', 'draft', 'archived'))
+);
+
+CREATE INDEX products_client_id_idx ON products (client_id);
+CREATE INDEX products_client_status_idx ON products (client_id, status);
 
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products FORCE ROW LEVEL SECURITY;
@@ -472,17 +527,19 @@ CREATE POLICY products_client_isolation ON products
     USING (client_id = current_setting('app.current_client_id', true)::uuid)
     WITH CHECK (client_id = current_setting('app.current_client_id', true)::uuid);
 
+-- 2. Embeddings de producto (Particionada por client_id, halfvec(1536))
 CREATE TABLE product_embeddings (
     id             uuid NOT NULL DEFAULT uuidv7(),
     client_id      uuid NOT NULL,
     product_id     uuid NOT NULL,
+    chunk_index    integer NOT NULL DEFAULT 0,
     attribute_key  text NOT NULL,
     content        text NOT NULL,
     metadata       jsonb NOT NULL DEFAULT '{}'::jsonb,
-    embedding      vector(1536) NOT NULL,
+    embedding      halfvec(1536) NOT NULL,
     created_at     timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (client_id, id),
-    FOREIGN KEY (client_id, product_id) REFERENCES products (client_id, id)
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE
 ) PARTITION BY LIST (client_id);
 
 ALTER TABLE product_embeddings ENABLE ROW LEVEL SECURITY;
@@ -491,28 +548,70 @@ ALTER TABLE product_embeddings FORCE ROW LEVEL SECURITY;
 CREATE POLICY product_embeddings_client_isolation ON product_embeddings
     USING (client_id = current_setting('app.current_client_id', true)::uuid)
     WITH CHECK (client_id = current_setting('app.current_client_id', true)::uuid);
+
+-- 3. Contactos y leads multicanal (Particionada por client_id)
+CREATE TABLE contacts (
+    id                  uuid NOT NULL DEFAULT uuidv7(),
+    client_id           uuid NOT NULL,
+    full_name           text NOT NULL,
+    phone_mobile        text,
+    email               text,
+    document_type       text,
+    document_number     text,
+    channel             text NOT NULL DEFAULT 'whatsapp',
+    chatwoot_contact_id text,
+    stage               text NOT NULL DEFAULT 'new',
+    tags                jsonb NOT NULL DEFAULT '[]'::jsonb,
+    first_contacted_at  timestamptz NOT NULL DEFAULT now(),
+    last_seen_at        timestamptz NOT NULL DEFAULT now(),
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    updated_at          timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (client_id, id),
+    CONSTRAINT contacts_channel_check CHECK (channel IN ('whatsapp', 'web', 'email', 'manual', 'other')),
+    CONSTRAINT contacts_stage_check CHECK (stage IN ('new', 'in_conversation', 'qualified', 'customer', 'discarded'))
+);
+
+ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE contacts FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY contacts_client_isolation ON contacts
+    USING (client_id = current_setting('app.current_client_id', true)::uuid)
+    WITH CHECK (client_id = current_setting('app.current_client_id', true)::uuid);
+
+-- 4. Memorias y perfilamiento de contactos (Particionada por client_id, halfvec(1536))
+CREATE TABLE contact_memories (
+    id             uuid NOT NULL DEFAULT uuidv7(),
+    client_id      uuid NOT NULL,
+    contact_id     uuid NOT NULL,
+    memory_type    text NOT NULL,
+    content        text NOT NULL,
+    metadata       jsonb NOT NULL DEFAULT '{}'::jsonb,
+    embedding      halfvec(1536) NOT NULL,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    updated_at     timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (client_id, id),
+    FOREIGN KEY (client_id, contact_id) REFERENCES contacts (client_id, id) ON DELETE CASCADE,
+    CONSTRAINT contact_memories_type_check CHECK (memory_type IN ('profile', 'episode'))
+);
+
+ALTER TABLE contact_memories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE contact_memories FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY contact_memories_client_isolation ON contact_memories
+    USING (client_id = current_setting('app.current_client_id', true)::uuid)
+    WITH CHECK (client_id = current_setting('app.current_client_id', true)::uuid);
 ```
 
-La política del padre es la que aplica a las consultas que pasan por `product_embeddings`; las políticas de cada partición cubren el acceso directo a la partición. Ambas capas son necesarias. Lo mismo aplica a `products`.
-
-La dimensión `1536` es un ejemplo. El contrato del modelo de embedding define la dimensión real; cambiarla exige reindexar. El ejemplo usa `vector(d)`; `halfvec(d)` queda como optimización opcional que se adopta solo después de medir recall y memoria con el modelo real.
-
-La FK de `product_embeddings` a `products` es compuesta: `(client_id, product_id)`. `products` usa PK `(client_id, id)` porque está particionada; la FK referencia esa PK. No hace falta un `UNIQUE` adicional para la FK; el `UNIQUE (client_id, slug)` es una regla de negocio.
-
-`products.client_id` no declara FK a `clients` porque `clients` vive en el Router Global; en la celda es una clave lógica. La FK de `product_embeddings` a `products` sí es física porque ambas viven en la celda.
-
-En una tabla particionada por `client_id`, PostgreSQL exige que la clave de partición forme parte de la PK; por eso `products` y `product_embeddings` usan `(client_id, id)`. La directiva de PK `id` se mantiene en las tablas no particionadas. `client_id` no es una segunda PK: es la clave de tenencia que se copia de `clients.id`.
-
-### 6.4 Creación de particiones
+### 6.4 Funciones de aprovisionamiento automático de las 3 particiones
 
 ```sql
-CREATE OR REPLACE FUNCTION create_client_product_partition(p_client_id uuid)
+CREATE OR REPLACE FUNCTION create_client_contact_partition(p_client_id uuid)
 RETURNS void AS $$
 DECLARE
-    v_partition text := 'products_c_' || replace(p_client_id::text, '-', '');
+    v_partition text := 'contacts_c_' || replace(p_client_id::text, '-', '');
 BEGIN
     EXECUTE format(
-        'CREATE TABLE IF NOT EXISTS %I PARTITION OF products FOR VALUES IN (%L)',
+        'CREATE TABLE IF NOT EXISTS %I PARTITION OF contacts FOR VALUES IN (%L)',
         v_partition, p_client_id
     );
 
@@ -523,6 +622,23 @@ BEGIN
     EXECUTE format(
         'CREATE POLICY %I ON %I USING (client_id = current_setting(''app.current_client_id'', true)::uuid) WITH CHECK (client_id = current_setting(''app.current_client_id'', true)::uuid)',
         v_partition || '_client_isolation', v_partition
+    );
+
+    EXECUTE format(
+        'CREATE INDEX IF NOT EXISTS %I ON %I (phone_mobile) WHERE (phone_mobile IS NOT NULL)',
+        v_partition || '_phone_idx', v_partition
+    );
+    EXECUTE format(
+        'CREATE INDEX IF NOT EXISTS %I ON %I (lower(email)) WHERE (email IS NOT NULL)',
+        v_partition || '_email_idx', v_partition
+    );
+    EXECUTE format(
+        'CREATE INDEX IF NOT EXISTS %I ON %I (chatwoot_contact_id) WHERE (chatwoot_contact_id IS NOT NULL)',
+        v_partition || '_chatwoot_id_idx', v_partition
+    );
+    EXECUTE format(
+        'CREATE INDEX IF NOT EXISTS %I ON %I (stage, last_seen_at DESC)',
+        v_partition || '_stage_seen_idx', v_partition
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -546,9 +662,58 @@ BEGIN
         v_partition || '_client_isolation', v_partition
     );
 
+    -- Índice vectorial HNSW cuantizado con halfvec_cosine_ops
     EXECUTE format(
-        'CREATE INDEX IF NOT EXISTS %I ON %I USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)',
+        'CREATE INDEX IF NOT EXISTS %I ON %I USING hnsw (embedding halfvec_cosine_ops) WITH (m = 16, ef_construction = 64)',
         v_partition || '_hnsw_idx', v_partition
+    );
+
+    EXECUTE format(
+        'CREATE INDEX IF NOT EXISTS %I ON %I (product_id, chunk_index)',
+        v_partition || '_product_chunk_idx', v_partition
+    );
+
+    EXECUTE format(
+        'CREATE INDEX IF NOT EXISTS %I ON %I USING gin (metadata jsonb_path_ops)',
+        v_partition || '_metadata_gin_idx', v_partition
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION create_client_memory_partition(p_client_id uuid)
+RETURNS void AS $$
+DECLARE
+    v_partition text := 'contact_memories_c_' || replace(p_client_id::text, '-', '');
+BEGIN
+    EXECUTE format(
+        'CREATE TABLE IF NOT EXISTS %I PARTITION OF contact_memories FOR VALUES IN (%L)',
+        v_partition, p_client_id
+    );
+
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', v_partition);
+    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', v_partition);
+
+    EXECUTE format('DROP POLICY IF EXISTS %I ON %I', v_partition || '_client_isolation', v_partition);
+    EXECUTE format(
+        'CREATE POLICY %I ON %I USING (client_id = current_setting(''app.current_client_id'', true)::uuid) WITH CHECK (client_id = current_setting(''app.current_client_id'', true)::uuid)',
+        v_partition || '_client_isolation', v_partition
+    );
+
+    -- Índice vectorial HNSW con halfvec_cosine_ops para memorias
+    EXECUTE format(
+        'CREATE INDEX IF NOT EXISTS %I ON %I USING hnsw (embedding halfvec_cosine_ops) WITH (m = 16, ef_construction = 64)',
+        v_partition || '_hnsw_idx', v_partition
+    );
+
+    EXECUTE format(
+        'CREATE INDEX IF NOT EXISTS %I ON %I (contact_id, memory_type)',
+        v_partition || '_contact_type_idx', v_partition
+    );
+
+    -- Restricción UNIQUE parcial para asegurar exactamente 1 profile por contacto
+    EXECUTE format(
+        'CREATE UNIQUE INDEX IF NOT EXISTS %I ON %I (contact_id) WHERE (memory_type = ''profile'')',
+        v_partition || '_single_profile_idx', v_partition
     );
 
     EXECUTE format(
@@ -561,19 +726,19 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION create_client_partitions(p_client_id uuid)
 RETURNS void AS $$
 BEGIN
-    PERFORM create_client_product_partition(p_client_id);
+    PERFORM create_client_contact_partition(p_client_id);
     PERFORM create_client_embedding_partition(p_client_id);
+    PERFORM create_client_memory_partition(p_client_id);
 END;
 $$ LANGUAGE plpgsql;
 ```
 
 Reglas:
 
-- Las funciones son propiedad de `mocter_migrator`; `mocter_app` no tiene `EXECUTE`.
-- `create_client_partitions` es el punto de entrada de la saga de alta: crea las particiones de `products` y `product_embeddings` y sus políticas.
-- `CREATE TABLE ... PARTITION OF` toma un lock sobre la tabla padre. Por eso la creación se hace en el alta o en una ventana controlada, no en el camino caliente.
-- Para altas masivas se pre-crean particiones en lote.
-- Si la creación de una partición falla, la saga de alta compensa y no activa el enrutamiento.
+- Las funciones son propiedad de `mocter_migrator`; `mocter_app` no tiene permisos `EXECUTE`.
+- `create_client_partitions` es el punto de entrada de la saga de alta: crea exactamente las 3 particiones (`contacts`, `product_embeddings`, `contact_memories`) y sus políticas de aislamiento.
+- `CREATE TABLE ... PARTITION OF` toma un lock exclusivo breve sobre la tabla padre; la creación se ejecuta en el alta o en una ventana controlada, nunca en el camino caliente de atención.
+- Si la creación de cualquiera de las 3 particiones falla, la saga de alta compensa ejecutando DROP y marcando el enrutamiento como fallido.
 
 ### 6.5 Cuota en el vínculo producto–archivo
 
@@ -602,7 +767,7 @@ CREATE TABLE product_media (
     media_id     uuid NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT now(),
     UNIQUE (client_id, product_id, media_id),
-    FOREIGN KEY (client_id, product_id) REFERENCES products (client_id, id),
+    FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE,
     FOREIGN KEY (client_id, media_id) REFERENCES client_media (client_id, media_id)
 );
 
@@ -716,30 +881,105 @@ WHERE u.dimension = 'storage_bytes';
 
 La reconciliación se ejecuta periódicamente y deja auditoría del delta. Para facturación global, un job agrega `client_usage` de cada celda; el control plane no mantiene un contador autoritativo duplicado.
 
+### 6.6 Diseño de Perfilamiento y Memoria (`contact_memories`)
+
+La tabla `contact_memories` implementa la memoria continua de largo plazo para los agentes de IA y la hiper-segmentación de clientes en la celda del inquilino, mediante índices HNSW locales cuantizados con `halfvec(1536)` y segregación estricta por `memory_type`:
+
+1. **`profile` (Ficha viva evolutiva 1:1 por contacto):**
+   - Resumen estructurado de preferencias, objeciones, presupuesto estimado, restricciones y gustos del contacto.
+   - Se actualiza mediante `UPSERT` sobre el índice parcial único `(contact_id) WHERE (memory_type = 'profile')`.
+   - Permite cruce inverso vectorial contra `product_embeddings`: encontrar qué productos del catálogo satisfacen mejor el perfil del contacto para campañas de reactivación y venta cruzada.
+2. **`episode` (Memoria episódica 1:N por contacto):**
+   - Resúmenes cortos y factuales generados de forma asíncrona tras hitos clave (resolución de conversación en Chatwoot, confirmación o entrega de un pedido en ORD-001).
+   - Otorga contexto histórico continuo a los agentes y al bot conversacional (BOT-001/BOT-002) en turnos futuros.
+
+### 6.7 Flujo asíncrono de consolidación y consultas RAG híbridas
+
+```text
+Chatwoot / ORD-001               Worker Asíncrono (LLM)                  PostgreSQL 18 (pg-cell)
+┌──────────────────────┐        ┌─────────────────────────┐             ┌─────────────────────────┐
+│ Webhook:             ├───────►│ Genera resumen episódico│────────────►│ INSERT INTO             │
+│ conversation_resolved│        │ y extrae perfil clave   │             │ contact_memories        │
+│ o order_completed    │        │ Genera embedding        │             │ (episode / UPSERT       │
+└──────────────────────┘        │ halfvec(1536)           │             │  profile)               │
+                                └─────────────────────────┘             └─────────────────────────┘
+```
+
+#### Consulta RAG híbrida (Profile + Episodios Relevantes)
+
+Al componer el contexto conversacional del bot (BOT-002), se ejecuta una única consulta con `UNION ALL` que recupera la ficha viva `profile` (si existe) y los 3 episodios pasados con mayor similitud semántica con la consulta actual:
+
+```sql
+BEGIN;
+SELECT set_config('app.current_client_id', $1, true);
+SET LOCAL hnsw.iterative_scan = relaxed_order;
+SET LOCAL hnsw.ef_search = 40;
+
+(
+    -- 1. Ficha viva de perfil del contacto (1:1)
+    SELECT id, contact_id, memory_type, content, metadata, 1.0 AS relevance_score
+    FROM contact_memories
+    WHERE client_id = $1
+      AND contact_id = $2
+      AND memory_type = 'profile'
+    LIMIT 1
+)
+UNION ALL
+(
+    -- 2. Top 3 episodios más relevantes por distancia coseno (1:N)
+    SELECT id, contact_id, memory_type, content, metadata,
+           1 - (embedding <=> $3::halfvec(1536)) AS relevance_score
+    FROM contact_memories
+    WHERE client_id = $1
+      AND contact_id = $2
+      AND memory_type = 'episode'
+    ORDER BY embedding <=> $3::halfvec(1536)
+    LIMIT 3
+);
+COMMIT;
+```
+
+### 6.8 Separación de migraciones Drizzle
+
+Para evitar acoplamientos y garantizar despliegues independientes por plano:
+- `packages/domain/drizzle/control-plane/`: Esquema del Router Global (`cells`, `clients`, `client_routing`, `plans`, `communities`, `community_members`, `media_catalog`).
+- `packages/domain/drizzle/cell-data-plane/`: Esquema de las celdas autónomas (`contacts`, `product_embeddings`, `contact_memories`, `products`, `users`, `tenant_users`, `orders`, `client_media`, `client_usage`).
+
+### 6.9 Verification Gate: Test automatizado en CI/CD para aislamiento RLS
+
+Como requisito no negociable de calidad y seguridad multi-inquilino, el pipeline de CI/CD (`.github/workflows/ci.yml`) ejecuta un test de intrusión cruzada (*cross-tenant intrusion test*):
+1. Crea dos inquilinos de prueba (`client_alpha` y `client_beta`) en una base de celda de pruebas.
+2. Inserta productos, contactos y memorias para ambos inquilinos.
+3. Con una conexión con rol `mocter_app` (sin privilegios de superusuario ni `BYPASSRLS`):
+   - Fija `SET LOCAL app.current_client_id = client_alpha`.
+   - Ejecuta `SELECT count(*) FROM contacts WHERE client_id = client_beta`.
+   - Verifica estrictamente que el resultado sea `0` filas (aislamiento cerrado).
+   - Intenta insertar una fila para `client_beta` con contexto de `client_alpha` y valida que falle la restricción `WITH CHECK` de la política RLS.
+
 ## 7. Búsqueda vectorial
 
 La composición de `content` la gobierna `vectorization_config` (ADM-001 RF-05.7), administrada por la plataforma en el Router Global; el pipeline de cada celda la lee por API. El default vectoriza nombre, descripción, categoría y marca; el prompt de venta queda fuera. El ejemplo de §7.2 usa `content` ya compuesto con esa regla.
 
-### 7.1 Índice HNSW
+### 7.1 Índice HNSW con halfvec(1536)
 
-Punto de partida:
+Punto de partida con cuantización de 16 bits en coma flotante (`halfvec`):
 
 ```sql
 CREATE INDEX product_embeddings_c_<id>_hnsw_idx
 ON product_embeddings_c_<id>
-USING hnsw (embedding vector_cosine_ops)
+USING hnsw (embedding halfvec_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 ```
 
-El ejemplo usa `vector(d)` y `vector_cosine_ops`. Si se adopta `halfvec(d)` después de medir recall, el operador cambia a `halfvec_cosine_ops`; el resto del diseño no cambia.
+La adopción de `halfvec(1536)` reduce la memoria del índice en un 50% frente a `vector(1536)` manteniendo recall > 99%.
 
-La memoria del índice se estima, no se asume:
+La memoria del índice se estima:
 
 ```text
 RAM_HNSW ≈ N_vectores × (bytes_por_vector + 8 × M) × 1.25
 ```
 
-Para `vector(d)` el término del vector es `4 × d`; para `halfvec(d)` es `2 × d`. La fórmula es una estimación de dimensionamiento; se valida con `pg_relation_size` y con pruebas de recall sobre datos reales.
+Para `halfvec(1536)` el término del vector es `2 × 1536 = 3072 bytes`. Con `M=16`, cada vector requiere aproximadamente `3.072 + 128 = 3.200 bytes × 1.25 ≈ 4.000 bytes` en memoria RAM.
 
 ### 7.2 Consulta con filtros
 
@@ -750,11 +990,11 @@ SET LOCAL hnsw.iterative_scan = relaxed_order;
 SET LOCAL hnsw.ef_search = 60;
 
 SELECT id, product_id, content, metadata,
-       1 - (embedding <=> $2::vector(1536)) AS similarity
+       1 - (embedding <=> $2::halfvec(1536)) AS similarity
 FROM product_embeddings
 WHERE client_id = $1
   AND metadata @> '{"category": "legal"}'::jsonb
-ORDER BY embedding <=> $2::vector(1536)
+ORDER BY embedding <=> $2::halfvec(1536)
 LIMIT 10;
 COMMIT;
 ```
@@ -856,7 +1096,7 @@ La capacidad nominal es 100 inquilinos; la efectiva es el primero de estos dispa
 1. **Inicio**: `client_routing.routing_status='migrating'`, incremento de `routing_version`, publicación de invalidación.
 2. **Copia inicial**: replicación lógica de las particiones del inquilino y de las filas filtradas por `client_id` en tablas no particionadas.
 3. **Cutover**: pausa de escrituras, espera de lag cero, actualización de `cell_id`, `routing_status='active'`, incremento de `routing_version`, publicación de invalidación.
-4. **Limpieza**: drop de las particiones de `products` y `product_embeddings` de origen, decremento del contador de origen, incremento del destino, auditoría en `client_migrations`.
+4. **Limpieza**: drop de las 3 particiones de origen (`contacts`, `product_embeddings` y `contact_memories`), decremento del contador de origen, incremento del destino, auditoría en `client_migrations`.
 
 La ventana de cutover se mide con el volumen real. No se promete un valor fijo. La invalidación de cachés locales debe ser síncrona o verificable; un TTL de 30 s no alcanza para un cutover de 2–5 s.
 
@@ -919,7 +1159,7 @@ La única frontera es la API de Mocter. Si N8N produce archivos, lo hace por el 
 | ADM-001 | RF-04, RF-07 y RF-10 alineados; O-07 cerrada con la fórmula de almacenamiento facturado; O-13 a O-16 cerradas | Alineado (T-12) |
 | AUTH-001 | A-03 resuelta con el Redis dedicado del plano de control; identidad global con rol dedicado y filtros; RLS solo en tablas de tenencia (O-03); A-04 cerrada con `tenant_users`; A-05 cerrada con sesión opaca de servidor y JWT solo para APIs; membresía 1:0..1 con `users.active_client_id` | Alineado (T-16); nombre canónico `tenant_users` |
 | CHW-001 | Redis 7+, Sidekiq y PostgreSQL 18 validado en laboratorio; T-13 consume DAT-001 | Alineado (T-14) |
-| Directiva de base de datos | `clients.id` como PK y `client_id` como FK; `products` y `product_embeddings` particionadas; el resto con RLS | Alineado en este documento |
+| Directiva de base de datos | `clients.id` como PK y `client_id` como FK; `contacts`, `product_embeddings` y `contact_memories` particionadas; `products`, `users` y operativas compartidas con RLS | Alineado en este documento |
 
 ## 12. Riesgos y mitigaciones
 

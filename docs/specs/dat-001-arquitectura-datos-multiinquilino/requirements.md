@@ -20,18 +20,19 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 
 ### Incluye
 
-- Los tres planos lógicos: soporte, control y datos.
+- Los tres planos lógicos: soporte aislado (instancias únicas de plataforma `pg-chatwoot` y `pg-n8n` compartidas transversalmente por todos los inquilinos), control global (`pg-control-plane`) y datos en celdas autónomas (App + DB).
 - PostgreSQL 18 con pgvector en todas las instancias, incluida Chatwoot.
 - Catálogo de celdas, enrutamiento, alta, capacidad y migración de inquilinos.
-- Aislamiento con RLS, roles separados y PgBouncer.
-- Particionado híbrido y búsqueda vectorial con HNSW.
+- Aislamiento con RLS forzado, roles separados y PgBouncer en modo `transaction`.
+- Particionado selectivo de exactamente 3 tablas (`contacts`, `product_embeddings`, `contact_memories`) y tablas compartidas con RLS (`products`, `users`, `audit_logs`).
+- Búsqueda vectorial con HNSW y `halfvec(1536)` para catálogo y memorias de contacto (`profile` y `episode`).
 - Planes, cuotas y catálogo global de archivos.
+- Módulo global de Comunidades (Líderes y Members) para comunicación transversal entre inquilinos de distintas celdas.
 - Backup, observabilidad, disparadores de escalado y perfiles de configuración.
 
 ### Excluye
 
-- **N8N**: es un orquestador externo. Se lo menciona solo como referencia de existencia y como productor o consumidor externo en el borde de la API. No se documenta su base de datos, su esquema, su cola, su alta disponibilidad ni su correlación con inquilinos.
-- **Esquema y código de Chatwoot**: siguen siendo propiedad de Chatwoot y se sincronizan con upstream. Esta especificación solo fija el motor, la versión y la frontera de despliegue.
+- **Esquema interno y código de Chatwoot y n8n**: son **instancias únicas de plataforma para todos los inquilinos** (no se replican por celda ni por inquilino). Chatwoot aísla multi-tenencia internamente mediante `Account` y mantiene su base de datos propia (`pg-chatwoot`); n8n mantiene su persistencia independiente (`pg-n8n`). Los mensajes y notificaciones omnicanal viven en la base de datos de Chatwoot, no en la celda. n8n interactúa exclusivamente en el borde vía APIs y webhooks autenticados; no accede directamente a las bases celulares ni de control.
 - **Kubernetes y CloudNativePG**: se documentan como evolución futura, no como implementación actual.
 - **Código de aplicación y migraciones**: pertenecen a especificaciones de implementación posteriores.
 - **Funcionalidad de la landing page**: permanece pública y fuera de este alcance.
@@ -40,11 +41,11 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 
 | Actor | Rol |
 |---|---|
-| Inquilino | Consume las capacidades de su plan dentro de su celda |
-| Administrador de plataforma | Opera planes, cuotas y restricciones |
+| Inquilino | Consume las capacidades de su plan dentro de su celda autónoma |
+| Administrador de plataforma | Opera planes, cuotas, comunidades y restricciones |
 | SRE / Plataforma | Aprovisiona celdas, ejecuta migraciones y monitorea |
-| Chatwoot | Sistema de soporte; conserva su propia base y su esquema |
-| Productor externo | Orquestador externo (por ejemplo N8N) que produce archivos por API; no es parte de la arquitectura de datos |
+| Chatwoot | Sistema de soporte; **instancia única de plataforma compartida para todos los inquilinos** (multi-account) con su propia base independiente `pg-chatwoot` |
+| n8n | Orquestador externo; **instancia única de plataforma compartida para todos los inquilinos** con su propia base independiente `pg-n8n` y consumo exclusivo por API |
 | Consumidor de API | `mocter-admin`, la landing y servicios internos que resuelven la celda antes de consultar |
 
 ## 4. Requisitos funcionales
@@ -53,15 +54,15 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 
 | ID | Requisito |
 |---|---|
-| RF-01.1 | La plataforma separa tres planos lógicos: soporte, control y datos. El plano de soporte aloja Chatwoot y su Redis; el de control aloja el Router Global y un Redis dedicado; el de datos aloja las celdas. |
-| RF-01.2 | Toda instancia PostgreSQL de la plataforma, incluida la de Chatwoot, usa PostgreSQL 18 con pgvector (`pgvector/pgvector:pg18`). |
-| RF-01.3 | El esquema de Chatwoot sigue siendo propiedad de Chatwoot y se sincroniza con upstream. La directiva de base de datos de Mocter no se aplica a ese esquema. |
-| RF-01.4 | El Router Global es la base actual de la landing y cumple el rol de plano de control: datos base del inquilino, planes, enrutamiento y catálogo global de archivos. |
-| RF-01.5 | Cada celda tiene su propia instancia PostgreSQL 18 + pgvector y su PgBouncer en modo transacción. |
-| RF-01.6 | No existen claves foráneas entre bases. Las referencias entre planos son identificadores. |
-| RF-01.7 | Redis 7+ se usa en dos instancias separadas: la de Chatwoot, que lo requiere para su cola de trabajos y su caché, y la del plano de control, dedicada a caché de enrutamiento, Pub/Sub, rate limiting y revocación de sesión. No es una base de datos relacional y no altera la decisión de PostgreSQL 18. |
-| RF-01.8 | N8N es un orquestador externo. Se lo menciona solo como referencia de existencia y como productor o consumidor externo en el borde de la API; no se documenta su persistencia ni su correlación. |
-| RF-01.9 | El Router Global se mantiene como plano de control mientras comparta instancia con la landing. La separación de `pg-control-plane` es una decisión diferida con disparadores documentados en `design.md` §3.6; no se implementa en esta especificación. |
+| RF-01.1 | La plataforma separa tres planos lógicos: soporte aislado, control global y datos en celdas autónomas. |
+| RF-01.2 | **Celda Autónoma (Data Plane):** Cada celda agrupa entre 50 y 100 inquilinos e incluye **tanto la base de datos (`pg-cell-XX` + PgBouncer en modo `transaction`) como su capa de aplicación (Backend/Admin del inquilino)** para evitar cuellos de botella en el router global. |
+| RF-01.3 | **Control Plane Global (`pg-control-plane`):** Aloja el enrutador de celdas (`client_id -> cell_id`), facturación (`BILL-001`), referidos (`REF-001`) y el **módulo de Comunidades (Líderes y Members)**, permitiendo que inquilinos alojados en distintas celdas pertenezcan a una misma comunidad y se comuniquen transversalmente. |
+| RF-01.4 | **Plano de Soporte Aislado (Instancias Únicas Centralizadas):** Chatwoot (`pg-chatwoot`) y n8n (`pg-n8n`) son **instancias únicas de plataforma (centralizadas y compartidas transversalmente por todos los inquilinos)**. No se despliega una instancia de soporte por celda ni por inquilino. Mantienen sus propias bases de datos PostgreSQL independientes. Los mensajes y notificaciones omnicanal viven en la base de datos de Chatwoot (aislados lógicamente por `account_id`), no en la celda. |
+| RF-01.5 | Toda instancia PostgreSQL de la plataforma usa PostgreSQL 18 con pgvector (`pgvector/pgvector:pg18`). El esquema de Chatwoot sigue siendo propiedad de Chatwoot y se sincroniza con upstream. |
+| RF-01.6 | No existen claves foráneas entre bases. Las referencias entre planos son identificadores lógicos. |
+| RF-01.7 | Redis 7+ se usa en dos instancias separadas: la de Chatwoot (cola de trabajos y caché) y la del plano de control (enrutamiento, Pub/Sub, rate limiting y revocación de sesión). |
+| RF-01.8 | n8n opera como **instancia única de soporte para todos los inquilinos** con persistencia independiente en `pg-n8n`; tiene estrictamente prohibido el acceso directo a las bases de las celdas o del plano de control, interactuando únicamente vía REST API y webhooks autenticados por inquilino. |
+| RF-01.9 | El Router Global se mantiene como plano de control mientras comparta instancia con la landing. La separación a `pg-control-plane` dedicado sigue los disparadores de `design.md` §3.6. |
 
 ### RF-02 · Tenencia y claves
 
@@ -71,11 +72,11 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 | RF-02.2 | La entidad inquilino se materializa en `clients`, con PK `id` (UUIDv7). Las tablas hijas no generan un `client_id` nuevo: copian el valor de `clients.id` en su columna `client_id`, que es la FK. En el plano de control la FK es física; en las celdas es lógica porque no hay FK entre bases. |
 | RF-02.3 | Toda tabla con datos de inquilino lleva `client_id NOT NULL` e índice compuesto que comienza por `client_id`, se particione o no. |
 | RF-02.4 | Las correlaciones con sistemas externos viven en tablas propias. `chatwoot_account_id` no se almacena en la fila del inquilino. |
-| RF-02.5 | Las organizaciones y sus membresías son entidades separadas del inquilino. Un inquilino puede pertenecer a una organización con rol de líder o de miembro. |
+| RF-02.5 | El módulo de Comunidades (Líderes y Members: `communities` y `community_members`) reside en el plano de control global (`pg-control-plane`), permitiendo que inquilinos alojados en distintas celdas pertenezcan a una misma comunidad y se comuniquen transversalmente. |
 | RF-02.6 | El ciclo de vida del inquilino (`alta`, `activo`, `suspendido`, `baja`) se separa del estado de enrutamiento (`pending`, `active`, `draining`, `readonly`, `maintenance`, `migrating`, `failed`). |
-| RF-02.7 | En tablas particionadas por `client_id`, la PK es `(client_id, id)` porque PostgreSQL exige la clave de partición en la PK. En tablas no particionadas, la PK es `id`. En ambos casos `client_id` es la clave de tenencia y `id` es la identidad de la fila. |
+| RF-02.7 | En tablas particionadas por `client_id`, la PK es `(client_id, id)` porque PostgreSQL exige la clave de partición en la PK. En tablas no particionadas, la PK es `id` o `(client_id, id)`. En ambos casos `client_id` es la clave de tenencia y `id` es la identidad de la fila. |
 
-**Ejemplo.** `clients.id = 019...` (UUIDv7). Una fila de `products` tiene `id = 019...` (su propia identidad) y `client_id = 019...` (el mismo valor de `clients.id`). En `products`, que está particionada, la PK es `(client_id, id)`; en una tabla no particionada, la PK es `id` y `client_id` sigue siendo la clave de tenencia.
+**Ejemplo.** `clients.id = 019...` (UUIDv7). Una fila de `contacts`, que está particionada, tiene `(client_id, id)` como PK; en `products`, que es no particionada (esquema compartido), la PK es `id` (con índice B-Tree liderado por `client_id`) y `client_id` es la clave de tenencia protegida con RLS.
 
 ### RF-03 · Catálogo de celdas y alta
 
@@ -84,7 +85,7 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 | RF-03.1 | `cells` registra las celdas disponibles con código, tier, estado, endpoint de PgBouncer, base de datos, capacidad máxima, ocupación actual y región. |
 | RF-03.2 | `client_routing` mapea cada `client_id` a su `cell_id`, con estado de enrutamiento y versión de enrutamiento. |
 | RF-03.3 | El alta de un inquilino asigna, en una transacción atómica del plano de control, la celda activa con menor ocupación dentro de su tier. Si no hay capacidad, falla con un error explícito o requiere aprovisionar una celda nueva. |
-| RF-03.4 | El alta es una saga: el plano de control crea el inquilino en estado pendiente, la celda prepara las particiones de `products` y `product_embeddings` y sus políticas, y el plano de control activa el enrutamiento. Un fallo intermedio se compensa y se registra. |
+| RF-03.4 | El alta es una saga: el plano de control crea el inquilino en estado pendiente, la celda prepara las 3 particiones (`contacts`, `product_embeddings`, `contact_memories`) y sus políticas con `create_client_partitions`, y el plano de control activa el enrutamiento. Un fallo intermedio se compensa y se registra. |
 | RF-03.5 | `client_migrations` audita cada movimiento de inquilino entre celdas con origen, destino, estado y marcas de tiempo. |
 | RF-03.6 | El contador de ocupación de cada celda se reconcilia periódicamente contra la realidad. Una deriva se corrige con un proceso de reconciliación. |
 | RF-03.7 | Una celda deja de recibir altas cuando alcanza su capacidad máxima o cuando se cumple un disparador de escalado. |
@@ -104,35 +105,37 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 
 | ID | Requisito |
 |---|---|
-| RF-05.1 | RLS está habilitado y forzado (`FORCE ROW LEVEL SECURITY`) en toda tabla de inquilino de las celdas y en las tablas hijas con `client_id` consultadas por la aplicación de inquilino en el Router Global (`client_plan_overrides`, `chatwoot_accounts`, `organization_members`). Las tablas operativas del Router Global (`cells`, `clients`, `client_routing`, `client_migrations`, `plans`, `plan_limits`, `media_catalog`) se protegen con roles y permisos, no con RLS de inquilino. |
+| RF-05.1 | RLS está habilitado y forzado (`FORCE ROW LEVEL SECURITY`) en toda tabla de inquilino de las celdas y en las tablas hijas con `client_id` consultadas por la aplicación de inquilino en el Router Global (`client_plan_overrides`, `chatwoot_accounts`, `organization_members`). Las tablas operativas del Router Global (`cells`, `clients`, `client_routing`, `client_migrations`, `plans`, `plan_limits`, `media_catalog`, `communities`, `community_members`) se protegen con roles y permisos, no con RLS de inquilino. |
 | RF-05.2 | La aplicación fija `app.current_client_id` con `SET LOCAL` dentro de la transacción. Si el valor falta, la política falla cerrada y no devuelve filas. |
 | RF-05.3 | Existen roles separados: un rol de migración o propietario con DDL y un rol de aplicación con DML, sin DDL y sin `BYPASSRLS`. |
 | RF-05.4 | RLS es defensa en profundidad. Las consultas siguen filtrando por `client_id`; RLS no reemplaza el filtro explícito. |
 | RF-05.5 | Las tablas de identidad y sesión del Router Global (`users`, `identities`, `sessions`) son globales y no usan RLS por `client_id`. `users` no tiene `client_id`; lleva `active_client_id` nullable como puntero de membresía única. `identities` no tiene tenencia; `sessions` puede registrar el `client_id` activo, pero no es una tabla de tenencia. La membresía y su historial viven en `tenant_users`, que lleva `client_id` y usa RLS. Un usuario tiene como máximo una membresía activa. La tabla `users` de cada celda es una proyección de usuarios del inquilino, lleva `client_id` y usa RLS. |
 | RF-05.6 | `mocter-admin` no accede directamente a la base de Chatwoot. La integración es exclusivamente por sus APIs. |
 
-### RF-06 · Particionado
+### RF-06 · Particionado selectivo en la Celda (Exactamente 3 Tablas)
 
 | ID | Requisito |
 |---|---|
-| RF-06.1 | Se aplica una estrategia híbrida: tablas de bajo o medio volumen sin particionar, con `client_id` e índice compuesto; tablas de alto volumen o vectoriales particionadas por `client_id`. |
-| RF-06.2 | Las tablas particionadas usan `PARTITION BY LIST (client_id)`; al llegar a 100 inquilinos se abre una celda nueva. `HASH` se evalúa solo si el costo de más celdas o el volumen de particiones lo justifica, con un rediseño del ciclo de vida por tenant. |
+| RF-06.1 | Se aplica una regla estricta de particionamiento selectivo en la celda: **solo 3 tablas** se particionan mediante `PARTITION BY LIST (client_id)` + RLS: 1) `contacts` (crecimiento exponencial de leads multicanal); 2) `product_embeddings` (separada de `products` para que stock o precio no ensucien el índice HNSW, múltiples chunks por producto, re-indexación asíncrona, `halfvec(1536)`); 3) `contact_memories` (separada de `contacts` para evitar que actualizaciones operativas como `last_seen_at` o tags degraden el índice HNSW). |
+| RF-06.2 | Las 3 tablas particionadas usan `PARTITION BY LIST (client_id)`; al llegar a 100 inquilinos se abre una celda nueva. Con 100 inquilinos y 3 tablas particionadas, la celda genera exactamente 300 particiones físicas, muy por debajo del techo operativo de 10.000. |
 | RF-06.3 | El total de particiones físicas por instancia no supera 10.000, contando todas las tablas particionadas por todos los inquilinos de la celda. |
-| RF-06.4 | `products` y `product_embeddings` se particionan por `client_id`. El resto de las tablas de inquilino no se particiona y se protege con RLS; ese es el particionado híbrido. |
-| RF-06.5 | La creación de particiones es una operación privilegiada de alta o migración, no una operación del rol de aplicación. Se pre-crean o se ejecutan en una ventana controlada para evitar locks prolongados. |
-| RF-06.6 | En tablas particionadas, la PK, las claves únicas y las FK incluyen la clave de partición. |
+| RF-06.4 | **Tablas No Particionadas (Esquema Compartido + RLS Forzado):** `products` (catálogo transaccional: óptimo con índices B-Tree liderados por `client_id` para catálogos de 1.000 a 5.000+ productos por comercio), `users` (usuarios del inquilino: volumen bajo y altamente cacheable), `audit_logs` y tablas operativas (`orders`, `roles`, `configs`). |
+| RF-06.5 | Las tablas no particionadas cumplen obligatoriamente: PK `(client_id, id)` o `id` + índice B-Tree liderado por `client_id`, `FORCE ROW LEVEL SECURITY` e inyección de contexto por transacción con `SELECT set_config('app.current_client_id', $client_id, true)`. |
+| RF-06.6 | La creación de particiones es una operación privilegiada de alta ejecutada por `create_client_partitions(p_client_id)`. |
+| RF-06.7 | En tablas particionadas, la PK, las claves únicas y las FK incluyen la clave de partición `client_id`. |
 
-### RF-07 · Búsqueda vectorial
+### RF-07 · Búsqueda vectorial, Perfilamiento y Memoria de Contactos
 
 | ID | Requisito |
 |---|---|
-| RF-07.1 | Las celdas habilitan la extensión `vector`. Los embeddings se almacenan en `product_embeddings` o en la tabla vectorial que defina el modelo de producto. |
-| RF-07.2 | La dimensión del embedding es configurable por modelo. No se hardcodea 1536. |
+| RF-07.1 | Las celdas habilitan la extensión `vector`. Los embeddings vectoriales se almacenan en `product_embeddings` y en `contact_memories`. |
+| RF-07.2 | La dimensión del embedding es canónica a 1536 dimensiones (compatible con modelos OpenAI text-embedding-3-small, Gemini o Vertex AI correspondientes). |
 | RF-07.3 | Los índices HNSW usan `m=16` y `ef_construction=64` como punto de partida; se ajustan con datos reales. |
-| RF-07.4 | La representación por defecto es `vector(d)` (float32). `halfvec(d)` es una optimización opcional que se adopta solo después de medir la pérdida de recall y el ahorro de memoria con el modelo real y un dataset representativo. La dimensión y el modelo los define el contrato de embedding. |
+| RF-07.4 | Se estandariza el uso de `halfvec(1536)` (PostgreSQL 18 + pgvector 0.8+) con la clase de operadores `halfvec_cosine_ops`, reduciendo el consumo de RAM en índices HNSW en un 50% con recall > 99%. |
 | RF-07.5 | Las consultas con filtros adicionales usan `hnsw.iterative_scan=relaxed_order` y un `hnsw.ef_search` explícito. |
 | RF-07.6 | El tamaño de los índices HNSW se monitorea. Si supera el 65% de la RAM de la celda, se abre una celda nueva o se escala. |
 | RF-07.7 | Un cambio de modelo o dimensión de embedding exige reindexar y versionar el contrato del modelo. |
+| RF-07.8 | **Diseño de Perfilamiento y Memoria (`contact_memories`):** Tabla única particionada por inquilino con índice HNSW local (`halfvec(1536)`) y columna discriminadora `memory_type`: a) `profile` (1:1 por contacto, ficha viva evolutiva con preferencias, presupuesto y objeciones actualizada por UPSERT, permitiendo hiper-segmentación y cruce inverso con `product_embeddings`); b) `episode` (1:N por contacto, resúmenes cortos generados asíncronamente al resolver conversaciones en Chatwoot o cerrar pedidos, otorgando memoria a largo plazo al bot de IA). |
 
 ### RF-08 · Planes y cuotas
 
@@ -195,24 +198,26 @@ No reemplaza los requisitos de producto. `ADM-001` define **qué** debe hacer `m
 8. RLS está habilitado y forzado; una consulta sin `app.current_client_id` no devuelve filas.
 9. El rol de aplicación no tiene DDL ni `BYPASSRLS`; el rol de migración está separado.
 10. El total de particiones físicas por instancia es menor o igual a 10.000.
-11. `products` y `product_embeddings` están particionadas por `client_id`; las demás tablas de inquilino no se particionan y usan RLS.
+11. `contacts`, `product_embeddings` y `contact_memories` están particionadas por `client_id`; `products` y las demás tablas de inquilino no se particionan, residen en esquema compartido y usan RLS e índices B-Tree liderados por `client_id`.
 12. Los índices HNSW existen y su tamaño se monitorea contra la RAM de la celda.
 13. La cuota se aplica de forma atómica en el vínculo producto–archivo.
 14. Un archivo compartido se elimina solo después de verificar la ausencia de referencias en todas las celdas.
 15. El backup y el restore de cada instancia están probados.
 16. Los disparadores de escalado y el protocolo de migración están documentados.
-17. N8N no aparece como base de datos, esquema, cola ni correlación en esta especificación.
+17. N8N no accede a las bases de celda ni de control; mantiene su base aislada `pg-n8n` y se integra exclusivamente por APIs.
 18. No existen claves foráneas entre bases.
 19. Redis 7+ y Sidekiq están documentados para Chatwoot; el plano de control tiene un Redis 7+ dedicado y separado.
 20. El laboratorio de Chatwoot sobre PostgreSQL 18 está registrado como validado (migraciones exitosas); el procedimiento de rollback está documentado en `design.md` §9.7.
 21. El Router Global se mantiene como plano de control; la separación de `pg-control-plane` tiene disparadores documentados y no se implementa en esta especificación.
 22. Las tablas de identidad y sesión globales no usan RLS por `client_id`; la membresía (`tenant_users`) y la proyección `users` de cada celda sí. `users.active_client_id` es un puntero nullable, no una política RLS.
-23. Las tablas particionadas usan `LIST` por `client_id`; al llegar a 100 inquilinos se abre una celda nueva y `HASH` queda diferido con trigger.
-24. La representación vectorial por defecto es `vector(d)`; `halfvec(d)` se adopta solo con modelo/dimensión reales y recall medido.
+23. Las 3 tablas particionadas usan `LIST` por `client_id`; al llegar a 100 inquilinos se abre una celda nueva (generando exactamente 300 particiones por celda).
+24. La representación vectorial utiliza `halfvec(1536)` con índices HNSW para optimizar RAM y latencia en `product_embeddings` y `contact_memories`.
 25. El rollback de Chatwoot a PostgreSQL 16 está documentado en `design.md` §9.7 y se ensaya en laboratorio antes de producción.
 26. El destino, la retención y la prueba de restore se fijan en OPS-001; DAT-001 exige S3 compatible, offsite, cifrado, versionado y restore probado.
 27. La capacidad nominal es 100 inquilinos por celda; la efectiva se determina por el primer disparador de escalado de RF-10.3.
 28. `media_catalog` no expone URLs públicas; la entrega de imágenes se resuelve con URL firmada de imgproxy y SeaweedFS no responde desde Internet.
+29. Existe un test automatizado en CI/CD para validar aislamiento RLS entre inquilinos mediante pruebas de intrusión cruzada (Verification Gate).
+30. El módulo de Comunidades reside en el plano de control permitiendo relacionar líderes y miembros de diferentes celdas sin consultas distribuidas entre celdas.
 
 ## 6. Requisitos No Funcionales (RNF)
 

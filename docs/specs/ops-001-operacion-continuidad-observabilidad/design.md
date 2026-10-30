@@ -446,6 +446,16 @@ Los valores usan 0,015 USD por GB-mes como referencia y no incluyen operaciones.
 | Alerta | Simular un fallo de backup y un timer no ejecutado en laboratorio | Alerta en ≤ 5 min |
 | Documentación | Ejecución por alguien sin contexto | Completa sin ayuda |
 
+### 13.1 Verification Gate CI/CD: Test automatizado de aislamiento RLS entre inquilinos
+
+Como control preventivo obligatorio en el pipeline de integración continua (`.github/workflows/ci.yml`):
+- Se levanta un contenedor PostgreSQL 18 con pgvector efímero en el runner de GitHub Actions.
+- Se ejecutan las migraciones celulares de `packages/domain/drizzle/cell-data-plane/`.
+- Se ejecuta la suite automatizada de intrusión cruzada (*cross-tenant intrusion test*):
+  * Inserción de fixtures para Tenant Alpha y Tenant Beta en las 3 tablas particionadas (`contacts`, `product_embeddings`, `contact_memories`) y en tablas compartidas (`products`, `orders`, `users`).
+  * Validación estricta con rol de aplicación `mocter_app` (sin privilegios de bypass): si la sesión fija `SET LOCAL app.current_client_id = Alpha`, cualquier consulta a filas de Beta debe retornar exactamente 0 filas; cualquier intento de `INSERT` o `UPDATE` a datos de Beta debe disparar violación de política RLS (`WITH CHECK`).
+  * Si la prueba falla o se filtra 1 sola fila cross-tenant, el pipeline se detiene de inmediato bloqueando el merge a `develop` o `main`.
+
 ## 14. Riesgos
 
 | Riesgo | Impacto | Mitigación |

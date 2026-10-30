@@ -45,15 +45,17 @@
   - PgBouncer en modo transacción.
   - Verificación: `design.md` §5 contiene la política, los roles y la tabla de parámetros de PgBouncer.
 
-- [x] **T-06 · Diseñar el particionado híbrido**
-  - Tablas de bajo/medio volumen sin particionar, con `client_id` y RLS.
-  - `products` y `product_embeddings` particionadas por `client_id`.
-  - Presupuesto de particiones ≤ 10.000.
-  - Verificación: `design.md` §6 contiene la tabla de estrategia, el presupuesto, las funciones de creación de particiones y la alineación con RF-05.2 de ADM-001.
+- [x] **T-06 · Diseñar el particionado selectivo de 3 tablas**
+  - Tablas de bajo/medio volumen y catálogo transaccional (`products`, `users`, `audit_logs`) sin particionar, con `client_id`, índice B-Tree y RLS forzado.
+  - `contacts`, `product_embeddings` y `contact_memories` particionadas por `client_id`.
+  - Presupuesto de particiones = 300 por celda de 100 inquilinos (<< 10.000 límite).
+  - Verificación: `design.md` §6 contiene la tabla de estrategia, el presupuesto, las funciones DDL de creación de las 3 particiones y la justificación técnica de no particionar `products`.
 
-- [x] **T-07 · Diseñar pgvector y HNSW**
-  - Dimensión configurable, HNSW, `halfvec`, iterative scan y métricas.
-  - Verificación: `design.md` §7 contiene el DDL, la consulta con filtros y la consulta de salud del índice.
+- [x] **T-07 · Diseñar pgvector, halfvec(1536) y memoria de contactos**
+  - Estandarización de `halfvec(1536)` y operador `halfvec_cosine_ops` para ahorro del 50% de RAM en HNSW.
+  - Diseño de perfilamiento (`profile` 1:1) y memoria episódica (`episode` 1:N) en `contact_memories`.
+  - Flujo asíncrono de consolidación y consulta RAG híbrida (`UNION ALL`).
+  - Verificación: `design.md` §6.6, §6.7 y §7 contienen el DDL, la consulta RAG híbrida y la estimación de memoria.
 
 - [x] **T-08 · Diseñar la operación**
   - Backup, observabilidad, disparadores de escalado, migración, perfiles y secretos.
@@ -100,3 +102,11 @@
 - [x] **T-16 · Alinear AUTH-D-06 y la membresía 1:0..1**
   - Sesión opaca de servidor para el panel; JWT solo para APIs; `users.active_client_id` como guardián global; la cookie solo transporta el `sid`.
   - Verificación: DAT-001 no afirma multipertenencia; RF-04.3 y RF-05.5 distinguen cookie, sesión de servidor y JWT de API.
+
+- [x] **T-17 · Alinear módulo de Comunidades en Control Plane**
+  - DDL de `communities` y `community_members` en el plano de control para relacionar transversalmente clientes de distintas celdas.
+  - Verificación: `design.md` §3.2 y §3.3 contienen los esquemas DDL y las restricciones de integridad referencial física a `clients(id)`.
+
+- [x] **T-18 · Formalizar el Verification Gate de aislamiento RLS en CI/CD**
+  - Definir la prueba automatizada de intrusión cruzada (`cross-tenant intrusion test`) con rol de aplicación `mocter_app`.
+  - Verificación: `design.md` §6.9 y `requirements.md` CA-29 documentan el paso obligatorio en el pipeline de CI/CD.

@@ -30,26 +30,28 @@ Chatwoot (motor de conversaciones)          Mocter (maestro)
 
 La escritura de contactos es unidireccional desde Mocter (RF-03.4 de ADM-001); de Chatwoot solo vuelven identificadores y estado. Cuando el bot (BOT-001) o el agente atienden, consultan el prospecto y su consentimiento vigente en Mocter.
 
-## 3. Modelo de datos (celda del inquilino, schema `admin`, RLS)
+## 3. Modelo de datos (celda del inquilino, schema `tenant`, RLS)
 
-Ambas tablas llevan las columnas de auditoría de la directiva (RF-10.9) y viven en la celda; no hay FK entre planos.
+Las tablas de prospectos y contactos llevan las columnas de auditoría de la directiva (RF-10.9) y viven en la celda; no hay FK entre planos.
 
-### 3.1 `prospects`
+### 3.1 `contacts` (Prospectos y Contactos Multicanal)
+
+Canónicamente nombrada `contacts` en la celda (con alias de dominio de negocio `prospects`). Es una de las **3 únicas tablas particionadas** de la plataforma (`PARTITION BY LIST (client_id)` + RLS forzado) según `DAT-001 §6.3`:
 
 | Atributo | Regla |
 |---|---|
-| `client_id` + `id` | PK compuesta, RLS |
+| `client_id` + `id` | PK compuesta, clave de partición y RLS forzado |
 | `full_name` | Nombre o razón social (obligatorio) |
 | `document_type` · `document_number` | `CC`/`NIT`/`CE`/`PASSPORT`/`other`; únicos por inquilino cuando existen (índice parcial) |
 | `email` | Validado; único por inquilino (índice parcial `lower(email)`) |
 | `phone_mobile` (E.164) · `phone_landline` | Al menos un canal de contacto junto con `email` (RF-02.4) |
 | `country` · `state` · `city` · `address_line` · `postal_code` | Opcionales |
-| `source` | `whatsapp`, `landing`, `manual`, `referral`, `other` |
-| `chatwoot_contact_id` | Correlación; nullable; única por inquilino (índice parcial) |
+| `source` / `channel` | `whatsapp`, `web`, `email`, `manual`, `referral`, `other` |
+| `chatwoot_contact_id` | Correlación; nullable; índice parcial por inquilino |
 | `assigned_user_id` | `tenant_agent` asignado; nullable |
 | `stage` | `new` → `in_conversation` → `qualified` → `customer`; salida `discarded` |
 | `tags` JSONB · `language` (default `clients.locale`) · `notes` | Etiquetas, idioma y notas |
-| `first_contacted_at` · `last_interaction_at` | Actualidad (RF-02.5) |
+| `first_contacted_at` · `last_seen_at` | Actualidad y seguimiento continuo |
 | `deleted_at` · `deleted_by` | Baja lógica con anonimización (D-04): al suprimir, los campos personales se reemplazan por tokens irreversibles |
 
 ### 3.2 `prospect_consents`
@@ -57,7 +59,7 @@ Ambas tablas llevan las columnas de auditoría de la directiva (RF-10.9) y viven
 | Atributo | Regla |
 |---|---|
 | `id` | PK |
-| `client_id` + `prospect_id` | RLS y FK local |
+| `client_id` + `prospect_id` | RLS y FK local a `contacts (client_id, id)` |
 | `purpose` | `data_treatment` (incluye Chatwoot como encargado) o `commercial_comms` |
 | `policy_version` | Versión exacta del aviso de privacidad aceptado |
 | `status` | `granted` / `revoked` |
@@ -88,6 +90,12 @@ Reglas:
 | Auditoría | `created_by`, `updated_by` (DAT-001 RF-10.9) |
 
 Reglas: el template de plataforma nace en `draft`; el inquilino lo copia/edita, pasa por `in_review` y solo se usa cuando está `published`. Un cambio de aviso crea una versión nueva; los consentimientos viejos conservan su `policy_version`.
+
+### 3.4 Desacoplamiento de Memorias y Perfiles (`contact_memories`)
+
+Para evitar que actualizaciones frecuentes a los contactos (`last_seen_at`, etiquetas, etapas, asignaciones) provoquen bloqueos o degradación en índices vectoriales pesados HNSW, el perfil y las memorias del contacto viven en la tabla separada `contact_memories` (`DAT-001 §6.3` y `§6.6`):
+- **`profile` (1:1):** Ficha viva evolutiva (preferencias, presupuesto, objeciones) actualizada mediante `UPSERT`. Permite hiper-segmentación y cruce inverso con `product_embeddings` para campañas comerciales.
+- **`episode` (1:N):** Resúmenes episódicos generados asíncronamente cuando se resuelve una conversación en Chatwoot o se cierra un pedido en `ORD-001`, otorgándole contexto histórico al bot conversacional.
 
 ## 4. Calidad de datos (medible)
 

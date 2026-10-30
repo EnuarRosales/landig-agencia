@@ -24,7 +24,7 @@ Definir el maestro de prospectos de cada inquilino —la primera etapa del ciclo
 
 | ID | Requisito |
 |---|---|
-| RF-01.1 | El prospecto vive en la celda del inquilino con RLS (`client_id`); es dato del inquilino, no del plano de control. |
+| RF-01.1 | El prospecto/contacto vive en la celda del inquilino materializado en la tabla particionada `contacts` (`PARTITION BY LIST (client_id)` + RLS); es dato del inquilino de crecimiento masivo multicanal, no del plano de control. Su perfil evolutivo y su memoria episódica residen en `contact_memories` (DAT-001). |
 | RF-01.2 | **Mocter es la fuente de verdad.** Chatwoot `contacts` es una proyección: la escritura es unidireccional desde Mocter y Chatwoot solo devuelve identificadores y estado (mismo patrón que `chatwoot_accounts`, ADM-001 RF-03.4). |
 | RF-01.3 | Cuando una conversación trae un contacto desconocido, Chatwoot lo propone y Mocter lo ingesta como prospecto con idempotencia por `(client_id, chatwoot_contact_id)`; el maestro queda en Mocter. |
 | RF-01.4 | El prospecto guarda su origen (`source`): `whatsapp`, `landing`, `manual`, `referral`, `other`. |

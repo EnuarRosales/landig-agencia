@@ -21,14 +21,17 @@
 ```text
 Chatwoot (webhook) ──► Motor BOT-002
                          │
-                         ├─ Estado de conversación (prospecto, ciudad, nombre,
+                         ├─ Estado de conversación (contacto, ciudad, nombre,
                          │  producto activo, cantidad, etapa, último turno)
+                         ├─ Memoria y Perfil RAG (contact_memories: UNION ALL de
+                         │  ficha viva 'profile' 1:1 + top 3 'episode' pasados)
                          ├─ Compositor
                          │   ├─ bloques de plataforma (bot_prompt_blocks, versionados)
                          │   ├─ contexto del negocio (client_business_info,
                          │   │  shipping_carriers, delivery_rules, FAQs)
-                         │   └─ bloque del producto activo (products,
-                         │      price_tiers, benefits, media_term, faqs)
+                         │   ├─ bloque del producto activo (products,
+                         │   │  price_tiers, benefits, media_term, faqs)
+                         │   └─ contexto de memoria del contacto (profile + episodios pasados)
                          ├─ Inferencia (BOT-001: BYOK; Mocter cuando madure)
                          ├─ Salida en burbujas ([[SPLIT]]) + media markers
                          ├─ Clasificador de leads (4 etiquetas reservadas)
@@ -39,13 +42,13 @@ Chatwoot (webhook) ──► Motor BOT-002
 
 | Atributo | Regla |
 |---|---|
-| `block_key` | `core.identity`, `core.personality`, `core.greeting`, `core.media`, `core.splits`, `core.order_flow`, `core.closing`, `core.classifier`, `core.format` |
+| `block_key` | `core.identity`, `core.personality`, `core.greeting`, `core.media`, `core.splits`, `core.order_flow`, `core.closing`, `core.classifier`, `core.format`, `core.contact_memory` |
 | `version` | Único `(block_key, version)`; solo una `active` por bloque |
 | `content` JSONB `{es,en}` | Texto del bloque en ambos idiomas |
 | `status` | `draft` / `active` / `retired` |
 | Auditoría | Columnas de la directiva (RF-10.9) |
 
-La **receta** de composición (orden y variables) es canónica y versionada con el motor (D-06): identidad → personalidad/reglas → saludo (solo primer turno) → multimedia/burbujas → contexto del negocio → producto activo → flujo de pedido → formato. El inquilino solo habilita bloques opcionales; no reordena la receta. El clasificador es un bloque separado que corre sobre los últimos 10 turnos.
+La **receta** de composición (orden y variables) es canónica y versionada con el motor (D-06): identidad → personalidad/reglas → saludo (solo primer turno) → multimedia/burbujas → contexto del negocio → producto activo → memoria y perfil del contacto (RAG) → flujo de pedido → formato. El inquilino solo habilita bloques opcionales; no reordena la receta. El clasificador es un bloque separado que corre sobre los últimos 10 turnos.
 
 ### 3.1 Separadores y tiempos de burbuja (D-09)
 
@@ -79,7 +82,26 @@ La mecánica es de plataforma; el inquilino solo elige un preset de ritmo.
 
 ## 5. Estado de conversación
 
-`conversation_state`: `client_id`, `chatwoot_conversation_id`, `prospect_id`, `product_id` activo, `quantity`, `city`, `customer_name`, `shipping_method`, `stage`, `last_label`, `last_turn_at`, versión usada. No se envía completo al modelo: el compositor inyecta solo las variables que el bloque necesita.
+`conversation_state`: `client_id`, `chatwoot_conversation_id`, `prospect_id` / `contact_id`, `product_id` activo, `quantity`, `city`, `customer_name`, `shipping_method`, `stage`, `last_label`, `last_turn_at`, versión usada. No se envía completo al modelo: el compositor inyecta solo las variables que el bloque necesita.
+
+### 5.1 Inyección de Memoria RAG (`contact_memories`) y Consolidación Asíncrona
+
+1. **Recuperación RAG en el Camino Caliente del Turno:**
+   - Ejecuta la consulta híbrida de `DAT-001 §6.7` en la celda del inquilino fijando `SELECT set_config('app.current_client_id', $1, true)`:
+     * Recupera la ficha viva `profile` (1:1) del contacto (preferencias, objeciones, presupuesto).
+     * Recupera los top 3 `episode` pasados (1:N) más relevantes semánticamente mediante distancia coseno con `halfvec(1536)`.
+   - Inyecta el bloque `core.contact_memory`, permitiendo al bot recordar acuerdos, historial y restricciones sin inflar innecesariamente el prompt.
+
+2. **Flujo Asíncrono de Consolidación (Post-Atención):**
+   - Disparador: Webhook de Chatwoot al resolver una conversación (`conversation_resolved`) o evento de confirmación de pedido en `ORD-001` (`order_completed`).
+   - Worker LLM en background:
+     * Sintetiza los turnos de la conversación en un resumen factual y conciso (episodio).
+     * Extrae nuevas preferencias o actualiza el perfil acumulativo del contacto.
+     * Genera vectores `halfvec(1536)` y persiste en `contact_memories` (`INSERT` de episodio y `UPSERT` de perfil).
+
+3. **Aislamiento Estricto de n8n y Terceros:**
+   - n8n y cualquier productor/consumidor externo residen en el plano de soporte o exterior y tienen **estrictamente prohibido conectarse directamente a las bases de las celdas (`pg-cell-XX`) o de control (`pg-control-plane`)**.
+   - Toda interacción ocurre exclusivamente a través de los endpoints autenticados de la REST API y webhooks de Mocter.
 
 ## 6. Clasificador de leads
 
