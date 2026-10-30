@@ -64,11 +64,10 @@ Traefik ──► apps/admin (módulo identity)
 
 | Caso | Credenciales y TOTP | Identidades federadas | Sesión | Login |
 |---|---|---|---|---|
-| Usuario en Router | Router | Router | Router | `users.email` → Router |
-| Usuario en celda dedicada | Celda | Celda | Router | `users.email` → `identity_location` → celda |
-| Usuario sin inquilino | Router | Router | Router | `active_client_id` nulo |
+| Operador SaaS Mocter | Router | Router | Router | `users.email` → Router (`identity_location = 'router'`) |
+| Usuario de inquilino (Compartida o Dedicada) | Celda | Celda | Router | `users.email` → `identity_location` → Celda |
 
-`identity_location` usa `router` o el UUID de la celda (`cell_id`). En una celda dedicada, el Router conserva `email`, `identity_location` y `active_client_id`; no conserva `password_hash`, secretos TOTP ni filas de `identities`. La sesión siempre vive en el Router, incluso cuando la verificación ocurrió en una celda.
+`identity_location` usa `router` para operadores corporativos de Mocter o el UUID de la celda asignada (`cell_id`) para todos los usuarios de inquilinos. En el Router Global, para usuarios de inquilinos, `password_hash`, secretos TOTP y filas de `identities` son nulos/inexistentes; el Router actúa únicamente como directorio de enrutamiento ciego (`email -> cell_id, client_id`). La sesión siempre vive en el Router, incluso cuando la verificación ocurrió en una celda.
 
 ### 3.2 Camino de una petición autenticada
 
@@ -85,8 +84,8 @@ Traefik ──► apps/admin (módulo identity)
 
 | Tabla | Clave | Reglas |
 |---|---|---|
-| `users` | `id` | Ancla global: `email` único sin distinguir mayúsculas, `email_verified_at`, `identity_location`, `active_client_id` nullable, `password_hash` nullable, secretos TOTP, `status`, `display_name`, `avatar_url` |
-| `identities` | `id` | Identidad federada: `user_id`, `provider` (`google` o `facebook`), `provider_user_id`, `provider_email`, `email_verified`, `display_name`, `avatar_url`, `linked_at`, `last_login_at` |
+| `users` | `id` | Ancla global y directorio de enrutamiento: `email` único sin distinguir mayúsculas, `email_verified_at`, `identity_location`, `active_client_id` nullable, `password_hash` nullable (solo operadores Mocter), secretos TOTP (solo operadores Mocter), `status`, `display_name`, `avatar_url` |
+| `identities` | `id` | Identidad federada (solo operadores Mocter en Router; inquilinos en su celda): `user_id`, `provider` (`google` o `facebook`), `provider_user_id`, `provider_email`, `email_verified`, `display_name`, `avatar_url`, `linked_at`, `last_login_at` |
 | `sessions` | `id` | `sid_hash` único, `user_id`, `client_id` nullable, `routing_version`, `csrf_hash`, `auth_method`, `mfa_at`, `reauth_at`, `created_at`, `last_seen_at`, `expires_at`, `absolute_expires_at`, `revoked_at`, `revoked_reason`, `ip_hash`, `user_agent_hash` |
 | `email_verification_tokens` | `id` | `user_id`, `token_hash` único, `expires_at`, `consumed_at`, `created_at`, `requested_ip_hash` |
 | `password_reset_tokens` | `id` | `user_id`, `token_hash` único, `purpose` (`reset` o `setup`), `expires_at`, `consumed_at`, `created_at`, `requested_ip_hash` |
@@ -104,16 +103,16 @@ Columnas de `users`:
 | `id` | `uuid` | PK; UUIDv7 |
 | `email` | `text` | `NOT NULL`; minúsculas; `CHECK (email = lower(email))`; índice único sobre `lower(email)` |
 | `email_verified_at` | `timestamptz` | Nulo = pendiente de verificación |
-| `password_hash` | `text` | Nulo = cuenta solo federada; Argon2id con parámetros y salt incluidos |
-| `password_updated_at` | `timestamptz` | Nulo si no tiene contraseña |
-| `totp_secret_ciphertext` | `bytea` | Nulo si 2FA inactivo; AES-256-GCM con nonce y tag |
-| `totp_key_id` | `text` | Identifica la clave usada; nulo si no hay secreto |
-| `totp_enabled_at` | `timestamptz` | Nulo = 2FA inactivo |
-| `totp_pending_secret_ciphertext` | `bytea` | Secreto de enrolamiento aún no confirmado |
-| `totp_pending_key_id` | `text` | Clave del secreto pendiente |
+| `password_hash` | `text` | Nulo para usuarios de inquilinos (sus credenciales viven en la celda); solo poblado para operadores Mocter en Router |
+| `password_updated_at` | `timestamptz` | Nulo si no tiene contraseña en el Router |
+| `totp_secret_ciphertext` | `bytea` | Nulo para inquilinos (vive en celda); AES-256-GCM solo para operadores Mocter |
+| `totp_key_id` | `text` | Identifica la clave usada; nulo si no hay secreto en Router |
+| `totp_enabled_at` | `timestamptz` | Nulo = 2FA inactivo en Router |
+| `totp_pending_secret_ciphertext` | `bytea` | Secreto de enrolamiento aún no confirmado en Router |
+| `totp_pending_key_id` | `text` | Clave del secreto pendiente en Router |
 | `totp_pending_created_at` | `timestamptz` | Vence a los 10 minutos |
 | `totp_last_used_step` | `bigint` | Último `time_step` aceptado; evita reutilizar un código |
-| `identity_location` | `text` | `router` o el UUID de la celda (`cell_id`); `CHECK` correspondiente |
+| `identity_location` | `text` | `router` (operadores Mocter) o el UUID de la celda asignada (`cell_id`); `CHECK` correspondiente |
 | `active_client_id` | `uuid` | Nullable; columna propiedad de ADM-001. La FK `clients(id) ON DELETE SET NULL` se agrega en ADM-001 T-06, una vez creada `clients`; guardián global de 1:0..1 |
 | `status` | `text` | `active` o `disabled` |
 | `display_name` | `text` | Nombre para la interfaz; puede venir del proveedor |
@@ -130,16 +129,16 @@ Los tokens de verificación y de recuperación son de 32 bytes, se guardan solo 
 
 `user_consents` registra el consentimiento de los usuarios de la plataforma (Habeas Data, Ley 1581 de 2012, Colombia): el registro exige aceptación del aviso de privacidad y autorización de tratamiento (`purpose = data_treatment`); el consentimiento comercial (`commercial_comms`) es opcional y puede capturarse en el onboarding (ADM-001). Append-only por otorgamiento; la revocación marca `revoked_at` en la fila vigente. Los derechos del titular (acceso, corrección, supresión con anonimización, revocación) se ejercen por procedimiento de soporte auditado.
 
-### 4.2 Celda dedicada — schema `admin`
+### 4.2 Identidad en Celdas (Compartidas y Dedicadas) — schema `admin`
 
 | Tabla | Clave | Reglas |
 |---|---|---|
-| `users` | `id` | Mismo `id` que el Router; `client_id`, `email`, `email_verified_at`, `password_hash`, `password_updated_at`, secretos TOTP (`totp_secret_ciphertext`, `totp_key_id`, `totp_enabled_at`, `totp_pending_secret_ciphertext`, `totp_pending_key_id`, `totp_pending_created_at`, `totp_last_used_step`), `status`, `display_name`, `avatar_url`; RLS |
-| `identities` | `id` | `client_id`, `user_id`, `provider`, `provider_user_id`, `provider_email`, `email_verified`, `display_name`, `avatar_url`, `linked_at`, `last_login_at`; RLS |
+| `users` | `id` | Mismo `id` que el Router; `client_id`, `email`, `email_verified_at`, `password_hash`, `password_updated_at`, secretos TOTP (`totp_secret_ciphertext`, `totp_key_id`, `totp_enabled_at`, `totp_pending_secret_ciphertext`, `totp_pending_key_id`, `totp_pending_created_at`, `totp_last_used_step`), `status`, `display_name`, `avatar_url`; RLS por `client_id` |
+| `identities` | `id` | `client_id`, `user_id`, `provider`, `provider_user_id`, `provider_email`, `email_verified`, `display_name`, `avatar_url`, `linked_at`, `last_login_at`; RLS por `client_id` |
 
-La celda dedicada no tiene `sessions`: la sesión sigue en el Router. `users.id` se copia desde el Router y no se genera uno nuevo; `users` usa `UNIQUE (client_id, lower(email))`. `identities` lleva `client_id` para RLS y usa `UNIQUE (client_id, provider, provider_user_id)` y `UNIQUE (client_id, user_id, provider)`.
+Las celdas (tanto compartidas de hasta 100 inquilinos como dedicadas) no gestionan `sessions`: la sesión sigue centralizada en el Router y Redis. `users.id` se preserva desde el Router y no se genera uno nuevo; `users` usa `UNIQUE (client_id, lower(email))`. `identities` lleva `client_id` para RLS y usa `UNIQUE (client_id, provider, provider_user_id)` y `UNIQUE (client_id, user_id, provider)`.
 
-La tabla `users` de la celda es la misma proyección local que define ADM-001 §5.2; AUTH-001 le agrega las columnas de credenciales y TOTP. `identities` es propiedad de AUTH-001.
+La tabla `users` de la celda es la misma entidad local que define ADM-001 §5.2 con las columnas de credenciales y TOTP añadidas por AUTH-001. `identities` es propiedad de AUTH-001.
 
 El rol `mocter_auth` de la celda puede `SELECT` y `UPDATE` en `users`, y `SELECT`, `INSERT` y `UPDATE` en `identities`; el `INSERT` es necesario para vincular una identidad federada nueva. Antes de consultar, la aplicación ejecuta `SET LOCAL app.current_client_id` con el `client_id` resuelto en el Router; no usa `BYPASSRLS`.
 
@@ -192,31 +191,70 @@ Toda tabla y columna no evidente lleva comentario en la base, según `.agents/AG
 
 ## 5. Flujos
 
-### 5.1 Registro nativo
+### 5.1 Registro nativo de clientes de inquilinos
+
+El endpoint público `POST /auth/register` y su formulario en la web son **exclusivos para nuevos clientes de inquilinos**. Los operadores corporativos de la SaaS Mocter no pueden registrarse de forma autónoma aquí (se crean según §5.1.1):
 
 1. `POST /auth/register` recibe correo y contraseña. Valida `Origin`, content type y rate limit. Normaliza el correo y aplica la política antes de tocar la base. Exige aceptación del aviso de privacidad y autorización de tratamiento de datos personales (Ley 1581 de 2012, Colombia); sin ella no se crea la cuenta, y el otorgamiento se registra en `user_consents` con `policy_version` y canal.
-2. Si el correo ya existe, responde siempre `202` con el mensaje genérico: «Si la cuenta existe, enviamos un correo con instrucciones.» No crea un usuario nuevo ni revela el método existente.
-   - Si la cuenta es federada, el correo enviado contiene un token `setup` de 30 minutos; al confirmarlo se setea `email_verified_at`, se guarda la contraseña Argon2id y se vincula la credencial nativa al mismo `user_id` sin crear otra cuenta. La contraseña enviada en el registro no se persiste para una cuenta federada: el formulario de `setup` la solicita de nuevo junto con el token.
+2. Si el correo ya existe en `users` del Router Global, responde siempre `202` con el mensaje genérico: «Si la cuenta existe, enviamos un correo con instrucciones.» No crea un usuario nuevo ni revela el método existente.
+   - Si la cuenta es federada, el correo enviado contiene un token `setup` de 30 minutos; al confirmarlo se setea `email_verified_at`, se guarda la contraseña Argon2id y se vincula la credencial nativa en la celda correspondiente al mismo `user_id` sin crear otra cuenta.
    - Si la cuenta es nativa y no está verificada, el correo reenvía el enlace de verificación; si ya está verificada, invita a iniciar sesión o a recuperar la contraseña.
-3. Si el correo no existe, crea `users` con `email_verified_at = NULL`, `password_hash` Argon2id y `status = 'active'`.
-4. Genera un token de verificación de 32 bytes; guarda solo `token_hash` con vencimiento de 24 horas y solicita a NTF-001 el envío del enlace (`auth.verify_email`). No crea sesión.
+3. Si el correo no existe:
+   - **Asignación inmediata de celda:** El Router selecciona la celda activa con capacidad (`cells`).
+   - **Directorio de Router:** Crea la fila en `admin.users` del Router Global con `email`, `identity_location = '<cell_id>'`, `password_hash = NULL`, `status = 'active'` y `email_verified_at = NULL`.
+   - **Persistencia en Celda:** Inserta la entidad `users` directamente en la celda asignada con el mismo `id`, `email`, `password_hash` Argon2id y `email_verified_at = NULL`.
+4. Genera un token de verificación de 32 bytes; guarda su hash SHA-256 en `email_verification_tokens` del Router con vencimiento de 24 horas y despacha el correo transaccional de verificación (`auth.verify_email`). No crea sesión.
 5. Responde `202` con el mismo mensaje genérico. Un fallo de envío se registra y permite reenviar; no se expone el token ni el error interno.
 
-La verificación se confirma con `POST /auth/email/verify/confirm`, no con un `GET` que consuma el token: los escáneres de correo no deben invalidarlo. El `GET` solo muestra la pantalla de confirmación. Al confirmar, se marca `email_verified_at` y se consume el token; el usuario vuelve al login.
+La verificación se confirma con `POST /auth/email/verify/confirm`, no con un `GET` que consuma el token: los escáneres de correo no deben invalidarlo. El `GET` solo muestra la pantalla de confirmación. Al confirmar, se marca `email_verified_at` tanto en el Router como en la celda y se consume el token; el usuario continúa al login.
 
 Con Google el correo se considera verificado y `email_verified_at` se completa en el alta. Con correo y contraseña, `ADM-001` impide crear el inquilino hasta que `email_verified_at` exista (RF-14.6). El login puede completarse antes de verificar para permitir reenviar el correo, pero las rutas de negocio y el onboarding consultan la marca y rechazan el alta.
 
-El contenido de los correos de verificación, `setup` y reset se administra en NTF-001 (`auth.*`). AUTH conserva la generación y consumo de tokens y el flujo de seguridad; NTF-001 renderiza la plantilla, resuelve el remitente y registra la entrega. En Fase 1 AUTH puede usar su SMTP mínimo; la migración a NTF-001 ocurre en Fase 2 sin cambiar el contrato de tokens.
+### 5.1.1 Provisión manual y bootstrap de operadores SaaS Mocter
 
-### 5.2 Inicio de sesión nativo
+Los operadores corporativos de la SaaS Mocter (`platform_owner`, `platform_support`, `platform_sales`, `platform_billing`) **no pueden registrarse autónomamente**:
+
+1. **Bootstrap del primer Platform Owner (`/setup-owner`):**
+   - En una plataforma recién desplegada sin operadores, el acceso a `/setup-owner` (GET y POST) está protegido por el secreto de entorno `SETUP_OWNER_TOKEN`.
+   - El endpoint valida con `timingSafeEqual` el token provisto y comprueba que `COUNT(users WHERE identity_location = 'router') === 0`.
+   - Permite registrar el primer usuario asignándole rol `platform_owner`, `identity_location = 'router'`, `password_hash` Argon2id, `email_verified_at = now()`, `active_client_id = NULL` y `status = 'active'`.
+   - Una vez creado el primer operador, la ruta `/setup-owner` queda permanentemente desactivada y responde `404 Not Found` en todas las peticiones posteriores.
+2. **Creación manual por Platform Owner:** Los siguientes operadores son creados exclusivamente por un `platform_owner` desde la consola administrativa de Mocter en el Router Global, indicando correo corporativo, nombre completo y rol/scopes de plataforma.
+3. **Ancla en Router:** La cuenta se crea en `admin.users` del Router Global con `identity_location = 'router'`, `active_client_id = NULL` (no pertenecen a celdas ni a inquilinos de clientes), `status = 'active'` y `password_hash = NULL`.
+4. **Token de Setup:** El sistema genera un token seguro de 32 bytes con vencimiento de 24 horas (`purpose = 'setup'`), guarda su hash en `password_reset_tokens` del Router y envía un correo de invitación al nuevo operador con el enlace `/auth/setup?token=...`.
+5. **Activación de Credenciales:** El operador abre el enlace de setup y establece su contraseña inicial (o vincula su cuenta Google/Facebook). La contraseña se hashea con Argon2id y se persiste en `users.password_hash` del Router Global; `email_verified_at` se marca con `now()`.
+6. **Acceso habitual:** A partir de ese momento, el operador ingresa siempre por el **formulario unificado `/login`** (la misma vista que los clientes).
+
+### 5.1.2 Invitación de usuarios a un inquilino existente (`tenant_users` en celda)
+
+Cuando un inquilino desea incorporar colaboradores a su negocio, el `tenant_owner` ejecuta el flujo de invitación desde su panel:
+
+1. **Invitación desde el panel:** El `tenant_owner` envía la invitación con correo, nombre y rol (`tenant_agent`) desde `/admin/team`.
+2. **Resolución de tenencia:** El backend ya conoce el `client_id` y la celda activa del inquilino autenticado.
+3. **Validación de membresía única (1:0..1):** Si el correo ya tiene una membresía activa en otro inquilino (`users.active_client_id IS NOT NULL`), la invitación se rechaza para evitar identidades cruzadas entre clientes.
+4. **Ancla y Celda:**
+   - En el Router Global crea el ancla en `admin.users` con `identity_location = '<cell_id>'`, `active_client_id = client_id`, `password_hash = NULL` y `status = 'active'`.
+   - En la celda del inquilino, inserta `users` con el mismo `id` y `tenant_users` con `role = 'tenant_agent'`, `client_id` y `status = 'pending'`.
+5. **Token de Setup:** Se genera un token criptográfico de 32 bytes (`purpose = 'setup'`) y se le envía al invitado un correo con el enlace `/auth/setup?token=...`.
+6. **Definición de Credenciales o Vinculación OAuth en Celda:** Al abrir el enlace `/auth/setup?token=...`, el colaborador elige su método de acceso:
+   - Si registra contraseña nativa: se genera el hash Argon2id y se persiste en `users.password_hash` de la celda asignada bajo RLS.
+   - Si selecciona proveedor social (Google o Facebook): se autentica contra el proveedor y se crea la fila en `identities` (`client_id`, `provider`, `provider_user_id`, etc.) de esa celda bajo RLS.
+   En ambos casos, las credenciales residen exclusivamente en la celda y nunca en el Router Global. La membresía en `tenant_users` pasa a `active` y `email_verified_at` se marca con `now()`.
+7. **Acceso habitual:** El usuario inicia sesión siempre en el formulario unificado `/login`. El Router consulta `identity_location` y deriva la verificación a la celda del inquilino.
+
+### 5.2 Inicio de sesión unificado
+
+La vista `/login` y el endpoint `POST /auth/login` son **100% universales** para todos los usuarios de la plataforma (operadores de Mocter y clientes de inquilinos):
 
 1. `POST /auth/login` aplica rate limit y normaliza el correo.
-2. Resuelve `users.email` en el Router. Si `identity_location` no es `router`, conecta a la celda indicada con `mocter_auth`, fija `SET LOCAL app.current_client_id = users.active_client_id` y verifica contra `users` de la celda. Si la celda no responde, devuelve `503`; no hay fallback al Router porque allí no están las credenciales. Si `identity_location` apunta a una celda y `active_client_id` es nulo, la identidad está inconsistente: responde `503`, alerta y no autentica.
-3. Si el usuario no existe, no tiene `password_hash` o está `disabled`, ejecuta una verificación Argon2id ficticia con un hash de costo equivalente y responde `401` genérico. El tiempo de respuesta no debe distinguir esos casos.
+2. Resuelve `users.email` en el Router Global y consulta `identity_location`:
+   - **Caso Operador SaaS Mocter (`identity_location = 'router'`):** El Router verifica el `password_hash` directamente en la base de datos del Router Global, sin comunicarse con ninguna celda ni aplicar RLS de inquilino.
+   - **Caso Cliente de Inquilino (`identity_location = '<cell_id>'`):** El Router conecta a la celda indicada con `mocter_auth`, establece `SET LOCAL app.current_client_id = users.active_client_id` y verifica contra `users` de esa celda bajo RLS. Si la celda no responde, devuelve `503` (Fail-Closed); nunca intenta el Router porque allí no residen credenciales de clientes. Si `identity_location` apunta a una celda y `active_client_id` es nulo, la identidad está inconsistente: responde `503`, alerta y no autentica.
+3. Si el usuario no existe, no tiene `password_hash` o está `disabled`, ejecuta una verificación Argon2id ficticia con un hash de costo equivalente y responde `401` genérico («Correo o contraseña incorrectos.»). El tiempo de respuesta no debe distinguir esos casos.
 4. Verifica Argon2id. Si el hash usa parámetros anteriores a los vigentes, lo rehasha en el mismo login.
 5. Si `totp_enabled_at` no es nulo, crea un challenge de 2FA y no emite sesión todavía. Si no, crea la sesión.
-6. La sesión toma `client_id = users.active_client_id` y el `routing_version` vigente de `client_routing`; si no hay membresía, `client_id` y `routing_version` quedan nulos.
-7. Crea la sesión con `reauth_at = now()`; devuelve `200` con `user`, `emailVerified`, `clientId` y `expiresAt`, y setea la cookie de sesión y la cookie CSRF.
+6. La sesión toma `client_id = users.active_client_id` y el `routing_version` vigente de `client_routing`; si es un operador de Mocter sin membresía de inquilino, `client_id` y `routing_version` quedan nulos.
+7. Crea la sesión opaca en `sessions` del Router Global y la cachea en Redis con `reauth_at = now()`; devuelve `200` con `user`, `emailVerified`, `clientId` y `expiresAt`, y setea la cookie de sesión `__Host-mocter_sid` y la cookie CSRF.
 
 Mensaje de credenciales inválidas: «Correo o contraseña incorrectos.» No se distingue correo inexistente, contraseña incorrecta, cuenta federada o cuenta deshabilitada.
 
@@ -336,16 +374,16 @@ No se crea ni se reutiliza un `AccountUser` para un usuario con membresía en ot
 
 El panel no usa JWT en el navegador. Para APIs públicas o máquina-a-máquina futuras se reserva el contrato: access token de 15 minutos, refresh opaco rotativo de 30 días, revocación en Redis, claims `sub`, `client_id`, `routing_version`, `scope`, `jti` y `exp`; nunca `cell_id`. Esta spec no implementa ese camino ni lo usa para autenticar el panel.
 
-### 5.12 Migración de identidad a celda dedicada
+### 5.12 Migración de identidad inter-celdas (Compartida a Dedicada o Rebalanceo)
 
-La migración es una operación de ADM-001 que AUTH-001 ejecuta en cuatro pasos, dentro de una ventana de mantenimiento y con la celda ya creada:
+La migración de identidad es una operación coordinada con ADM-001 que AUTH-001 ejecuta en cuatro pasos transaccionales, dentro de una ventana de mantenimiento y con la celda destino ya aprovisionada:
 
-1. **Expandir.** Crear o actualizar en la celda la fila `users` con el mismo `id`, `client_id`, `email`, `email_verified_at`, `status`, `display_name` y `avatar_url` del Router. No se genera un `id` nuevo. Verificar que el correo coincide.
-2. **Copiar.** Copiar `password_hash`, `password_updated_at`, los secretos TOTP activo y pendiente con su `key_id` y `totp_last_used_step`. Copiar las identidades federadas con `provider`, `provider_user_id`, `provider_email`, `email_verified`, `display_name`, `avatar_url`, `linked_at` y `last_login_at`; verificar que la cantidad y el sujeto de cada proveedor coinciden.
-3. **Conmutar.** En una transacción del Router, setear `users.identity_location = '<cell_id>'` y `client_routing.identity_location = '<cell_id>'`, anular `password_hash`, `password_updated_at`, `totp_secret_ciphertext`, `totp_key_id`, `totp_enabled_at`, `totp_pending_secret_ciphertext`, `totp_pending_key_id`, `totp_pending_created_at` y `totp_last_used_step`, borrar las filas de `identities` del Router e invalidar los tokens de verificación y recuperación pendientes. Mantener `email`, `active_client_id`, `status`, `display_name` y `avatar_url`. Revocar todas las sesiones del usuario, vaciar `auth:challenge:*` e invalidar la caché de `client_routing`; si algo falla, no se conmuta.
-4. **Verificar.** Iniciar sesión de prueba en la celda, verificar 2FA si estaba activo, revocar la sesión de prueba y auditar. La celda es ahora la única fuente de credenciales; el Router no tiene secretos.
+1. **Expandir.** Crear o actualizar en la celda destino la fila `users` con el mismo `id`, `client_id`, `email`, `email_verified_at`, `status`, `display_name` y `avatar_url` de la celda origen. No se genera un `id` nuevo. Verificar que el correo coincide y que la membresía en `tenant_users` está lista.
+2. **Copiar.** Copiar `password_hash`, `password_updated_at`, los secretos TOTP activo y pendiente con su `key_id` y `totp_last_used_step` desde la celda origen a la celda destino. Copiar las identidades federadas con `provider`, `provider_user_id`, `provider_email`, `email_verified`, `display_name`, `avatar_url`, `linked_at` y `last_login_at`; verificar que la cantidad y el sujeto de cada proveedor coinciden.
+3. **Conmutar.** En una transacción del Router, setear `users.identity_location = '<target_cell_id>'` y `client_routing.cell_id = '<target_cell_id>'`. En la celda origen, anular `password_hash` o eliminar las filas migradas bajo ese `client_id`. Invalidar los tokens de verificación y recuperación pendientes. Mantener `email`, `active_client_id`, `status` en el Router. Revocar todas las sesiones del usuario, vaciar `auth:challenge:*` e invalidar la caché de `client_routing`; si algo falla, se aborta y se mantiene el enrutamiento a la celda origen.
+4. **Verificar.** Iniciar sesión de prueba en la celda destino, verificar 2FA si estaba activo, revocar la sesión de prueba y auditar. La celda destino es ahora la única fuente de credenciales.
 
-Mientras la celda no responda, el login de ese usuario devuelve `503`; no se intenta el Router, porque ya no tiene credenciales. La operación inversa (celda → Router) no está contemplada en esta versión; si se necesita, es una spec aparte.
+Mientras la celda destino no responda tras conmutar, el login de ese usuario devuelve `503` (Fail-Closed); no se intenta la celda origen porque ya no posee credenciales activas.
 
 ## 6. Contratos
 

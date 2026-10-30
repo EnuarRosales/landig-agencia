@@ -249,10 +249,10 @@ CREATE UNIQUE INDEX outbox_events_one_idempotency
 
 | Caso | Dónde viven las credenciales | Cómo se resuelve el login |
 |---|---|---|
-| Inquilino en Router | Router Global | `users.email` → verificación en Router |
-| Celda dedicada por aislamiento | Celda | `users.email` → `identity_location` → verificación en la celda |
+| Operador SaaS Mocter | Router Global | `users.email` → verificación en Router (`identity_location = 'router'`) |
+| Inquilino (Compartida o Dedicada) | Celda asignada | `users.email` → `identity_location` → verificación en la celda con RLS |
 
-En la celda dedicada, el Router conserva el correo y el puntero, no las credenciales ni el secreto TOTP (AUTH-D-01).
+Para todos los inquilinos, el Router conserva el correo y el puntero `identity_location`, mientras que las credenciales y el secreto TOTP residen estrictamente en la celda asignada (AUTH-D-01).
 
 ### 6.2 Alta orgánica
 

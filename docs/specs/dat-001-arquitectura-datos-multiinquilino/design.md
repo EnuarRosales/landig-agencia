@@ -419,9 +419,9 @@ En el Router Global, la misma política se aplica a las tablas hijas con `client
 
 ### 5.4 Identidad global y usuarios de celda
 
-La identidad de la plataforma (`users`, `identities`, `sessions` en el Router Global) es global y no usa RLS por `client_id`. `users` no tiene `client_id`; lleva `active_client_id` nullable como puntero de membresía única. La membresía y su historial viven en `tenant_users` en la celda, llevan `client_id` y usan RLS. El nombre canónico es `tenant_users`; se descarta `client_users` para no duplicar el vocabulario. `sessions` puede registrar el `client_id` activo, pero no es una tabla de tenencia. Un usuario tiene como máximo una membresía activa; `users.active_client_id` es el guardián global de esa regla.
+La identidad de la plataforma se organiza en dos niveles: el Router Global conserva el ancla y directorio de enrutamiento (`users`, `sessions` en el Router Global) de forma global sin RLS por `client_id`, guardando `active_client_id` nullable como puntero de membresía única y `identity_location` apuntando a la celda asignada (o a `router` exclusivamente para operadores corporativos de Mocter). El Router no almacena contraseñas ni secretos de clientes.
 
-La tabla `users` de cada celda (sección 6.1) es distinta: es la proyección de los usuarios que pertenecen al inquilino, lleva `client_id` y usa RLS. No es la tabla de identidad global.
+Las credenciales (`password_hash`), secretos TOTP, identidades OAuth y membresías (`tenant_users`) de todos los inquilinos viven en la celda asignada (compartida o dedicada) bajo PostgreSQL con RLS parametrizado por `client_id` (`SET LOCAL app.current_client_id`). Un usuario tiene como máximo una membresía activa; `users.active_client_id` en el Router es el guardián global de esa regla (AUTH-D-01, ADM-001 D-12).
 
 ## 6. Plano de datos: celdas
 
