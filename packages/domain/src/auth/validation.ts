@@ -207,3 +207,16 @@ export type Confirm2faInputSchema = z.infer<typeof confirm2faSchema>;
 export type Disable2faInputSchema = z.infer<typeof disable2faSchema>;
 export type Verify2faChallengeInputSchema = z.infer<typeof verify2faChallengeSchema>;
 
+/**
+ * Esquema Zod para inicialización (bootstrap) del primer platform_owner (AUTH-001 T-27).
+ */
+export const setupOwnerSchema = z.object({
+  token: z.string().min(1, "El token de setup es requerido"),
+  email: authEmailSchema,
+  password: authPasswordSchema,
+  name: z.string().trim().min(1, "El nombre es requerido").max(100),
+});
+
+export type SetupOwnerInputSchema = z.infer<typeof setupOwnerSchema>;
+
+

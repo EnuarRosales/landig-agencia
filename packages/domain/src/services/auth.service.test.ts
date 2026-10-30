@@ -1,3 +1,9 @@
+import type {
+  ICellAuthRepository,
+  CellUserCredentials,
+  CellIdentitySnapshot,
+} from "../repositories/cell-auth.repository.interface";
+import { CellUnavailableError } from "../repositories/cell-auth.repository.interface";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   AuthService,
@@ -82,6 +88,10 @@ function createBaseMockAuthRepo(): IAuthRepository {
     revokeSessionsByClientId: vi.fn(),
     reserveUserActiveClient: vi.fn(),
     clearUserActiveClient: vi.fn(),
+    countPlatformOperators: vi.fn().mockResolvedValue(0),
+    createInitialPlatformOwner: vi.fn(),
+    updateUserIdentityLocation: vi.fn(),
+    updateClientRoutingCell: vi.fn().mockResolvedValue(2),
   };
 }
 
@@ -5976,5 +5986,584 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
     });
   });
 
+  describe("AUTH-001 T-27 · Login universal en celda, migración inter-celdas y bootstrap de platform owner", () => {
+    let mockAuthRepo: IAuthRepository;
+    let mockCellAuthRepo: ICellAuthRepository;
+    let mockMailer: IAuthMailer;
+    let mockRedis: MockRedisClient;
+    let totpCrypto: TotpCryptoService;
+    let authService: AuthService;
 
+    const validPassword = "Password123!";
+    const testMasterKey = "01234567890123456789012345678901"; // 32 caracteres AES-256
+    const testKeyId = "test-key-v1";
+    const clientId = "client-target-uuid-123";
+    const userId = "tenant-user-uuid-456";
+    const sourceCellId = "cell-shared-01";
+    const targetCellId = "cell-dedicated-01";
+
+    const createTestUser = (overrides?: Partial<User>): User => ({
+      id: userId,
+      email: "tenant.operator@empresa.com",
+      emailVerifiedAt: new Date(),
+      passwordHash: null,
+      passwordUpdatedAt: null,
+      totpSecretCiphertext: null,
+      totpKeyId: null,
+      totpEnabledAt: null,
+      totpPendingSecretCiphertext: null,
+      totpPendingKeyId: null,
+      totpPendingCreatedAt: null,
+      totpLastUsedStep: null,
+      identityLocation: sourceCellId,
+      activeClientId: clientId,
+      status: "active",
+      displayName: "Operador Inquilino",
+      avatarUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "system",
+      updatedBy: "system",
+      ...overrides,
+    });
+
+    const createTestSession = (overrides?: Partial<Session>): Session => ({
+      id: "session-uuid-1",
+      userId,
+      clientId,
+      routingVersion: 2,
+      sidHash: Buffer.alloc(32),
+      csrfHash: Buffer.alloc(32),
+      authMethod: "password",
+      mfaAt: null,
+      reauthAt: new Date(),
+      lastSeenAt: new Date(),
+      expiresAt: new Date(Date.now() + 3600000),
+      absoluteExpiresAt: new Date(Date.now() + 86400000),
+      revokedAt: null,
+      revokedReason: null,
+      ipHash: Buffer.alloc(32),
+      userAgentHash: Buffer.alloc(32),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: "system",
+      updatedBy: "system",
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      mockRedis = new MockRedisClient();
+      setRedisClientForTesting(mockRedis as unknown as ReturnType<typeof createMockRedisClient>);
+
+      mockAuthRepo = createBaseMockAuthRepo();
+
+      mockCellAuthRepo = {
+        findUserCredentialsInCell: vi.fn(),
+        updatePasswordHashInCell: vi.fn(),
+        updateTotpLastUsedStepInCell: vi.fn(),
+        listUserIdentitiesInCell: vi.fn(),
+        expandCellUser: vi.fn(),
+        copyCredentialsToCell: vi.fn(),
+        copyIdentitiesToCell: vi.fn(),
+        cleanupSourceCredentials: vi.fn(),
+      };
+
+      mockMailer = {
+        sendVerificationEmail: vi.fn(),
+        sendPasswordSetupEmail: vi.fn(),
+        sendPasswordResetEmail: vi.fn(),
+        sendAccountAlreadyExistsEmail: vi.fn(),
+      };
+
+      totpCrypto = new TotpCryptoService();
+      totpCrypto.registerKey(testKeyId, testMasterKey);
+
+      authService = new AuthService(
+        mockAuthRepo,
+        mockMailer,
+        undefined,
+        undefined,
+        undefined,
+        totpCrypto,
+        undefined,
+        undefined,
+        mockCellAuthRepo,
+      );
+    });
+
+    afterEach(() => {
+      setRedisClientForTesting(null);
+      delete process.env.SETUP_OWNER_TOKEN;
+    });
+
+    describe("Login universal en celda (identity_location != 'router')", () => {
+      it("autentica con éxito al usuario de inquilino consultando credenciales en su celda asignada vía mocter_auth con RLS", async () => {
+        const passwordHash = await hashPassword(validPassword);
+        const routerUser = createTestUser({
+          id: userId,
+          email: "tenant.operator@empresa.com",
+          passwordHash: null, // CERO contraseñas en Router Global
+          identityLocation: sourceCellId,
+          activeClientId: clientId,
+        });
+
+        const cellCredentials: CellUserCredentials = {
+          id: userId,
+          clientId,
+          email: "tenant.operator@empresa.com",
+          passwordHash,
+          passwordUpdatedAt: new Date(),
+          totpSecretCiphertext: null,
+          totpKeyId: null,
+          totpEnabledAt: null,
+          totpPendingSecretCiphertext: null,
+          totpPendingKeyId: null,
+          totpPendingCreatedAt: null,
+          totpLastUsedStep: null,
+          status: "active",
+          displayName: "Operador Inquilino",
+          avatarUrl: null,
+        };
+
+        vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValueOnce(routerUser);
+        vi.mocked(mockCellAuthRepo.findUserCredentialsInCell).mockResolvedValueOnce(cellCredentials);
+        vi.mocked(mockAuthRepo.getClientRoutingVersion).mockResolvedValueOnce(2);
+        vi.mocked(mockAuthRepo.createSession).mockResolvedValueOnce(createTestSession());
+
+        const result = await authService.login({
+          email: "tenant.operator@empresa.com",
+          password: validPassword,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok && !("mfaRequired" in result.data)) {
+          expect(result.data.user.id).toBe(userId);
+          expect(result.data.clientId).toBe(clientId);
+        }
+        expect(mockCellAuthRepo.findUserCredentialsInCell).toHaveBeenCalledWith(
+          sourceCellId,
+          clientId,
+          userId,
+        );
+        expect(mockAuthRepo.updateUserPasswordHash).not.toHaveBeenCalled();
+      });
+
+      it("retorna CELL_UNAVAILABLE bajo principio Fail-Closed si la celda arroja CellUnavailableError", async () => {
+        const routerUser = createTestUser();
+
+        vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValueOnce(routerUser);
+        vi.mocked(mockCellAuthRepo.findUserCredentialsInCell).mockRejectedValueOnce(
+          new CellUnavailableError("Timeout al conectar con celda", sourceCellId),
+        );
+
+        const result = await authService.login({
+          email: "tenant.operator@empresa.com",
+          password: validPassword,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("CELL_UNAVAILABLE");
+          expect(result.error).toContain("Celda temporalmente fuera de servicio");
+        }
+      });
+
+      it("retorna IDENTITY_INCONSISTENT si identityLocation apunta a celda pero activeClientId es nulo", async () => {
+        const routerUser = createTestUser({
+          activeClientId: null, // Inconsistencia deliberada
+        });
+
+        vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValueOnce(routerUser);
+
+        const result = await authService.login({
+          email: "tenant.operator@empresa.com",
+          password: validPassword,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("IDENTITY_INCONSISTENT");
+        }
+        expect(mockCellAuthRepo.findUserCredentialsInCell).not.toHaveBeenCalled();
+      });
+
+      it("retorna INVALID_CREDENTIALS si las credenciales en celda no existen o tienen status disabled", async () => {
+        const routerUser = createTestUser();
+
+        vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValueOnce(routerUser);
+        vi.mocked(mockCellAuthRepo.findUserCredentialsInCell).mockResolvedValueOnce(null);
+
+        const result = await authService.login({
+          email: "tenant.operator@empresa.com",
+          password: validPassword,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_CREDENTIALS");
+        }
+      });
+
+      it("exige challenge 2FA si las credenciales en la celda tienen totpEnabledAt activo", async () => {
+        const passwordHash = await hashPassword(validPassword);
+        const routerUser = createTestUser();
+
+        const cellCredentials: CellUserCredentials = {
+          id: userId,
+          clientId,
+          email: "tenant.operator@empresa.com",
+          passwordHash,
+          passwordUpdatedAt: new Date(),
+          totpSecretCiphertext: Buffer.from("ciphertext"),
+          totpKeyId: testKeyId,
+          totpEnabledAt: new Date(),
+          totpPendingSecretCiphertext: null,
+          totpPendingKeyId: null,
+          totpPendingCreatedAt: null,
+          totpLastUsedStep: null,
+          status: "active",
+          displayName: "Operador 2FA",
+          avatarUrl: null,
+        };
+
+        vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValueOnce(routerUser);
+        vi.mocked(mockCellAuthRepo.findUserCredentialsInCell).mockResolvedValueOnce(cellCredentials);
+
+        const result = await authService.login({
+          email: "tenant.operator@empresa.com",
+          password: validPassword,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect("mfaRequired" in result.data).toBe(true);
+          if ("mfaRequired" in result.data) {
+            expect(result.data.mfaRequired).toBe(true);
+            expect(result.data.challengeToken).toBeDefined();
+          }
+        }
+        expect(mockAuthRepo.createSession).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("Challenge y verificación 2FA en celda (verify2faChallenge)", () => {
+      it("verifica exitosamente el código TOTP consultando el secreto cifrado en la celda", async () => {
+        const rawSecret = "JBSWY3DPEHPK3PXP";
+        const encrypted = totpCrypto.encrypt(rawSecret, userId, testKeyId);
+        const validCode = generateTotpCode(rawSecret);
+
+        const routerUser = createTestUser({
+          id: userId,
+          identityLocation: sourceCellId,
+          activeClientId: clientId,
+        });
+
+        const cellCredentials: CellUserCredentials = {
+          id: userId,
+          clientId,
+          email: "tenant.operator@empresa.com",
+          passwordHash: "dummy-hash",
+          passwordUpdatedAt: new Date(),
+          totpSecretCiphertext: encrypted.ciphertext,
+          totpKeyId: encrypted.keyId,
+          totpEnabledAt: new Date(),
+          totpPendingSecretCiphertext: null,
+          totpPendingKeyId: null,
+          totpPendingCreatedAt: null,
+          totpLastUsedStep: null,
+          status: "active",
+          displayName: "Operador 2FA",
+          avatarUrl: null,
+        };
+
+        const challenge = await authService["mfaChallengeManager"].createChallenge({
+          userId,
+          identityLocation: sourceCellId,
+          clientId,
+          routingVersion: 3,
+        });
+
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(routerUser);
+        vi.mocked(mockCellAuthRepo.findUserCredentialsInCell).mockResolvedValueOnce(cellCredentials);
+        vi.mocked(mockAuthRepo.getClientRoutingVersion).mockResolvedValueOnce(3);
+        vi.mocked(mockAuthRepo.createSession).mockResolvedValueOnce(
+          createTestSession({ id: "session-mfa-1", routingVersion: 3, mfaAt: new Date() }),
+        );
+
+        const result = await authService.verify2faChallenge({
+          challengeToken: challenge.challengeToken,
+          code: validCode,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.user.id).toBe(userId);
+          expect(result.data.clientId).toBe(clientId);
+        }
+        expect(mockCellAuthRepo.updateTotpLastUsedStepInCell).toHaveBeenCalledWith(
+          sourceCellId,
+          clientId,
+          userId,
+          expect.any(Number),
+        );
+      });
+
+      it("retorna CELL_UNAVAILABLE si la celda falla durante verify2faChallenge", async () => {
+        const routerUser = createTestUser({
+          id: userId,
+          identityLocation: sourceCellId,
+          activeClientId: clientId,
+        });
+
+        const challenge = await authService["mfaChallengeManager"].createChallenge({
+          userId,
+          identityLocation: sourceCellId,
+          clientId,
+          routingVersion: 3,
+        });
+
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(routerUser);
+        vi.mocked(mockCellAuthRepo.findUserCredentialsInCell).mockRejectedValueOnce(
+          new CellUnavailableError("Partición de red en celda"),
+        );
+
+        const result = await authService.verify2faChallenge({
+          challengeToken: challenge.challengeToken,
+          code: "123456",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("CELL_UNAVAILABLE");
+        }
+      });
+    });
+
+    describe("Bootstrap del primer Platform Owner (setupInitialPlatformOwner)", () => {
+      const bootstrapToken = "super-secret-bootstrap-token-test-2026";
+
+      it("crea el primer platform_owner con identity_location = 'router' y emite sesión con token válido", async () => {
+        process.env.SETUP_OWNER_TOKEN = bootstrapToken;
+
+        const createdOwner = createTestUser({
+          id: "platform-owner-uuid-1",
+          email: "admin@mocter.co",
+          identityLocation: "router",
+          activeClientId: null,
+          displayName: "Super Admin Mocter",
+        });
+
+        vi.mocked(mockAuthRepo.countPlatformOperators).mockResolvedValueOnce(0);
+        vi.mocked(mockAuthRepo.createInitialPlatformOwner).mockResolvedValueOnce(createdOwner);
+        vi.mocked(mockAuthRepo.createSession).mockResolvedValueOnce(
+          createTestSession({ id: "session-owner-1", userId: createdOwner.id, clientId: null }),
+        );
+
+        const result = await authService.setupInitialPlatformOwner({
+          token: bootstrapToken,
+          email: "admin@mocter.co",
+          password: "Password123!",
+          name: "Super Admin Mocter",
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.user.email).toBe("admin@mocter.co");
+          expect(result.data.sid).toBeDefined();
+          expect(result.data.csrfToken).toBeDefined();
+        }
+        expect(mockAuthRepo.createInitialPlatformOwner).toHaveBeenCalledWith(
+          expect.objectContaining({
+            email: "admin@mocter.co",
+            passwordHash: expect.any(String),
+            displayName: "Super Admin Mocter",
+          }),
+        );
+      });
+
+      it("rechaza con INVALID_SETUP_TOKEN si el token de configuración es incorrecto", async () => {
+        process.env.SETUP_OWNER_TOKEN = bootstrapToken;
+
+        const result = await authService.setupInitialPlatformOwner({
+          token: "wrong-token-invalid",
+          email: "admin@mocter.co",
+          password: "Password123!",
+          name: "Admin",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("INVALID_SETUP_TOKEN");
+        }
+        expect(mockAuthRepo.createInitialPlatformOwner).not.toHaveBeenCalled();
+      });
+
+      it("rechaza con SETUP_OWNER_ALREADY_COMPLETED si countPlatformOperators > 0", async () => {
+        process.env.SETUP_OWNER_TOKEN = bootstrapToken;
+        vi.mocked(mockAuthRepo.countPlatformOperators).mockResolvedValueOnce(1);
+
+        const result = await authService.setupInitialPlatformOwner({
+          token: bootstrapToken,
+          email: "admin@mocter.co",
+          password: "Password123!",
+          name: "Admin",
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("SETUP_OWNER_ALREADY_COMPLETED");
+          expect(result.error).toContain("ya fue completado");
+        }
+        expect(mockAuthRepo.createInitialPlatformOwner).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("Migración inter-celdas transaccional (migrateTenantIdentityInterCells)", () => {
+      it("ejecuta las 4 fases de migración inter-celdas (expandir -> copiar -> conmutar -> verificar) e invalida sesiones", async () => {
+        const routerUser = createTestUser({
+          id: userId,
+          email: "migrating.user@empresa.com",
+          identityLocation: sourceCellId,
+          activeClientId: clientId,
+        });
+
+        const sourceCredentials: CellUserCredentials = {
+          id: userId,
+          clientId,
+          email: "migrating.user@empresa.com",
+          passwordHash: "$argon2id$v=19$...",
+          passwordUpdatedAt: new Date(),
+          totpSecretCiphertext: Buffer.from("secret"),
+          totpKeyId: testKeyId,
+          totpEnabledAt: new Date(),
+          totpPendingSecretCiphertext: null,
+          totpPendingKeyId: null,
+          totpPendingCreatedAt: null,
+          totpLastUsedStep: 12345,
+          status: "active",
+          displayName: "Migrating User",
+          avatarUrl: null,
+        };
+
+        const sourceIdentities: CellIdentitySnapshot[] = [
+          {
+            provider: "google",
+            providerUserId: "google-sub-999",
+            providerEmail: "migrating.user@empresa.com",
+            emailVerified: true,
+            displayName: "Google Name",
+            avatarUrl: null,
+          },
+        ];
+
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(routerUser);
+        vi.mocked(mockCellAuthRepo.findUserCredentialsInCell)
+          .mockResolvedValueOnce(sourceCredentials) // Al leer de origen
+          .mockResolvedValueOnce(sourceCredentials); // Al verificar en destino tras conmutación
+        vi.mocked(mockCellAuthRepo.listUserIdentitiesInCell).mockResolvedValueOnce(sourceIdentities);
+        vi.mocked(mockAuthRepo.updateClientRoutingCell).mockResolvedValueOnce(4);
+
+        const result = await authService.migrateTenantIdentityInterCells({
+          userId,
+          clientId,
+          sourceCellId,
+          targetCellId,
+        });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.data.userId).toBe(userId);
+          expect(result.data.targetCellId).toBe(targetCellId);
+          expect(result.data.routingVersion).toBe(4);
+        }
+
+        // Fase 1: Expandir
+        expect(mockCellAuthRepo.expandCellUser).toHaveBeenCalledWith(
+          targetCellId,
+          expect.objectContaining({
+            id: userId,
+            clientId,
+            email: "migrating.user@empresa.com",
+          }),
+        );
+
+        // Fase 2: Copiar credenciales e identidades
+        expect(mockCellAuthRepo.copyCredentialsToCell).toHaveBeenCalledWith(
+          targetCellId,
+          sourceCredentials,
+        );
+        expect(mockCellAuthRepo.copyIdentitiesToCell).toHaveBeenCalledWith(
+          targetCellId,
+          clientId,
+          userId,
+          sourceIdentities,
+        );
+
+        // Fase 3: Conmutar Router
+        expect(mockAuthRepo.updateUserIdentityLocation).toHaveBeenCalledWith(
+          userId,
+          targetCellId,
+        );
+        expect(mockAuthRepo.updateClientRoutingCell).toHaveBeenCalledWith(
+          clientId,
+          targetCellId,
+        );
+
+        // Fase 4: Limpieza e invalidación
+        expect(mockCellAuthRepo.cleanupSourceCredentials).toHaveBeenCalledWith(
+          sourceCellId,
+          clientId,
+          userId,
+        );
+        expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(userId, "cell_migration", undefined);
+      });
+
+      it("retorna CELL_UNAVAILABLE si la celda destino no responde al copiar credenciales", async () => {
+        const routerUser = createTestUser({
+          id: userId,
+          email: "migrating.user@empresa.com",
+          identityLocation: sourceCellId,
+          activeClientId: clientId,
+        });
+
+        const sourceCredentials: CellUserCredentials = {
+          id: userId,
+          clientId,
+          email: "migrating.user@empresa.com",
+          passwordHash: "$argon2id$v=19$...",
+          passwordUpdatedAt: new Date(),
+          totpSecretCiphertext: null,
+          totpKeyId: null,
+          totpEnabledAt: null,
+          totpPendingSecretCiphertext: null,
+          totpPendingKeyId: null,
+          totpPendingCreatedAt: null,
+          totpLastUsedStep: null,
+          status: "active",
+          displayName: "Migrating User",
+          avatarUrl: null,
+        };
+
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(routerUser);
+        vi.mocked(mockCellAuthRepo.findUserCredentialsInCell).mockResolvedValueOnce(sourceCredentials);
+        vi.mocked(mockCellAuthRepo.listUserIdentitiesInCell).mockResolvedValueOnce([]);
+        vi.mocked(mockCellAuthRepo.copyCredentialsToCell).mockRejectedValueOnce(
+          new CellUnavailableError("Target cell timeout", targetCellId),
+        );
+
+        const result = await authService.migrateTenantIdentityInterCells({
+          userId,
+          clientId,
+          sourceCellId,
+          targetCellId,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("CELL_UNAVAILABLE");
+        }
+        expect(mockAuthRepo.updateUserIdentityLocation).not.toHaveBeenCalled();
+      });
+    });
+  });
 

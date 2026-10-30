@@ -27,6 +27,8 @@ export * from "./auth/tokens";
 export * from "./auth/auth-mailer.interface";
 export * from "./repositories/auth.repository.interface";
 export * from "./repositories/drizzle-auth.repository";
+export * from "./repositories/cell-auth.repository.interface";
+export * from "./repositories/drizzle-cell-auth.repository";
 export * from "./services/auth.service";
 export * from "./auth/rate-limiter";
 export * from "./auth/oauth-state";

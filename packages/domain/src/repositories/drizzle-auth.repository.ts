@@ -1249,6 +1249,115 @@ export class DrizzleAuthRepository implements IAuthRepository {
       throw error;
     }
   }
+
+  /**
+   * Cuenta la cantidad de usuarios operadores de plataforma registrados en el Router Global (AUTH-001 T-27).
+   */
+  async countPlatformOperators(): Promise<number> {
+    try {
+      const rows = await this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(users)
+        .where(eq(users.identityLocation, "router"));
+
+      return rows[0]?.count ?? 0;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.countPlatformOperators Failed] ${msg}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Crea el usuario `platform_owner` inicial de la SaaS Mocter en el Router Global (AUTH-001 T-27).
+   */
+  async createInitialPlatformOwner(params: {
+    email: string;
+    passwordHash: string;
+    displayName?: string | null;
+  }): Promise<User> {
+    try {
+      const now = new Date();
+      const [user] = await this.db
+        .insert(users)
+        .values({
+          email: params.email.trim().toLowerCase(),
+          passwordHash: params.passwordHash,
+          passwordUpdatedAt: now,
+          displayName: params.displayName ?? "Platform Owner",
+          activeClientId: null,
+          emailVerifiedAt: now,
+          status: "active",
+          identityLocation: "router",
+          createdBy: "setup-owner",
+          updatedBy: "setup-owner",
+        })
+        .returning();
+
+      if (!user) {
+        throw new Error("DrizzleAuthRepository: createInitialPlatformOwner returned no rows");
+      }
+
+      return user;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.createInitialPlatformOwner Failed] ${msg}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Conmuta la ubicación de identidad (`identity_location`) de un usuario en el Router Global (AUTH-001 §5.12, T-27).
+   */
+  async updateUserIdentityLocation(userId: string, newLocation: string): Promise<void> {
+    try {
+      const now = new Date();
+      await this.db
+        .update(users)
+        .set({
+          identityLocation: newLocation,
+          updatedAt: now,
+          updatedBy: "cell-migration",
+        })
+        .where(eq(users.id, userId));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.updateUserIdentityLocation Failed] ${msg}`, error, {
+        userId,
+        newLocation,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Conmuta la celda de destino y avanza `routing_version` en `client_routing` (AUTH-001 §5.12, T-27).
+   */
+  async updateClientRoutingCell(clientId: string, targetCellId: string): Promise<number> {
+    try {
+      const now = new Date();
+      const [row] = await this.db
+        .update(clientRouting)
+        .set({
+          cellId: targetCellId,
+          routingVersion: sql`${clientRouting.routingVersion} + 1`,
+          routingStatus: "active",
+          updatedAt: now,
+          updatedBy: "cell-migration",
+        })
+        .where(eq(clientRouting.clientId, clientId))
+        .returning({ routingVersion: clientRouting.routingVersion });
+
+      return row?.routingVersion ?? 1;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.updateClientRoutingCell Failed] ${msg}`, error, {
+        clientId,
+        targetCellId,
+      });
+      throw error;
+    }
+  }
 }
 
 /** Instancia singleton por defecto de {@link DrizzleAuthRepository}. */

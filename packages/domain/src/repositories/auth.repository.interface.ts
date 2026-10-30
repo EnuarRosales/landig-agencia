@@ -445,6 +445,32 @@ export interface IAuthRepository {
    * @returns `true` si se liberó la reserva (afectó 1 fila); `false` en caso contrario.
    */
   clearUserActiveClient(userId: string, clientId: string): Promise<boolean>;
+
+  /**
+   * Cuenta la cantidad de usuarios operadores de plataforma registrados en el Router Global (AUTH-001 T-27).
+   *
+   * Consulta `COUNT(*)` sobre `admin.users WHERE identity_location = 'router'`.
+   */
+  countPlatformOperators(): Promise<number>;
+
+  /**
+   * Crea el usuario `platform_owner` inicial de la SaaS Mocter en el Router Global (AUTH-001 T-27).
+   */
+  createInitialPlatformOwner(params: {
+    email: string;
+    passwordHash: string;
+    displayName?: string | null;
+  }): Promise<User>;
+
+  /**
+   * Conmuta la ubicación de identidad (`identity_location`) de un usuario en el Router Global (AUTH-001 §5.12, T-27).
+   */
+  updateUserIdentityLocation(userId: string, newLocation: string): Promise<void>;
+
+  /**
+   * Conmuta la celda de destino y avanza `routing_version` en `client_routing` (AUTH-001 §5.12, T-27).
+   */
+  updateClientRoutingCell(clientId: string, targetCellId: string): Promise<number>;
 }
 
 /**

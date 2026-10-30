@@ -5,12 +5,23 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   changePasswordSchema,
+  setupOwnerSchema,
   type RegisterUserInput,
   type LoginUserInput,
   type ForgotPasswordInput,
   type ResetPasswordInput,
   type ChangePasswordInput,
+  type SetupOwnerInputSchema,
 } from "../auth/validation";
+import { timingSafeEqual } from "node:crypto";
+import { getValidatedEnv } from "../utils/env";
+import {
+  type ICellAuthRepository,
+  type CellUserCredentials,
+  type CellIdentitySnapshot,
+  CellUnavailableError,
+} from "../repositories/cell-auth.repository.interface";
+import { defaultCellAuthRepository } from "../repositories/drizzle-cell-auth.repository";
 import {
   hashPassword,
   verifyPassword,
@@ -532,6 +543,46 @@ export type Verify2faChallengeResult = Result<
 >;
 
 /**
+ * Respuesta del asistente de primer arranque (setup-owner) (AUTH-001 T-27).
+ */
+export interface SetupOwnerResponseData {
+  user: {
+    id: string;
+    email: string;
+    fullName: string | null;
+    status: string;
+  };
+  sid: string;
+  csrfToken: string;
+  expiresAt: string;
+}
+
+export type SetupOwnerResult = Result<
+  SetupOwnerResponseData,
+  "VALIDATION_ERROR" | "INVALID_SETUP_TOKEN" | "SETUP_OWNER_ALREADY_COMPLETED" | "DB_ERROR"
+>;
+
+/**
+ * Respuesta de migración inter-celdas (AUTH-001 §5.12, T-27).
+ */
+export interface MigrateTenantIdentityResponseData {
+  userId: string;
+  clientId: string;
+  targetCellId: string;
+  routingVersion: number;
+}
+
+export type MigrateTenantIdentityResult = Result<
+  MigrateTenantIdentityResponseData,
+  | "INVALID_INPUT"
+  | "USER_NOT_FOUND"
+  | "CELL_UNAVAILABLE"
+  | "SOURCE_USER_NOT_FOUND"
+  | "VERIFICATION_FAILED"
+  | "DB_ERROR"
+>;
+
+/**
  * Servicio de dominio responsable de la orquestación del registro nativo de usuarios (AUTH-001 T-08).
  *
  * Implementa las políticas de seguridad:
@@ -563,6 +614,7 @@ export class AuthService {
     private readonly totpCrypto: TotpCryptoService = defaultTotpCryptoService,
     private readonly mfaChallengeManager: MfaChallengeManager = defaultMfaChallengeManager,
     private readonly sessionCache: SessionCacheManager = defaultSessionCacheManager,
+    private readonly cellAuthRepo: ICellAuthRepository = defaultCellAuthRepository,
   ) {}
 
   /**
@@ -893,7 +945,10 @@ export class AuthService {
         return err(GENERIC_INVALID_CREDENTIALS_MESSAGE, "INVALID_CREDENTIALS");
       }
 
-      // 2. Resolver identity_location (AUTH-001 §5.2)
+      let passwordHashToVerify: string | null = null;
+      let isTotpEnabled = false;
+
+      // 2. Resolver identity_location (AUTH-001 §5.2, T-27)
       if (user.identityLocation !== "router") {
         if (!user.activeClientId) {
           appLogger.error(
@@ -903,42 +958,91 @@ export class AuthService {
           return err("Identidad inconsistente.", "IDENTITY_INCONSISTENT");
         }
 
-        // En Fase 1 (previo a conexión multicanal a celdas dedicadas), responder 503
-        appLogger.warn(
-          "[AuthService.login] Autenticación en celda dedicada no disponible en esta fase",
-          { userId: user.id, cellId: user.identityLocation },
-        );
-        return err(
-          "Celda temporalmente fuera de servicio.",
-          "CELL_UNAVAILABLE",
-        );
-      }
-
-      // 3. Evaluar estado de la cuenta (disabled) o cuenta federada sin passwordHash
-      if (user.status === "disabled" || !user.passwordHash) {
-        await verifyDummyPassword(password);
-        return err(GENERIC_INVALID_CREDENTIALS_MESSAGE, "INVALID_CREDENTIALS");
-      }
-
-      // 4. Verificar contraseña con Argon2id en tiempo constante
-      const isValid = await verifyPassword(password, user.passwordHash);
-      if (!isValid) {
-        return err(GENERIC_INVALID_CREDENTIALS_MESSAGE, "INVALID_CREDENTIALS");
-      }
-
-      // 5. Rehash transparente si los parámetros son inferiores a los vigentes
-      if (needsRehash(user.passwordHash)) {
+        let cellCredentials: CellUserCredentials | null = null;
         try {
-          const newHash = await hashPassword(password);
-          await this.authRepo.updateUserPasswordHash(user.id, newHash);
-          appLogger.info("[AuthService.login] Contraseña rehasheada con éxito", {
-            userId: user.id,
-          });
-        } catch (rehashError) {
-          appLogger.warn("[AuthService.login] Fallo al rehashear contraseña", {
-            userId: user.id,
-            error: rehashError,
-          });
+          cellCredentials = await this.cellAuthRepo.findUserCredentialsInCell(
+            user.identityLocation,
+            user.activeClientId,
+            user.id,
+          );
+        } catch (cellError) {
+          appLogger.error(
+            "[AuthService.login] Fallo de conexión con la celda asignada (Fail-Closed)",
+            cellError,
+            { userId: user.id, cellId: user.identityLocation },
+          );
+          return err(
+            "Celda temporalmente fuera de servicio.",
+            "CELL_UNAVAILABLE",
+          );
+        }
+
+        if (
+          !cellCredentials ||
+          cellCredentials.status === "disabled" ||
+          !cellCredentials.passwordHash
+        ) {
+          await verifyDummyPassword(password);
+          return err(GENERIC_INVALID_CREDENTIALS_MESSAGE, "INVALID_CREDENTIALS");
+        }
+
+        passwordHashToVerify = cellCredentials.passwordHash;
+        isTotpEnabled = cellCredentials.totpEnabledAt !== null;
+
+        const isValid = await verifyPassword(password, passwordHashToVerify);
+        if (!isValid) {
+          return err(GENERIC_INVALID_CREDENTIALS_MESSAGE, "INVALID_CREDENTIALS");
+        }
+
+        if (needsRehash(passwordHashToVerify)) {
+          try {
+            const newHash = await hashPassword(password);
+            await this.cellAuthRepo.updatePasswordHashInCell(
+              user.identityLocation,
+              user.activeClientId,
+              user.id,
+              newHash,
+            );
+            appLogger.info(
+              "[AuthService.login] Contraseña rehasheada con éxito en celda",
+              { userId: user.id, cellId: user.identityLocation },
+            );
+          } catch (rehashError) {
+            appLogger.warn(
+              "[AuthService.login] Fallo al rehashear contraseña en celda",
+              { userId: user.id, error: rehashError },
+            );
+          }
+        }
+      } else {
+        // Operador corporativo en Router Global
+        if (user.status === "disabled" || !user.passwordHash) {
+          await verifyDummyPassword(password);
+          return err(GENERIC_INVALID_CREDENTIALS_MESSAGE, "INVALID_CREDENTIALS");
+        }
+
+        passwordHashToVerify = user.passwordHash;
+        isTotpEnabled = user.totpEnabledAt !== null;
+
+        const isValid = await verifyPassword(password, passwordHashToVerify);
+        if (!isValid) {
+          return err(GENERIC_INVALID_CREDENTIALS_MESSAGE, "INVALID_CREDENTIALS");
+        }
+
+        if (needsRehash(passwordHashToVerify)) {
+          try {
+            const newHash = await hashPassword(password);
+            await this.authRepo.updateUserPasswordHash(user.id, newHash);
+            appLogger.info(
+              "[AuthService.login] Contraseña rehasheada con éxito en Router",
+              { userId: user.id },
+            );
+          } catch (rehashError) {
+            appLogger.warn(
+              "[AuthService.login] Fallo al rehashear contraseña en Router",
+              { userId: user.id, error: rehashError },
+            );
+          }
         }
       }
 
@@ -951,7 +1055,7 @@ export class AuthService {
       }
 
       // 7. Verificar si requiere doble factor (TOTP) (AUTH-001 §5.5, design §5.2)
-      if (user.totpEnabledAt !== null) {
+      if (isTotpEnabled) {
         const challenge = await this.mfaChallengeManager.createChallenge({
           userId: user.id,
           clientId: user.activeClientId,
@@ -3373,37 +3477,81 @@ export class AuthService {
         );
       }
 
-      // 3. Resolver usuario según su identityLocation
-      if (challenge.identityLocation !== "router") {
-        appLogger.warn(
-          "[AuthService.verify2faChallenge] Verificación 2FA en celda dedicada no disponible en esta fase",
-          { userId: challenge.userId, cellId: challenge.identityLocation },
-        );
-        return err("Celda temporalmente fuera de servicio.", "CELL_UNAVAILABLE");
-      }
+      let totpSecretCiphertext: Buffer | null = null;
+      let totpKeyId: string | null = null;
+      let totpLastUsedStep: number | null = null;
 
+      // 3. Resolver usuario en Router Global
       const user = await this.authRepo.findUserById(challenge.userId);
       if (!user || user.status === "disabled") {
         await this.mfaChallengeManager.deleteChallenge(input.challengeToken);
         return err("Usuario no encontrado o deshabilitado.", "USER_NOT_FOUND");
       }
 
-      if (!user.totpEnabledAt || !user.totpSecretCiphertext || !user.totpKeyId) {
-        await this.mfaChallengeManager.deleteChallenge(input.challengeToken);
-        return err("La cuenta no tiene 2FA activado.", "MFA_NOT_ENABLED");
+      if (challenge.identityLocation !== "router") {
+        if (!challenge.clientId) {
+          await this.mfaChallengeManager.deleteChallenge(input.challengeToken);
+          return err("Usuario no encontrado o deshabilitado.", "USER_NOT_FOUND");
+        }
+
+        let cellCredentials: CellUserCredentials | null = null;
+        try {
+          cellCredentials = await this.cellAuthRepo.findUserCredentialsInCell(
+            challenge.identityLocation,
+            challenge.clientId,
+            challenge.userId,
+          );
+        } catch (cellError) {
+          appLogger.error(
+            "[AuthService.verify2faChallenge] Fallo de conexión con la celda asignada (Fail-Closed)",
+            cellError,
+            { userId: challenge.userId, cellId: challenge.identityLocation },
+          );
+          return err(
+            "Celda temporalmente fuera de servicio.",
+            "CELL_UNAVAILABLE",
+          );
+        }
+
+        if (!cellCredentials || cellCredentials.status === "disabled") {
+          await this.mfaChallengeManager.deleteChallenge(input.challengeToken);
+          return err("Usuario no encontrado o deshabilitado.", "USER_NOT_FOUND");
+        }
+
+        if (
+          !cellCredentials.totpEnabledAt ||
+          !cellCredentials.totpSecretCiphertext ||
+          !cellCredentials.totpKeyId
+        ) {
+          await this.mfaChallengeManager.deleteChallenge(input.challengeToken);
+          return err("La cuenta no tiene 2FA activado.", "MFA_NOT_ENABLED");
+        }
+
+        totpSecretCiphertext = cellCredentials.totpSecretCiphertext;
+        totpKeyId = cellCredentials.totpKeyId;
+        totpLastUsedStep = cellCredentials.totpLastUsedStep;
+      } else {
+        if (!user.totpEnabledAt || !user.totpSecretCiphertext || !user.totpKeyId) {
+          await this.mfaChallengeManager.deleteChallenge(input.challengeToken);
+          return err("La cuenta no tiene 2FA activado.", "MFA_NOT_ENABLED");
+        }
+
+        totpSecretCiphertext = user.totpSecretCiphertext as unknown as Buffer;
+        totpKeyId = user.totpKeyId;
+        totpLastUsedStep = user.totpLastUsedStep;
       }
 
       // 4. Descifrar secreto activo con AES-256-GCM
       let base32Secret: string;
       try {
         base32Secret = this.totpCrypto
-          .decrypt(user.totpSecretCiphertext, user.id, user.totpKeyId)
+          .decrypt(totpSecretCiphertext, challenge.userId, totpKeyId)
           .toString("utf-8");
       } catch (decryptError) {
         appLogger.error(
           `[AuthService.verify2faChallenge] Fallo al descifrar secreto activo: ${decryptError instanceof Error ? decryptError.message : String(decryptError)}`,
           decryptError,
-          { userId: user.id },
+          { userId: challenge.userId },
         );
         return err("Código de verificación inválido o vencido.", "INVALID_TOTP_CODE");
       }
@@ -3411,7 +3559,7 @@ export class AuthService {
       // 5. Validar código TOTP con ventana ±1 y anti-replay
       const verifyResult = verifyTotpCode(input.code, base32Secret, {
         window: 1,
-        lastUsedStep: user.totpLastUsedStep,
+        lastUsedStep: totpLastUsedStep,
       });
 
       if (!verifyResult.valid || verifyResult.step === undefined) {
@@ -3429,9 +3577,18 @@ export class AuthService {
       await this.mfaChallengeManager.consumeChallenge(input.challengeToken);
 
       // 7. Actualizar totp_last_used_step
-      await this.authRepo.updateUserTotpKeys(user.id, {
-        totpLastUsedStep: verifyResult.step,
-      });
+      if (challenge.identityLocation !== "router" && challenge.clientId) {
+        await this.cellAuthRepo.updateTotpLastUsedStepInCell(
+          challenge.identityLocation,
+          challenge.clientId,
+          challenge.userId,
+          verifyResult.step,
+        );
+      } else {
+        await this.authRepo.updateUserTotpKeys(challenge.userId, {
+          totpLastUsedStep: verifyResult.step,
+        });
+      }
 
       // 8. Crear sesión opaca con mfa_at y reauth_at vigentes (AUTH-001 §5.5, §5.6, T-19)
       const sid = generateSessionId();
@@ -3497,7 +3654,254 @@ export class AuthService {
       return err("Error interno al verificar challenge 2FA.", "DB_ERROR");
     }
   }
+
+  /**
+   * Ejecuta la inicialización (bootstrap) del primer usuario platform_owner de la SaaS Mocter (AUTH-001 T-27).
+   *
+   * Reglas de seguridad:
+   * - Requiere SETUP_OWNER_TOKEN configurado y verificado en tiempo constante.
+   * - Solo está permitido si COUNT(users WHERE identity_location = 'router') === 0.
+   * - Al completar el alta, se sella de forma permanente respondiendo 404 en adelante.
+   */
+  async setupInitialPlatformOwner(
+    input: unknown,
+    options?: {
+      clientIp?: string;
+      userAgent?: string;
+      pepper?: string;
+      expectedToken?: string;
+    },
+  ): Promise<SetupOwnerResult> {
+    const parseResult = setupOwnerSchema.safeParse(input);
+    if (!parseResult.success) {
+      return err(
+        parseResult.error.issues[0]?.message ?? "Datos de configuración inválidos",
+        "VALIDATION_ERROR",
+        parseResult.error.issues,
+      );
+    }
+
+    const { token, email, password, name } = parseResult.data;
+
+    // 1. Validar el token de setup contra la variable de entorno SETUP_OWNER_TOKEN
+    let configuredToken: string | undefined = options?.expectedToken;
+    if (!configuredToken) {
+      try {
+        configuredToken = getValidatedEnv().SETUP_OWNER_TOKEN;
+      } catch {
+        configuredToken = process.env.SETUP_OWNER_TOKEN;
+      }
+    }
+
+    if (!configuredToken || configuredToken.trim() === "") {
+      appLogger.error(
+        "[AuthService.setupInitialPlatformOwner] SETUP_OWNER_TOKEN no configurado en el servidor",
+      );
+      return err("Token de configuración inválido o no configurado.", "INVALID_SETUP_TOKEN");
+    }
+
+    const inputBuf = Buffer.from(token);
+    const expectedBuf = Buffer.from(configuredToken);
+    if (
+      inputBuf.length !== expectedBuf.length ||
+      !timingSafeEqual(inputBuf, expectedBuf)
+    ) {
+      appLogger.warn(
+        "[AuthService.setupInitialPlatformOwner] Intento de setup con token inválido",
+        { email },
+      );
+      return err("Token de configuración inválido.", "INVALID_SETUP_TOKEN");
+    }
+
+    // 2. Verificar que no exista ningún operador en Router Global
+    try {
+      const operatorCount = await this.authRepo.countPlatformOperators();
+      if (operatorCount > 0) {
+        appLogger.warn(
+          "[AuthService.setupInitialPlatformOwner] Intento de setup cuando ya existen operadores",
+          { operatorCount, email },
+        );
+        return err(
+          "El asistente de configuración ya fue completado.",
+          "SETUP_OWNER_ALREADY_COMPLETED",
+        );
+      }
+
+      // 3. Hashear contraseña con Argon2id
+      const passwordHash = await hashPassword(password);
+
+      // 4. Crear el platform_owner en el Router Global
+      const user = await this.authRepo.createInitialPlatformOwner({
+        email,
+        passwordHash,
+        displayName: name,
+      });
+
+      // 5. Crear sesión opaca de servidor
+      const sessionResult = await this.createSessionForUser(
+        user,
+        "password",
+        null,
+        options,
+      );
+
+      if (!sessionResult.ok) {
+        return sessionResult;
+      }
+
+      appLogger.info(
+        "[AuthService.setupInitialPlatformOwner] Platform Owner inicial creado exitosamente",
+        { userId: user.id, email: user.email },
+      );
+
+      return ok({
+        user: {
+          id: user.id,
+          email: user.email,
+          fullName: user.displayName,
+          status: user.status,
+        },
+        sid: sessionResult.data.sid,
+        csrfToken: sessionResult.data.csrfToken,
+        expiresAt: sessionResult.data.expiresAt,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.setupInitialPlatformOwner Failed] ${msg}`, error, { email });
+      return err("Error interno al inicializar el usuario principal.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Ejecuta la migración transaccional de identidad de un inquilino de una celda a otra (AUTH-001 §5.12, T-27).
+   *
+   * Cuatro fases:
+   * 1. Expandir: crear o actualizar `users` en la celda destino con RLS.
+   * 2. Copiar: copiar `password_hash`, secretos TOTP e `identities` a la celda destino.
+   * 3. Conmutar: actualizar `users.identity_location` y `client_routing.cell_id` en Router, limpiar credenciales en origen, revocar sesiones.
+   * 4. Verificar: comprobar credenciales en destino.
+   */
+  async migrateTenantIdentityInterCells(params: {
+    userId: string;
+    clientId: string;
+    sourceCellId: string;
+    targetCellId: string;
+  }): Promise<MigrateTenantIdentityResult> {
+    const { userId, clientId, sourceCellId, targetCellId } = params;
+
+    if (!userId || !clientId || !sourceCellId || !targetCellId) {
+      return err("Parámetros de migración incompletos.", "INVALID_INPUT");
+    }
+
+    if (sourceCellId === targetCellId) {
+      return err("La celda origen y destino no pueden ser iguales.", "INVALID_INPUT");
+    }
+
+    try {
+      // 0. Validar usuario en Router Global
+      const user = await this.authRepo.findUserById(userId);
+      if (!user) {
+        return err("Usuario no encontrado en el Router Global.", "USER_NOT_FOUND");
+      }
+
+      if (user.activeClientId !== clientId || user.identityLocation !== sourceCellId) {
+        return err(
+          "El usuario no pertenece a la celda de origen indicada.",
+          "INVALID_INPUT",
+        );
+      }
+
+      // 1. Expandir: consultar credenciales en celda origen y expandir en destino
+      const sourceCredentials = await this.cellAuthRepo.findUserCredentialsInCell(
+        sourceCellId,
+        clientId,
+        userId,
+      );
+
+      if (!sourceCredentials) {
+        return err(
+          "El usuario no posee registro en la celda de origen.",
+          "SOURCE_USER_NOT_FOUND",
+        );
+      }
+
+      const sourceIdentities = await this.cellAuthRepo.listUserIdentitiesInCell(
+        sourceCellId,
+        clientId,
+        userId,
+      );
+
+      await this.cellAuthRepo.expandCellUser(targetCellId, {
+        id: user.id,
+        clientId,
+        email: user.email,
+        emailVerifiedAt: user.emailVerifiedAt,
+        status: user.status,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+      });
+
+      // 2. Copiar: copiar credenciales e identidades a celda destino
+      await this.cellAuthRepo.copyCredentialsToCell(targetCellId, sourceCredentials);
+      if (sourceIdentities.length > 0) {
+        await this.cellAuthRepo.copyIdentitiesToCell(
+          targetCellId,
+          clientId,
+          userId,
+          sourceIdentities,
+        );
+      }
+
+      // 3. Conmutar: actualizar Router Global, limpiar origen y revocar sesiones
+      await this.authRepo.updateUserIdentityLocation(userId, targetCellId);
+      const newRoutingVersion = await this.authRepo.updateClientRoutingCell(
+        clientId,
+        targetCellId,
+      );
+      await this.cellAuthRepo.cleanupSourceCredentials(sourceCellId, clientId, userId);
+      await this.revokeUserSessions(userId, "cell_migration");
+
+      // 4. Verificar: comprobar que la celda destino responde y contiene credenciales
+      const targetCheck = await this.cellAuthRepo.findUserCredentialsInCell(
+        targetCellId,
+        clientId,
+        userId,
+      );
+
+      if (!targetCheck) {
+        return err(
+          "Verificación fallida en la celda destino tras la conmutación.",
+          "VERIFICATION_FAILED",
+        );
+      }
+
+      appLogger.info(
+        "[AuthService.migrateTenantIdentityInterCells] Migración inter-celdas completada con éxito",
+        { userId, clientId, sourceCellId, targetCellId, routingVersion: newRoutingVersion },
+      );
+
+      return ok({
+        userId,
+        clientId,
+        targetCellId,
+        routingVersion: newRoutingVersion,
+      });
+    } catch (error) {
+      if (error instanceof CellUnavailableError) {
+        return err("Celda temporalmente fuera de servicio.", "CELL_UNAVAILABLE");
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.migrateTenantIdentityInterCells Failed] ${msg}`, error, {
+        userId,
+        clientId,
+        sourceCellId,
+        targetCellId,
+      });
+      return err("Error interno durante la migración inter-celdas.", "DB_ERROR");
+    }
+  }
 }
 
 /** Instancia singleton por defecto de {@link AuthService}. */
 export const authService = new AuthService();
+

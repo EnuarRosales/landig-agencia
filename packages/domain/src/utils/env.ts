@@ -26,6 +26,7 @@ export const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+  SETUP_OWNER_TOKEN: z.string().optional(),
   NEXT_PUBLIC_APP_URL: z.string().optional(),
 });
 
@@ -54,6 +55,7 @@ export const env = createEnv({
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
     SMTP_FROM: z.string().optional(),
+    SETUP_OWNER_TOKEN: z.string().optional(),
     NEXT_PUBLIC_APP_URL: z.string().optional(),
   },
   runtimeEnv: process.env,
