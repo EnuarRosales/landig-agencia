@@ -4,7 +4,7 @@ import { POST as loginPost } from "./login/route";
 import { POST as registerPost } from "./register/route";
 import { POST as changePasswordPost } from "./password/change/route";
 import { POST as enrollTotpPost } from "./2fa/enroll/route";
-import { authService, authRateLimiter, setRedisClientForTesting, type Session, type User } from "@mocter/domain";
+import { authService, setRedisClientForTesting, type Session, type User } from "@mocter/domain";
 
 vi.mock("@mocter/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@mocter/domain")>();

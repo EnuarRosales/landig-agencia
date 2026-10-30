@@ -941,9 +941,9 @@ COMMIT;
 
 ### 6.8 Separación de migraciones Drizzle
 
-Para evitar acoplamientos y garantizar despliegues independientes por plano:
-- `packages/domain/drizzle/control-plane/`: Esquema del Router Global (`cells`, `clients`, `client_routing`, `plans`, `communities`, `community_members`, `media_catalog`).
-- `packages/domain/drizzle/cell-data-plane/`: Esquema de las celdas autónomas (`contacts`, `product_embeddings`, `contact_memories`, `products`, `users`, `tenant_users`, `orders`, `client_media`, `client_usage`).
+Para evitar acoplamientos, respetar la inmutabilidad de migraciones ya versionadas (`AGENTS.md` R-09) y garantizar despliegues independientes e idempotentes por plano (`ADM-001 T-04`):
+- `packages/domain/drizzle/` (`drizzle.config.ts`, `migrate.mjs --target=control-plane`): Línea del **Control Plane (Router Global)** (`cells`, `clients`, `client_routing`, `plans`, `client_plans`, `users`, `identities`, `sessions`, tokens, `user_consents`, `communities`, `community_members`, `media_catalog`).
+- `packages/domain/drizzle-cell/` (`drizzle.cell.config.ts`, `migrate.mjs --target=cell`): Línea independiente del **Cell Data Plane (`pg-cell-XX`)** (`admin.users` y `admin.identities` con PK compuesta `(client_id, id)` y `FORCE ROW LEVEL SECURITY`, `contacts`, `product_embeddings`, `contact_memories`, `products`, `tenant_users`, `orders`, `client_media`, `client_usage`). No comparte tabla ni historial de migraciones con el Router Global.
 
 ### 6.9 Verification Gate: Test automatizado en CI/CD para aislamiento RLS
 

@@ -24,7 +24,7 @@ describe("AUTH-001 T-17 · Cifrado y Rotación de Secretos TOTP (TotpCryptoServi
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mocter-totp-test-"));
-    service = new TotpCryptoService({ secretsDir: tempDir });
+    service = new TotpCryptoService({ secretsDir: tempDir, activeKeyId: null });
   });
 
   afterEach(() => {
@@ -136,7 +136,10 @@ describe("AUTH-001 T-17 · Cifrado y Rotación de Secretos TOTP (TotpCryptoServi
     });
 
     it("lanza TotpEncryptionError si no hay clave activa configurada", () => {
-      const emptyService = new TotpCryptoService({ secretsDir: tempDir });
+      const emptyService = new TotpCryptoService({
+        secretsDir: tempDir,
+        activeKeyId: null,
+      });
       expect(() => emptyService.encrypt("secret", userId)).toThrow(
         TotpEncryptionError,
       );

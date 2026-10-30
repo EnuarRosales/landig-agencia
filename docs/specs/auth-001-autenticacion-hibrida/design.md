@@ -65,9 +65,10 @@ Traefik ──► apps/admin (módulo identity)
 | Caso | Credenciales y TOTP | Identidades federadas | Sesión | Login |
 |---|---|---|---|---|
 | Operador SaaS Mocter | Router | Router | Router | `users.email` → Router (`identity_location = 'router'`) |
-| Usuario de inquilino (Compartida o Dedicada) | Celda | Celda | Router | `users.email` → `identity_location` → Celda |
+| Prospecto en staging pre-onboarding (≤ 60 días, `active_client_id IS NULL`) | Router (temporal; 0 filas en celdas) | Router (temporal; 0 filas en celdas) | Router | `users.email` → Router (`identity_location = 'router'`) |
+| Usuario de inquilino materializado (Compartida o Dedicada) | Celda | Celda | Router | `users.email` → `identity_location` → Celda |
 
-`identity_location` usa `router` para operadores corporativos de Mocter o el UUID de la celda asignada (`cell_id`) para todos los usuarios de inquilinos. En el Router Global, para usuarios de inquilinos, `password_hash`, secretos TOTP y filas de `identities` son nulos/inexistentes; el Router actúa únicamente como directorio de enrutamiento ciego (`email -> cell_id, client_id`). La sesión siempre vive en el Router, incluso cuando la verificación ocurrió en una celda.
+`identity_location` usa `router` para operadores corporativos de Mocter (y temporalmente para prospectos en staging pre-onboarding mientras `active_client_id IS NULL`, con depuración automática a los 60 días si no finalizan su onboarding) o el UUID de la celda asignada (`cell_id`) para todos los usuarios de inquilinos materializados. En el Router Global, para todo usuario de inquilino ya promovido a su celda, `password_hash`, secretos TOTP y filas de `identities` son nulos/inexistentes; el Router actúa únicamente como directorio de enrutamiento ciego (`email -> cell_id, client_id`). La sesión siempre vive en el Router, incluso cuando la verificación ocurrió en una celda.
 
 ### 3.2 Camino de una petición autenticada
 
@@ -133,14 +134,14 @@ Los tokens de verificación y de recuperación son de 32 bytes, se guardan solo 
 
 | Tabla | Clave | Reglas |
 |---|---|---|
-| `users` | `id` | Mismo `id` que el Router; `client_id`, `email`, `email_verified_at`, `password_hash`, `password_updated_at`, secretos TOTP (`totp_secret_ciphertext`, `totp_key_id`, `totp_enabled_at`, `totp_pending_secret_ciphertext`, `totp_pending_key_id`, `totp_pending_created_at`, `totp_last_used_step`), `status`, `display_name`, `avatar_url`; RLS por `client_id` |
-| `identities` | `id` | `client_id`, `user_id`, `provider`, `provider_user_id`, `provider_email`, `email_verified`, `display_name`, `avatar_url`, `linked_at`, `last_login_at`; RLS por `client_id` |
+| `users` | `(client_id, id)` | Mismo `id` que el Router; `client_id uuid NOT NULL`, `email`, `email_verified_at`, `password_hash`, `password_updated_at`, secretos TOTP (`totp_secret_ciphertext`, `totp_key_id`, `totp_enabled_at`, `totp_pending_secret_ciphertext`, `totp_pending_key_id`, `totp_pending_created_at`, `totp_last_used_step`), `status`, `display_name`, `avatar_url` y columnas de auditoría; `ENABLE` + `FORCE ROW LEVEL SECURITY` por `client_id` |
+| `identities` | `(client_id, id)` | `client_id uuid NOT NULL`, `user_id`, FK compuesta `(client_id, user_id) -> admin.users(client_id, id) ON DELETE RESTRICT`, `provider`, `provider_user_id`, `provider_email`, `email_verified`, `display_name`, `avatar_url`, `linked_at`, `last_login_at` y columnas de auditoría; `ENABLE` + `FORCE ROW LEVEL SECURITY` por `client_id` |
 
-Las celdas (tanto compartidas de hasta 100 inquilinos como dedicadas) no gestionan `sessions`: la sesión sigue centralizada en el Router y Redis. `users.id` se preserva desde el Router y no se genera uno nuevo; `users` usa `UNIQUE (client_id, lower(email))`. `identities` lleva `client_id` para RLS y usa `UNIQUE (client_id, provider, provider_user_id)` y `UNIQUE (client_id, user_id, provider)`.
+Las celdas (tanto compartidas de hasta 100 inquilinos como dedicadas) no gestionan `sessions`: la sesión sigue centralizada en el Router y Redis. `users.id` se preserva desde el Router y no se genera uno nuevo; `users` usa PK compuesta `(client_id, id)` y `UNIQUE (client_id, lower(email))`. `identities` usa PK compuesta `(client_id, id)` y `UNIQUE (client_id, provider, provider_user_id)` más `UNIQUE (client_id, user_id, provider)`.
 
-La tabla `users` de la celda es la misma entidad local que define ADM-001 §5.2 con las columnas de credenciales y TOTP añadidas por AUTH-001. `identities` es propiedad de AUTH-001.
+La tabla `users` de la celda es la misma entidad local que define ADM-001 §5.2 con las columnas de credenciales y TOTP añadidas por AUTH-001. `identities` es propiedad de AUTH-001. Ningún preregistro sin inquilino (`active_client_id IS NULL`) escribe filas en la celda: las tablas de celda exigen `client_id NOT NULL` en todo momento.
 
-El rol `mocter_auth` de la celda puede `SELECT` y `UPDATE` en `users`, y `SELECT`, `INSERT` y `UPDATE` en `identities`; el `INSERT` es necesario para vincular una identidad federada nueva. Antes de consultar, la aplicación ejecuta `SET LOCAL app.current_client_id` con el `client_id` resuelto en el Router; no usa `BYPASSRLS`.
+El rol `mocter_auth` de la celda puede `SELECT` y `UPDATE` en `users`, y `SELECT`, `INSERT` y `UPDATE` en `identities`; el `INSERT` es necesario para vincular una identidad federada nueva. Antes de consultar, la aplicación ejecuta `SELECT set_config('app.current_client_id', $client_id, true)` y las políticas RLS evalúan `NULLIF(current_setting('app.current_client_id', true), '')::uuid` para tolerar conexiones recicladas por PgBouncer; no usa `BYPASSRLS`.
 
 ### 4.3 Invariantes e índices
 
@@ -200,13 +201,13 @@ El endpoint público `POST /auth/register` y su formulario en la web son **exclu
    - Si la cuenta es federada, el correo enviado contiene un token `setup` de 30 minutos; al confirmarlo se setea `email_verified_at`, se guarda la contraseña Argon2id y se vincula la credencial nativa en la celda correspondiente al mismo `user_id` sin crear otra cuenta.
    - Si la cuenta es nativa y no está verificada, el correo reenvía el enlace de verificación; si ya está verificada, invita a iniciar sesión o a recuperar la contraseña.
 3. Si el correo no existe:
-   - **Asignación inmediata de celda:** El Router selecciona la celda activa con capacidad (`cells`).
-   - **Directorio de Router:** Crea la fila en `admin.users` del Router Global con `email`, `identity_location = '<cell_id>'`, `password_hash = NULL`, `status = 'active'` y `email_verified_at = NULL`.
-   - **Persistencia en Celda:** Inserta la entidad `users` directamente en la celda asignada con el mismo `id`, `email`, `password_hash` Argon2id y `email_verified_at = NULL`.
+   - **Staging pre-onboarding en Router Global (cero datos en celdas):** Dado que en `/register` aún no existe `client_id` ni vinculación efectiva con un plan, se crea la fila en `admin.users` del Router Global con `email`, `identity_location = 'router'`, `active_client_id = NULL`, `password_hash` Argon2id, `status = 'active'`, `email_verified_at = NULL` y `created_by = 'self'`. No se selecciona celda ni se inserta ningún registro en `pg-cell-XX` durante el preregistro.
+   - **Promoción atómica al completar onboarding:** Cuando el prospecto completa el onboarding y se vincula a un plan (`ADM-001 T-07`), el sistema promueve atómicamente sus credenciales, secretos TOTP e identidades federadas a la celda asignada (`promoteStagingIdentityToCell`), conmuta `identity_location = '<cell_id>'` y limpia `password_hash`, secretos TOTP e `identities` del Router Global.
+   - **Depuración automática a los 60 días:** Si transcurren **60 días** desde `created_at` sin que el prospecto complete su onboarding ni adquiera `active_client_id`, el job de mantenimiento (`purgeStalePreregistrations`, ejecutado con `mocter_admin`) elimina el preregistro del Router Global (junto con sus tokens, consentimientos, identidades de staging y sesiones en cascada, excluyendo operadores corporativos de la SaaS Mocter) e invalida cualquier clave residual en Redis.
 4. Genera un token de verificación de 32 bytes; guarda su hash SHA-256 en `email_verification_tokens` del Router con vencimiento de 24 horas y despacha el correo transaccional de verificación (`auth.verify_email`). No crea sesión.
 5. Responde `202` con el mismo mensaje genérico. Un fallo de envío se registra y permite reenviar; no se expone el token ni el error interno.
 
-La verificación se confirma con `POST /auth/email/verify/confirm`, no con un `GET` que consuma el token: los escáneres de correo no deben invalidarlo. El `GET` solo muestra la pantalla de confirmación. Al confirmar, se marca `email_verified_at` tanto en el Router como en la celda y se consume el token; el usuario continúa al login.
+La verificación se confirma con `POST /auth/email/verify/confirm`, no con un `GET` que consuma el token: los escáneres de correo no deben invalidarlo. El `GET` solo muestra la pantalla de confirmación. Al confirmar, se marca `email_verified_at` en el Router (y en la celda si el usuario ya fue promovido) y se consume el token; el usuario continúa al login.
 
 Con Google el correo se considera verificado y `email_verified_at` se completa en el alta. Con correo y contraseña, `ADM-001` impide crear el inquilino hasta que `email_verified_at` exista (RF-14.6). El login puede completarse antes de verificar para permitir reenviar el correo, pero las rutas de negocio y el onboarding consultan la marca y rechazan el alta.
 
@@ -216,7 +217,7 @@ Los operadores corporativos de la SaaS Mocter (`platform_owner`, `platform_suppo
 
 1. **Bootstrap del primer Platform Owner (`/setup-owner`):**
    - En una plataforma recién desplegada sin operadores, el acceso a `/setup-owner` (GET y POST) está protegido por el secreto de entorno `SETUP_OWNER_TOKEN`.
-   - El endpoint valida con `timingSafeEqual` el token provisto y comprueba que `COUNT(users WHERE identity_location = 'router') === 0`.
+   - El endpoint valida con `timingSafeEqual` el token provisto y comprueba que no existan operadores corporativos previos en el Router Global (`created_by IN ('setup-owner', 'platform-admin', 'platform_owner')`), de modo que preregistros públicos en staging no bloqueen el bootstrap inicial.
    - Permite registrar el primer usuario asignándole rol `platform_owner`, `identity_location = 'router'`, `password_hash` Argon2id, `email_verified_at = now()`, `active_client_id = NULL` y `status = 'active'`.
    - Una vez creado el primer operador, la ruta `/setup-owner` queda permanentemente desactivada y responde `404 Not Found` en todas las peticiones posteriores.
 2. **Creación manual por Platform Owner:** Los siguientes operadores son creados exclusivamente por un `platform_owner` desde la consola administrativa de Mocter en el Router Global, indicando correo corporativo, nombre completo y rol/scopes de plataforma.
@@ -248,8 +249,8 @@ La vista `/login` y el endpoint `POST /auth/login` son **100% universales** para
 
 1. `POST /auth/login` aplica rate limit y normaliza el correo.
 2. Resuelve `users.email` en el Router Global y consulta `identity_location`:
-   - **Caso Operador SaaS Mocter (`identity_location = 'router'`):** El Router verifica el `password_hash` directamente en la base de datos del Router Global, sin comunicarse con ninguna celda ni aplicar RLS de inquilino.
-   - **Caso Cliente de Inquilino (`identity_location = '<cell_id>'`):** El Router conecta a la celda indicada con `mocter_auth`, establece `SET LOCAL app.current_client_id = users.active_client_id` y verifica contra `users` de esa celda bajo RLS. Si la celda no responde, devuelve `503` (Fail-Closed); nunca intenta el Router porque allí no residen credenciales de clientes. Si `identity_location` apunta a una celda y `active_client_id` es nulo, la identidad está inconsistente: responde `503`, alerta y no autentica.
+   - **Caso Router (`identity_location = 'router'` — Operador SaaS Mocter o prospecto en staging pre-onboarding con `active_client_id IS NULL`):** El Router verifica el `password_hash` directamente en la base de datos del Router Global, sin comunicarse con ninguna celda ni aplicar RLS de inquilino.
+   - **Caso Cliente de Inquilino (`identity_location = '<cell_id>'`):** El Router conecta a la celda indicada con `mocter_auth`, establece `SET LOCAL app.current_client_id = users.active_client_id` y verifica contra `users` de esa celda bajo RLS. Si la celda no responde, devuelve `503` (Fail-Closed); nunca intenta el Router porque allí no residen credenciales de clientes promovidos. Si `identity_location` apunta a una celda y `active_client_id` es nulo, la identidad está inconsistente: responde `503`, alerta y no autentica.
 3. Si el usuario no existe, no tiene `password_hash` o está `disabled`, ejecuta una verificación Argon2id ficticia con un hash de costo equivalente y responde `401` genérico («Correo o contraseña incorrectos.»). El tiempo de respuesta no debe distinguir esos casos.
 4. Verifica Argon2id. Si el hash usa parámetros anteriores a los vigentes, lo rehasha en el mismo login.
 5. Si `totp_enabled_at` no es nulo, crea un challenge de 2FA y no emite sesión todavía. Si no, crea la sesión.
@@ -354,7 +355,7 @@ La invitación y el alta del inquilino son de `ADM-001` (D-26, D-29, RF-14). AUT
 2. Antes de crear `tenant_users`, ADM-001 reserva `users.active_client_id` con `UPDATE ... WHERE active_client_id IS NULL`. Si no afecta una fila, rechaza la invitación o el alta; no hay segunda membresía.
 3. AUTH-001 no crea `tenant_users` ni `clients`. Expone `bindSessionToClient` para que ADM-001 actualice la sesión del onboarding después de crear la membresía; las demás sesiones se revocan.
 4. El alta manual de `platform_sales` crea o vincula el usuario en la misma operación; si el correo ya existe, usa la identidad existente, nunca duplica. Si el usuario ya tiene `active_client_id`, la operación falla.
-5. La invitación y el alta no cambian `identity_location` por sí mismas. Si el inquilino recibe celda dedicada, la migración de identidad es una operación separada y transaccional (§5.12).
+5. Al completar el onboarding de un prospecto en staging (`identity_location = 'router'`), ADM-001 reserva `users.active_client_id`, aprovisiona el inquilino en la celda asignada e invoca `promoteStagingIdentityToCell` para expandir la identidad en la celda bajo RLS, copiar credenciales/TOTP/identidades, conmutar `identity_location = '<cell_id>'` y limpiar secretos del Router Global (si falla antes de conmutar, revierte `active_client_id = NULL` y conserva `identity_location = 'router'`). Si un inquilino ya activo cambia posteriormente de celda (compartida a dedicada o rebalanceo), la migración inter-celdas sigue §5.12.
 
 Un usuario con membresía activa en un inquilino no puede aceptar una invitación a otro. La regla se valida en ADM-001; AUTH-001 solo garantiza que la sesión y el correo sean del usuario correcto.
 
@@ -579,7 +580,7 @@ Las tablas de identidad del Router entran en el respaldo de OPS-001. La clave TO
 
 ### 8.4 Capacidad y limpieza
 
-Un job diario purga sesiones vencidas hace más de 30 días, tokens vencidos y challenges de Redis vencidos. La tabla `sessions` tiene índices por usuario, cliente y vencimiento. El número de sesiones activas por usuario se limita a 10. La carga objetivo se prueba con 1000 sesiones concurrentes y 100 logins por minuto en T-34.
+Un job diario purga sesiones vencidas hace más de 30 días, tokens vencidos, challenges de Redis vencidos y preregistros en staging del Router Global que hayan cumplido **60 días** sin finalizar su onboarding ni vincularse a un plan (`identity_location = 'router'`, `active_client_id IS NULL`, excluyendo operadores corporativos de la SaaS Mocter). La tabla `sessions` tiene índices por usuario, cliente y vencimiento. El número de sesiones activas por usuario se limita a 10. La carga objetivo se prueba con 1000 sesiones concurrentes y 100 logins por minuto en T-34.
 
 ## 9. Verificación
 

@@ -67,10 +67,11 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=build --chown=mocter:nodejs /app/apps/web/.next/standalone ./
 COPY --from=build --chown=mocter:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build --chown=mocter:nodejs /app/apps/web/public ./apps/web/public
-# Migrador (dependencias de producción + SQL versionado + script)
+# Migrador (dependencias de producción + SQL versionado Control Plane y Celdas + script)
 COPY --from=build --chown=mocter:nodejs /out/migrator/package.json ./migrator/package.json
 COPY --from=build --chown=mocter:nodejs /out/migrator/node_modules ./migrator/node_modules
 COPY --from=build --chown=mocter:nodejs /app/packages/domain/drizzle ./migrator/drizzle
+COPY --from=build --chown=mocter:nodejs /app/packages/domain/drizzle-cell ./migrator/drizzle-cell
 COPY --from=build --chown=mocter:nodejs /app/packages/domain/scripts/migrate.mjs ./migrator/scripts/migrate.mjs
 USER mocter
 EXPOSE 3000

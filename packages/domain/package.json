@@ -17,7 +17,10 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "db:generate:cell": "drizzle-kit generate --config=drizzle.cell.config.ts",
+    "db:migrate:cell": "drizzle-kit migrate --config=drizzle.cell.config.ts",
+    "db:check:cell": "drizzle-kit check --config=drizzle.cell.config.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",

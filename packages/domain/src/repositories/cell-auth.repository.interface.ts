@@ -64,6 +64,10 @@ export interface CellIdentitySnapshot {
   displayName?: string | null;
   /** URL de avatar provista por el proveedor. */
   avatarUrl?: string | null;
+  /** Instante original de vinculación de la identidad federada. */
+  linkedAt?: Date;
+  /** Instante del último inicio de sesión mediante esta identidad federada. */
+  lastLoginAt?: Date | null;
 }
 
 /**

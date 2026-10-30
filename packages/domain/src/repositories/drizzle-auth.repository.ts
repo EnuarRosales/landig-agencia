@@ -1,4 +1,18 @@
-import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { getDb } from "../db/client";
 import * as schema from "../db/schemas";
@@ -1251,14 +1265,23 @@ export class DrizzleAuthRepository implements IAuthRepository {
   }
 
   /**
-   * Cuenta la cantidad de usuarios operadores de plataforma registrados en el Router Global (AUTH-001 T-27).
+   * Cuenta la cantidad de usuarios operadores corporativos de plataforma registrados en el Router Global (AUTH-001 T-27).
+   *
+   * Excluye explícitamente a los prospectos en staging pre-onboarding (`created_by = 'self'`, OAuth, etc.)
+   * para impedir que un registro público en `/register` bloquee el bootstrap inicial `/setup-owner`.
    */
   async countPlatformOperators(): Promise<number> {
     try {
+      const platformCreators = ["setup-owner", "platform-admin", "platform_owner"];
       const rows = await this.db
         .select({ count: sql<number>`count(*)::int` })
         .from(users)
-        .where(eq(users.identityLocation, "router"));
+        .where(
+          and(
+            eq(users.identityLocation, "router"),
+            inArray(users.createdBy, platformCreators),
+          ),
+        );
 
       return rows[0]?.count ?? 0;
     } catch (error) {
@@ -1354,6 +1377,88 @@ export class DrizzleAuthRepository implements IAuthRepository {
       appLogger.error(`[AuthRepository.updateClientRoutingCell Failed] ${msg}`, error, {
         clientId,
         targetCellId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Limpia contraseñas, secretos TOTP e identidades federadas del Router Global tras promover
+   * un usuario de staging pre-onboarding hacia su celda asignada (AUTH-001 T-04, §5.1).
+   */
+  async clearRouterUserCredentials(userId: string): Promise<void> {
+    try {
+      await this.db.transaction(async (tx) => {
+        const now = new Date();
+        await tx.delete(identities).where(eq(identities.userId, userId));
+        await tx
+          .update(users)
+          .set({
+            passwordHash: null,
+            passwordUpdatedAt: null,
+            totpSecretCiphertext: null,
+            totpKeyId: null,
+            totpEnabledAt: null,
+            totpPendingSecretCiphertext: null,
+            totpPendingKeyId: null,
+            totpPendingCreatedAt: null,
+            totpLastUsedStep: null,
+            updatedAt: now,
+            updatedBy: "cell-promotion-cleanup",
+          })
+          .where(eq(users.id, userId));
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.clearRouterUserCredentials Failed] ${msg}`, error, {
+        userId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Purga del Router Global los preregistros de prospectos no materializados con antigüedad
+   * mayor o igual a la fecha de corte (`active_client_id IS NULL`), excluyendo operadores de plataforma (AUTH-001 §5.1).
+   */
+  async purgeStalePreregistrations(cutoffDate: Date): Promise<string[]> {
+    try {
+      const platformCreators = ["setup-owner", "platform-admin", "platform_owner"];
+      return await this.db.transaction(async (tx) => {
+        const candidates = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(
+            and(
+              eq(users.identityLocation, "router"),
+              isNull(users.activeClientId),
+              notInArray(users.createdBy, platformCreators),
+              lte(users.createdAt, cutoffDate),
+            ),
+          );
+
+        const targetIds = candidates.map((row) => row.id);
+        if (targetIds.length === 0) {
+          return [];
+        }
+
+        await tx.delete(sessions).where(inArray(sessions.userId, targetIds));
+        await tx
+          .delete(emailVerificationTokens)
+          .where(inArray(emailVerificationTokens.userId, targetIds));
+        await tx
+          .delete(passwordResetTokens)
+          .where(inArray(passwordResetTokens.userId, targetIds));
+        await tx.delete(identities).where(inArray(identities.userId, targetIds));
+        await tx.delete(userConsents).where(inArray(userConsents.userId, targetIds));
+        await tx.delete(users).where(inArray(users.id, targetIds));
+
+        return targetIds;
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.purgeStalePreregistrations Failed] ${msg}`, error, {
+        cutoffDate: cutoffDate.toISOString(),
       });
       throw error;
     }

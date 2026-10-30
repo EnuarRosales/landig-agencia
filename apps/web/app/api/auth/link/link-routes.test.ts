@@ -4,10 +4,10 @@ import {
   authService,
   oauthStateManager,
   defaultGoogleOidcClient,
-  defaultFacebookOAuthClient,
   MockRedisClient,
   setRedisClientForTesting,
   createMockRedisClient,
+  type Session,
 } from "@mocter/domain";
 import { POST as startHandler } from "./[provider]/start/route";
 import { GET as callbackHandler } from "./[provider]/callback/route";
@@ -114,7 +114,7 @@ describe("AUTH-001 T-16 · Rutas de Vinculación de Identidades (/api/auth/link/
             authMethod: "password",
             createdAt: new Date(),
             expiresAt: new Date(Date.now() + 3600000),
-          } as any,
+          } as unknown as Session,
         },
       });
 
@@ -182,7 +182,7 @@ describe("AUTH-001 T-16 · Rutas de Vinculación de Identidades (/api/auth/link/
             authMethod: "password",
             createdAt: new Date(),
             expiresAt: new Date(Date.now() + 3600000),
-          } as any,
+          } as unknown as Session,
         },
       });
 

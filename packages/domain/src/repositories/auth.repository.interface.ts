@@ -471,6 +471,26 @@ export interface IAuthRepository {
    * Conmuta la celda de destino y avanza `routing_version` en `client_routing` (AUTH-001 §5.12, T-27).
    */
   updateClientRoutingCell(clientId: string, targetCellId: string): Promise<number>;
+
+  /**
+   * Limpia contraseñas, secretos TOTP e identidades federadas del Router Global tras promover
+   * un usuario de staging pre-onboarding hacia su celda asignada (AUTH-001 T-04, §5.1).
+   *
+   * @param userId - Identificador UUID del usuario promovido a celda.
+   */
+  clearRouterUserCredentials(userId: string): Promise<void>;
+
+  /**
+   * Purga del Router Global los preregistros de prospectos no materializados que superaron la ventana
+   * de retención (60 días por defecto) sin vincularse a ningún inquilino (`active_client_id IS NULL`),
+   * excluyendo estrictamente a los operadores corporativos de la SaaS Mocter (AUTH-001 §5.1).
+   *
+   * Esta operación de mantenimiento se ejecuta bajo el rol administrativo `mocter_admin`.
+   *
+   * @param cutoffDate - Fecha límite; se eliminan los preregistros con `created_at <= cutoffDate`.
+   * @returns Lista de identificadores UUID de los usuarios preregistrados eliminados.
+   */
+  purgeStalePreregistrations(cutoffDate: Date): Promise<string[]>;
 }
 
 /**

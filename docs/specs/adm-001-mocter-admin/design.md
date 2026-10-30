@@ -250,17 +250,18 @@ CREATE UNIQUE INDEX outbox_events_one_idempotency
 | Caso | Dónde viven las credenciales | Cómo se resuelve el login |
 |---|---|---|
 | Operador SaaS Mocter | Router Global | `users.email` → verificación en Router (`identity_location = 'router'`) |
-| Inquilino (Compartida o Dedicada) | Celda asignada | `users.email` → `identity_location` → verificación en la celda con RLS |
+| Prospecto en staging pre-onboarding (≤ 60 días) | Router Global (temporal, `active_client_id IS NULL`, cero datos en celdas) | `users.email` → verificación en Router (`identity_location = 'router'`) hasta finalizar onboarding |
+| Inquilino activo (Compartida o Dedicada) | Celda asignada | `users.email` → `identity_location` → verificación en la celda con RLS |
 
-Para todos los inquilinos, el Router conserva el correo y el puntero `identity_location`, mientras que las credenciales y el secreto TOTP residen estrictamente en la celda asignada (AUTH-D-01).
+Para todos los inquilinos que han completado su onboarding, el Router conserva únicamente el correo y el puntero `identity_location`, mientras que las credenciales, el secreto TOTP y las identidades federadas residen estrictamente en la celda asignada (AUTH-D-01). Si un prospecto en staging no finaliza su onboarding ni se vincula efectivamente a un plan en un plazo de **60 días**, el sistema elimina automáticamente su preregistro del Router Global.
 
 ### 6.2 Alta orgánica
 
-1. El usuario se registra con Google o con correo y contraseña.
+1. El usuario se registra con Google o con correo y contraseña. Durante esta etapa previa al onboarding permanece en staging en el Router Global (`identity_location = 'router'`, `active_client_id = NULL`) sin generar registros en ninguna celda (`pg-cell-XX`).
 2. Google se considera verificado; el correo manual queda pendiente hasta la confirmación (RF-14.6).
 3. Con la identidad verificada, se ejecuta el asistente guiado: datos del negocio, plan, preferencias. Si viene `plan_code` desde la landing, se resuelve `plans.code` → `plans.id` (UUID) y se precarga.
 4. Antes de crear el cliente se verifica que el usuario no tenga `active_client_id` ni sea dueño de un cliente no dado de baja; si ya tiene membresía o negocio, el alta se rechaza.
-5. Al completar el asistente se crea el `client` con `owner_user_id`, `plan_id` (UUID resuelto), la fila `tenant_users` del `tenant_owner` y se enruta a una celda. `users.active_client_id` apunta a ese `client_id`. Si el usuario abandona, el avance y el `plan_code` se conservan para retomar.
+5. Al completar el asistente se crea el `client` con `owner_user_id`, `plan_id` (UUID resuelto), se enruta a una celda activa, se crea la fila `tenant_users` del `tenant_owner`, se reserva `users.active_client_id` y se promueven atómicamente las credenciales, secretos TOTP e identidades federadas desde el staging del Router a la celda asignada (`promoteStagingIdentityToCell`), conmutando `identity_location = '<cell_id>'` y limpiando secretos del Router. Si el usuario abandona antes de completar el onboarding, el avance y el `plan_code` se conservan hasta por **60 días**; cumplido ese término sin materializarse en un inquilino con plan, el preregistro se depura del Router Global.
 6. El inquilino opera sin comunidad hasta que `platform_admin` le asigna el rol de líder. El onboarding no crea comunidades ni autoasigna liderazgo (RF-08.1).
 
 El inquilino no existe antes de que el negocio esté configurado. El avance del asistente se guarda por usuario y, cuando existe, por inquilino (RF-14.4).

@@ -27,6 +27,8 @@ export const envSchema = z.object({
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM: z.string().optional(),
   SETUP_OWNER_TOKEN: z.string().optional(),
+  TOTP_SECRETS_DIR: z.string().optional(),
+  TOTP_ACTIVE_KEY_ID: z.string().optional(),
   NEXT_PUBLIC_APP_URL: z.string().optional(),
 });
 
@@ -56,6 +58,8 @@ export const env = createEnv({
     SMTP_PASSWORD: z.string().optional(),
     SMTP_FROM: z.string().optional(),
     SETUP_OWNER_TOKEN: z.string().optional(),
+    TOTP_SECRETS_DIR: z.string().optional(),
+    TOTP_ACTIVE_KEY_ID: z.string().optional(),
     NEXT_PUBLIC_APP_URL: z.string().optional(),
   },
   runtimeEnv: process.env,
@@ -81,7 +85,8 @@ let validatedEnv: EnvConfig | null = null;
 export function getValidatedEnv(
   customEnv?: Record<string, string | undefined>,
 ): EnvConfig {
-  if (validatedEnv && !customEnv) {
+  const isTestEnv = process.env.NODE_ENV === "test";
+  if (validatedEnv && !customEnv && !isTestEnv) {
     return validatedEnv;
   }
 
@@ -98,7 +103,7 @@ export function getValidatedEnv(
     throw new Error(errorMsg);
   }
 
-  if (!customEnv) {
+  if (!customEnv && !isTestEnv) {
     validatedEnv = result.data;
   }
 

@@ -1,12 +1,12 @@
 # ADM-001 · Tareas · mocter-admin — núcleo administrativo de inquilinos
 
-| Atributo | Valor |
-|---|---|
-| ID | ADM-001 |
-| Versión | 1.5 |
-| Fecha | 2026-10-21 · actualizado 2026-10-27 |
+| Atributo   | Valor                                                                                                    |
+| ---------- | -------------------------------------------------------------------------------------------------------- |
+| ID         | ADM-001                                                                                                  |
+| Versión    | 1.5                                                                                                      |
+| Fecha      | 2026-10-21 · actualizado 2026-10-27                                                                      |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) · CHW-001 · DAT-001 · AUTH-001 · OPS-001 |
-| Estado | Aprobada |
+| Estado     | Aprobada                                                                                                 |
 
 ## Convenciones
 
@@ -35,9 +35,10 @@
   - Evidencia: 2026-10-27 (commit `79f11f4`) — `packages/domain/src/db/schemas/admin/` estructurado con `cells`, `plans`, `clients`, `client_plans`, `client_routing`, `users`, roles `mocter_migrator/admin/landing/auth` con grants en `0001_roles_grants_comments.sql`, y 20 pruebas unitarias pasando en `admin-schema.test.ts`.
   - Criterios 26 y RF-09.3 (D-25).
 
-- [ ] **T-04 · Definir las dos líneas de migración**
+- [x] **T-04 · Definir las dos líneas de migración**
   - Una para el Router Global y otra para las celdas; esquema idéntico entre celdas.
   - Verificación: aplicar la línea de celda dos veces es idempotente; el Router y la celda no comparten historia.
+  - Evidencia: 2026-10-30 — Separadas formalmente las dos líneas de migración Drizzle (Opción A, preservando inmutables las migraciones `0000`–`0003` del Control Plane conforme a `AGENTS.md` R-09): `packages/domain/drizzle/` (`drizzle.config.ts`, `migrate.mjs --target=control-plane`) para el Router Global y `packages/domain/drizzle-cell/` (`drizzle.cell.config.ts`, `migrate.mjs --target=cell`) para el Cell Data Plane (`pg-cell-XX`), incluyendo copia de ambos catálogos en `Dockerfile` y scripts `db:generate:cell`, `db:migrate:cell`, `db:check:cell`. Verificado en PostgreSQL 18 real (`mocter-core-pg-portal-1`) ejecutando `node packages/domain/scripts/migrate.mjs --target=cell` dos veces consecutivas sin errores (idempotencia confirmada) y validando historiales `drizzle.__drizzle_migrations` independientes (`4` migraciones en Router vs `2` en celda). `drizzle-kit check` pasa limpio en ambas líneas.
   - RF-10.9 y RF-10.10.
 
 ## Fase 1 · Identidad, tenencia y alta

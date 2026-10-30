@@ -583,6 +583,47 @@ export type MigrateTenantIdentityResult = Result<
 >;
 
 /**
+ * Plazo canónico de retención (en días) para preregistros en staging del Router Global
+ * que no materialicen un inquilino ni se vinculen a un plan durante el onboarding (AUTH-001 §5.1).
+ */
+export const PREREGISTRATION_RETENTION_DAYS = 60;
+
+/**
+ * Respuesta de promoción de identidad desde el staging del Router Global hacia una celda asignada (AUTH-001 T-04, §5.1).
+ */
+export interface PromoteStagingIdentityResponseData {
+  userId: string;
+  clientId: string;
+  targetCellId: string;
+}
+
+export type PromoteStagingIdentityResult = Result<
+  PromoteStagingIdentityResponseData,
+  | "INVALID_INPUT"
+  | "USER_NOT_FOUND"
+  | "USER_DISABLED"
+  | "EMAIL_NOT_VERIFIED"
+  | "MEMBERSHIP_CONFLICT"
+  | "CELL_UNAVAILABLE"
+  | "VERIFICATION_FAILED"
+  | "DB_ERROR"
+>;
+
+/**
+ * Respuesta de la purga de preregistros no materializados en el Router Global (AUTH-001 §5.1).
+ */
+export interface PurgeStalePreregistrationsResponseData {
+  purgedCount: number;
+  purgedUserIds: string[];
+  cutoffDate: string;
+}
+
+export type PurgeStalePreregistrationsResult = Result<
+  PurgeStalePreregistrationsResponseData,
+  "INVALID_INPUT" | "DB_ERROR"
+>;
+
+/**
  * Servicio de dominio responsable de la orquestación del registro nativo de usuarios (AUTH-001 T-08).
  *
  * Implementa las políticas de seguridad:
@@ -3898,6 +3939,215 @@ export class AuthService {
         targetCellId,
       });
       return err("Error interno durante la migración inter-celdas.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Promueve de forma transaccional las credenciales e identidades federadas de un usuario desde el staging
+   * pre-onboarding del Router Global hacia su celda asignada al completar el alta del inquilino (AUTH-001 T-04, §5.1).
+   *
+   * Garantías de seguridad:
+   * - Exige correo verificado y membresía única 1:0..1 (`active_client_id`).
+   * - Ejecuta Expandir -> Copiar -> Verificar -> Conmutar y limpiar secretos del Router.
+   * - Si falla la expansión o copia en la celda destino, NO conmuta `identity_location` ni borra las credenciales del Router.
+   */
+  async promoteStagingIdentityToCell(params: {
+    userId: string;
+    clientId: string;
+    targetCellId: string;
+  }): Promise<PromoteStagingIdentityResult> {
+    const { userId, clientId, targetCellId } = params;
+
+    if (!userId || !clientId || !targetCellId || targetCellId === "router") {
+      return err("Parámetros de promoción a celda inválidos.", "INVALID_INPUT");
+    }
+
+    let reservedInThisCall = false;
+
+    try {
+      const user = await this.authRepo.findUserById(userId);
+      if (!user) {
+        return err("Usuario no encontrado en el Router Global.", "USER_NOT_FOUND");
+      }
+
+      if (user.status === "disabled") {
+        return err("La cuenta de usuario se encuentra deshabilitada.", "USER_DISABLED");
+      }
+
+      if (!user.emailVerifiedAt) {
+        return err(
+          "El correo electrónico debe estar verificado antes de promover la identidad a una celda.",
+          "EMAIL_NOT_VERIFIED",
+        );
+      }
+
+      if (user.activeClientId && user.activeClientId !== clientId) {
+        return err(
+          "El usuario ya posee una membresía activa en otro inquilino.",
+          "MEMBERSHIP_CONFLICT",
+        );
+      }
+
+      if (user.identityLocation !== "router") {
+        if (user.identityLocation === targetCellId && user.activeClientId === clientId) {
+          return ok({ userId, clientId, targetCellId });
+        }
+        return err(
+          "La identidad del usuario ya reside en una celda distinta del staging del Router.",
+          "INVALID_INPUT",
+        );
+      }
+
+      if (!user.activeClientId) {
+        const reserved = await this.authRepo.reserveUserActiveClient(userId, clientId);
+        if (!reserved) {
+          return err(
+            "No fue posible reservar la membresía única del usuario.",
+            "MEMBERSHIP_CONFLICT",
+          );
+        }
+        reservedInThisCall = true;
+      }
+
+      // 1. Expandir fila base en la celda destino bajo RLS
+      await this.cellAuthRepo.expandCellUser(targetCellId, {
+        id: user.id,
+        clientId,
+        email: user.email,
+        emailVerifiedAt: user.emailVerifiedAt,
+        status: user.status,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+      });
+
+      // 2. Copiar credenciales Argon2id, secretos TOTP e identidades federadas a la celda destino
+      await this.cellAuthRepo.copyCredentialsToCell(targetCellId, {
+        id: user.id,
+        clientId,
+        email: user.email,
+        passwordHash: user.passwordHash ?? null,
+        passwordUpdatedAt: user.passwordUpdatedAt ?? null,
+        totpSecretCiphertext: (user.totpSecretCiphertext as unknown as Buffer) ?? null,
+        totpKeyId: user.totpKeyId ?? null,
+        totpEnabledAt: user.totpEnabledAt ?? null,
+        totpPendingSecretCiphertext:
+          (user.totpPendingSecretCiphertext as unknown as Buffer) ?? null,
+        totpPendingKeyId: user.totpPendingKeyId ?? null,
+        totpPendingCreatedAt: user.totpPendingCreatedAt ?? null,
+        totpLastUsedStep: user.totpLastUsedStep ?? null,
+        status: user.status,
+        displayName: user.displayName ?? null,
+        avatarUrl: user.avatarUrl ?? null,
+      });
+
+      const routerIdentities = (await this.authRepo.findIdentitiesByUserId(userId)) ?? [];
+      if (routerIdentities.length > 0) {
+        await this.cellAuthRepo.copyIdentitiesToCell(
+          targetCellId,
+          clientId,
+          userId,
+          routerIdentities.map((identity) => ({
+            provider: identity.provider as "google" | "facebook",
+            providerUserId: identity.providerUserId,
+            providerEmail: identity.providerEmail ?? null,
+            emailVerified: identity.emailVerified,
+            displayName: identity.displayName ?? null,
+            avatarUrl: identity.avatarUrl ?? null,
+            linkedAt: identity.linkedAt,
+            lastLoginAt: identity.lastLoginAt ?? null,
+          })),
+        );
+      }
+
+      // 3. Verificar persistencia efectiva en la celda antes de conmutar el Router
+      const targetCheck = await this.cellAuthRepo.findUserCredentialsInCell(
+        targetCellId,
+        clientId,
+        userId,
+      );
+      if (!targetCheck) {
+        if (reservedInThisCall) {
+          await this.authRepo.clearUserActiveClient(userId, clientId);
+        }
+        return err(
+          "Verificación fallida en la celda destino antes de conmutar identity_location.",
+          "VERIFICATION_FAILED",
+        );
+      }
+
+      // 4. Conmutar identity_location y purgar password_hash, TOTP e identidades del Router Global
+      await this.authRepo.updateUserIdentityLocation(userId, targetCellId);
+      await this.authRepo.clearRouterUserCredentials(userId);
+
+      appLogger.info(
+        "[AuthService.promoteStagingIdentityToCell] Identidad promovida a celda y limpiada del Router Global",
+        { userId, clientId, targetCellId },
+      );
+
+      return ok({ userId, clientId, targetCellId });
+    } catch (error) {
+      if (reservedInThisCall) {
+        try {
+          await this.authRepo.clearUserActiveClient(userId, clientId);
+        } catch (rollbackError) {
+          appLogger.warn(
+            "[AuthService.promoteStagingIdentityToCell] Fallo al revertir reserva de active_client_id",
+            { userId, clientId, error: rollbackError },
+          );
+        }
+      }
+      if (error instanceof CellUnavailableError) {
+        return err("Celda temporalmente fuera de servicio.", "CELL_UNAVAILABLE");
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.promoteStagingIdentityToCell Failed] ${msg}`, error, {
+        userId,
+        clientId,
+        targetCellId,
+      });
+      return err("Error interno al promover la identidad a la celda.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Depura del Router Global los preregistros de prospectos que no completaron su onboarding ni se vincularon
+   * a ningún plan dentro del plazo de retención (60 días por defecto), preservando intactos a los operadores
+   * de plataforma y a cualquier usuario con membresía activa (AUTH-001 §5.1).
+   */
+  async purgeStalePreregistrations(options?: {
+    now?: Date;
+    retentionDays?: number;
+  }): Promise<PurgeStalePreregistrationsResult> {
+    const now = options?.now ?? new Date();
+    const retentionDays = options?.retentionDays ?? PREREGISTRATION_RETENTION_DAYS;
+
+    if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
+      return err("El plazo de retención debe ser un número positivo de días.", "INVALID_INPUT");
+    }
+
+    const cutoffDate = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
+
+    try {
+      const purgedUserIds = await this.authRepo.purgeStalePreregistrations(cutoffDate);
+
+      for (const purgedUserId of purgedUserIds) {
+        await this.sessionCache.deleteAllUserSessions(purgedUserId);
+      }
+
+      appLogger.info(
+        "[AuthService.purgeStalePreregistrations] Purga de preregistros no materializados ejecutada",
+        { purgedCount: purgedUserIds.length, retentionDays, cutoffDate: cutoffDate.toISOString() },
+      );
+
+      return ok({
+        purgedCount: purgedUserIds.length,
+        purgedUserIds,
+        cutoffDate: cutoffDate.toISOString(),
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.purgeStalePreregistrations Failed] ${msg}`, error);
+      return err("Error interno al depurar preregistros caducados.", "DB_ERROR");
     }
   }
 }

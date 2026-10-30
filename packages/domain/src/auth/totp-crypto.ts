@@ -51,6 +51,7 @@ export class TotpEncryptionError extends Error {
 export class TotpCryptoService {
   private readonly keys = new Map<string, Buffer>();
   private activeKeyId: string | null = null;
+  private activeKeyFromEnv = false;
   private readonly secretsDir: string;
 
   /**
@@ -58,13 +59,14 @@ export class TotpCryptoService {
    *
    * @param options - Opciones de configuración del servicio.
    */
-  constructor(options?: { secretsDir?: string; activeKeyId?: string }) {
+  constructor(options?: { secretsDir?: string; activeKeyId?: string | null }) {
     this.secretsDir =
       options?.secretsDir || process.env.TOTP_SECRETS_DIR || "/run/secrets";
-    if (options?.activeKeyId) {
-      this.activeKeyId = options.activeKeyId;
+    if (options && "activeKeyId" in options) {
+      this.activeKeyId = options.activeKeyId ?? null;
     } else if (process.env.TOTP_ACTIVE_KEY_ID) {
       this.activeKeyId = process.env.TOTP_ACTIVE_KEY_ID;
+      this.activeKeyFromEnv = true;
     }
   }
 
@@ -79,6 +81,14 @@ export class TotpCryptoService {
     this.keys.set(keyId, keyBuffer);
     if (!this.activeKeyId) {
       this.activeKeyId = keyId;
+      this.activeKeyFromEnv = false;
+    } else if (
+      this.activeKeyFromEnv &&
+      !this.keys.has(this.activeKeyId) &&
+      !fs.existsSync(path.join(this.secretsDir, `totp_key_${this.activeKeyId}`))
+    ) {
+      this.activeKeyId = keyId;
+      this.activeKeyFromEnv = false;
     }
   }
 
@@ -89,6 +99,7 @@ export class TotpCryptoService {
    */
   setActiveKeyId(keyId: string): void {
     this.activeKeyId = keyId;
+    this.activeKeyFromEnv = false;
   }
 
   /**

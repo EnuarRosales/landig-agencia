@@ -128,10 +128,12 @@ flowchart TD
 - Crear `apps/admin` y su paquete de monorepo (T-02), sin adelantar el onboarding de Fase 2.
 
 #### 1.1 Persistencia y Esquemas Drizzle (`packages/domain`)
-- Aplicar DAT-001 antes de crear los schemas/roles y la fila base canónica `users` de ADM-001 T-03; definir las líneas de migración Router/celdas en ADM-001 T-04.
+- Aplicar DAT-001 antes de crear los schemas/roles y la fila base canónica `users` de ADM-001 T-03; definir las dos líneas independientes de migración en ADM-001 T-04:
+  - `packages/domain/drizzle/` (`drizzle.config.ts`, `--target=control-plane`): Router Global.
+  - `packages/domain/drizzle-cell/` (`drizzle.cell.config.ts`, `--target=cell`): Celdas de datos (`pg-cell-XX`).
 - Reestructurar `packages/domain/src/db/`:
-  - `schemas/admin/`: Router Global (`clients`, `plans`, `client_plans`, `users`, `identities`, `sessions`, `email_verification_tokens`, `password_reset_tokens`, `user_consents`, `two_factor_secrets`, `auth_providers_config`).
-  - `schemas/tenant/`: celda (`tenant_users`, `products`, `orders`, `conversations`, `prospects`).
+  - `schemas/admin/`: Router Global (`cells`, `clients`, `client_routing`, `plans`, `client_plans`, `users`, `identities`, `sessions`, `email_verification_tokens`, `password_reset_tokens`, `user_consents`, `auth_providers_config`). Los secretos TOTP viven como columnas cifradas AES-256-GCM en `users` (`AUTH-D-04`).
+  - `schemas/tenant/`: celda (`admin.users` y `admin.identities` con PK compuesta `(client_id, id)` + `FORCE ROW LEVEL SECURITY`, y en fases siguientes `tenant_users`, `products`, `product_embeddings`, `contacts`, `contact_memories`, `orders`). Los preregistros permanecen en staging en el Router sin tocar celdas hasta finalizar el onboarding (con depuración automática a los 60 días si no se materializan).
   - `schemas/public/`: `leads`.
 - Modelo canónico de `plans`: `id uuid`, `code` único, `name`/`description`/`marketing_features` JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles`, `price_monthly_cents`, `price_annual_cents`, `currency`. FKs `plan_id` uuid.
 - Generar y verificar la migración fundacional (`pnpm --filter @mocter/domain db:generate`).

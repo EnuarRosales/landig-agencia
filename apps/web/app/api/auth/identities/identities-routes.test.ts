@@ -5,6 +5,7 @@ import {
   MockRedisClient,
   setRedisClientForTesting,
   createMockRedisClient,
+  type Session,
 } from "@mocter/domain";
 import { DELETE as unlinkHandler } from "./[provider]/route";
 
@@ -93,7 +94,7 @@ describe("AUTH-001 T-16 · Rutas de Desvinculación de Identidades (/api/auth/id
             authMethod: "password",
             createdAt: new Date(),
             expiresAt: new Date(Date.now() + 3600000),
-          } as any,
+          } as unknown as Session,
         },
       });
 
@@ -145,7 +146,7 @@ describe("AUTH-001 T-16 · Rutas de Desvinculación de Identidades (/api/auth/id
             authMethod: "password",
             createdAt: new Date(),
             expiresAt: new Date(Date.now() + 3600000),
-          } as any,
+          } as unknown as Session,
         },
       });
 
@@ -181,7 +182,7 @@ describe("AUTH-001 T-16 · Rutas de Desvinculación de Identidades (/api/auth/id
             authMethod: "password",
             createdAt: new Date(),
             expiresAt: new Date(Date.now() + 3600000),
-          } as any,
+          } as unknown as Session,
         },
       });
 
@@ -219,7 +220,7 @@ describe("AUTH-001 T-16 · Rutas de Desvinculación de Identidades (/api/auth/id
             authMethod: "google",
             createdAt: new Date(),
             expiresAt: new Date(Date.now() + 3600000),
-          } as any,
+          } as unknown as Session,
         },
       });
 
@@ -255,7 +256,7 @@ describe("AUTH-001 T-16 · Rutas de Desvinculación de Identidades (/api/auth/id
             authMethod: "password",
             createdAt: new Date(),
             expiresAt: new Date(Date.now() + 3600000),
-          } as any,
+          } as unknown as Session,
         },
       });
 
@@ -298,7 +299,7 @@ describe("AUTH-001 T-16 · Rutas de Desvinculación de Identidades (/api/auth/id
             authMethod: "google",
             createdAt: new Date(),
             expiresAt: new Date(Date.now() + 3600000),
-          } as any,
+          } as unknown as Session,
         },
       });
 

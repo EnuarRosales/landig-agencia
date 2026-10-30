@@ -92,8 +92,20 @@ function createBaseMockAuthRepo(): IAuthRepository {
     createInitialPlatformOwner: vi.fn(),
     updateUserIdentityLocation: vi.fn(),
     updateClientRoutingCell: vi.fn().mockResolvedValue(2),
+    clearRouterUserCredentials: vi.fn(),
+    purgeStalePreregistrations: vi.fn().mockResolvedValue([]),
   };
 }
+
+beforeEach(() => {
+  setRedisClientForTesting(
+    new MockRedisClient() as unknown as ReturnType<typeof createMockRedisClient>,
+  );
+});
+
+afterEach(() => {
+  setRedisClientForTesting(null);
+});
 
 describe("AUTH-001 T-08 · Servicio de Registro Nativo (AuthService)", () => {
   let mockAuthRepo: IAuthRepository;
@@ -3030,7 +3042,7 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
         consumeState: vi.fn(),
       } as unknown as OAuthStateManager;
 
-      totpCrypto = new TotpCryptoService();
+      totpCrypto = new TotpCryptoService({ activeKeyId: null });
       totpCrypto.registerKey("test-key-v1", Buffer.alloc(32, 9));
       authService = new AuthService(
         mockAuthRepo,
@@ -3463,7 +3475,7 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
         consumeState: vi.fn(),
       } as unknown as OAuthStateManager;
 
-      totpCrypto = new TotpCryptoService();
+      totpCrypto = new TotpCryptoService({ activeKeyId: null });
       totpCrypto.registerKey("test-key-v1", Buffer.alloc(32, 7));
 
       authService = new AuthService(
@@ -3862,7 +3874,7 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
         createState: vi.fn(),
         consumeState: vi.fn(),
       } as unknown as OAuthStateManager;
-      totpCrypto = new TotpCryptoService();
+      totpCrypto = new TotpCryptoService({ activeKeyId: null });
       totpCrypto.registerKey("k1", Buffer.alloc(32, 0x01));
 
       mockRedis = new MockRedisClient();
@@ -6075,7 +6087,7 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
         sendAccountAlreadyExistsEmail: vi.fn(),
       };
 
-      totpCrypto = new TotpCryptoService();
+      totpCrypto = new TotpCryptoService({ activeKeyId: null });
       totpCrypto.registerKey(testKeyId, testMasterKey);
 
       authService = new AuthService(
@@ -6341,6 +6353,15 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
 
     describe("Bootstrap del primer Platform Owner (setupInitialPlatformOwner)", () => {
       const bootstrapToken = "super-secret-bootstrap-token-test-2026";
+      const previousSetupToken = process.env.SETUP_OWNER_TOKEN;
+
+      afterEach(() => {
+        if (previousSetupToken === undefined) {
+          delete process.env.SETUP_OWNER_TOKEN;
+        } else {
+          process.env.SETUP_OWNER_TOKEN = previousSetupToken;
+        }
+      });
 
       it("crea el primer platform_owner con identity_location = 'router' y emite sesión con token válido", async () => {
         process.env.SETUP_OWNER_TOKEN = bootstrapToken;
@@ -6565,5 +6586,197 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
         expect(mockAuthRepo.updateUserIdentityLocation).not.toHaveBeenCalled();
       });
     });
+
+    describe("AUTH-001 T-04 · Promoción de staging a celda (promoteStagingIdentityToCell) y purga a 60 días", () => {
+      it("promueve un usuario verificado desde staging en Router a su celda, limpia credenciales del Router e inicia sesión contra la celda", async () => {
+        const hashedPassword = await hashPassword(validPassword);
+        const totpSecretBuffer = Buffer.from("JBSWY3DPEHPK3PXP");
+        const encryptedTotp = totpCrypto.encrypt(totpSecretBuffer, userId, testKeyId);
+
+        let routerUserState: User = createTestUser({
+          identityLocation: "router",
+          activeClientId: null,
+          passwordHash: hashedPassword,
+          passwordUpdatedAt: new Date(),
+          totpSecretCiphertext: encryptedTotp.ciphertext as unknown as Buffer,
+          totpKeyId: encryptedTotp.keyId,
+          totpEnabledAt: new Date(),
+          totpLastUsedStep: 100,
+        });
+
+        const cellStoredCredentials: CellUserCredentials = {
+          id: userId,
+          clientId,
+          email: routerUserState.email,
+          passwordHash: hashedPassword,
+          passwordUpdatedAt: routerUserState.passwordUpdatedAt,
+          totpSecretCiphertext: encryptedTotp.ciphertext,
+          totpKeyId: encryptedTotp.keyId,
+          totpEnabledAt: routerUserState.totpEnabledAt,
+          totpPendingSecretCiphertext: null,
+          totpPendingKeyId: null,
+          totpPendingCreatedAt: null,
+          totpLastUsedStep: 100,
+          status: "active",
+          displayName: routerUserState.displayName,
+          avatarUrl: null,
+        };
+
+        vi.mocked(mockAuthRepo.findUserById).mockImplementation(async () => routerUserState);
+        vi.mocked(mockAuthRepo.findUserByEmail).mockImplementation(async () => routerUserState);
+        vi.mocked(mockAuthRepo.reserveUserActiveClient).mockImplementation(async (_uid, cid) => {
+          routerUserState = { ...routerUserState, activeClientId: cid };
+          return true;
+        });
+        vi.mocked(mockAuthRepo.findIdentitiesByUserId).mockResolvedValueOnce([
+          {
+            id: "identity-router-1",
+            userId,
+            provider: "google",
+            providerUserId: "google-sub-777",
+            providerEmail: routerUserState.email,
+            emailVerified: true,
+            displayName: routerUserState.displayName,
+            avatarUrl: null,
+            linkedAt: new Date("2026-10-01T10:00:00Z"),
+            lastLoginAt: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            createdBy: "self",
+            updatedBy: "self",
+          },
+        ]);
+        vi.mocked(mockCellAuthRepo.findUserCredentialsInCell).mockResolvedValue(
+          cellStoredCredentials,
+        );
+        vi.mocked(mockAuthRepo.updateUserIdentityLocation).mockImplementation(
+          async (_uid, newLoc) => {
+            routerUserState = { ...routerUserState, identityLocation: newLoc };
+          },
+        );
+        vi.mocked(mockAuthRepo.clearRouterUserCredentials).mockImplementation(async () => {
+          routerUserState = {
+            ...routerUserState,
+            passwordHash: null,
+            passwordUpdatedAt: null,
+            totpSecretCiphertext: null,
+            totpKeyId: null,
+            totpEnabledAt: null,
+            totpPendingSecretCiphertext: null,
+            totpPendingKeyId: null,
+            totpPendingCreatedAt: null,
+            totpLastUsedStep: null,
+          };
+        });
+
+        const promoteResult = await authService.promoteStagingIdentityToCell({
+          userId,
+          clientId,
+          targetCellId,
+        });
+
+        expect(promoteResult.ok).toBe(true);
+        expect(mockCellAuthRepo.expandCellUser).toHaveBeenCalledWith(
+          targetCellId,
+          expect.objectContaining({ id: userId, clientId, email: routerUserState.email }),
+        );
+        expect(mockCellAuthRepo.copyCredentialsToCell).toHaveBeenCalledWith(
+          targetCellId,
+          expect.objectContaining({
+            id: userId,
+            clientId,
+            passwordHash: hashedPassword,
+            totpKeyId: testKeyId,
+          }),
+        );
+        expect(mockCellAuthRepo.copyIdentitiesToCell).toHaveBeenCalledWith(
+          targetCellId,
+          clientId,
+          userId,
+          expect.arrayContaining([
+            expect.objectContaining({ provider: "google", providerUserId: "google-sub-777" }),
+          ]),
+        );
+
+        // El Router ya no conserva password_hash ni secretos TOTP tras la promoción
+        expect(routerUserState.identityLocation).toBe(targetCellId);
+        expect(routerUserState.activeClientId).toBe(clientId);
+        expect(routerUserState.passwordHash).toBeNull();
+        expect(routerUserState.totpSecretCiphertext).toBeNull();
+
+        // El usuario migrado inicia sesión autenticando contra la celda (emite challenge 2FA porque TOTP está activo en celda)
+        const loginResult = await authService.login({
+          email: routerUserState.email,
+          password: validPassword,
+        });
+        expect(loginResult.ok).toBe(true);
+        if (loginResult.ok && "mfaRequired" in loginResult.data) {
+          expect(loginResult.data.mfaRequired).toBe(true);
+        }
+        expect(mockCellAuthRepo.findUserCredentialsInCell).toHaveBeenCalledWith(
+          targetCellId,
+          clientId,
+          userId,
+        );
+      });
+
+      it("no conmuta identity_location ni borra credenciales del Router si falla a mitad de la copia en la celda", async () => {
+        const hashedPassword = await hashPassword(validPassword);
+        const stagingUser = createTestUser({
+          identityLocation: "router",
+          activeClientId: null,
+          passwordHash: hashedPassword,
+          passwordUpdatedAt: new Date(),
+        });
+
+        vi.mocked(mockAuthRepo.findUserById).mockResolvedValueOnce(stagingUser);
+        vi.mocked(mockAuthRepo.reserveUserActiveClient).mockResolvedValueOnce(true);
+        vi.mocked(mockCellAuthRepo.expandCellUser).mockResolvedValueOnce(undefined);
+        vi.mocked(mockCellAuthRepo.copyCredentialsToCell).mockRejectedValueOnce(
+          new CellUnavailableError("Fallo de red durante copia", targetCellId),
+        );
+
+        const result = await authService.promoteStagingIdentityToCell({
+          userId,
+          clientId,
+          targetCellId,
+        });
+
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.code).toBe("CELL_UNAVAILABLE");
+        }
+        expect(mockAuthRepo.updateUserIdentityLocation).not.toHaveBeenCalled();
+        expect(mockAuthRepo.clearRouterUserCredentials).not.toHaveBeenCalled();
+        expect(mockAuthRepo.clearUserActiveClient).toHaveBeenCalledWith(userId, clientId);
+      });
+
+      it("purga preregistros no materializados con el plazo canónico de 60 días e invalida sus sesiones en Redis", async () => {
+        const referenceNow = new Date("2026-10-30T12:00:00.000Z");
+        const expectedCutoff = new Date(
+          referenceNow.getTime() - 60 * 24 * 60 * 60 * 1000,
+        );
+        vi.mocked(mockAuthRepo.purgeStalePreregistrations).mockResolvedValueOnce([
+          "stale-prospect-1",
+          "stale-prospect-2",
+        ]);
+
+        const purgeResult = await authService.purgeStalePreregistrations({
+          now: referenceNow,
+        });
+
+        expect(purgeResult.ok).toBe(true);
+        if (purgeResult.ok) {
+          expect(purgeResult.data.purgedCount).toBe(2);
+          expect(purgeResult.data.purgedUserIds).toEqual([
+            "stale-prospect-1",
+            "stale-prospect-2",
+          ]);
+          expect(purgeResult.data.cutoffDate).toBe(expectedCutoff.toISOString());
+        }
+        expect(mockAuthRepo.purgeStalePreregistrations).toHaveBeenCalledWith(expectedCutoff);
+      });
+    });
   });
+
 
