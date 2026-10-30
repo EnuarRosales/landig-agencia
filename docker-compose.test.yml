@@ -67,6 +67,26 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-control:6379/0"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      AUTH_RATE_LIMIT_PEPPER: ${AUTH_RATE_LIMIT_PEPPER:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://${APP_DOMAIN:-203-0-113-10.sslip.io}}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://${APP_DOMAIN:-203-0-113-10.sslip.io}}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://${APP_DOMAIN:-203-0-113-10.sslip.io}}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://${APP_DOMAIN:-203-0-113-10.sslip.io}/api}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://${APP_DOMAIN:-203-0-113-10.sslip.io}/auth/google/callback}
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
+      FACEBOOK_REDIRECT_URI: ${FACEBOOK_REDIRECT_URI:-https://${APP_DOMAIN:-203-0-113-10.sslip.io}/auth/facebook/callback}
+      CHATWOOT_SSO_SECRET: ${CHATWOOT_SSO_SECRET}
+      TOTP_ACTIVE_KEY_ID: ${TOTP_ACTIVE_KEY_ID:-k1}
+      TOTP_SECRETS_DIR: ${TOTP_SECRETS_DIR:-/run/secrets}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM:-soporte@mocter.co}
     networks: [ backend, traefik_network ]
     labels:
       - "traefik.enable=true"
