@@ -20,11 +20,10 @@ export function getRedisUrl(): string | undefined {
  * Obtiene o inicializa la instancia singleton del cliente Redis (`ioredis`) para el plano de control.
  *
  * Aplica políticas estrictas de resiliencia y fallo cerrado (AUTH-001 §7.3, §7.4):
- * - `enableOfflineQueue: false`: Falla de inmediato las operaciones si no hay conexión activa,
- *   evitando encolar comandos en memoria ante caídas del servidor Redis.
+ * - `enableOfflineQueue: true`: Permite encolar comandos durante el handshake inicial de conexión (evitando fallos prematuros en arranque frío), fallando con timeout si Redis no responde.
  * - `connectTimeout: 2000`: Tiempo máximo de 2 segundos para establecer conexión.
  * - `maxRetriesPerRequest: 1`: No reintenta indefinidamente peticiones fallidas.
- * - `lazyConnect: true`: Permite control explícito de la conexión o conexión por demanda.
+ * - `lazyConnect: false`: Conecta inmediatamente al instanciar el cliente.
  *
  * @returns Instancia singleton de {@link RedisType}.
  */
@@ -33,7 +32,7 @@ export function getRedisClient(): RedisType {
     const url = getRedisUrl();
     const env = getValidatedEnv();
     const options: RedisOptions = {
-      enableOfflineQueue: false,
+      enableOfflineQueue: true,
       connectTimeout: 2000,
       maxRetriesPerRequest: 1,
       lazyConnect: false,

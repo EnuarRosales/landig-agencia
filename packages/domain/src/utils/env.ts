@@ -21,6 +21,12 @@ export const envSchema = z.object({
   FACEBOOK_APP_SECRET: z.string().optional(),
   FACEBOOK_REDIRECT_URI: z.string().optional(),
   CHATWOOT_SSO_SECRET: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
+  NEXT_PUBLIC_APP_URL: z.string().optional(),
 });
 
 /**
@@ -43,6 +49,12 @@ export const env = createEnv({
     FACEBOOK_APP_SECRET: z.string().optional(),
     FACEBOOK_REDIRECT_URI: z.string().optional(),
     CHATWOOT_SSO_SECRET: z.string().optional(),
+    SMTP_HOST: z.string().optional(),
+    SMTP_PORT: z.string().optional(),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASSWORD: z.string().optional(),
+    SMTP_FROM: z.string().optional(),
+    NEXT_PUBLIC_APP_URL: z.string().optional(),
   },
   runtimeEnv: process.env,
   skipValidation: Boolean(

@@ -5519,12 +5519,12 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
       };
       mockGoogleOidcClient = {
         verifyIdToken: vi.fn(),
-      };
+      } as unknown as IGoogleOidcClient;
       mockFacebookOAuthClient = {
-        exchangeCodeForToken: vi.fn(),
+        exchangeCodeForAccessToken: vi.fn(),
         getUserProfile: vi.fn(),
-      };
-      mockStateManager = {} as OAuthStateManager;
+      } as unknown as IFacebookOAuthClient;
+      mockStateManager = {} as unknown as OAuthStateManager;
       mockRedis = new MockRedisClient();
       setRedisClientForTesting(mockRedis as unknown as any);
       sessionCache = new SessionCacheManager();
@@ -5533,8 +5533,8 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
         mockAuthRepo,
         mockMailer,
         mockGoogleOidcClient,
-        mockFacebookOAuthClient,
         mockStateManager,
+        mockFacebookOAuthClient,
         undefined,
         undefined,
         sessionCache,
