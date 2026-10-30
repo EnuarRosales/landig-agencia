@@ -25,6 +25,6 @@ Thumbs.db
 *.log
 
 # Engram memory
-.engram/
+#.engram/
 
 next-env.d.ts
