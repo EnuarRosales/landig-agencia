@@ -110,6 +110,36 @@ services:
       redis-control:
         condition: service_healthy
 
+  admin-portal:
+    image: ghcr.io/enuarrosales/mocter-admin:${TAG:-latest}
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-control:6379/0"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-https://${ADMIN_DOMAIN:-admin-203-0-113-10.sslip.io}}
+    networks: [ backend, traefik_network ]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik_network"
+      - "traefik.http.routers.mocter-admin-test.entrypoints=websecure"
+      - "traefik.http.routers.mocter-admin-test.rule=Host(`${ADMIN_DOMAIN:-admin-203-0-113-10.sslip.io}`)"
+      - "traefik.http.routers.mocter-admin-test.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.mocter-admin-test.service=mocter-admin-test"
+      - "traefik.http.services.mocter-admin-test.loadbalancer.server.port=3000"
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health" ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+      start_interval: 2s
+    depends_on:
+      pg-portal:
+        condition: service_healthy
+      redis-control:
+        condition: service_healthy
+
 networks:
   backend:
     internal: true
