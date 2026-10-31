@@ -549,4 +549,31 @@ export class OrdersService {
     const created = await this.ordersRepo.createShippingCarrier(cellId, clientId, carrier);
     return ok(created);
   }
+
+  /**
+   * Obtiene métricas agregadas de ventas, pedidos y devoluciones en caliente para REP-001 (T-10).
+   */
+  async getOrderMetrics(
+    cellId: string,
+    clientId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<
+    Result<{
+      totalOrders: number;
+      totalSalesCents: number;
+      averageTicketCents: number;
+      deliveredOrders: number;
+      cancelledOrders: number;
+      returnedOrders: number;
+      totalReturnsCents: number;
+    }>
+  > {
+    if (startDate > endDate) {
+      return err("La fecha inicial no puede ser superior a la fecha final.", "INVALID_DATE_RANGE");
+    }
+
+    const metrics = await this.ordersRepo.getOrderMetrics(cellId, clientId, startDate, endDate);
+    return ok(metrics);
+  }
 }

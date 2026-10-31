@@ -42,7 +42,7 @@
   - `subtotal + envío − descuento = total`, en centavos y con la moneda del inquilino.
   - Verificación: un total nunca es negativo; la moneda queda congelada en el pedido.
 
-- [ ] **T-06 · Implementar el alta manual de pedidos**
+- [x] **T-06 · Implementar el alta manual de pedidos**
   - Formulario con la tabla estándar (paginación, filtros y ordenamiento), selección de producto y transportadora.
   - Verificación: un pedido manual se crea sin conversación de Chatwoot y con las mismas validaciones.
 
@@ -62,11 +62,11 @@
   - `registered` aplica `compra-realizada` y pasa el prospecto a `customer` en la misma operación lógica.
   - Verificación: la etiqueta aparece en Chatwoot y el prospecto cambia de etapa una sola vez.
 
-- [ ] **T-10 · Integrar métricas en REP-001**
+- [x] **T-10 · Integrar métricas en REP-001**
   - Ventas, conversión, ticket promedio y devoluciones por período.
   - Verificación: el dashboard refleja pedidos y devoluciones del período.
 
-- [ ] **T-11 · Verificar los criterios de aceptación**
+- [x] **T-11 · Verificar los criterios de aceptación**
   - Recorrer `requirements.md` RF-01 a RF-08 y registrar evidencia por requisito.
   - Verificación: cada requisito tiene prueba o evidencia; ninguno queda «asumido».
 

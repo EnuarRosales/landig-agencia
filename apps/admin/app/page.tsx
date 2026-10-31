@@ -40,6 +40,12 @@ export default function AdminHomePage() {
             {dict.shell.navCrm}
           </Link>
           <Link
+            href="/admin/orders"
+            className="min-h-[44px] flex items-center rounded px-3 py-2 text-sm hover:bg-[var(--dsn-surface-secondary)]"
+          >
+            {dict.shell.navOrders}
+          </Link>
+          <Link
             href="/admin/leads"
             className="min-h-[44px] flex items-center rounded px-3 py-2 text-sm hover:bg-[var(--dsn-surface-secondary)]"
           >

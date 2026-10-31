@@ -126,6 +126,15 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
         updatedBy: "system",
       }),
       listOrders: vi.fn().mockResolvedValue({ items: [sampleOrder], total: 1 }),
+      getOrderMetrics: vi.fn().mockResolvedValue({
+        totalOrders: 10,
+        totalSalesCents: 1000000,
+        averageTicketCents: 100000,
+        deliveredOrders: 7,
+        cancelledOrders: 1,
+        returnedOrders: 1,
+        totalReturnsCents: 50000,
+      }),
     };
 
     mockCrmRepo = {
@@ -133,19 +142,18 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
       updateContact: vi.fn().mockResolvedValue(null),
       findContactById: vi.fn(),
       findContactByChatwootId: vi.fn(),
-      findContactByPhone: vi.fn(),
-      findContactByEmail: vi.fn(),
+      findContactsByPhone: vi.fn(),
       listContacts: vi.fn(),
-      recordConsent: vi.fn(),
-      findActiveConsent: vi.fn(),
-      listConsents: vi.fn(),
-      createPrivacyNotice: vi.fn(),
-      findLatestPrivacyNotice: vi.fn(),
-      createContactMemory: vi.fn(),
-      findLatestContactMemory: vi.fn(),
-      deleteContactSoft: vi.fn(),
       anonymizeContact: vi.fn(),
-      calculateQualityMetrics: vi.fn(),
+      createConsent: vi.fn(),
+      findActiveConsent: vi.fn(),
+      revokeConsent: vi.fn(),
+      listConsentsByProspect: vi.fn(),
+      createPrivacyNotice: vi.fn(),
+      findPublishedPrivacyNotice: vi.fn(),
+      upsertContactProfile: vi.fn(),
+      appendContactEpisode: vi.fn(),
+      getQualityMetrics: vi.fn(),
     };
 
     ordersService = new OrdersService(mockOrdersRepo, mockCrmRepo);
@@ -497,6 +505,52 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
           toStatus: "returned",
         }),
       );
+    });
+  });
+
+  describe("T-10 · Métricas agregadas para REP-001", () => {
+    it("calcula ventas, ticket promedio y devoluciones en caliente para un rango válido", async () => {
+      const start = new Date("2026-10-01");
+      const end = new Date("2026-10-31");
+
+      const res = await ordersService.getOrderMetrics(
+        "cell-1",
+        sampleOrder.clientId,
+        start,
+        end,
+      );
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.totalOrders).toBe(10);
+        expect(res.data.totalSalesCents).toBe(1000000);
+        expect(res.data.averageTicketCents).toBe(100000);
+        expect(res.data.totalReturnsCents).toBe(50000);
+      }
+      expect(mockOrdersRepo.getOrderMetrics).toHaveBeenCalledWith(
+        "cell-1",
+        sampleOrder.clientId,
+        start,
+        end,
+      );
+    });
+
+    it("rechaza rangos temporales invertidos con error descriptivo", async () => {
+      const start = new Date("2026-10-31");
+      const end = new Date("2026-10-01");
+
+      const res = await ordersService.getOrderMetrics(
+        "cell-1",
+        sampleOrder.clientId,
+        start,
+        end,
+      );
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("INVALID_DATE_RANGE");
+      }
+      expect(mockOrdersRepo.getOrderMetrics).not.toHaveBeenCalled();
     });
   });
 });

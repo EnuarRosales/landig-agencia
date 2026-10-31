@@ -12,6 +12,7 @@ import {
   type CellOrder,
   type CellOrderItem,
   type CellOrderEvent,
+  type NewCellOrderEvent,
   type CellOrderReturn,
   type CellShippingCarrier,
   type NewCellOrderReturn,
@@ -602,6 +603,73 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
       return {
         items,
         total,
+      };
+    });
+  }
+
+  async getOrderMetrics(
+    cellId: string,
+    clientId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<{
+    totalOrders: number;
+    totalSalesCents: number;
+    averageTicketCents: number;
+    deliveredOrders: number;
+    cancelledOrders: number;
+    returnedOrders: number;
+    totalReturnsCents: number;
+  }> {
+    await this.ensureCellAvailable(cellId);
+    const db = this.getDbForCell(cellId);
+
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
+
+      const [orderStats] = await tx
+        .select({
+          totalOrders: sql<number>`count(*)::int`,
+          totalSalesCents: sql<number>`coalesce(sum(case when status not in ('cancelled', 'returned') then total_cents else 0 end), 0)::bigint`,
+          deliveredOrders: sql<number>`count(*) filter (where status = 'delivered')::int`,
+          cancelledOrders: sql<number>`count(*) filter (where status = 'cancelled')::int`,
+          returnedOrders: sql<number>`count(*) filter (where status = 'returned')::int`,
+        })
+        .from(cellOrders)
+        .where(
+          and(
+            eq(cellOrders.clientId, clientId),
+            sql`${cellOrders.createdAt} >= ${startDate}`,
+            sql`${cellOrders.createdAt} <= ${endDate}`,
+          ),
+        );
+
+      const [returnStats] = await tx
+        .select({
+          totalReturnsCents: sql<number>`coalesce(sum(amount_cents), 0)::bigint`,
+        })
+        .from(cellOrderReturns)
+        .where(
+          and(
+            eq(cellOrderReturns.clientId, clientId),
+            sql`${cellOrderReturns.createdAt} >= ${startDate}`,
+            sql`${cellOrderReturns.createdAt} <= ${endDate}`,
+          ),
+        );
+
+      const totalOrders = orderStats?.totalOrders ?? 0;
+      const totalSalesCents = Number(orderStats?.totalSalesCents ?? 0);
+      const activeCount = totalOrders - (orderStats?.cancelledOrders ?? 0) - (orderStats?.returnedOrders ?? 0);
+      const averageTicketCents = activeCount > 0 ? Math.round(totalSalesCents / activeCount) : 0;
+
+      return {
+        totalOrders,
+        totalSalesCents,
+        averageTicketCents,
+        deliveredOrders: orderStats?.deliveredOrders ?? 0,
+        cancelledOrders: orderStats?.cancelledOrders ?? 0,
+        returnedOrders: orderStats?.returnedOrders ?? 0,
+        totalReturnsCents: Number(returnStats?.totalReturnsCents ?? 0),
       };
     });
   }

@@ -145,11 +145,20 @@ export interface IOrdersRepository {
   ): Promise<CellShippingCarrier>;
 
   /**
-   * Lista pedidos aplicando filtros y paginación bajo RLS estricto.
+   * Agrega métricas comerciales de ventas, ticket promedio y devoluciones en caliente para REP-001.
    */
-  listOrders(
+  getOrderMetrics(
     cellId: string,
     clientId: string,
-    filters?: ListOrdersFilter,
-  ): Promise<{ items: CellOrder[]; total: number }>;
+    startDate: Date,
+    endDate: Date,
+  ): Promise<{
+    totalOrders: number;
+    totalSalesCents: number;
+    averageTicketCents: number;
+    deliveredOrders: number;
+    cancelledOrders: number;
+    returnedOrders: number;
+    totalReturnsCents: number;
+  }>;
 }
