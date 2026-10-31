@@ -77,7 +77,7 @@
 
 ## Fase 3 · Comprobantes de Pago y Exportadores Excel / PDF
 
-- [ ] **T-07 · Implementar servicio de comprobantes internos y despacho de email**
+- [x] **T-07 · Implementar servicio de comprobantes internos y despacho de email**
   - Al recibir pago confirmado, generar registro en `payment_receipts` con numeración consecutiva.
   - Solicitar a NTF-001 el envío de `billing.payment_succeeded` o `billing.renewal` con el comprobante adjunto.
   - Verificación: Pago aprobado registra comprobante y NTF-001 envía el correo al `email` fiscal registrado.

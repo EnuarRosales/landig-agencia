@@ -24,24 +24,24 @@
 
 ## Fase 1 · Atribución
 
-- [ ] **T-02 · Crear las migraciones del programa**
+- [x] **T-02 · Crear las migraciones del programa**
   - `referral_programs` con `model`, `reward_type`, `reward_value` (monto fijo o porcentaje), `currency`, `attribution_days`, `cap_referrals_per_referrer` (nullable; sin default), `credit_validity_days` (365), `status` (default `active`) y auditoría.
   - `referral_codes`, `referrals` y `referral_rewards` con `referral_id` único, `amount_cents`, `remaining_cents`, `credited_at`, `expires_at`, `redeemed_at`, `applied_invoice_id` y estados `pending`/`available`/`partially_redeemed`/`redeemed`/`expired`/`void`.
   - Verificación: `drizzle-kit check` pasa; un referido no puede tener dos referentes ni dos recompensas.
 
-- [ ] **T-03 · Implementar códigos y atribución**
+- [x] **T-03 · Implementar códigos y atribución**
   - Código/enlace único por inquilino, captura en el alta, ventana de atribución y estados.
   - Al registrarse el referido, emitir `referral.registered` a NTF-001 para notificar al referente.
   - Verificación: un alta con código dentro de la ventana queda asociada y genera una sola notificación; fuera de la ventana no.
 
 ## Fase 2 · Calificación, crédito y gestión
 
-- [ ] **T-04 · Implementar calificación y antifraude**
+- [x] **T-04 · Implementar calificación y antifraude**
   - El referido califica solo cuando está `active` y pagó efectivamente un plan mensual o anual.
   - Autorreferencia, NIT, medio de pago e IP; reversión por reembolso o baja dentro de la ventana.
   - Verificación: sin pago efectivo no hay crédito; un caso de autorreferencia se rechaza con motivo.
 
-- [ ] **T-05 · Implementar el crédito del Modelo A**
+- [x] **T-05 · Implementar el crédito del Modelo A**
   - Crear como máximo un `referral_rewards` por `referral_id`, con `credited_at` y `expires_at = credited_at + 365 días`.
   - No crear crédito nuevo si el referente alcanzó el tope configurado en `cap_referrals_per_referrer` (si existe; `null` = sin tope).
   - Calcular el monto con la configuración vigente (`fixed` o `percent`) y la moneda del programa.

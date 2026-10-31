@@ -1,15 +1,17 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { BillingService } from "./billing.service";
+import { BillingService, type IBillingNotificationDispatcher } from "./billing.service";
 import type { IBillingRepository } from "../repositories/billing.repository.interface";
 import type {
   Invoice,
   Payment,
   PaymentReceipt,
   Subscription,
+  ClientBillingProfile,
 } from "../db/schemas/admin/billing";
 
 describe("BILL-001 · BillingService", () => {
   let mockRepo: IBillingRepository;
+  let mockDispatcher: IBillingNotificationDispatcher;
   let service: BillingService;
 
   const mockInvoice: Invoice = {
@@ -60,9 +62,23 @@ describe("BILL-001 · BillingService", () => {
     updatedBy: "webhook",
   };
 
+  const mockProfile: ClientBillingProfile = {
+    clientId: "client-abc",
+    identityDocumentId: 6,
+    dni: "901234567-1",
+    companyName: "Mi Empresa SAS",
+    email: "facturacion@miempresa.com",
+    address: "Calle 100 # 15-20",
+    cityCode: "11001",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    createdBy: "admin",
+    updatedBy: "admin",
+  };
+
   beforeEach(() => {
     mockRepo = {
-      getBillingProfile: vi.fn(),
+      getBillingProfile: vi.fn().mockResolvedValue(mockProfile),
       upsertBillingProfile: vi.fn(),
       getPaymentMethods: vi.fn(),
       getDefaultPaymentMethod: vi.fn(),
@@ -84,13 +100,20 @@ describe("BILL-001 · BillingService", () => {
       createPayment: vi.fn().mockResolvedValue(mockPayment),
       createReceipt: vi.fn().mockResolvedValue(mockReceipt),
       getReceiptByPaymentId: vi.fn().mockResolvedValue(mockReceipt),
+      updateReceiptEmailStatus: vi.fn().mockImplementation((id, emailedTo, emailedAt) =>
+        Promise.resolve({ ...mockReceipt, id, emailedTo, emailedAt }),
+      ),
       recordSubscriptionChange: vi.fn(),
     };
-    service = new BillingService(mockRepo);
+
+    mockDispatcher = {
+      dispatchPaymentSucceeded: vi.fn().mockResolvedValue({ dispatched: true }),
+    };
+
+    service = new BillingService(mockRepo, mockDispatcher);
   });
 
   it("calcula prorrateo determinista por días restantes (charge - credit)", () => {
-    // Ciclo de 30 días, quedan 15 días: Plan actual 100.000 COP, nuevo plan 200.000 COP
     const res = service.calculateProration({
       currentPriceCents: 100000,
       newPriceCents: 200000,
@@ -100,10 +123,10 @@ describe("BILL-001 · BillingService", () => {
 
     expect(res.creditCents).toBe(50000);
     expect(res.chargeCents).toBe(100000);
-    expect(res.netCents).toBe(50000); // 50.000 a pagar adicional
+    expect(res.netCents).toBe(50000);
   });
 
-  it("procesa y concilia un pago exitosamente generando recibo y reactivando suscripción", async () => {
+  it("procesa pago exitosamente, emite recibo y despacha correo a través de NTF-001 (T-07)", async () => {
     const result = await service.registerPayment({
       clientId: "client-abc",
       invoiceId: "inv-123",
@@ -120,10 +143,22 @@ describe("BILL-001 · BillingService", () => {
     expect(result.data.alreadyProcessed).toBe(false);
     expect(result.data.payment.id).toBe("pay-123");
     expect(result.data.receipt.receiptNumber).toBe("REC-2026-1001");
-    expect(result.data.invoice.status).toBe("paid");
+    expect(result.data.receipt.emailedTo).toBe("facturacion@miempresa.com");
+    expect(result.data.receipt.emailedAt).toBeDefined();
 
-    expect(mockRepo.updateInvoiceStatus).toHaveBeenCalledWith("inv-123", "paid", expect.any(Date));
-    expect(mockRepo.updateSubscriptionStatus).toHaveBeenCalledWith("sub-1", "active", "wompi.webhook");
+    expect(mockDispatcher.dispatchPaymentSucceeded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantName: "Mi Empresa SAS",
+        recipientEmail: "facturacion@miempresa.com",
+        currency: "COP",
+      }),
+    );
+
+    expect(mockRepo.updateReceiptEmailStatus).toHaveBeenCalledWith(
+      "rec-123",
+      "facturacion@miempresa.com",
+      expect.any(Date),
+    );
   });
 
   it("retorna idempotentemente sin duplicar si el pago ya fue registrado previamente", async () => {
@@ -145,6 +180,6 @@ describe("BILL-001 · BillingService", () => {
     expect(result.data.alreadyProcessed).toBe(true);
     expect(mockRepo.createPayment).not.toHaveBeenCalled();
     expect(mockRepo.createReceipt).not.toHaveBeenCalled();
+    expect(mockDispatcher.dispatchPaymentSucceeded).not.toHaveBeenCalled();
   });
 });
-

@@ -57,6 +57,7 @@ export interface IBillingRepository {
   // Payment Receipts
   createReceipt(receipt: NewPaymentReceipt): Promise<PaymentReceipt>;
   getReceiptByPaymentId(paymentId: string): Promise<PaymentReceipt | null>;
+  updateReceiptEmailStatus(receiptId: string, emailedTo: string, emailedAt: Date): Promise<PaymentReceipt>;
 
   // Subscription Changes / Proration
   recordSubscriptionChange(change: NewSubscriptionChange): Promise<SubscriptionChange>;

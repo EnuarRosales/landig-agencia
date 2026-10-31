@@ -202,6 +202,23 @@ export class DrizzleBillingRepository implements IBillingRepository {
     return (rows[0] as PaymentReceipt) ?? null;
   }
 
+  async updateReceiptEmailStatus(
+    receiptId: string,
+    emailedTo: string,
+    emailedAt: Date,
+  ): Promise<PaymentReceipt> {
+    const rows = await this.db
+      .update(paymentReceipts)
+      .set({
+        emailedTo,
+        emailedAt,
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentReceipts.id, receiptId))
+      .returning();
+    return rows[0] as unknown as PaymentReceipt;
+  }
+
   async recordSubscriptionChange(change: NewSubscriptionChange): Promise<SubscriptionChange> {
     const rows = await this.db.insert(subscriptionChanges).values(change).returning();
     return rows[0] as unknown as SubscriptionChange;

@@ -42,6 +42,18 @@ export interface ProrationResult {
   netCents: number; // positivo: saldo a pagar adicional; negativo: crédito a favor
 }
 
+export interface IBillingNotificationDispatcher {
+  dispatchPaymentSucceeded(params: {
+    tenantName: string;
+    recipientEmail: string;
+    planName: string;
+    amountFormatted: string;
+    currency: string;
+    receiptNumber: string;
+    receiptPdfUrl?: string;
+  }): Promise<{ dispatched: boolean; deliveryId?: string }>;
+}
+
 /**
  * Servicio de Dominio para el ciclo de Facturación SaaS y Conciliación de Pagos (BILL-001 §3, RF-01 a RF-04).
  *
@@ -49,10 +61,13 @@ export interface ProrationResult {
  * 1. Idempotencia absoluta por `gatewayReference` para webhooks de Wompi y Stripe.
  * 2. Prorrateo determinista por días restantes: net = charge - credit.
  * 3. En v1 `tax_cents = 0` (sin retenciones de renta ni IVA).
- * 4. Generación de comprobante interno (`payment_receipts`) sin bloquear la transacción.
+ * 4. Generación de comprobante interno (`payment_receipts`) y despacho de email vía NTF-001 (T-07).
  */
 export class BillingService {
-  constructor(private readonly repository: IBillingRepository) {}
+  constructor(
+    private readonly repository: IBillingRepository,
+    private readonly notificationDispatcher?: IBillingNotificationDispatcher,
+  ) {}
 
   /**
    * Calcula el prorrateo financiero por cambio de plan a mitad de ciclo (RF-01.5).
@@ -148,7 +163,40 @@ export class BillingService {
         updatedBy: input.executedBy,
       });
 
-      // 6. Si el cliente tiene suscripción, actualizar a 'active' si estaba past_due
+      let finalReceipt = receipt;
+
+      // 6. Si hay dispatcher de notificaciones (NTF-001) y perfil fiscal, enviar correo con comprobante (T-07)
+      if (this.notificationDispatcher) {
+        try {
+          const profile = await this.repository.getBillingProfile(input.clientId);
+          const recipientEmail = profile?.email;
+          if (recipientEmail) {
+            const amountFormatted = (input.amountCents / 100).toFixed(2);
+            await this.notificationDispatcher.dispatchPaymentSucceeded({
+              tenantName: profile.companyName,
+              recipientEmail,
+              planName: "Suscripción Mocter",
+              amountFormatted,
+              currency: input.currency,
+              receiptNumber,
+              receiptPdfUrl: receipt.pdfUrl ?? undefined,
+            });
+
+            finalReceipt = await this.repository.updateReceiptEmailStatus(
+              receipt.id,
+              recipientEmail,
+              new Date(),
+            );
+          }
+        } catch (emailErr) {
+          appLogger.warn("[BillingService] No se pudo despachar correo de comprobante", {
+            error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+            receiptId: receipt.id,
+          });
+        }
+      }
+
+      // 7. Si el cliente tiene suscripción, actualizar a 'active' si estaba past_due
       const sub = await this.repository.getSubscriptionByClientId(input.clientId);
       if (sub && sub.status === "past_due") {
         await this.repository.updateSubscriptionStatus(sub.id, "active", input.executedBy);
@@ -163,7 +211,7 @@ export class BillingService {
 
       return ok({
         payment,
-        receipt,
+        receipt: finalReceipt,
         invoice: updatedInvoice,
         alreadyProcessed: false,
       });

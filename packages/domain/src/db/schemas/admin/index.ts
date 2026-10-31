@@ -22,3 +22,4 @@ export * from "./bot-tenancy";
 export * from "./bot-prompt-blocks";
 export * from "./ai-assist";
 export * from "./billing";
+export * from "./referrals";
