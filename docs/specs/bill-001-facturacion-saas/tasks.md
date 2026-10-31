@@ -96,18 +96,18 @@
 
 ## Fase 4 · Verificación de Criterios BDD y Cierre
 
-- [ ] **T-10 · Implementar aplicación de créditos de referidos**
+- [x] **T-10 · Implementar aplicación de créditos de referidos**
   - Consultar créditos `available`/`partially_redeemed` de REF-001 al emitir la factura, imputarlos por `expires_at` y registrar `credit_cents`/`applied_referral_credit_id`.
   - Descontar `remaining_cents` en REF-001; dejar `redeemed` si llega a cero o `partially_redeemed` si queda saldo.
   - Si `total_cents = 0`, marcar la factura `pagada` sin pasarela y emitir comprobante.
   - Verificación: CA-BILL-06 pasa; un reintento no consume dos veces el mismo crédito.
 
-- [ ] **T-10A · Implementar prorrateo por cambio de plan**
+- [x] **T-10A · Implementar prorrateo por cambio de plan**
   - Calcular `credit_cents`, `charge_cents`, `remaining_days` y `net_cents`; registrar en `subscription_changes`.
   - Aplicar `proration_cents` en la próxima factura; si el neto es negativo, dejar crédito a favor y evitar total negativo.
   - Verificación: CA-BILL-07 pasa; un reintento no duplica el cambio ni el neto.
 
-- [ ] **T-11 · Ejecutar pruebas automatizadas BDD**
+- [x] **T-11 · Ejecutar pruebas automatizadas BDD**
   - Validar CA-BILL-01 (Idempotencia Wompi).
   - Validar CA-BILL-02 (Stripe USD).
   - Validar CA-BILL-03 (Datos fiscales Matías API).

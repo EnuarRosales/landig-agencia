@@ -78,3 +78,4 @@ export * from "./repositories/drizzle-billing.repository";
 export * from "./services/billing.service";
 export * from "./services/checkout.service";
 export * from "./services/billing-export.service";
+export * from "./services/referral-credit-billing.manager";
