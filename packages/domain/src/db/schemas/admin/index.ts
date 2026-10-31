@@ -17,3 +17,5 @@ export * from "./auth-providers-config";
 export * from "./plan-catalogs";
 export * from "./chatwoot-media-onboarding";
 export * from "./notifications";
+export * from "./bot-catalog";
+export * from "./bot-tenancy";

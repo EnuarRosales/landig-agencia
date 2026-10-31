@@ -71,6 +71,20 @@
       "when": 1793404570166,
       "tag": "0009_phase2_admin_grants_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793478798906,
+      "tag": "0010_phase4_bot_catalog_and_tenancy",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793478799900,
+      "tag": "0011_phase4_bot_grants_comments",
+      "breakpoints": true
     }
   ]
 }

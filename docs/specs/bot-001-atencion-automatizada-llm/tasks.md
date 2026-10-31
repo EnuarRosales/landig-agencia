@@ -26,11 +26,11 @@
 
 ## Fase 1 · Catálogo (plataforma)
 
-- [ ] **T-02 · Crear las migraciones del catálogo**
+- [x] **T-02 · Crear las migraciones del catálogo**
   - `ai_providers`, `ai_models`, `bot_tones`, `bot_presets`, `bot_defaults`, `chatwoot_channel_types` con auditoría (DAT-001 RF-10.9), comentarios, índices por camino de acceso y `UNIQUE` declarados.
   - Verificación: `drizzle-kit check` pasa; la migración aplica desde cero; `bot_defaults` admite una sola fila.
 
-- [ ] **T-03 · Cargar el catálogo con recomendaciones**
+- [x] **T-03 · Cargar el catálogo con recomendaciones**
   - Seed versionado con etiquetas JSONB `{es,en}` para modelos, tonos y presets; precios de costo vigentes y `spread_percent` por modelo (30% por defecto).
   - Verificación: los 6 proveedores y sus modelos se listan con recomendación; el retail se calcula desde costo + spread; un modelo sin retail queda marcado solo-BYOK.
 
@@ -50,15 +50,15 @@
 
 ## Fase 3 · Configuración del inquilino
 
-- [ ] **T-07 · Crear las migraciones del inquilino**
+- [x] **T-07 · Crear las migraciones del inquilino**
   - `tenant_bots`, `tenant_ai_providers`, `tenant_model_settings`, `tenant_bot_channels` con auditoría, soft delete y `UNIQUE` declarados.
   - Verificación: `preset_id` y `provider_id`+`model_id` son excluyentes; el mismo canal no se habilita dos veces en un bot.
 
-- [ ] **T-08 · Implementar el alta mínima del bot**
+- [x] **T-08 · Implementar el alta mínima del bot**
   - Nombre, objetivo, tono, preset (o modelo) y canales; el resto hereda `bot_defaults`; snapshot efectivo por `revision`.
   - Verificación: un bot se crea con 5 campos; dos bots con defaults distintos no se alteran al versionar `bot_defaults`; el snapshot coincide con la resolución documentada.
 
-- [ ] **T-09 · Habilitar el bot por canales**
+- [x] **T-09 · Habilitar el bot por canales**
   - Habilitación/deshabilitación por integración aprovisionada, con saludo opcional por canal.
   - Verificación: un canal sin bot no recibe respuesta automática; un canal desactivado por el inquilino no responde.
 
@@ -68,13 +68,13 @@
 
 ## Fase 4 · BYOK (día uno)
 
-- [ ] **T-11 · Registrar claves BYOK cifradas**
+- [x] **T-11 · Registrar claves BYOK cifradas**
   - AES-256-GCM con AAD `client_id:provider_id` y maquinaria de AUTH-D-04; máscara `last4`; rotación y desactivación.
   - Verificación: la clave no aparece en logs, respuestas ni respaldos en claro; una clave rotada deja la anterior retirada sin borrar la historia; el consumo BYOK queda en `ai_usage_events` con costo 0.
 
 ## Fase 5 · Fundaciones de la propuesta de negocio (activación por fases, D-07)
 
-- [ ] **T-12 · Crear las migraciones de billetera y consumo**
+- [x] **T-12 · Crear las migraciones de billetera y consumo**
   - `wallets`, `wallet_transactions`, `ai_usage_events`, `ai_platform_keys` append-only con índices por `(client_id, created_at)`.
   - `wallet_transactions` con `currency`, `amount_local_cents`, `fx_rate`; `ai_usage_events.purpose` con `bot`/`assist`/`trial`.
   - Verificación: `wallet_transactions` y `ai_usage_events` no admiten UPDATE ni DELETE por el rol de aplicación.
