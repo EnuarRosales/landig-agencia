@@ -24,21 +24,21 @@
 
 ## Fase 1 · Datos y estados
 
-- [ ] **T-02 · Crear las migraciones de pedidos**
+- [x] **T-02 · Crear las migraciones de pedidos**
   - `orders`, `order_items`, `order_events` y `order_returns` con RLS, auditoría, FKs y el índice único parcial de idempotencia.
   - Verificación: `drizzle-kit check` pasa; una consulta sin contexto RLS no devuelve filas.
 
-- [ ] **T-03 · Implementar la máquina de estados**
+- [x] **T-03 · Implementar la máquina de estados**
   - Transiciones válidas, eventos inmutables, motivo obligatorio en cancelación y reembolso antes de cerrar.
   - Verificación: una transición inválida se rechaza sin dejar evento; cada transición registra actor y fecha.
 
 ## Fase 2 · Registro y precios
 
-- [ ] **T-04 · Implementar `registrar_pedido`**
+- [x] **T-04 · Implementar `registrar_pedido`**
   - Contrato de BOT-002: idempotencia por conversación, snapshot de ítems, precio por escalón y número legible.
   - Verificación: dos llamadas con la misma conversación producen un solo pedido; 2 unidades aplican el escalón correcto.
 
-- [ ] **T-05 · Implementar totales y moneda**
+- [x] **T-05 · Implementar totales y moneda**
   - `subtotal + envío − descuento = total`, en centavos y con la moneda del inquilino.
   - Verificación: un total nunca es negativo; la moneda queda congelada en el pedido.
 
@@ -48,17 +48,17 @@
 
 ## Fase 3 · Pago, envío y devoluciones
 
-- [ ] **T-07 · Implementar pago y envío**
+- [x] **T-07 · Implementar pago y envío**
   - Método de pago snapshot, estados de pago, método de envío, documento obligatorio en oficina y tracking.
   - Verificación: cancelar con pago `paid` exige reembolso; `office` sin documento se rechaza.
 
-- [ ] **T-08 · Implementar devoluciones**
+- [x] **T-08 · Implementar devoluciones**
   - Motivo, monto, estados y transición a `returned` al recibirse.
   - Verificación: la devolución no edita el pedido original y deja eventos.
 
 ## Fase 4 · Integraciones y cierre
 
-- [ ] **T-09 · Integrar etiqueta y CRM**
+- [x] **T-09 · Integrar etiqueta y CRM**
   - `registered` aplica `compra-realizada` y pasa el prospecto a `customer` en la misma operación lógica.
   - Verificación: la etiqueta aparece en Chatwoot y el prospecto cambia de etapa una sola vez.
 

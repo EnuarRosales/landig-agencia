@@ -69,6 +69,8 @@ describe("ADM-001 T-04 · Separación de las dos líneas de migración Drizzle",
       "0003_cell_phase2_rls_grants_comments",
       "0004_cell_phase3_crm_prospects",
       "0005_cell_phase3_crm_rls_grants_comments",
+      "0006_cell_phase4_orders",
+      "0007_cell_phase4_orders_rls_grants_comments",
     ]);
     for (const tag of cellTags) {
       expect(controlTags).not.toContain(tag);

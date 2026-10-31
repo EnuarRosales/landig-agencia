@@ -52,3 +52,6 @@ export * from "./utils/env";
 export * from "./repositories/crm.repository.interface";
 export * from "./repositories/drizzle-crm.repository";
 export * from "./services/crm.service";
+export * from "./repositories/orders.repository.interface";
+export * from "./repositories/drizzle-orders.repository";
+export * from "./services/orders.service";
