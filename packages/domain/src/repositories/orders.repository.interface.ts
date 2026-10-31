@@ -87,6 +87,15 @@ export interface IOrdersRepository {
   ): Promise<OrderWithDetails | null>;
 
   /**
+   * Lista pedidos con filtros y paginación.
+   */
+  listOrders(
+    cellId: string,
+    clientId: string,
+    filters?: ListOrdersFilter,
+  ): Promise<{ items: CellOrder[]; total: number }>;
+
+  /**
    * Crea un nuevo pedido con sus líneas de producto y evento de auditoría en una transacción atómica.
    */
   createOrder(

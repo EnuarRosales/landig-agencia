@@ -4,6 +4,7 @@ import { getAdminDictionary } from "@/lib/i18n";
 import { NewOrderDialog } from "./new-order-dialog";
 
 interface OrderRow {
+  [key: string]: unknown;
   number: string;
   customerName: string;
   customerPhone: string;
@@ -115,9 +116,9 @@ export default function AdminOrdersPage() {
           { key: "shippingMethod", header: dict.colShipping, sortable: true, filterable: true },
           { key: "createdAt", header: dict.colCreatedAt, sortable: true },
         ]}
-        data={demoOrders}
+        rows={demoOrders}
+        emptyMessage={dict.emptyOrders}
         pageSize={10}
-        ariaLabel={dict.title}
       />
     </main>
   );

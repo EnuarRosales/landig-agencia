@@ -21,11 +21,11 @@ describe("ORD-001 T-06 · Vista administrativa de pedidos (/admin/orders)", () =
 
     const dataTable = children[2] as React.ReactElement<{
       columns: unknown[];
-      data: unknown[];
+      rows: unknown[];
       pageSize: number;
     }>;
     expect(dataTable.props.columns).toBeDefined();
     expect(dataTable.props.columns.length).toBe(7);
-    expect(dataTable.props.data.length).toBe(3);
+    expect(dataTable.props.rows.length).toBe(3);
   });
 });
