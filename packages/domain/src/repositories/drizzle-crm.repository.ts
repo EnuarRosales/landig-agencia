@@ -24,7 +24,7 @@ import type {
 import type {
   CellConnectionChecker,
   CellDatabaseProvider,
-} from "./cell-auth.repository.interface";
+} from "./drizzle-cell-auth.repository";
 import { CellUnavailableError } from "./cell-auth.repository.interface";
 
 /**

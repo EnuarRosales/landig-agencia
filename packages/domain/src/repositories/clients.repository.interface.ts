@@ -90,5 +90,17 @@ export interface IClientsRepository {
   provisionTenantInRouter(
     input: ProvisionTenantPersistenceInput,
   ): Promise<ProvisionedTenantRecord>;
+
+  /**
+   * Resuelve el inquilino y su celda asignada a partir del identificador numérico de cuenta de Chatwoot.
+   *
+   * Utilizado para correlacionar webhooks entrantes de Chatwoot con la celda de datos del inquilino (CRM-001 §5).
+   *
+   * @param chatwootAccountId - Identificador de cuenta de Chatwoot (account.id).
+   * @returns Objeto con `clientId` y `cellId`, o `null` si no existe la correlación en Router Global.
+   */
+  findTenantByChatwootAccountId(
+    chatwootAccountId: number,
+  ): Promise<{ clientId: string; cellId: string } | null>;
 }
 

@@ -4,6 +4,7 @@ import { getDb } from "../db/client";
 import * as schema from "../db/schemas";
 import {
   cells,
+  chatwootAccounts,
   clientPlans,
   clientRouting,
   clients,
@@ -261,6 +262,31 @@ export class DrizzleClientsRepository implements IClientsRepository {
         ownerUserId: input.client.ownerUserId,
       });
       throw error;
+    }
+  }
+
+  /** @inheritdoc */
+  async findTenantByChatwootAccountId(
+    chatwootAccountId: number,
+  ): Promise<{ clientId: string; cellId: string } | null> {
+    try {
+      const rows = await this.db
+        .select({
+          clientId: chatwootAccounts.clientId,
+          cellId: clientRouting.cellId,
+        })
+        .from(chatwootAccounts)
+        .innerJoin(clientRouting, eq(chatwootAccounts.clientId, clientRouting.clientId))
+        .where(eq(chatwootAccounts.chatwootAccountId, chatwootAccountId))
+        .limit(1);
+
+      return rows[0] ?? null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[ClientsRepository.findTenantByChatwootAccountId Failed] ${msg}`, error, {
+        chatwootAccountId,
+      });
+      return null;
     }
   }
 }

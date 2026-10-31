@@ -28,6 +28,18 @@ export default function AdminHomePage() {
         </div>
         <nav className="mt-4 flex flex-wrap gap-2 md:flex-col">
           <Link
+            href="/admin/conversations"
+            className="min-h-[44px] flex items-center rounded px-3 py-2 text-sm hover:bg-[var(--dsn-surface-secondary)]"
+          >
+            {dict.shell.navConversations}
+          </Link>
+          <Link
+            href="/admin/crm/contacts"
+            className="min-h-[44px] flex items-center rounded px-3 py-2 text-sm hover:bg-[var(--dsn-surface-secondary)]"
+          >
+            {dict.shell.navCrm}
+          </Link>
+          <Link
             href="/admin/leads"
             className="min-h-[44px] flex items-center rounded px-3 py-2 text-sm hover:bg-[var(--dsn-surface-secondary)]"
           >

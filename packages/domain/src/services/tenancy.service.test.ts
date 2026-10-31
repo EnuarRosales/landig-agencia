@@ -101,6 +101,7 @@ describe("TenancyService · ADM-001 T-05 & T-06", () => {
       findLiveByOwnerUserId: vi.fn().mockResolvedValue(null),
       findRoutingByClientId: vi.fn().mockResolvedValue(null),
       findAvailableCell: vi.fn().mockResolvedValue(makeCell()),
+      findTenantByChatwootAccountId: vi.fn().mockResolvedValue(null),
       provisionTenantInRouter: vi.fn().mockImplementation(async (input) => {
         const client: Client = {
           id: "019a0000-0000-7000-8000-000000000300",

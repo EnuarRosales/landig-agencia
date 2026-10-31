@@ -197,6 +197,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@mocter/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@t3-oss/env-nextjs':
         specifier: ^0.13.11
         version: 0.13.11(typescript@5.9.3)(zod@4.6.7)
