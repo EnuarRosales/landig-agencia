@@ -20,3 +20,4 @@ export * from "./notifications";
 export * from "./bot-catalog";
 export * from "./bot-tenancy";
 export * from "./bot-prompt-blocks";
+export * from "./ai-assist";

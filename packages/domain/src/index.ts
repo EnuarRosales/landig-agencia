@@ -69,3 +69,7 @@ export * from "./services/conversation-state.service";
 export * from "./services/prompt-engine";
 export * from "./services/bot-order-capture.service";
 export * from "./services/lead-classifier-orchestrator";
+export * from "./repositories/ai-assist.repository.interface";
+export * from "./repositories/drizzle-ai-assist.repository";
+export * from "./services/ai-assist-catalog.seed";
+export * from "./services/ai-assist.service";

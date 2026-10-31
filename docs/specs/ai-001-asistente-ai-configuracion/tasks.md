@@ -19,13 +19,13 @@
 
 ## Fase 0 · Decisiones
 
-- [ ] **T-01 · [HUMANO] Definir el catálogo inicial de campos asistidos**
+- [x] **T-01 · [HUMANO] Definir el catálogo inicial de campos asistidos**
   - Lista de campos de la Fase 1 (bot, productos, prospectos, perfil) con sus prompts maestros, `input_hint` y ejemplos de evaluación.
   - Verificación: cada campo asistible tiene prompt maestro y ejemplos; el dueño del producto aprueba el contenido en es/en.
 
 ## Fase 1 · Biblioteca de prompts
 
-- [ ] **T-02 · Crear las migraciones de la biblioteca**
+- [x] **T-02 · Crear las migraciones de la biblioteca**
   - `ai_assist_fields` y `ai_assist_prompts` con auditoría (RF-10.9), `(field_key, version)` único y comentarios.
   - Verificación: `drizzle-kit check` pasa; una sola versión `active` por campo.
 
@@ -35,12 +35,12 @@
 
 ## Fase 2 · Flujo «Mejorar con AI»
 
-- [ ] **T-04 · Implementar el endpoint del asistente**
+- [x] **T-04 · Implementar el endpoint del asistente**
   - Ensamblado `master_prompt` + borrador + `output_rules` con el locale; inferencia por BYOK (BOT-001) o por la billetera Mocter cuando esté activa; sin proveedor, 409 con aviso.
   - El modelo por defecto es propio del asistente, configurable por plataforma y distinto del modelo del bot.
   - Verificación: la sugerencia llega en el idioma del inquilino; sin BYOK ni saldo el endpoint rechaza; el consumo queda en `ai_usage_events` con `purpose = 'assist'`.
 
-- [ ] **T-05 · Implementar la UI del botón**
+- [x] **T-05 · Implementar la UI del botón**
   - «Mejorar con AI» en cada campo asistido con `input_hint`; comparación borrador/sugerencia; editar, aceptar o descartar.
   - Verificación: la sugerencia no se guarda sin aceptar; al aceptar, el campo pasa sus validaciones normales y se registra `source = ai_suggested` en `audit_log`.
 
