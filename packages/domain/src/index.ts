@@ -68,3 +68,4 @@ export * from "./repositories/drizzle-conversation-state.repository";
 export * from "./services/conversation-state.service";
 export * from "./services/prompt-engine";
 export * from "./services/bot-order-capture.service";
+export * from "./services/lead-classifier-orchestrator";

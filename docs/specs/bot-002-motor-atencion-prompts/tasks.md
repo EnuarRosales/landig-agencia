@@ -1,4 +1,4 @@
-﻿# BOT-002 · Tareas · Motor de atención y composición dinámica de prompts
+# BOT-002 · Tareas · Motor de atención y composición dinámica de prompts
 
 | Atributo | Valor |
 |---|---|
@@ -48,7 +48,7 @@
   - Ciudad, nombre, producto activo, cantidad, método de envío, etapa y última etiqueta; persistencia por conversación.
   - Verificación: cambiar de producto conserva ciudad y nombre; el prompt no crece con el historial.
 
-- [ ] **T-07 · Implementar el clasificador de leads**
+- [x] **T-07 · Implementar el clasificador de leads**
   - Bloque `core.classifier`, últimos 10 turnos, salida validada contra los 4 slugs, aplicación en prospecto y Chatwoot.
   - Verificación: solo devuelve los 4 slugs; una salida inválida no cambia la etiqueta; `compra-realizada` solo con evidencia de registro.
 
@@ -66,8 +66,8 @@
   - Webhook entrante, envío multiburbuja con separadores, marcadores de multimedia y etiquetas.
   - Verificación: el orden multimedia → beneficios → ubicación se respeta; las etiquetas aparecen en la conversación.
 
-- [ ] **T-11 · Verificar los criterios de aceptación**
-  - Recorrer `requirements.md` RF-01 a RF-06 y registrar evidencia por requisito.
+- [x] **T-11 · Verificar los criterios de aceptación**
+  - Recorrer `requirements.md` RF-01 a RF-07 y registrar evidencia por requisito.
   - Verificación: cada requisito tiene prueba o evidencia de laboratorio; ninguno queda «asumido».
 
 - [x] **T-12 · [HUMANO] Aprobar BOT-002 (2026-10-25)**
