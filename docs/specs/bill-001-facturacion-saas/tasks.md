@@ -82,12 +82,12 @@
   - Solicitar a NTF-001 el envío de `billing.payment_succeeded` o `billing.renewal` con el comprobante adjunto.
   - Verificación: Pago aprobado registra comprobante y NTF-001 envía el correo al `email` fiscal registrado.
 
-- [ ] **T-08 · Implementar exportador a Excel (.xlsx)**
+- [x] **T-08 · Implementar exportador a Excel (.xlsx)**
   - Endpoint `GET /api/billing/export?format=xlsx&period=...` usando `exceljs`.
   - Filtros: `daily`, `weekly`, `monthly`, `quarterly`, `semiannual`, `annual`, `custom`.
   - Verificación: Descarga de archivo `.xlsx` con columnas de fecha, referencia, pasarela, monto, estado.
 
-- [ ] **T-09 · Implementar exportador a PDF (.pdf)**
+- [x] **T-09 · Implementar exportador a PDF (.pdf)**
   - Endpoint `GET /api/billing/export?format=pdf&period=...`.
   - Documento vectorizado con membrete, tabla paginada y totales.
   - Verificación: Descarga de archivo `.pdf` visualizable en visor estándar.
