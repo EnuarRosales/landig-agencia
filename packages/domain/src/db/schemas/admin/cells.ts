@@ -31,3 +31,6 @@ export const cells = adminSchema.table(
     check("cells_capacity_check", sql.raw("current_clients <= max_clients")),
   ],
 );
+
+export type Cell = typeof cells.$inferSelect;
+export type NewCell = typeof cells.$inferInsert;

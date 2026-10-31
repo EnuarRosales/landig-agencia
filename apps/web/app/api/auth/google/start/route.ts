@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  authService,
   authRateLimiter,
   oauthStateManager,
   defaultGoogleOidcClient,
@@ -92,8 +93,30 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       returnTo: returnToQuery,
     });
 
-    // 3. Resolución de credenciales de Google
-    const clientId = env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
+    // 3. Resolución dinámica de credenciales y habilitación de Google (AUTH-D-08, CA-AUTH-02)
+    let clientId = env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || "";
+    const clientSecretFallback =
+      env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || "fallback-secret";
+    if (typeof authService?.resolveOAuthProviderRuntimeConfig === "function") {
+      const runtimeCfg = await authService.resolveOAuthProviderRuntimeConfig("google", {
+        clientId,
+        clientSecret: clientSecretFallback,
+      });
+      if (!runtimeCfg.ok && runtimeCfg.code === "PROVIDER_DISABLED") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Proveedor temporalmente fuera de servicio",
+            code: "PROVIDER_DISABLED",
+          },
+          { status: 503 },
+        );
+      }
+      if (runtimeCfg.ok) {
+        clientId = runtimeCfg.data.clientId;
+      }
+    }
+
     const redirectUri =
       env.GOOGLE_REDIRECT_URI ||
       process.env.GOOGLE_REDIRECT_URI ||

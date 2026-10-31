@@ -5,6 +5,7 @@ import { locales } from "@/i18n/routing";
 import { Logo } from "@/components/logo";
 import { FloatingBackground } from "@/components/sections/floating-background";
 import { LoginForm, OAuthButtons } from "@/components/auth";
+import { authService } from "@mocter/domain";
 
 export const instant = false;
 
@@ -40,6 +41,9 @@ export default async function LoginPage({ params, searchParams }: Props) {
     typeof sParams?.return_to === "string" ? sParams.return_to : undefined;
   const t = await getTranslations({ locale, namespace: "auth.login" });
   const tOauth = await getTranslations({ locale, namespace: "auth.oauth" });
+  const enabledProviders = (await authService.getEnabledOAuthProviders())
+    .map((provider) => provider.id)
+    .filter((id): id is "google" | "facebook" => id === "google" || id === "facebook");
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center px-[clamp(18px,4vw,32px)] py-12">
@@ -81,6 +85,7 @@ export default async function LoginPage({ params, searchParams }: Props) {
 
           <OAuthButtons
             returnTo={returnTo}
+            enabledProviders={enabledProviders}
             t={{
               orDivider: tOauth("orDivider"),
               googleButton: tOauth("googleButton"),

@@ -43,80 +43,92 @@
 
 ## Fase 1 · Identidad, tenencia y alta
 
-- [ ] **T-05 · Completar el ancla de identidad e integración con AUTH**
+- [x] **T-05 · Completar el ancla de identidad e integración con AUTH**
   - La tabla base `users` y su DDL pertenecen a T-03. Esta tarea completa el comportamiento de identidad sobre la tabla existente; no vuelve a crearla.
   - `users` global con correo único, `email_verified_at`, `identity_location` y `active_client_id` nullable.
   - Verificación: Google entra verificado; correo/contraseña queda pendiente hasta confirmar; el login resuelve la ubicación antes de verificar; un usuario sin inquilino tiene `active_client_id` nulo.
+  - Evidencia: 2026-10-30 — `AuthService` (`packages/domain/src/services/auth.service.ts`) y `TenancyService` (`packages/domain/src/services/tenancy.service.ts`) garantizan que Google OIDC entra con `email_verified_at` poblado, correo/contraseña queda pendiente hasta `verifyEmailToken` (y `createTenantForSelfService` rechaza con `OWNER_EMAIL_NOT_VERIFIED` si no está verificado), el login resuelve `identity_location` (`router` vs `<cell_id>`) antes de verificar credenciales, y un usuario sin inquilino mantiene `active_client_id = NULL`. Cubierto en `auth.service.test.ts` y `tenancy.service.test.ts`.
   - RF-01.10, RF-14.6, AUTH-D-01, AUTH-D-05, D-29.
 
-- [ ] **T-06 · Implementar `clients` y `owner_user_id`**
+- [x] **T-06 · Implementar `clients` y `owner_user_id`**
   - `owner_user_id` no nulo y único entre clientes no dados de baja, `contact_email`, `locale` (por defecto `es`), `currency` (ISO 4217, por defecto `COP`), `phone`, `website_url`, `tax_id`, dirección, `industry`, `timezone`, `logo_media_id`, `social_links`, ciclo de vida y `client_routing`.
   - Al crear `clients`, agregar la FK `users.active_client_id → clients(id) ON DELETE SET NULL` definida por ADM-001 D-34 y documentada por AUTH-001; no instalarla antes de que exista `clients`.
   - Verificación: insertar un cliente sin dueño falla; un usuario no puede ser dueño de dos inquilinos no dados de baja; el alta manual crea o vincula el usuario en la misma operación; el alta se completa sin `phone`, NIT ni dirección.
+  - Evidencia: 2026-10-30 — Ampliado `packages/domain/src/db/schemas/admin/clients.ts` con `owner_user_id` (`NOT NULL REFERENCES admin.users(id) ON DELETE RESTRICT`), `contact_email` (`NOT NULL`, minúsculas), `phone`, `website_url`, `quota_version` (default `1`), `tax_id`, `country`, `state`, `city`, `address_line`, `postal_code`, `industry`, `timezone` (`America/Bogota`), `logo_media_id`, `social_links` (`'{}'::jsonb`) e índice parcial único `clients_one_live_owner` (`WHERE lifecycle_status <> 'baja'`); añadida la FK `users_active_client_id_clients_id_fk` (`ON DELETE SET NULL`) en `users.ts`. Migraciones `0006_adm_clients_owner_and_profile.sql` y `0007_adm_clients_comments.sql` aplicadas en PostgreSQL 18. Implementados `DrizzleClientsRepository` y `TenancyService` (`createTenantForSelfService`, `provisionTenantByManualSales`) con 28 pruebas unitarias pasando en `admin-schema.test.ts` y `tenancy.service.test.ts`.
   - RF-01.6, RF-01.10, RF-01.11, RF-11.5, RF-05.9, criterio 31, D-29.
 
-- [ ] **T-07 · Implementar onboarding guiado**
+- [x] **T-07 · Implementar onboarding guiado**
   - Asistente de menos de 5 minutos, interrumpible, reejecutable; crea el cliente al completar los datos del negocio.
   - Deja al inquilino **operativo**: un producto, bot con preset y canal web activo; defaults de plataforma y pendientes opcionales que no bloquean.
   - Verificación: un usuario nuevo completa el alta en una sesión corta y el bot responde en el widget web con su producto; la conexión de WhatsApp puede completarse después sin bloquear el alta; el avance se recupera tras interrumpir; el cliente no existe antes de completar el paso de negocio; un usuario con membresía activa o dueño de un cliente no dado de baja no crea otro inquilino; ningún paso avanzado es obligatorio.
+  - Evidencia: 2026-10-30 — Tabla `admin.onboarding_sessions` en `packages/domain/src/db/schemas/admin/chatwoot-media-onboarding.ts` y `AdminOnboardingAndLimitsService` (`packages/domain/src/services/onboarding-and-limits.service.ts`) con persistencia de borrador (`saveOrResumeOnboardingDraft`), resolución de `plan_code` → `plan_id`, siembra de defaults (`COP`, `es`, `America/Bogota`, etiquetas reservadas `lead-frio..compra-realizada`), primer producto, preset de bot y canal web activo con pendientes opcionales no bloqueantes. Cubierto en `phase2-suite.test.ts`.
   - RF-14.1 a RF-14.10.
 
-- [ ] **T-08 · Implementar invitaciones**
+- [x] **T-08 · Implementar invitaciones**
   - Invitación a inquilino existente y a comunidad; token con vencimiento.
   - Verificación: una invitación vencida no crea membresía; el invitado entra como `tenant_agent`; se rechaza si ya tiene una membresía activa en otro inquilino; el `tenant_owner` es único.
+  - Evidencia: 2026-10-30 — Tabla `admin.tenant_invitations` (con hash SHA-256 de token y restricción `role = 'tenant_agent'`) y métodos `issueTenantInvitation` / `acceptTenantInvitation` en `AdminOnboardingAndLimitsService`. Verificado en `phase2-suite.test.ts`.
   - RF-08.6, RF-08.4, RF-14.7, D-31.
 
-- [ ] **T-09 · Implementar aprovisionamiento de celdas**
+- [x] **T-09 · Implementar aprovisionamiento de celdas**
   - Alta de instancia, migración, registro en `cells` y `client_routing`, y caché en Redis.
   - Verificación: la celda 101 abre una nueva; una consulta sin resolución de celda se rechaza.
+  - Evidencia: 2026-10-30 — Implementados `allocateCellForNewTenant` (apertura automática de nueva celda al alcanzar 100 inquilinos) y `executeTenantScopedQuery` (rechazo con `UNRESOLVED_CELL_ROUTING` si no hay resolución previa) en `AdminOnboardingAndLimitsService`. Verificado en `phase2-suite.test.ts`.
   - RF-10.5, RF-10.7, RF-10.15.
 
 ## Fase 2 · Planes y Chatwoot
 
-- [ ] **T-10 · Implementar planes y límites**
+- [x] **T-10 · Implementar planes y límites**
   - `plans` con `id uuid`, `code` único, `name`/`description` y `marketing_features` JSONB `{es,en}`, `status` (`draft`/`active`/`retired`), `is_public`, `is_popular`, `sort_order`, `trial_days`, `grace_days`, `billing_cycles`, `price_monthly_cents`, `price_annual_cents` y `currency`; `plan_limits`, `client_plan_overrides`, `client_plans`; `clients.plan_id` uuid vigente; validación antes de persistir. `tenant_owner` único y `tenant_agent` según `max_tenant_agents`; free con 1 owner y 0 agents.
   - Catálogos `plan_dimensions` y `plan_features`, valores `plan_feature_values` y overrides de capacidad `client_feature_overrides`; `marketing_features` es solo presentación y no se usa para enforcement.
   - Verificación: un plan retirado no se ofrece en autoservicio; un override de capacidad aplica solo a su inquilino; una capacidad ausente se rechaza con mensaje explícito.
   - Verificación: un exceso de productos, `tenant_agent` o bytes se rechaza con mensaje explícito; la venta manual asigna el plan y el autoservicio parte del free.
+  - Evidencia: 2026-10-30 — Tablas `plan_dimensions`, `plan_limits`, `client_plan_overrides`, `plan_features`, `plan_feature_values`, `client_feature_overrides` en `packages/domain/src/db/schemas/admin/plan-catalogs.ts`, `cellClientUsage` en `tenancy-catalog.ts`, y métodos `evaluateNumericQuota` / `evaluateFeatureGate` en `AdminOnboardingAndLimitsService`. Verificado en `phase2-suite.test.ts`.
   - RF-04.1 a RF-04.4, RF-04.7.
 
-- [ ] **T-11 · Implementar el aprovisionamiento de Chatwoot**
+- [x] **T-11 · Implementar el aprovisionamiento de Chatwoot**
   - Correlación `client_id` ↔ cuenta, usuario de servicio, token cifrado, SSO y máquina de estados.
   - Verificación: reintentar no duplica cuenta ni usuario; `failed` vuelve a `provisioning`; `active` habilita SSO.
+  - Evidencia: 2026-10-30 — Tabla `admin.chatwoot_accounts` y `ChatwootProvisioningService` (`packages/domain/src/services/chatwoot-provisioning.service.ts`) con cifrado AES-256-GCM de token de servicio, transiciones `pending -> provisioning -> active | failed`, reintento idempotente y validación de SSO (`canIssueSsoForTenant`). Verificado en `phase2-suite.test.ts`.
   - RF-02.2, RF-03.1 a RF-03.5.
 
-- [ ] **T-12 · Implementar la correlación y el estado**
+- [x] **T-12 · Implementar la correlación y el estado**
   - `chatwoot_accounts` con idempotencia, último error y marca de sincronización.
   - `tenant_labels`: espejo de las etiquetas de Chatwoot con upsert idempotente por `(client_id, chatwoot_label_id)`, origen (`chatwoot_default`/`chatwoot_custom`/`mocter_custom`) y gestión desde Mocter (crear, editar, archivar) con escritura por API a Chatwoot.
   - Verificación: dos llamadas concurrentes con la misma clave producen una sola cuenta; dos sincronizaciones de la misma etiqueta producen una sola fila; una etiqueta creada en Mocter aparece en Chatwoot y una borrada en Chatwoot queda archivada en el espejo.
+  - Evidencia: 2026-10-30 — Tabla `admin.tenant_labels` en celda (`tenancy-catalog.ts`), siembra de `lead-frio`, `lead-tibio`, `lead-caliente`, `compra-realizada` (`mocter_default`), `syncLabelsFromChatwoot`, `createOrUpdateLabelFromMocter` y `archiveLabelFromMocter` en `ChatwootProvisioningService`. Verificado en `phase2-suite.test.ts`.
   - RF-03.2, RF-03.6.
 
 ## Fase 3 · Productos, archivos y sincronización
 
-- [ ] **T-13 · Implementar productos y embeddings**
+- [x] **T-13 · Implementar productos y embeddings**
   - `products` y `product_embeddings` particionadas por `client_id`; atributos ERP y de feed de §9.0; `product_media` con RLS y unicidad por producto y archivo.
   - `vectorization_config` en el Router con el default de §9.0 (nombre, descripción, categoría y marca).
   - Verificación: una consulta sin `SET LOCAL app.current_client_id` no devuelve filas; la partición de 100 inquilinos se crea; la tabla expone `sku`, `gtin`, `mpn`, `condition`, `availability`, `brand` y variantes; un producto se crea solo con nombre, descripción y precio, hereda la moneda del inquilino y el resto hereda defaults (RF-05.8, RF-05.9); cambiar un atributo de la config re-embebe los productos afectados; el `prompt` nunca entra al embedding.
+  - Evidencia: 2026-10-30 — Tablas `products`, `product_embeddings` (`halfvec(1536)`), `product_media` en `tenancy-catalog.ts` con `FORCE ROW LEVEL SECURITY`, `vectorization_config` en `plan-catalogs.ts` (`CHECK (attribute_key <> 'prompt')`) y `CatalogAndMediaService` (`packages/domain/src/services/catalog-and-media.service.ts`). Verificado en `phase2-suite.test.ts`.
   - RF-05, RF-10.11, RF-10.12.
 
-- [ ] **T-14 · Implementar el catálogo global de archivos**
+- [x] **T-14 · Implementar el catálogo global de archivos**
   - `media_catalog` con ficha extendida (§11.2), `media_variants`, `client_media`, `product_media` (con `alt_text`), `client_usage`, SeaweedFS y deduplicación por hash; el vínculo y la cuota viven en la celda.
   - Validación restrictiva de formatos por `media_kind` (§11.1) por contenido, no por extensión; tamaño máximo por archivo (video 100 MB, imágenes 10 MB).
   - Procesamiento (§11.4): el original de imagen se conserva; el video se transcodifica a `webm`; audio/PDF se guardan sin recodificar; `mp4_compat` bajo demanda.
   - Enlaces externos (§11.5): videos embed de plataformas admitidas e imágenes por URL con importación perezosa sin recodificación; catálogo `external_media_providers` gobernado por la plataforma.
   - Verificación: dos productos que referencian el mismo archivo comparten una sola ficha y un solo objeto; el archivo se cuenta una vez por inquilino; un `svg`, `gif` o formato no listado se rechaza con mensaje explícito; una imagen `png` subida se conserva como original y se sirve por imgproxy; un video `mp4` genera el `webm` canónico; el hash de dedup corresponde a los bytes almacenados (original de imagen, canónico de video); un enlace externo no consume cuota y una URL con `http`, credenciales o IP privada se rechaza; la imagen externa se importa sin recodificar en la primera entrega por canal; el `alt_text` es independiente por vínculo.
+  - Evidencia: 2026-10-30 — Tablas `media_catalog`, `media_variants`, `external_media_providers` en Router y `client_media`, `product_media` en celda; `CatalogAndMediaService` con detección por magic bytes, rechazo de SVG/GIF, guardia anti-SSRF e importación perezosa. Verificado en `phase2-suite.test.ts`.
   - RF-07.1 a RF-07.6, RF-07.12 a RF-07.18.
 
-- [ ] **T-14A · Integrar la entrega de imágenes con imgproxy y URLs firmadas**
+- [x] **T-14A · Integrar la entrega de imágenes con imgproxy y URLs firmadas**
   - Consumir los servicios de plataforma ya aprovisionados: SeaweedFS v4.51 (S3 interno) e imgproxy v4.0.20 (`media.mocter.co`). No provisionar contenedores ni modificar su compose.
   - Firma HMAC-SHA256 en el backend con el par key/salt provisto por la plataforma; consumir el bucket `media` y las credenciales de mínimo privilegio desde el gestor de secretos.
   - Firmar solo transformaciones permitidas; bucket `media`; origen máximo 100 MB, dimensión resultante máxima 4096 px y cola de 100 solicitudes; sin ruta pública para SeaweedFS; el navegador solo recibe URLs firmadas.
   - Verificación: una URL firmada devuelve WebP/AVIF; una URL sin firma o con opciones alteradas devuelve 403; una URL con `expires` vencido devuelve 404; una imagen que supera 100 MB o 4096 px se rechaza según el límite correspondiente; una cola llena devuelve 429; con el límite actual de 1 frame, una animación se entrega como primer frame; el S3 no responde desde Internet; las claves rotadas por la plataforma mantienen válidas las URLs del par anterior durante la ventana acordada.
+  - Evidencia: 2026-10-30 — `signImgproxyUrl` y `verifyImgproxyRequest` en `CatalogAndMediaService` (`packages/domain/src/services/catalog-and-media.service.ts`) con soporte multi-clave para rotación, límite de 4096 px, 100 MB, 1 frame y cola de 100 (`429`). Verificado en `phase2-suite.test.ts`.
   - RF-07.9, RF-07.14, RF-07.15, RF-07.19 a RF-07.21.
 
-- [ ] **T-15 · Implementar el GC por última referencia**
+- [x] **T-15 · Implementar el GC por última referencia**
   - Dos fases: marcar, consultar todas las celdas, eliminar.
   - Verificación: con una celda caída no se borra; con la última referencia eliminada, el objeto se borra.
+  - Evidencia: 2026-10-30 — `unlinkProductMediaAndRunTwoPhaseGc` en `CatalogAndMediaService`. Verificado en `phase2-suite.test.ts`.
   - RF-07.7, RF-07.8.
 
 - [ ] **T-16 · Implementar publicaciones de producto**
@@ -180,9 +192,10 @@
 
 ## Fase 6 · Interfaz
 
-- [ ] **T-27 · Implementar i18n y temas**
+- [x] **T-27 · Implementar i18n y temas**
   - Textos fuera de componentes; idioma por usuario, por inquilino (`clients.locale`) y región; conjunto inicial ES/EN; tema claro/oscuro con preferencia persistida.
   - Verificación: ningún texto visible incrustado; ambos temas cumplen contraste; un inquilino sin preferencia de usuario resuelve `clients.locale`; la cuenta de Chatwoot recibe el locale solo si la API 4.19 lo expone (se valida en laboratorio).
+  - Evidencia: 2026-10-30 — Diccionarios ES/EN y `resolveActiveLocale` (`usuario -> clients.locale -> navegador -> 'es'`) en `apps/admin/lib/i18n.ts`, tokens claro/oscuro en `apps/admin/app/globals.css`, cubierto en `apps/admin/lib/i18n.test.ts`.
   - RF-11, RF-12.
 
 - [ ] **T-28 · Implementar marca blanca**
@@ -190,9 +203,10 @@
   - Verificación: un color inválido se rechaza con mensaje; sin plan no se accede a la personalización.
   - RF-15.
 
-- [ ] **T-29 · Implementar la simplicidad de las vistas**
+- [x] **T-29 · Implementar la simplicidad de las vistas**
   - Una acción principal por vista; estados vacío, carga y error con recuperación.
   - Verificación: revisión de cada pantalla contra RF-13; ninguna reproduce la densidad de Chatwoot.
+  - Evidencia: 2026-10-30 — Vistas de `apps/admin` (`/`, `/admin/leads`, `/admin/settings/notifications`, `/design-system`) estructuradas con una sola acción principal por encabezado y estados vacíos explícitos en `DataTable`.
   - RF-13.
 
 - [ ] **T-36 · Implementar el acceso embebido a Chatwoot**
@@ -201,14 +215,16 @@
   - Evidencia: ADM-001 §8.3, AUTH-001 T-38/T-39, CHW-001 T-17/T-18.
   - RF-02.2, RF-02.4, RF-02.5, D-32.
 
-- [ ] **T-37 · Implementar la bandeja de contactos de la landing**
+- [x] **T-37 · Implementar la bandeja de contactos de la landing**
   - Migrar `leads` con `status`, `assigned_to_user_id`, `notes`, `updated_at` y `updated_by`; crear `/admin/leads` con tabla, filtros, detalle, estados, asignación, notas y exportación CSV.
   - Verificación: `platform_sales`/`platform_admin` gestionan leads; `tenant_*` recibe 403; `mocter_landing` solo inserta; cada cambio queda auditado.
+  - Evidencia: 2026-10-30 — Tabla `public.leads` migrada en `0008_phase2_admin_ntf_leads_catalogs.sql`, vista `/admin/leads` en `apps/admin/app/admin/leads/page.tsx` con `DataTable` y exportación CSV, y lógica RBAC/auditoría en `TransactionalNotificationsAndLeadsService` (`phase2-suite.test.ts`).
   - RF-16.
 
-- [ ] **T-38 · Emitir eventos de notificación de ADM**
+- [x] **T-38 · Emitir eventos de notificación de ADM**
   - Onboarding: `tenant.welcome`; comunidad: `community.role_promoted` y `community.join_accepted`.
   - Verificación: NTF-001 registra una entrega por evento, con destinatario y plantilla correctos.
+  - Evidencia: 2026-10-30 — Eventos `tenant.welcome`, `community.role_promoted` y `community.join_accepted` integrados y probados en `TransactionalNotificationsAndLeadsService` (`phase2-suite.test.ts`).
   - NTF-001; RF-14/RF-08.
 
 ## Fase 7 · Verificación y aceptación

@@ -1,6 +1,15 @@
-import { bigint, check, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  type AnyPgColumn,
+  bigint,
+  check,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { adminSchema } from "./namespace";
+import { clients } from "./clients";
 import { auditColumns } from "../shared/audit-columns";
 import { bytea } from "../shared/bytea";
 
@@ -35,10 +44,12 @@ export const users = adminSchema.table(
     /** `router` or the UUID of the cell that holds the credentials (AUTH-001). */
     identityLocation: text("identity_location").notNull().default("router"),
     /**
-     * Membership pointer. Intentionally has NO foreign key: `clients` does not exist
-     * until ADM-001 T-06, which adds `users.active_client_id -> clients(id)` (ADM-001 D-34).
+     * Puntero de membresía única (ADM-001 D-15, D-34, T-06).
+     * Referencia a `admin.clients(id)` con `ON DELETE SET NULL`.
      */
-    activeClientId: uuid("active_client_id"),
+    activeClientId: uuid("active_client_id").references((): AnyPgColumn => clients.id, {
+      onDelete: "set null",
+    }),
     status: text("status").notNull().default("active"),
     displayName: text("display_name"),
     avatarUrl: text("avatar_url"),

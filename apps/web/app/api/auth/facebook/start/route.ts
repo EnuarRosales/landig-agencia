@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  authService,
   authRateLimiter,
   oauthStateManager,
   defaultFacebookOAuthClient,
@@ -92,8 +93,34 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       returnTo: returnToQuery,
     });
 
-    // 3. Resolución de credenciales de Facebook
-    const clientId = env.FACEBOOK_APP_ID || process.env.FACEBOOK_APP_ID || "";
+    // 3. Resolución dinámica de credenciales y habilitación de Facebook (AUTH-D-08, CA-AUTH-02)
+    let clientId = env.FACEBOOK_APP_ID || process.env.FACEBOOK_APP_ID || "";
+    const clientSecretFallback =
+      env.FACEBOOK_APP_SECRET || process.env.FACEBOOK_APP_SECRET || "fallback-secret";
+    let scope = "email,public_profile";
+    if (typeof authService?.resolveOAuthProviderRuntimeConfig === "function") {
+      const runtimeCfg = await authService.resolveOAuthProviderRuntimeConfig("facebook", {
+        clientId,
+        clientSecret: clientSecretFallback,
+      });
+      if (!runtimeCfg.ok && runtimeCfg.code === "PROVIDER_DISABLED") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Proveedor temporalmente fuera de servicio",
+            code: "PROVIDER_DISABLED",
+          },
+          { status: 503 },
+        );
+      }
+      if (runtimeCfg.ok) {
+        clientId = runtimeCfg.data.clientId;
+        if (runtimeCfg.data.scopes.length > 0) {
+          scope = runtimeCfg.data.scopes.join(",");
+        }
+      }
+    }
+
     const redirectUri =
       env.FACEBOOK_REDIRECT_URI ||
       process.env.FACEBOOK_REDIRECT_URI ||
@@ -120,7 +147,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       clientId,
       redirectUri,
       state: stateResult.state,
-      scope: "email,public_profile",
+      scope,
     });
 
     const durationMs = Math.round(performance.now() - start);

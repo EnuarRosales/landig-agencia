@@ -15,6 +15,20 @@
       "when": 1793396087189,
       "tag": "0001_cell_rls_grants_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793404550665,
+      "tag": "0002_cell_phase2_tenancy_products_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793404581297,
+      "tag": "0003_cell_phase2_rls_grants_comments",
+      "breakpoints": true
     }
   ]
 }

@@ -54,8 +54,8 @@
 | `accent-subtle` | `rgba(8,145,178,.08)` | `rgba(34,211,238,.1)` |
 | `accent-glow` | `rgba(8,145,178,.25)` | `rgba(34,211,238,.3)` |
 | `accent-amber` / `accent-purple` | `#f59e0b` / `#8b5cf6` | `#f5a524` / `#b794ff` |
-| `success` | `#16a34a` | `#3ddc97` |
-| `warning` | `#ca8a04` | `#f5a524` |
+| `success` | `#15803d` | `#3ddc97` |
+| `warning` | `#a16207` | `#f5a524` |
 | `error` | `#dc2626` | `#ff6b6b` |
 | `code-bg` | `#f4f4f5` | `#0c121a` |
 

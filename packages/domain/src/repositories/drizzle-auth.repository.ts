@@ -24,12 +24,14 @@ import {
   sessions,
   clientRouting,
   identities,
+  authProvidersConfig,
   type User,
   type UserConsent,
   type EmailVerificationToken,
   type PasswordResetToken,
   type Session,
   type Identity,
+  type AuthProviderConfigRow,
 } from "../db/schemas";
 import type {
   IAuthRepository,
@@ -39,6 +41,7 @@ import type {
   CreateSessionParams,
   CreateFederatedUserParams,
   CreateIdentityParams,
+  UpsertAuthProviderConfigParams,
 } from "./auth.repository.interface";
 import { appLogger } from "../utils/logger";
 
@@ -1459,6 +1462,106 @@ export class DrizzleAuthRepository implements IAuthRepository {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[AuthRepository.purgeStalePreregistrations Failed] ${msg}`, error, {
         cutoffDate: cutoffDate.toISOString(),
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Lista la configuración de todos los proveedores OAuth registrados en `admin.auth_providers_config`
+   * en el Router Global (AUTH-001 AUTH-D-08, CA-AUTH-02).
+   */
+  async listAuthProvidersConfig(): Promise<AuthProviderConfigRow[]> {
+    try {
+      return await this.db
+        .select()
+        .from(authProvidersConfig)
+        .orderBy(asc(authProvidersConfig.id));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.listAuthProvidersConfig Failed] ${msg}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Busca la configuración en tiempo de ejecución de un proveedor OAuth específico por su identificador
+   * en `admin.auth_providers_config` (AUTH-001 AUTH-D-08, CA-AUTH-02).
+   */
+  async findAuthProviderConfig(providerId: string): Promise<AuthProviderConfigRow | null> {
+    try {
+      const normalizedId = providerId.trim().toLowerCase();
+      const [row] = await this.db
+        .select()
+        .from(authProvidersConfig)
+        .where(eq(authProvidersConfig.id, normalizedId))
+        .limit(1);
+      return row ?? null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.findAuthProviderConfig Failed] ${msg}`, error, {
+        providerId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Inserta o actualiza la configuración dinámica de un proveedor OAuth en `admin.auth_providers_config`
+   * almacenando el `client_secret` cifrado con AES-256-GCM (AUTH-001 AUTH-D-08, CA-AUTH-02).
+   */
+  async upsertAuthProviderConfig(
+    params: UpsertAuthProviderConfigParams,
+  ): Promise<AuthProviderConfigRow> {
+    try {
+      const normalizedId = params.id.trim().toLowerCase();
+      const actor = params.actor ?? "platform_owner";
+      const now = new Date();
+
+      const [row] = await this.db
+        .insert(authProvidersConfig)
+        .values({
+          id: normalizedId,
+          displayName: params.displayName,
+          isEnabled: params.isEnabled,
+          clientId: params.clientId ?? null,
+          clientSecretEncrypted: params.clientSecretEncrypted ?? null,
+          secretKeyId: params.secretKeyId ?? null,
+          scopes: params.scopes ?? [],
+          authUrl: params.authUrl ?? null,
+          tokenUrl: params.tokenUrl ?? null,
+          userInfoUrl: params.userInfoUrl ?? null,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actor,
+          updatedBy: actor,
+        })
+        .onConflictDoUpdate({
+          target: authProvidersConfig.id,
+          set: {
+            displayName: params.displayName,
+            isEnabled: params.isEnabled,
+            clientId: params.clientId ?? null,
+            clientSecretEncrypted: params.clientSecretEncrypted ?? null,
+            secretKeyId: params.secretKeyId ?? null,
+            scopes: params.scopes ?? [],
+            authUrl: params.authUrl ?? null,
+            tokenUrl: params.tokenUrl ?? null,
+            userInfoUrl: params.userInfoUrl ?? null,
+            updatedAt: now,
+            updatedBy: actor,
+          },
+        })
+        .returning();
+
+      if (!row) {
+        throw new Error(`Failed to upsert auth provider config for ${normalizedId}`);
+      }
+      return row;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.upsertAuthProviderConfig Failed] ${msg}`, error, {
+        providerId: params.id,
       });
       throw error;
     }

@@ -34,3 +34,6 @@ export const clientRouting = adminSchema.table(
     ),
   ],
 );
+
+export type ClientRouting = typeof clientRouting.$inferSelect;
+export type NewClientRouting = typeof clientRouting.$inferInsert;

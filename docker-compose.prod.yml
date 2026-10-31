@@ -52,6 +52,19 @@ services:
       retries: 10
     restart: unless-stopped
 
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-mocter_rabbit}
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}"
+    networks: [ backend ]
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   migrate:
     image: ghcr.io/enuarrosales/mocter-web:${TAG:-temp}
     profiles: [ "migrate" ]

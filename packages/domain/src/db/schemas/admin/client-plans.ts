@@ -37,3 +37,6 @@ export const clientPlans = adminSchema.table(
     ),
   ],
 );
+
+export type ClientPlan = typeof clientPlans.$inferSelect;
+export type NewClientPlan = typeof clientPlans.$inferInsert;

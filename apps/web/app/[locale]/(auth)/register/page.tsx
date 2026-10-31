@@ -5,7 +5,7 @@ import { locales } from "@/i18n/routing";
 import { Logo } from "@/components/logo";
 import { FloatingBackground } from "@/components/sections/floating-background";
 import { RegisterForm, OAuthButtons } from "@/components/auth";
-import { getPlanByCode, type Plan } from "@mocter/domain";
+import { authService, getPlanByCode, type Plan } from "@mocter/domain";
 
 export const instant = false;
 
@@ -54,6 +54,9 @@ export default async function RegisterPage({ params, searchParams }: Props) {
 
   const t = await getTranslations({ locale, namespace: "auth.register" });
   const tOauth = await getTranslations({ locale, namespace: "auth.oauth" });
+  const enabledProviders = (await authService.getEnabledOAuthProviders())
+    .map((provider) => provider.id)
+    .filter((id): id is "google" | "facebook" => id === "google" || id === "facebook");
   const lang = locale === "en" ? "en" : "es";
   const planName = selectedPlan
     ? selectedPlan.name?.[lang] || selectedPlan.name?.es || selectedPlan.code
@@ -113,6 +116,7 @@ export default async function RegisterPage({ params, searchParams }: Props) {
           />
 
           <OAuthButtons
+            enabledProviders={enabledProviders}
             t={{
               orDivider: tOauth("orDivider"),
               googleButton: tOauth("googleButton"),

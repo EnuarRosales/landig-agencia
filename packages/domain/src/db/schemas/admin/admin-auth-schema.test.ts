@@ -8,11 +8,17 @@ import { sessions } from "./sessions";
 import { emailVerificationTokens } from "./email-verification-tokens";
 import { passwordResetTokens } from "./password-reset-tokens";
 import { userConsents } from "./user-consents";
+import { authProvidersConfig } from "./auth-providers-config";
 
 const dialect = new PgDialect();
 
 const grantsMigration = readFileSync(
   fileURLToPath(new URL("../../../../drizzle/0003_auth_grants_comments.sql", import.meta.url)),
+  "utf8",
+);
+
+const providersGrantsMigration = readFileSync(
+  fileURLToPath(new URL("../../../../drizzle/0005_auth_providers_grants_comments.sql", import.meta.url)),
   "utf8",
 );
 
@@ -227,9 +233,44 @@ describe("admin auth schema · audit columns (DAT-001 RF-10.9)", () => {
     ["email_verification_tokens", emailVerificationTokens],
     ["password_reset_tokens", passwordResetTokens],
     ["user_consents", userConsents],
+    ["auth_providers_config", authProvidersConfig],
   ])("gives %s the mandatory audit columns", (_name, table) => {
     expect(columnNames(table)).toEqual(
       expect.arrayContaining(["created_at", "updated_at", "created_by", "updated_by"]),
+    );
+  });
+});
+
+describe("admin auth schema · auth_providers_config (AUTH-D-08, CA-AUTH-02)", () => {
+  it("lives in the admin schema with id as primary key and AES-256-GCM bytea secret", () => {
+    expect(getTableConfig(authProvidersConfig).schema).toBe("admin");
+    expect(columnByName(authProvidersConfig, "id").primary).toBe(true);
+    expect(columnByName(authProvidersConfig, "display_name").notNull).toBe(true);
+    expect(columnByName(authProvidersConfig, "is_enabled").notNull).toBe(true);
+    expect(columnByName(authProvidersConfig, "client_secret_encrypted").getSQLType()).toBe("bytea");
+    expect(columnByName(authProvidersConfig, "scopes").getSQLType()).toBe("jsonb");
+  });
+
+  it("enforces lowercase non-empty id, paired secret/key_id and JSON array scopes", () => {
+    const checks = checkSql(authProvidersConfig);
+    expect(checks["auth_providers_config_id_format_check"]).toBe(
+      "id = lower(id) AND length(trim(id)) > 0",
+    );
+    expect(checks["auth_providers_config_secret_key_pair_check"]).toBe(
+      "(client_secret_encrypted IS NULL) = (secret_key_id IS NULL)",
+    );
+    expect(checks["auth_providers_config_scopes_array_check"]).toContain("jsonb_typeof");
+  });
+
+  it("grants DML on auth_providers_config to mocter_auth and mocter_admin with comments", () => {
+    expect(providersGrantsMigration).toContain(
+      "GRANT SELECT, INSERT, UPDATE ON TABLE admin.auth_providers_config TO mocter_auth;",
+    );
+    expect(providersGrantsMigration).toContain(
+      "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE admin.auth_providers_config TO mocter_admin;",
+    );
+    expect(providersGrantsMigration).toContain(
+      "COMMENT ON TABLE admin.auth_providers_config IS",
     );
   });
 });

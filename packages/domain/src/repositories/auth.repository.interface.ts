@@ -5,6 +5,7 @@ import type {
   PasswordResetToken,
   Session,
   Identity,
+  AuthProviderConfigRow,
 } from "../db/schemas";
 
 /**
@@ -491,6 +492,62 @@ export interface IAuthRepository {
    * @returns Lista de identificadores UUID de los usuarios preregistrados eliminados.
    */
   purgeStalePreregistrations(cutoffDate: Date): Promise<string[]>;
+
+  /**
+   * Lista la configuración de todos los proveedores OAuth/OIDC registrados en `admin.auth_providers_config`
+   * en el Router Global (AUTH-001 AUTH-D-08, CA-AUTH-02).
+   *
+   * @returns Lista de filas {@link AuthProviderConfigRow} ordenadas por identificador.
+   */
+  listAuthProvidersConfig?(): Promise<AuthProviderConfigRow[]>;
+
+  /**
+   * Busca la configuración en tiempo de ejecución de un proveedor OAuth específico por su identificador
+   * (`google`, `facebook`, etc.) en `admin.auth_providers_config` (AUTH-001 AUTH-D-08, CA-AUTH-02).
+   *
+   * @param providerId - Identificador canónico en minúsculas del proveedor.
+   * @returns La fila {@link AuthProviderConfigRow} o `null` si no está registrada.
+   */
+  findAuthProviderConfig?(providerId: string): Promise<AuthProviderConfigRow | null>;
+
+  /**
+   * Inserta o actualiza la configuración dinámica de un proveedor OAuth en `admin.auth_providers_config`
+   * almacenando el `client_secret` cifrado con AES-256-GCM (AUTH-001 AUTH-D-08, CA-AUTH-02).
+   *
+   * @param params - Parámetros de configuración y secreto cifrado del proveedor.
+   * @returns La fila {@link AuthProviderConfigRow} persistida.
+   */
+  upsertAuthProviderConfig?(
+    params: UpsertAuthProviderConfigParams,
+  ): Promise<AuthProviderConfigRow>;
+}
+
+/**
+ * Parámetros para insertar o actualizar un proveedor OAuth en `admin.auth_providers_config` (AUTH-001 AUTH-D-08).
+ */
+export interface UpsertAuthProviderConfigParams {
+  /** Identificador canónico en minúsculas (`google`, `facebook`, `microsoft`, etc.). */
+  id: string;
+  /** Nombre visible del proveedor para botones y backoffice. */
+  displayName: string;
+  /** Si el proveedor está habilitado en runtime. */
+  isEnabled: boolean;
+  /** Client ID / App ID público del proveedor. */
+  clientId?: string | null;
+  /** Secreto cifrado con AES-256-GCM (nonce + ciphertext + auth tag). */
+  clientSecretEncrypted?: Buffer | null;
+  /** Identificador de la clave maestra con la que se cifró `clientSecretEncrypted`. */
+  secretKeyId?: string | null;
+  /** Lista de scopes OAuth2. */
+  scopes?: string[];
+  /** URL de autorización OAuth2. */
+  authUrl?: string | null;
+  /** URL de intercambio de código por token OAuth2. */
+  tokenUrl?: string | null;
+  /** URL de perfil/userinfo OAuth2. */
+  userInfoUrl?: string | null;
+  /** Actor que ejecuta el cambio (por defecto `"platform_owner"` o `"system"`). */
+  actor?: string;
 }
 
 /**

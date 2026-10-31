@@ -49,6 +49,18 @@ services:
       retries: 10
     restart: unless-stopped
 
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-mocter_rabbit}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-mocter_rabbit_dev}
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   web-portal:
     image: node:24-alpine
     working_dir: /app

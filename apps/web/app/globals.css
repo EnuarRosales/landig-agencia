@@ -3,17 +3,83 @@
 /* Tailwind CSS v4 class-based dark variant */
 @variant dark (&:where(.dark, :where(.dark *)));
 
+/* ==========================================================================
+   DSN-001 · Layer 1: Primitive Tokens (Immutable platform geometry & motion)
+   ========================================================================== */
+:root {
+  /* 4px baseline spacing grid */
+  --primitive-space-1: 0.25rem;
+  --primitive-space-2: 0.5rem;
+  --primitive-space-3: 0.75rem;
+  --primitive-space-4: 1rem;
+  --primitive-space-6: 1.5rem;
+  --primitive-space-8: 2rem;
+
+  /* Canonical border radii (DSN-001 §3.1) */
+  --primitive-radius-sm: 0.375rem;
+  --primitive-radius-md: 0.5rem;
+  --primitive-radius-lg: 0.75rem;
+  --primitive-radius-xl: 1rem;
+  --primitive-radius-full: 9999px;
+
+  /* Canonical layout dimensions (DSN-001 §5) */
+  --primitive-sidebar-width: 260px;
+  --primitive-content-max-width: 720px;
+  --primitive-touch-target: 44px;
+
+  /* Motion durations (DSN-001 §8: 150-240ms) */
+  --primitive-duration-fast: 150ms;
+  --primitive-duration-normal: 200ms;
+  --primitive-duration-slow: 240ms;
+}
+
+/* ==========================================================================
+   DSN-001 · Layer 2 & Layer 3: Semantic & Brand Tokens (Dark default fallback)
+   ========================================================================== */
 :root,
 .dark {
   color-scheme: dark;
+
+  /* DSN-001 §3.1 Dark Semantic Palette */
+  --dsn-background: #0a0a0b;
+  --dsn-surface: #121214;
+  --dsn-surface-secondary: #18181b;
+  --dsn-sidebar: rgba(12, 12, 14, 0.72);
+  --dsn-text: #ededef;
+  --dsn-text-secondary: #8d8d93;
+  --dsn-text-tertiary: #5c5c63;
+  --dsn-border: rgba(255, 255, 255, 0.09);
+  --dsn-border-subtle: rgba(255, 255, 255, 0.05);
+  --dsn-input-bg: #0c121a;
+  --dsn-input-border: rgba(79, 209, 255, 0.12);
+  --dsn-accent: #22d3ee;
+  --dsn-accent-hover: #67e8f9;
+  --dsn-accent-subtle: rgba(34, 211, 238, 0.1);
+  --dsn-accent-glow: rgba(34, 211, 238, 0.3);
+  --dsn-accent-amber: #f5a524;
+  --dsn-accent-purple: #b794ff;
+  --dsn-success: #3ddc97;
+  --dsn-warning: #f5a524;
+  --dsn-error: #ff6b6b;
+  --dsn-code-bg: #0c121a;
+
+  /* Layer 3 · Brand Customizable Layer (defaults to Mocter SaaS tokens) */
+  --brand-primary: #2f6bff;
+  --brand-accent: var(--dsn-accent);
+  --brand-accent-hover: var(--dsn-accent-hover);
+  --brand-accent-subtle: var(--dsn-accent-subtle);
+  --brand-accent-glow: var(--dsn-accent-glow);
+  --brand-font-display: var(--font-chakra-petch), var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+
+  /* MIG-001 / Landing & Auth surface aliases */
   --bg: #05070f;
   --bg2: #0a0e1c;
   --card: rgba(255, 255, 255, 0.045);
   --card2: rgba(255, 255, 255, 0.03);
-  --stroke: rgba(255, 255, 255, 0.09);
-  --stroke2: rgba(255, 255, 255, 0.06);
-  --txt: #eaf0ff;
-  --muted: #9aa6c4;
+  --stroke: var(--dsn-border);
+  --stroke2: var(--dsn-border-subtle);
+  --txt: var(--dsn-text);
+  --muted: var(--dsn-text-secondary);
   --nav-bg: rgba(5, 7, 15, 0.5);
   --nav-bg-scrolled: rgba(5, 7, 15, 0.82);
   --inbox-bg: #0b1020;
@@ -24,13 +90,45 @@
 .light,
 html:not(.dark) {
   color-scheme: light;
+
+  /* DSN-001 §3.1 Light Semantic Palette (WCAG 2.2 AA verified) */
+  --dsn-background: #f9f9f9;
+  --dsn-surface: #ffffff;
+  --dsn-surface-secondary: #f4f4f5;
+  --dsn-sidebar: rgba(250, 250, 250, 0.85);
+  --dsn-text: #09090b;
+  --dsn-text-secondary: #71717a;
+  --dsn-text-tertiary: #a1a1aa;
+  --dsn-border: rgba(0, 0, 0, 0.08);
+  --dsn-border-subtle: rgba(0, 0, 0, 0.04);
+  --dsn-input-bg: #ffffff;
+  --dsn-input-border: #d4d4d8;
+  --dsn-accent: #0891b2;
+  --dsn-accent-hover: #0e7490;
+  --dsn-accent-subtle: rgba(8, 145, 178, 0.08);
+  --dsn-accent-glow: rgba(8, 145, 178, 0.25);
+  --dsn-accent-amber: #f59e0b;
+  --dsn-accent-purple: #8b5cf6;
+  --dsn-success: #15803d;
+  --dsn-warning: #a16207;
+  --dsn-error: #dc2626;
+  --dsn-code-bg: #f4f4f5;
+
+  /* Layer 3 · Brand Customizable Layer */
+  --brand-primary: #2f6bff;
+  --brand-accent: var(--dsn-accent);
+  --brand-accent-hover: var(--dsn-accent-hover);
+  --brand-accent-subtle: var(--dsn-accent-subtle);
+  --brand-accent-glow: var(--dsn-accent-glow);
+
+  /* MIG-001 / Landing & Auth surface aliases */
   --bg: #f5f8ff;
   --bg2: #ffffff;
   --card: #ffffff;
   --card2: #f0f4fc;
   --stroke: rgba(13, 22, 44, 0.12);
   --stroke2: rgba(13, 22, 44, 0.07);
-  --txt: #0a0f1d;
+  --txt: var(--dsn-text);
   --muted: #536280;
   --nav-bg: rgba(245, 248, 255, 0.6);
   --nav-bg-scrolled: rgba(245, 248, 255, 0.88);
@@ -40,14 +138,38 @@ html:not(.dark) {
 }
 
 @theme {
-  /* Typography: next/font/google exposes --font-sora / --font-inter on <html>. */
+  /* DSN-001 §3.2 Typography: self-hosted via next/font/google with font-display: swap */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--brand-font-display);
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* DSN-001 §3.1 Semantic tokens exposed to Tailwind v4 */
+  --color-background: var(--dsn-background);
+  --color-surface: var(--card);
+  --color-surface-solid: var(--dsn-surface);
+  --color-surface-secondary: var(--dsn-surface-secondary);
+  --color-sidebar: var(--dsn-sidebar);
+  --color-text: var(--dsn-text);
+  --color-text-secondary: var(--dsn-text-secondary);
+  --color-text-tertiary: var(--dsn-text-tertiary);
+  --color-border: var(--dsn-border);
+  --color-border-subtle: var(--dsn-border-subtle);
+  --color-input-bg: var(--dsn-input-bg);
+  --color-input-border: var(--dsn-input-border);
+  --color-accent: var(--brand-accent);
+  --color-accent-hover: var(--brand-accent-hover);
+  --color-accent-subtle: var(--brand-accent-subtle);
+  --color-accent-glow: var(--brand-accent-glow);
+  --color-accent-amber: var(--dsn-accent-amber);
+  --color-accent-purple: var(--dsn-accent-purple);
+  --color-success: var(--dsn-success);
+  --color-warning: var(--dsn-warning);
+  --color-error: var(--dsn-error);
+  --color-code-bg: var(--dsn-code-bg);
 
   /* Mocter surface palette linked to dynamic tokens */
   --color-bg: var(--bg);
   --color-bg2: var(--bg2);
-  --color-surface: var(--card);
   --color-surface2: var(--card2);
   --color-stroke: var(--stroke);
   --color-stroke2: var(--stroke2);
@@ -55,7 +177,7 @@ html:not(.dark) {
   --color-muted: var(--muted);
 
   /* Brand accents */
-  --color-a1: #2f6bff;
+  --color-a1: var(--brand-primary);
   --color-a2: #22d3ee;
   --color-a3: #4aa3ff;
 
@@ -70,7 +192,25 @@ html:not(.dark) {
   --color-hot: #ff6b57;
   --color-done: #2fd483;
 
+  /* Radii (DSN-001 §3.1) */
+  --radius-sm: var(--primitive-radius-sm);
+  --radius-md: var(--primitive-radius-md);
+  --radius-lg: var(--primitive-radius-lg);
+  --radius-xl: var(--primitive-radius-xl);
+  --radius-full: var(--primitive-radius-full);
   --radius-card: 22px;
+}
+
+/* DSN-001 §3.2 Typography rules: KPIs use display/mono with tabular-nums; page titles use text font at 600 */
+.kpi-value,
+.font-mono,
+[data-tabular="true"] {
+  font-variant-numeric: tabular-nums;
+}
+
+.page-title {
+  font-family: var(--font-sans);
+  font-weight: 600;
 }
 
 html {

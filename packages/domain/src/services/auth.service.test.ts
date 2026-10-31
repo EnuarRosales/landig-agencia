@@ -94,6 +94,9 @@ function createBaseMockAuthRepo(): IAuthRepository {
     updateClientRoutingCell: vi.fn().mockResolvedValue(2),
     clearRouterUserCredentials: vi.fn(),
     purgeStalePreregistrations: vi.fn().mockResolvedValue([]),
+    listAuthProvidersConfig: vi.fn().mockResolvedValue([]),
+    findAuthProviderConfig: vi.fn().mockResolvedValue(null),
+    upsertAuthProviderConfig: vi.fn(),
   };
 }
 
@@ -6778,5 +6781,521 @@ describe("AUTH-001 T-14 · Autenticación Federada con Google (authenticateWithG
       });
     });
   });
+
+  describe("AUTH-001 AUTH-D-08 / CA-AUTH-02 · Configuración dinámica de proveedores OAuth (admin.auth_providers_config)", () => {
+    let mockAuthRepo: IAuthRepository;
+    let mockMailer: IAuthMailer;
+    let mockGoogleOidcClient: IGoogleOidcClient;
+    let mockFacebookOAuthClient: IFacebookOAuthClient;
+    let mockStateManager: OAuthStateManager;
+    let totpCrypto: TotpCryptoService;
+    let authService: AuthService;
+
+    beforeEach(() => {
+      mockAuthRepo = createBaseMockAuthRepo();
+      mockMailer = {
+        sendVerificationEmail: vi.fn().mockResolvedValue(undefined),
+        sendPasswordSetupEmail: vi.fn().mockResolvedValue(undefined),
+        sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
+        sendAccountAlreadyExistsEmail: vi.fn().mockResolvedValue(undefined),
+      };
+      mockGoogleOidcClient = {
+        discover: vi.fn(),
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForTokens: vi.fn(),
+        verifyIdToken: vi.fn(),
+      };
+      mockFacebookOAuthClient = {
+        getAuthorizationUrl: vi.fn(),
+        exchangeCodeForAccessToken: vi.fn(),
+        fetchUserProfile: vi.fn(),
+      };
+      mockStateManager = {
+        createState: vi.fn(),
+        consumeState: vi.fn(),
+        sanitizeReturnTo: vi.fn(),
+      } as unknown as OAuthStateManager;
+      totpCrypto = new TotpCryptoService({ activeKeyId: null });
+      totpCrypto.registerKey("key-oauth-v1", Buffer.alloc(32, 0x5a));
+
+      authService = new AuthService(
+        mockAuthRepo,
+        mockMailer,
+        mockGoogleOidcClient,
+        mockStateManager,
+        mockFacebookOAuthClient,
+        totpCrypto,
+      );
+    });
+
+    it("cifra client_secret con AES-256-GCM y AAD oauth_provider:<id>:<key_id> al persistir en admin.auth_providers_config", async () => {
+      vi.mocked(mockAuthRepo.upsertAuthProviderConfig!).mockImplementationOnce(async (params) => ({
+        id: params.id,
+        displayName: params.displayName,
+        isEnabled: params.isEnabled,
+        clientId: params.clientId ?? null,
+        clientSecretEncrypted: params.clientSecretEncrypted ?? null,
+        secretKeyId: params.secretKeyId ?? null,
+        scopes: params.scopes ?? [],
+        authUrl: params.authUrl ?? null,
+        tokenUrl: params.tokenUrl ?? null,
+        userInfoUrl: params.userInfoUrl ?? null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: params.actor ?? "platform_owner",
+        updatedBy: params.actor ?? "platform_owner",
+      }));
+
+      const result = await authService.upsertOAuthProviderConfig({
+        id: "google",
+        displayName: "Google",
+        isEnabled: true,
+        clientId: "google-client-id-123.apps.googleusercontent.com",
+        clientSecret: "GOCSPX-super-secret-value-999",
+        scopes: ["openid", "email", "profile"],
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.id).toBe("google");
+        expect(result.data.isEnabled).toBe(true);
+        expect(result.data.hasClientSecret).toBe(true);
+        expect(result.data.secretKeyId).toBe("key-oauth-v1");
+      }
+
+      const persistedArgs = vi.mocked(mockAuthRepo.upsertAuthProviderConfig!).mock.calls[0]?.[0];
+      expect(persistedArgs?.clientSecretEncrypted).toBeInstanceOf(Buffer);
+      // El ciphertext nunca contiene el secreto en claro y se descifra solo con el AAD correcto
+      const decrypted = totpCrypto
+        .decrypt(
+          persistedArgs!.clientSecretEncrypted!,
+          "oauth_provider:google",
+          persistedArgs!.secretKeyId!,
+        )
+        .toString("utf-8");
+      expect(decrypted).toBe("GOCSPX-super-secret-value-999");
+      expect(() =>
+        totpCrypto.decrypt(
+          persistedArgs!.clientSecretEncrypted!,
+          "oauth_provider:facebook",
+          persistedArgs!.secretKeyId!,
+        ),
+      ).toThrow();
+    });
+
+    it("CA-AUTH-02 · Dado Google habilitado y Facebook deshabilitado en auth_providers_config, solo expone Google en el login, valida state/PKCE en callback de Google y rechaza Facebook", async () => {
+      const encryptedGoogleSecret = totpCrypto.encrypt(
+        "google-db-secret-xyz",
+        "oauth_provider:google",
+        "key-oauth-v1",
+      );
+      const googleRow = {
+        id: "google",
+        displayName: "Google",
+        isEnabled: true,
+        clientId: "google-db-client-id",
+        clientSecretEncrypted: encryptedGoogleSecret.ciphertext,
+        secretKeyId: encryptedGoogleSecret.keyId,
+        scopes: ["openid", "email", "profile"],
+        authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+        tokenUrl: "https://oauth2.googleapis.com/token",
+        userInfoUrl: "https://openidconnect.googleapis.com/v1/userinfo",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "platform_owner",
+        updatedBy: "platform_owner",
+      };
+      const facebookRow = {
+        id: "facebook",
+        displayName: "Facebook",
+        isEnabled: false,
+        clientId: "fb-db-app-id",
+        clientSecretEncrypted: null,
+        secretKeyId: null,
+        scopes: ["email", "public_profile"],
+        authUrl: null,
+        tokenUrl: null,
+        userInfoUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "platform_owner",
+        updatedBy: "platform_owner",
+      };
+
+      vi.mocked(mockAuthRepo.listAuthProvidersConfig!).mockResolvedValue([googleRow, facebookRow]);
+      vi.mocked(mockAuthRepo.findAuthProviderConfig!).mockImplementation(async (providerId) => {
+        if (providerId === "google") return googleRow;
+        if (providerId === "facebook") return facebookRow;
+        return null;
+      });
+
+      // 1. Cuando se consulta qué proveedores renderizar en el login, solo aparece Google
+      const enabledProviders = await authService.getEnabledOAuthProviders();
+      expect(enabledProviders).toEqual([
+        { id: "google", displayName: "Google", scopes: ["openid", "email", "profile"] },
+      ]);
+
+      // 2. La resolución runtime de Facebook rechaza con PROVIDER_DISABLED
+      const fbRuntime = await authService.resolveOAuthProviderRuntimeConfig("facebook");
+      expect(fbRuntime.ok).toBe(false);
+      if (!fbRuntime.ok) {
+        expect(fbRuntime.code).toBe("PROVIDER_DISABLED");
+      }
+
+      // 3. El callback de Facebook rechaza inmediatamente con PROVIDER_DISABLED sin consumir tokens
+      const fbCallback = await authService.authenticateWithFacebook({
+        code: "fb-code",
+        state: "fb-state",
+        clientCookieState: "fb-state",
+        clientId: "fb-db-app-id",
+        clientSecret: "fb-secret",
+        redirectUri: "https://mocter.co/auth/facebook/callback",
+      });
+      expect(fbCallback.ok).toBe(false);
+      if (!fbCallback.ok) {
+        expect(fbCallback.code).toBe("PROVIDER_DISABLED");
+      }
+      expect(mockFacebookOAuthClient.exchangeCodeForAccessToken).not.toHaveBeenCalled();
+
+      // 4. El callback de Google valida state/PKCE, descifra el secret de la BD y autentica exitosamente
+      vi.mocked(mockStateManager.consumeState).mockResolvedValueOnce({
+        ok: true,
+        data: {
+          provider: "google",
+          action: "login",
+          codeVerifier: "pkce-verifier-s256-valid",
+          codeChallenge: "pkce-challenge-s256-valid",
+          nonce: "oidc-nonce-valid",
+          returnTo: "/admin",
+          createdAt: Date.now(),
+        },
+      });
+      vi.mocked(mockGoogleOidcClient.exchangeCodeForTokens).mockResolvedValueOnce({
+        access_token: "google-access-token",
+        id_token: "google-id-token",
+        expires_in: 3600,
+        token_type: "Bearer",
+      });
+      vi.mocked(mockGoogleOidcClient.verifyIdToken).mockResolvedValueOnce({
+        iss: "https://accounts.google.com",
+        sub: "google-sub-ca-auth-02",
+        aud: "google-db-client-id",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        iat: Math.floor(Date.now() / 1000),
+        email: "usuario.google@empresa.co",
+        email_verified: true,
+        name: "Usuario Google",
+      });
+      vi.mocked(mockAuthRepo.findIdentityByProvider).mockResolvedValueOnce(null);
+      vi.mocked(mockAuthRepo.findUserByEmail).mockResolvedValueOnce(null);
+      const federatedUser: User = {
+        id: "01960000-0000-7000-8000-000000000802",
+        email: "usuario.google@empresa.co",
+        emailVerifiedAt: new Date(),
+        passwordHash: null,
+        passwordUpdatedAt: null,
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpEnabledAt: null,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: null,
+        identityLocation: "router",
+        activeClientId: null,
+        status: "active",
+        displayName: "Usuario Google",
+        avatarUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+      vi.mocked(mockAuthRepo.createFederatedUserWithIdentity).mockResolvedValueOnce({
+        user: federatedUser,
+        identity: {
+          id: "01960000-0000-7000-8000-000000000803",
+          userId: federatedUser.id,
+          provider: "google",
+          providerUserId: "google-sub-ca-auth-02",
+          providerEmail: federatedUser.email,
+          emailVerified: true,
+          displayName: "Usuario Google",
+          avatarUrl: null,
+          linkedAt: new Date(),
+          lastLoginAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: "self",
+          updatedBy: "self",
+        },
+      });
+      vi.mocked(mockAuthRepo.createSession).mockImplementationOnce(async (params) => ({
+        id: "01960000-0000-7000-8000-000000000804",
+        userId: params.userId,
+        sidHash: params.sidHash,
+        csrfHash: params.csrfHash,
+        clientId: params.clientId ?? null,
+        routingVersion: params.routingVersion ?? null,
+        authMethod: params.authMethod,
+        mfaAt: null,
+        reauthAt: params.reauthAt,
+        createdAt: new Date(),
+        lastSeenAt: new Date(),
+        expiresAt: params.expiresAt,
+        absoluteExpiresAt: params.absoluteExpiresAt,
+        revokedAt: null,
+        revokedReason: null,
+        ipHash: null,
+        userAgentHash: null,
+        updatedAt: new Date(),
+        createdBy: params.userId,
+        updatedBy: params.userId,
+      }));
+
+      const googleCallback = await authService.authenticateWithGoogle({
+        code: "valid-auth-code",
+        state: "valid-state-token",
+        clientCookieState: "valid-state-token",
+        clientId: "env-fallback-ignored",
+        clientSecret: "env-secret-ignored",
+        redirectUri: "https://mocter.co/auth/google/callback",
+      });
+
+      expect(googleCallback.ok).toBe(true);
+      expect(mockGoogleOidcClient.exchangeCodeForTokens).toHaveBeenCalledWith({
+        code: "valid-auth-code",
+        clientId: "google-db-client-id",
+        clientSecret: "google-db-secret-xyz",
+        redirectUri: "https://mocter.co/auth/google/callback",
+        codeVerifier: "pkce-verifier-s256-valid",
+      });
+    });
+  });
+
+  describe("AUTH-001 T-28 · Integrar scopes y autorización sin roles en la sesión", () => {
+    let mockAuthRepo: IAuthRepository;
+    let mockMailer: IAuthMailer;
+    let sessionCache: SessionCacheManager;
+    let authService: AuthService;
+
+    const userId = "01960000-0000-7000-8000-000000000901";
+    const clientId = "01960000-0000-7000-8000-000000000902";
+    const foreignClientId = "01960000-0000-7000-8000-000000000999";
+    const sessionId = "01960000-0000-7000-8000-000000000903";
+    const rawSid = generateSessionId();
+    const sidHash = hashToken(rawSid);
+    const csrfHash = hashToken(generateCsrfToken());
+
+    function buildActiveUser(): User {
+      return {
+        id: userId,
+        email: "operador@inquilino.co",
+        emailVerifiedAt: new Date(),
+        passwordHash: null,
+        passwordUpdatedAt: null,
+        totpSecretCiphertext: null,
+        totpKeyId: null,
+        totpEnabledAt: null,
+        totpPendingSecretCiphertext: null,
+        totpPendingKeyId: null,
+        totpPendingCreatedAt: null,
+        totpLastUsedStep: null,
+        identityLocation: "01960000-0000-7000-8000-000000000950",
+        activeClientId: clientId,
+        status: "active",
+        displayName: "Operador Inquilino",
+        avatarUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "self",
+        updatedBy: "self",
+      };
+    }
+
+    function buildActiveSession(): Session {
+      const now = new Date();
+      return {
+        id: sessionId,
+        userId,
+        sidHash,
+        csrfHash,
+        clientId,
+        routingVersion: 1,
+        authMethod: "password",
+        mfaAt: null,
+        reauthAt: now,
+        createdAt: now,
+        lastSeenAt: now,
+        expiresAt: new Date(now.getTime() + 30 * 60 * 1000),
+        absoluteExpiresAt: new Date(now.getTime() + 12 * 60 * 60 * 1000),
+        revokedAt: null,
+        revokedReason: null,
+        ipHash: null,
+        userAgentHash: null,
+        updatedAt: now,
+        createdBy: userId,
+        updatedBy: userId,
+      };
+    }
+
+    beforeEach(() => {
+      mockAuthRepo = createBaseMockAuthRepo();
+      mockMailer = {
+        sendVerificationEmail: vi.fn().mockResolvedValue(undefined),
+        sendPasswordSetupEmail: vi.fn().mockResolvedValue(undefined),
+        sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
+        sendAccountAlreadyExistsEmail: vi.fn().mockResolvedValue(undefined),
+      };
+      sessionCache = new SessionCacheManager();
+      authService = new AuthService(
+        mockAuthRepo,
+        mockMailer,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        sessionCache,
+      );
+    });
+
+    it("resuelve cambios de rol de inquilino en cada petición sin reemitir cookie ni almacenar roles en la sesión", async () => {
+      const user = buildActiveUser();
+      const session = buildActiveSession();
+      vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValue(session);
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(user);
+      vi.mocked(mockAuthRepo.getClientRoutingVersion).mockResolvedValue(1);
+
+      // La sesión no posee ninguna propiedad role ni scopes
+      expect("role" in session).toBe(false);
+      expect("scopes" in session).toBe(false);
+
+      let currentRoleInAdm: "tenant_agent" | "tenant_owner" = "tenant_agent";
+      const resolveAuthorization = vi.fn().mockImplementation(async () => ({
+        tenantRole: currentRoleInAdm,
+        platformScopes: ["orders:read"],
+        membershipActive: true,
+      }));
+
+      // Petición 1: el usuario actúa como tenant_agent; intenta acción exclusiva de tenant_owner -> rechazada
+      const firstReq = await authService.authorizeSessionContext({
+        sid: rawSid,
+        requestedClientId: clientId,
+        requiredTenantRoles: ["tenant_owner"],
+        resolveAuthorization,
+      });
+      expect(firstReq.ok).toBe(false);
+      if (!firstReq.ok) {
+        expect(firstReq.code).toBe("FORBIDDEN_INSUFFICIENT_ROLE");
+      }
+
+      // Se actualiza el rol en ADM-001 (tenant_users.role = 'tenant_owner') -> NO requiere reemitir cookie ni rotar sesión
+      const roleChangeOutcome = await authService.handleAuthorizationChange({
+        userId,
+        changeType: "tenant_role_updated",
+      });
+      expect(roleChangeOutcome.ok).toBe(true);
+      if (roleChangeOutcome.ok) {
+        expect(roleChangeOutcome.data.action).toBe("none");
+        expect(roleChangeOutcome.data.cookieReissued).toBe(false);
+      }
+      expect(mockAuthRepo.revokeAllUserSessions).not.toHaveBeenCalled();
+      expect(mockAuthRepo.rotateSession).not.toHaveBeenCalled();
+
+      currentRoleInAdm = "tenant_owner";
+
+      // Petición 2 con el MISMO sid (sin reemitir cookie): ahora obtiene acceso inmediato como tenant_owner
+      const secondReq = await authService.authorizeSessionContext({
+        sid: rawSid,
+        requestedClientId: clientId,
+        requiredTenantRoles: ["tenant_owner"],
+        resolveAuthorization,
+      });
+      expect(secondReq.ok).toBe(true);
+      if (secondReq.ok) {
+        expect(secondReq.data.tenantRole).toBe("tenant_owner");
+        expect(secondReq.data.cookieReissued).toBe(false);
+      }
+    });
+
+    it("rechaza una sesión cuando intenta operar sobre un client_id ajeno sin otorgar permisos ni consultar tenant_users desde mocter_auth", async () => {
+      vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValue(buildActiveSession());
+      vi.mocked(mockAuthRepo.findUserById).mockResolvedValue(buildActiveUser());
+      vi.mocked(mockAuthRepo.getClientRoutingVersion).mockResolvedValue(1);
+
+      const resolveAuthorization = vi.fn();
+
+      const result = await authService.authorizeSessionContext({
+        sid: rawSid,
+        requestedClientId: foreignClientId,
+        requiredTenantRoles: ["tenant_agent", "tenant_owner"],
+        resolveAuthorization,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("FORBIDDEN_CLIENT_MISMATCH");
+      }
+      // Ni siquiera invoca el resolvedor de ADM-001 cuando el client_id de la sesión no coincide
+      expect(resolveAuthorization).not.toHaveBeenCalled();
+    });
+
+    it("revoca inmediatamente todas las sesiones en Postgres y Redis al retirar un rol o scope sensible", async () => {
+      await sessionCache.cacheSession(buildActiveSession(), sidHash.toString("hex"));
+
+      const result = await authService.handleAuthorizationChange({
+        userId,
+        changeType: "sensitive_scope_removed",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.action).toBe("revoked_all");
+        expect(result.data.cookieReissued).toBe(false);
+      }
+      expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+        userId,
+        "sensitive_scope_removed",
+        undefined,
+      );
+      const cachedAfter = await sessionCache.getCachedSession(sidHash.toString("hex"));
+      expect(cachedAfter).toBeNull();
+    });
+
+    it("rota la sesión actual y revoca las demás sesiones del usuario ante una elevación de privilegios de plataforma", async () => {
+      const currentSession = buildActiveSession();
+      vi.mocked(mockAuthRepo.findSessionBySidHash).mockResolvedValueOnce(currentSession);
+      vi.mocked(mockAuthRepo.rotateSession).mockImplementationOnce(
+        async (id, newSidH, newCsrfH) => ({
+          ...currentSession,
+          id,
+          sidHash: newSidH,
+          csrfHash: newCsrfH,
+        }),
+      );
+
+      const result = await authService.handleAuthorizationChange({
+        userId,
+        changeType: "platform_privilege_elevated",
+        currentSid: rawSid,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.action).toBe("rotated_current_and_revoked_others");
+        expect(result.data.cookieReissued).toBe(true);
+        expect(result.data.rotatedSession?.sid).toBeDefined();
+        expect(result.data.rotatedSession?.sid).not.toBe(rawSid);
+      }
+      expect(mockAuthRepo.rotateSession).toHaveBeenCalledTimes(1);
+      expect(mockAuthRepo.revokeAllUserSessions).toHaveBeenCalledWith(
+        userId,
+        "platform_privilege_elevated",
+        sessionId,
+      );
+    });
+  });
+
 
 

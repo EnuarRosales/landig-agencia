@@ -90,17 +90,19 @@ describe("admin schema · users", () => {
     expect(check).toContain("[0-9a-f]{8}");
   });
 
-  it("declares active_client_id as a nullable column without a foreign key", () => {
+  it("declares active_client_id as a nullable column referencing clients(id) ON DELETE SET NULL (ADM-001 D-34, T-06)", () => {
     const column = getTableConfig(users).columns.find(
       (candidate) => candidate.name === "active_client_id",
     );
     expect(column).toBeDefined();
     expect(column?.notNull).toBe(false);
 
-    const foreignKeyColumns = getTableConfig(users).foreignKeys.flatMap((foreignKey) =>
-      foreignKey.reference().columns.map((reference) => reference.name),
+    const activeClientFk = getTableConfig(users).foreignKeys.find((foreignKey) =>
+      foreignKey.reference().columns.some((reference) => reference.name === "active_client_id"),
     );
-    expect(foreignKeyColumns).not.toContain("active_client_id");
+    expect(activeClientFk).toBeDefined();
+    expect(activeClientFk?.onDelete).toBe("set null");
+    expect(getTableConfig(activeClientFk!.reference().foreignTable).name).toBe("clients");
   });
 
   it("keeps the canonical base columns", () => {
@@ -138,12 +140,38 @@ describe("admin schema · tenancy tables", () => {
     );
   });
 
-  it("defaults clients to locale es and currency COP", () => {
+  it("defaults clients to locale es, currency COP, timezone America/Bogota and quota_version 1", () => {
     const byName = Object.fromEntries(
       getTableConfig(clients).columns.map((column) => [column.name, column]),
     );
     expect(byName["locale"]?.default).toBe("es");
     expect(byName["currency"]?.default).toBe("COP");
+    expect(byName["timezone"]?.default).toBe("America/Bogota");
+    expect(byName["quota_version"]?.default).toBe(1);
+    expect(byName["owner_user_id"]?.notNull).toBe(true);
+    expect(byName["contact_email"]?.notNull).toBe(true);
+    expect(byName["phone"]?.notNull).toBe(false);
+    expect(byName["tax_id"]?.notNull).toBe(false);
+    expect(byName["address_line"]?.notNull).toBe(false);
+  });
+
+  it("enforces clients_one_live_owner partial unique index and lowercase contact_email (ADM-001 T-06)", () => {
+    const liveOwnerIndex = getTableConfig(clients).indexes.find(
+      (index) => index.config.name === "clients_one_live_owner",
+    );
+    expect(liveOwnerIndex).toBeDefined();
+    expect(liveOwnerIndex?.config.unique).toBe(true);
+    const whereSql = dialect.sqlToQuery(liveOwnerIndex?.config.where as SQL).sql;
+    expect(whereSql).toContain("lifecycle_status <> 'baja'");
+
+    const checks = checkSql(clients);
+    expect(checks["clients_contact_email_lowercase_check"]).toBe(
+      "contact_email = lower(contact_email)",
+    );
+    expect(checks["clients_quota_version_check"]).toBe("quota_version > 0");
+    expect(checks["clients_social_links_object_check"]).toBe(
+      "jsonb_typeof(social_links) = 'object'",
+    );
   });
 });
 

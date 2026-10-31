@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Sora } from "next/font/google";
+import { Chakra_Petch, IBM_Plex_Mono, Inter, Sora } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getMessages, getTranslations } from "next-intl/server";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -7,15 +7,29 @@ import { ChatwootWidget } from "@/components/chatwoot-widget";
 import { siteConfig } from "@/config/site";
 import "../globals.css";
 
+const chakraPetch = Chakra_Petch({
+  subsets: ["latin", "latin-ext"],
+  weight: ["500", "600", "700"],
+  variable: "--font-chakra-petch",
+  display: "swap",
+});
+
 const sora = Sora({
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   variable: "--font-sora",
   display: "swap",
 });
 
 const inter = Inter({
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   variable: "--font-inter",
+  display: "swap",
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "600"],
+  variable: "--font-ibm-plex-mono",
   display: "swap",
 });
 
@@ -127,7 +141,7 @@ export default async function LocaleLayout({ children, params }: Props) {
   return (
     <html
       lang={locale}
-      className={`${sora.variable} ${inter.variable}`}
+      className={`dark ${chakraPetch.variable} ${sora.variable} ${inter.variable} ${ibmPlexMono.variable}`}
       data-scroll-behavior="smooth"
       suppressHydrationWarning
     >
@@ -135,7 +149,7 @@ export default async function LocaleLayout({ children, params }: Props) {
         <ThemeProvider
           attribute="class"
           defaultTheme={siteConfig.theme.defaultTheme}
-          enableSystem={false}
+          enableSystem
           storageKey={siteConfig.theme.storageKey}
           disableTransitionOnChange
         >

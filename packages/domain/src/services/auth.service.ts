@@ -624,6 +624,167 @@ export type PurgeStalePreregistrationsResult = Result<
 >;
 
 /**
+ * Resumen público de un proveedor OAuth habilitado en tiempo de ejecución (AUTH-001 AUTH-D-08, CA-AUTH-02).
+ */
+export interface OAuthProviderSummaryDto {
+  id: "google" | "facebook" | string;
+  displayName: string;
+  scopes: string[];
+}
+
+/**
+ * Configuración en tiempo de ejecución resuelta para un proveedor OAuth (AUTH-001 AUTH-D-08, CA-AUTH-02).
+ */
+export interface OAuthProviderRuntimeConfigData {
+  id: "google" | "facebook";
+  displayName: string;
+  isEnabled: boolean;
+  clientId: string;
+  clientSecret: string;
+  scopes: string[];
+  authUrl: string | null;
+  tokenUrl: string | null;
+  userInfoUrl: string | null;
+  source: "database" | "env_fallback";
+}
+
+export type ResolveOAuthProviderRuntimeConfigResult = Result<
+  OAuthProviderRuntimeConfigData,
+  "PROVIDER_DISABLED" | "PROVIDER_UNAVAILABLE" | "DECRYPTION_ERROR"
+>;
+
+/**
+ * Parámetros de entrada para registrar o actualizar un proveedor OAuth en `admin.auth_providers_config` (AUTH-001 AUTH-D-08).
+ */
+export interface UpsertOAuthProviderConfigInput {
+  id: string;
+  displayName: string;
+  isEnabled: boolean;
+  clientId?: string | null;
+  clientSecret?: string | null;
+  targetKeyId?: string;
+  scopes?: string[];
+  authUrl?: string | null;
+  tokenUrl?: string | null;
+  userInfoUrl?: string | null;
+  actor?: string;
+}
+
+/**
+ * Respuesta sanitizada tras guardar un proveedor OAuth (nunca incluye el secreto en texto plano ni el ciphertext).
+ */
+export interface UpsertOAuthProviderConfigResponseData {
+  id: string;
+  displayName: string;
+  isEnabled: boolean;
+  clientId: string | null;
+  hasClientSecret: boolean;
+  secretKeyId: string | null;
+  scopes: string[];
+  authUrl: string | null;
+  tokenUrl: string | null;
+  userInfoUrl: string | null;
+}
+
+export type UpsertOAuthProviderConfigResult = Result<
+  UpsertOAuthProviderConfigResponseData,
+  "INVALID_INPUT" | "ENCRYPTION_ERROR" | "DB_ERROR"
+>;
+
+/**
+ * Roles canónicos de inquilino definidos en ADM-001 D-31 (`tenant_owner` y `tenant_agent`, sin `tenant_admin`).
+ */
+export type TenantRole = "tenant_owner" | "tenant_agent";
+
+/**
+ * Resultado de la resolución externa de autorización por petición provista por `ADM-001` (AUTH-001 T-28).
+ */
+export interface ResolvedRequestAuthorization {
+  tenantRole?: TenantRole | null;
+  platformScopes?: string[];
+  membershipActive?: boolean;
+}
+
+/**
+ * Parámetros para autorizar una petición autenticada sin almacenar roles en la sesión ni en la cookie (AUTH-001 §3.2, T-28).
+ */
+export interface AuthorizeSessionContextInput {
+  /** Identificador de sesión en claro recibido desde `__Host-mocter_sid`. */
+  sid: string;
+  /** Identificador del inquilino sobre el que opera la petición (opcional para rutas globales de plataforma). */
+  requestedClientId?: string | null;
+  /** Lista de roles de inquilino admitidos para la operación (`tenant_owner`, `tenant_agent`). */
+  requiredTenantRoles?: TenantRole[];
+  /** Scope de plataforma o permiso específico requerido para la operación. */
+  requiredScope?: string;
+  /**
+   * Callback inyectado por `ADM-001` que resuelve en cada petición `tenant_users.role` y scopes de plataforma.
+   * `mocter_auth` nunca consulta `tenant_users` directamente.
+   */
+  resolveAuthorization: (context: {
+    userId: string;
+    clientId: string | null;
+  }) => Promise<ResolvedRequestAuthorization>;
+}
+
+/**
+ * Contexto autorizado para una petición tras verificar sesión, pertenencia a inquilino y permisos en tiempo real (AUTH-001 T-28).
+ */
+export interface AuthorizeSessionContextData {
+  sessionId: string;
+  userId: string;
+  clientId: string | null;
+  tenantRole: TenantRole | null;
+  platformScopes: string[];
+  /** Siempre `false`: los cambios de rol se aplican por petición sin reemitir la cookie de sesión. */
+  cookieReissued: false;
+}
+
+export type AuthorizeSessionContextResult = Result<
+  AuthorizeSessionContextData,
+  | "INVALID_SESSION"
+  | "SESSION_EXPIRED"
+  | "SESSION_REVOKED"
+  | "USER_DISABLED"
+  | "CLIENT_MISMATCH"
+  | "FORBIDDEN_CLIENT_MISMATCH"
+  | "FORBIDDEN_NO_MEMBERSHIP"
+  | "FORBIDDEN_INSUFFICIENT_ROLE"
+  | "FORBIDDEN_INSUFFICIENT_SCOPE"
+>;
+
+/**
+ * Parámetros para reaccionar ante un cambio de rol o scope de un usuario (AUTH-001 T-28).
+ */
+export interface HandleAuthorizationChangeInput {
+  userId: string;
+  changeType:
+    | "tenant_role_updated"
+    | "sensitive_scope_removed"
+    | "platform_privilege_elevated"
+    | "tenant_membership_removed";
+  /** Identificador de sesión actual en claro (solo cuando se desea rotar en lugar de revocar ante elevación). */
+  currentSid?: string;
+}
+
+export interface HandleAuthorizationChangeData {
+  userId: string;
+  changeType: HandleAuthorizationChangeInput["changeType"];
+  action: "none" | "revoked_all" | "rotated_current_and_revoked_others";
+  cookieReissued: boolean;
+  rotatedSession?: {
+    sid: string;
+    csrfToken: string;
+    expiresAt: string;
+  };
+}
+
+export type HandleAuthorizationChangeResult = Result<
+  HandleAuthorizationChangeData,
+  "INVALID_INPUT" | "SESSION_NOT_FOUND" | "DB_ERROR"
+>;
+
+/**
  * Servicio de dominio responsable de la orquestación del registro nativo de usuarios (AUTH-001 T-08).
  *
  * Implementa las políticas de seguridad:
@@ -1204,6 +1365,30 @@ export class AuthService {
     input: AuthenticateWithGoogleInput,
   ): Promise<FederatedLoginResult> {
     try {
+      // 0. Validar que el proveedor Google no esté deshabilitado en auth_providers_config (CA-AUTH-02)
+      let resolvedClientId = input.clientId;
+      let resolvedClientSecret = input.clientSecret;
+      if (this.authRepo.findAuthProviderConfig) {
+        const providerRow = await this.authRepo.findAuthProviderConfig("google");
+        if (providerRow) {
+          if (!providerRow.isEnabled) {
+            return err("Proveedor temporalmente fuera de servicio", "PROVIDER_DISABLED");
+          }
+          if (providerRow.clientId) {
+            resolvedClientId = providerRow.clientId;
+          }
+          if (providerRow.clientSecretEncrypted && providerRow.secretKeyId) {
+            resolvedClientSecret = this.totpCrypto
+              .decrypt(
+                providerRow.clientSecretEncrypted,
+                "oauth_provider:google",
+                providerRow.secretKeyId,
+              )
+              .toString("utf-8");
+          }
+        }
+      }
+
       // 1. Validar y consumir atómicamente el estado y cookie de Redis (anti-replay)
       const stateResult = await this.stateManager.consumeState({
         provider: "google",
@@ -1222,8 +1407,8 @@ export class AuthService {
       try {
         tokens = await this.googleOidcClient.exchangeCodeForTokens({
           code: input.code,
-          clientId: input.clientId,
-          clientSecret: input.clientSecret,
+          clientId: resolvedClientId,
+          clientSecret: resolvedClientSecret,
           redirectUri: input.redirectUri,
           codeVerifier,
         });
@@ -1240,7 +1425,7 @@ export class AuthService {
         payload = await this.googleOidcClient.verifyIdToken(
           tokens.id_token,
           nonce ?? "",
-          input.clientId,
+          resolvedClientId,
         );
       } catch (error) {
         if (error instanceof GoogleTokenValidationError) {
@@ -1364,6 +1549,30 @@ export class AuthService {
     input: AuthenticateWithFacebookInput,
   ): Promise<FederatedLoginResult> {
     try {
+      // 0. Validar que el proveedor Facebook no esté deshabilitado en auth_providers_config (CA-AUTH-02)
+      let resolvedClientId = input.clientId;
+      let resolvedClientSecret = input.clientSecret;
+      if (this.authRepo.findAuthProviderConfig) {
+        const providerRow = await this.authRepo.findAuthProviderConfig("facebook");
+        if (providerRow) {
+          if (!providerRow.isEnabled) {
+            return err("Proveedor temporalmente fuera de servicio", "PROVIDER_DISABLED");
+          }
+          if (providerRow.clientId) {
+            resolvedClientId = providerRow.clientId;
+          }
+          if (providerRow.clientSecretEncrypted && providerRow.secretKeyId) {
+            resolvedClientSecret = this.totpCrypto
+              .decrypt(
+                providerRow.clientSecretEncrypted,
+                "oauth_provider:facebook",
+                providerRow.secretKeyId,
+              )
+              .toString("utf-8");
+          }
+        }
+      }
+
       // 1. Validar y consumir atómicamente el estado y cookie de Redis (anti-replay)
       const stateResult = await this.stateManager.consumeState({
         provider: "facebook",
@@ -1380,8 +1589,8 @@ export class AuthService {
       try {
         tokens = await this.facebookOAuthClient.exchangeCodeForAccessToken({
           code: input.code,
-          clientId: input.clientId,
-          clientSecret: input.clientSecret,
+          clientId: resolvedClientId,
+          clientSecret: resolvedClientSecret,
           redirectUri: input.redirectUri,
         });
       } catch (error) {
@@ -1520,6 +1729,14 @@ export class AuthService {
     input: LinkIdentityCallbackInput,
   ): Promise<LinkIdentityResult> {
     try {
+      // 0. Validar que el proveedor no esté deshabilitado en auth_providers_config (CA-AUTH-02)
+      if (this.authRepo.findAuthProviderConfig) {
+        const providerRow = await this.authRepo.findAuthProviderConfig(input.provider);
+        if (providerRow && !providerRow.isEnabled) {
+          return err("Proveedor temporalmente fuera de servicio", "PROVIDER_DISABLED");
+        }
+      }
+
       // 1. Validar y consumir atómicamente el estado y cookie de Redis (anti-replay)
       const stateResult = await this.stateManager.consumeState({
         provider: input.provider,
@@ -4148,6 +4365,384 @@ export class AuthService {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[AuthService.purgeStalePreregistrations Failed] ${msg}`, error);
       return err("Error interno al depurar preregistros caducados.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Registra o actualiza la configuración dinámica de un proveedor OAuth en `admin.auth_providers_config`
+   * cifrando el `client_secret` mediante AES-256-GCM con AAD `oauth_provider:<id>:<key_id>` (AUTH-001 AUTH-D-08, CA-AUTH-02).
+   *
+   * @param input - Parámetros del proveedor OAuth a persistir en el Router Global.
+   * @returns Resumen sanitizado del proveedor persistido sin exponer secretos.
+   */
+  async upsertOAuthProviderConfig(
+    input: UpsertOAuthProviderConfigInput,
+  ): Promise<UpsertOAuthProviderConfigResult> {
+    const normalizedId = input.id?.trim().toLowerCase();
+    const displayName = input.displayName?.trim();
+
+    if (!normalizedId || !displayName) {
+      return err("El identificador y el nombre visible del proveedor son obligatorios.", "INVALID_INPUT");
+    }
+
+    let clientSecretEncrypted: Buffer | null = null;
+    let secretKeyId: string | null = null;
+
+    if (input.clientSecret && input.clientSecret.trim().length > 0) {
+      try {
+        const encrypted = this.totpCrypto.encrypt(
+          input.clientSecret.trim(),
+          `oauth_provider:${normalizedId}`,
+          input.targetKeyId,
+        );
+        clientSecretEncrypted = encrypted.ciphertext;
+        secretKeyId = encrypted.keyId;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        appLogger.error(`[AuthService.upsertOAuthProviderConfig Encryption Failed] ${msg}`, error, {
+          providerId: normalizedId,
+        });
+        return err("Error al cifrar el secreto del proveedor OAuth con AES-256-GCM.", "ENCRYPTION_ERROR");
+      }
+    }
+
+    try {
+      if (!this.authRepo.upsertAuthProviderConfig) {
+        return err("Repositorio no soporta configuración de proveedores OAuth.", "DB_ERROR");
+      }
+
+      const row = await this.authRepo.upsertAuthProviderConfig({
+        id: normalizedId,
+        displayName,
+        isEnabled: input.isEnabled,
+        clientId: input.clientId ?? null,
+        clientSecretEncrypted,
+        secretKeyId,
+        scopes: input.scopes ?? [],
+        authUrl: input.authUrl ?? null,
+        tokenUrl: input.tokenUrl ?? null,
+        userInfoUrl: input.userInfoUrl ?? null,
+        actor: input.actor ?? "platform_owner",
+      });
+
+      return ok({
+        id: row.id,
+        displayName: row.displayName,
+        isEnabled: row.isEnabled,
+        clientId: row.clientId,
+        hasClientSecret: Boolean(row.clientSecretEncrypted && row.secretKeyId),
+        secretKeyId: row.secretKeyId,
+        scopes: row.scopes,
+        authUrl: row.authUrl,
+        tokenUrl: row.tokenUrl,
+        userInfoUrl: row.userInfoUrl,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.upsertOAuthProviderConfig Failed] ${msg}`, error, {
+        providerId: normalizedId,
+      });
+      return err("Error interno al guardar la configuración del proveedor OAuth.", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Obtiene la lista de proveedores OAuth habilitados en tiempo de ejecución para renderizar los botones
+   * en `/login` y `/register` (AUTH-001 AUTH-D-08, CA-AUTH-02).
+   *
+   * Si `admin.auth_providers_config` contiene registros, respeta estrictamente el flag `is_enabled`.
+   * Si la tabla está vacía (entorno local sin seed), aplica fallback a los proveedores por defecto (`google`, `facebook`).
+   */
+  async getEnabledOAuthProviders(): Promise<OAuthProviderSummaryDto[]> {
+    try {
+      if (this.authRepo.listAuthProvidersConfig) {
+        const rows = await this.authRepo.listAuthProvidersConfig();
+        if (rows && rows.length > 0) {
+          return rows
+            .filter((row) => row.isEnabled)
+            .map((row) => ({
+              id: row.id,
+              displayName: row.displayName,
+              scopes: row.scopes ?? [],
+            }));
+        }
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.warn(
+        `[AuthService.getEnabledOAuthProviders] Fallo al consultar auth_providers_config; usando fallback por defecto: ${msg}`,
+      );
+    }
+
+    return [
+      { id: "google", displayName: "Google", scopes: ["openid", "email", "profile"] },
+      { id: "facebook", displayName: "Facebook", scopes: ["email", "public_profile"] },
+    ];
+  }
+
+  /**
+   * Resuelve la configuración en tiempo de ejecución de un proveedor OAuth (`google` o `facebook`),
+   * verificando si se encuentra habilitado en `admin.auth_providers_config` y descifrando su `client_secret`
+   * con AES-256-GCM (AUTH-001 AUTH-D-08, CA-AUTH-02).
+   *
+   * @param providerId - Identificador del proveedor (`google` o `facebook`).
+   * @param envFallback - Credenciales de respaldo desde variables de entorno cuando la tabla no tiene fila para el proveedor.
+   */
+  async resolveOAuthProviderRuntimeConfig(
+    providerId: "google" | "facebook",
+    envFallback?: { clientId?: string; clientSecret?: string },
+  ): Promise<ResolveOAuthProviderRuntimeConfigResult> {
+    try {
+      if (this.authRepo.findAuthProviderConfig) {
+        const row = await this.authRepo.findAuthProviderConfig(providerId);
+        if (row) {
+          if (!row.isEnabled) {
+            return err("Proveedor temporalmente fuera de servicio", "PROVIDER_DISABLED");
+          }
+
+          let decryptedSecret: string | undefined;
+          if (row.clientSecretEncrypted && row.secretKeyId) {
+            try {
+              decryptedSecret = this.totpCrypto
+                .decrypt(
+                  row.clientSecretEncrypted,
+                  `oauth_provider:${providerId}`,
+                  row.secretKeyId,
+                )
+                .toString("utf-8");
+            } catch (decryptErr) {
+              const msg = decryptErr instanceof Error ? decryptErr.message : String(decryptErr);
+              appLogger.error(
+                `[AuthService.resolveOAuthProviderRuntimeConfig] Fallo al descifrar client_secret de ${providerId}: ${msg}`,
+              );
+              return err("Proveedor temporalmente fuera de servicio", "DECRYPTION_ERROR");
+            }
+          }
+
+          const clientId = row.clientId || envFallback?.clientId;
+          const clientSecret = decryptedSecret || envFallback?.clientSecret;
+
+          if (!clientId || !clientSecret) {
+            return err("Proveedor temporalmente fuera de servicio", "PROVIDER_UNAVAILABLE");
+          }
+
+          return ok({
+            id: providerId,
+            displayName: row.displayName,
+            isEnabled: true,
+            clientId,
+            clientSecret,
+            scopes:
+              row.scopes && row.scopes.length > 0
+                ? row.scopes
+                : providerId === "google"
+                  ? ["openid", "email", "profile"]
+                  : ["email", "public_profile"],
+            authUrl: row.authUrl ?? null,
+            tokenUrl: row.tokenUrl ?? null,
+            userInfoUrl: row.userInfoUrl ?? null,
+            source: "database",
+          });
+        }
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.warn(
+        `[AuthService.resolveOAuthProviderRuntimeConfig] Fallo al consultar BD para ${providerId}; evaluando fallback de entorno: ${msg}`,
+      );
+    }
+
+    if (!envFallback?.clientId || !envFallback?.clientSecret) {
+      return err("Proveedor temporalmente fuera de servicio", "PROVIDER_UNAVAILABLE");
+    }
+
+    return ok({
+      id: providerId,
+      displayName: providerId === "google" ? "Google" : "Facebook",
+      isEnabled: true,
+      clientId: envFallback.clientId,
+      clientSecret: envFallback.clientSecret,
+      scopes: providerId === "google" ? ["openid", "email", "profile"] : ["email", "public_profile"],
+      authUrl: null,
+      tokenUrl: null,
+      userInfoUrl: null,
+      source: "env_fallback",
+    });
+  }
+
+  /**
+   * Autoriza una petición autenticada resolviendo permisos y roles en tiempo real sin almacenar roles
+   * en la sesión ni en la cookie (AUTH-001 §3.2, T-28).
+   *
+   * Garantías de seguridad:
+   * 1. La sesión solo transporta `user_id` y `client_id`; nunca contiene `role` ni `scopes`.
+   * 2. Si `session.clientId` difiere de `user.activeClientId`, la sesión se revoca de inmediato (`validateSession`).
+   * 3. Si la petición exige un `requestedClientId` distinto al `session.clientId`, se rechaza con `FORBIDDEN_CLIENT_MISMATCH`.
+   * 4. `ADM-001` resuelve `tenant_users.role` y scopes de plataforma en cada petición a través del callback `resolveAuthorization`;
+   *    el rol de base de datos `mocter_auth` jamás lee `tenant_users`.
+   * 5. Un cambio de rol de inquilino surte efecto en la siguiente petición sin reemitir la cookie (`cookieReissued: false`).
+   */
+  async authorizeSessionContext(
+    input: AuthorizeSessionContextInput,
+  ): Promise<AuthorizeSessionContextResult> {
+    const sessionCheck = await this.validateSession(input.sid);
+    if (!sessionCheck.ok) {
+      return err(sessionCheck.error, sessionCheck.code);
+    }
+
+    const { session } = sessionCheck.data;
+
+    // Si la ruta solicita operar sobre un client_id específico, debe coincidir exactamente con el client_id de la sesión
+    if (input.requestedClientId !== undefined && input.requestedClientId !== null) {
+      if (!session.clientId || session.clientId !== input.requestedClientId) {
+        return err(
+          "La sesión actual no pertenece al inquilino solicitado.",
+          "FORBIDDEN_CLIENT_MISMATCH",
+        );
+      }
+    }
+
+    // ADM-001 resuelve tenant_users.role y scopes de plataforma en cada petición; mocter_auth no lee tenant_users
+    const resolved = await input.resolveAuthorization({
+      userId: session.userId,
+      clientId: session.clientId,
+    });
+
+    if (input.requestedClientId !== undefined && input.requestedClientId !== null) {
+      if (resolved.membershipActive === false || !resolved.tenantRole) {
+        return err(
+          "El usuario no posee una membresía activa en el inquilino solicitado.",
+          "FORBIDDEN_NO_MEMBERSHIP",
+        );
+      }
+    }
+
+    if (input.requiredTenantRoles && input.requiredTenantRoles.length > 0) {
+      if (!resolved.tenantRole || !input.requiredTenantRoles.includes(resolved.tenantRole)) {
+        return err(
+          "El rol actual del usuario no tiene permisos para esta operación.",
+          "FORBIDDEN_INSUFFICIENT_ROLE",
+        );
+      }
+    }
+
+    const platformScopes = resolved.platformScopes ?? [];
+    if (input.requiredScope) {
+      if (!platformScopes.includes(input.requiredScope)) {
+        return err(
+          "El usuario carece del scope requerido para esta operación.",
+          "FORBIDDEN_INSUFFICIENT_SCOPE",
+        );
+      }
+    }
+
+    return ok({
+      sessionId: session.id,
+      userId: session.userId,
+      clientId: session.clientId,
+      tenantRole: resolved.tenantRole ?? null,
+      platformScopes,
+      cookieReissued: false,
+    });
+  }
+
+  /**
+   * Aplica la política de ciclo de vida de sesión ante cambios de rol o de scopes sensibles (AUTH-001 T-28).
+   *
+   * - `tenant_role_updated`: como la sesión solo lleva `user_id` y `client_id` y `ADM-001` resuelve el rol en cada petición,
+   *   cambiar un rol de inquilino (`tenant_agent` ↔ `tenant_owner`) NO requiere reemitir la cookie ni revocar la sesión.
+   * - `sensitive_scope_removed` o `tenant_membership_removed`: retirar un rol/scope sensible o dar de baja la membresía
+   *   revoca de inmediato todas las sesiones activas del usuario en Postgres y Redis.
+   * - `platform_privilege_elevated`: si se provee `currentSid`, rota la sesión actual y revoca las demás sesiones del usuario;
+   *   si no se provee `currentSid`, revoca todas las sesiones activas del usuario.
+   */
+  async handleAuthorizationChange(
+    input: HandleAuthorizationChangeInput,
+  ): Promise<HandleAuthorizationChangeResult> {
+    if (!input.userId || !input.userId.trim()) {
+      return err("El identificador de usuario es obligatorio.", "INVALID_INPUT");
+    }
+
+    try {
+      if (input.changeType === "tenant_role_updated") {
+        return ok({
+          userId: input.userId,
+          changeType: input.changeType,
+          action: "none",
+          cookieReissued: false,
+        });
+      }
+
+      if (
+        input.changeType === "sensitive_scope_removed" ||
+        input.changeType === "tenant_membership_removed"
+      ) {
+        await this.revokeUserSessions(input.userId, input.changeType);
+        return ok({
+          userId: input.userId,
+          changeType: input.changeType,
+          action: "revoked_all",
+          cookieReissued: false,
+        });
+      }
+
+      // platform_privilege_elevated
+      if (input.currentSid) {
+        const sidHash = hashToken(input.currentSid);
+        const existingSession = await this.authRepo.findSessionBySidHash(sidHash);
+        if (!existingSession || existingSession.userId !== input.userId || existingSession.revokedAt) {
+          return err("Sesión actual no encontrada o inválida para rotación.", "SESSION_NOT_FOUND");
+        }
+
+        const newSid = generateSessionId();
+        const newCsrfToken = generateCsrfToken();
+        const newSidHash = hashToken(newSid);
+        const newCsrfHash = hashToken(newCsrfToken);
+
+        await this.sessionCache.deleteSession(
+          existingSession.sidHash.toString("hex"),
+          existingSession.userId,
+        );
+        const rotated = await this.authRepo.rotateSession(
+          existingSession.id,
+          newSidHash,
+          newCsrfHash,
+          { reauthAt: new Date() },
+        );
+
+        await this.revokeUserSessions(input.userId, "platform_privilege_elevated", {
+          exceptSessionId: rotated.id,
+        });
+
+        await this.sessionCache.cacheSession(rotated, newSidHash.toString("hex"));
+
+        return ok({
+          userId: input.userId,
+          changeType: input.changeType,
+          action: "rotated_current_and_revoked_others",
+          cookieReissued: true,
+          rotatedSession: {
+            sid: newSid,
+            csrfToken: newCsrfToken,
+            expiresAt: rotated.expiresAt.toISOString(),
+          },
+        });
+      }
+
+      await this.revokeUserSessions(input.userId, "platform_privilege_elevated");
+      return ok({
+        userId: input.userId,
+        changeType: input.changeType,
+        action: "revoked_all",
+        cookieReissued: false,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.handleAuthorizationChange Failed] ${msg}`, error, {
+        userId: input.userId,
+        changeType: input.changeType,
+      });
+      return err("Error interno al procesar el cambio de autorización.", "DB_ERROR");
     }
   }
 }

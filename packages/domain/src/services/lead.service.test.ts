@@ -10,7 +10,12 @@ describe("LeadService", () => {
     email: "maria@example.com",
     phone: "+573111234567",
     message: "Deseo información",
+    status: "new",
+    assignedToUserId: null,
+    notes: null,
     createdAt: new Date(),
+    updatedAt: new Date(),
+    updatedBy: "public_landing",
   };
 
   it("validates and registers a lead successfully", async () => {

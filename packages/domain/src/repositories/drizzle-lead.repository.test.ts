@@ -9,7 +9,12 @@ describe("DrizzleLeadRepository", () => {
     email: "carlos@example.com",
     phone: "+573001234567",
     message: "Hola",
+    status: "new",
+    assignedToUserId: null,
+    notes: null,
     createdAt: new Date(),
+    updatedAt: new Date(),
+    updatedBy: "public_landing",
   };
 
   it("creates a lead successfully", async () => {
