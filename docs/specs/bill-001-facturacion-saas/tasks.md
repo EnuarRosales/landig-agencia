@@ -69,7 +69,7 @@
   - Procesar `payment_intent.succeeded` actualizando factura y suscripción.
   - Verificación: Stripe CLI trigger `payment_intent.succeeded` procesa correctamente sin duplicados.
 
-- [ ] **T-06 · Implementar servicio de Checkout Session**
+- [x] **T-06 · Implementar servicio de Checkout Session**
   - Endpoint para iniciar pago: redirige a Wompi Web Checkout para COP o genera clientSecret de Stripe Payment Intent para USD, usando el token de `payment_methods`.
   - Verificación: Inquilino en Colombia obtiene referencia Wompi; inquilino internacional obtiene intent de Stripe; no se almacena PAN/CVV.
 
