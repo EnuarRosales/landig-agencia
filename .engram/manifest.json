@@ -72,6 +72,14 @@
       "sessions": 6,
       "memories": 58,
       "prompts": 0
+    },
+    {
+      "id": "932e37cf",
+      "created_by": "alejandroher",
+      "created_at": "2026-10-31T04:05:30.863005Z",
+      "sessions": 1,
+      "memories": 1,
+      "prompts": 0
     }
   ]
 }
