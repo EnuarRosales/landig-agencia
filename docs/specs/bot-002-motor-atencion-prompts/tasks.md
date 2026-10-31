@@ -1,4 +1,4 @@
-# BOT-002 · Tareas · Motor de atención y composición dinámica de prompts
+﻿# BOT-002 · Tareas · Motor de atención y composición dinámica de prompts
 
 | Atributo | Valor |
 |---|---|
@@ -38,13 +38,13 @@
   - Incluye el motor de burbujas: perfil por canal, pausa adaptativa 800–5.000 ms, máximo 4 burbujas y presets natural/rápido/pausado.
   - Verificación: agregar un producto y abrir conversación nueva lo incluye sin job; una conversación no mezcla productos; WhatsApp respeta el orden y las pausas del rango; un fallo de una burbuja no bloquea el resto.
 
-- [ ] **T-05 · Implementar caché e invalidación**
+- [x] **T-05 · Implementar caché e invalidación**
   - Clave por versiones y TTL de respaldo; invalidación al cambiar bot, producto, políticas o bloques.
   - Verificación: editar un producto invalida su entrada y el siguiente turno usa la versión nueva.
 
 ## Fase 2 · Atención y clasificación
 
-- [ ] **T-06 · Implementar el estado de conversación**
+- [x] **T-06 · Implementar el estado de conversación**
   - Ciudad, nombre, producto activo, cantidad, método de envío, etapa y última etiqueta; persistencia por conversación.
   - Verificación: cambiar de producto conserva ciudad y nombre; el prompt no crece con el historial.
 
@@ -52,13 +52,13 @@
   - Bloque `core.classifier`, últimos 10 turnos, salida validada contra los 4 slugs, aplicación en prospecto y Chatwoot.
   - Verificación: solo devuelve los 4 slugs; una salida inválida no cambia la etiqueta; `compra-realizada` solo con evidencia de registro.
 
-- [ ] **T-08 · Implementar la captura de pedido y el cierre**
+- [x] **T-08 · Implementar la captura de pedido y el cierre**
   - Flujo de método de envío, plantilla única de datos, `registrar_pedido` idempotente, cierre y etiqueta.
   - Verificación: dos ejecuciones de la misma conversación no duplican pedido; el cierre se envía una sola vez.
 
 ## Fase 3 · Verificación y cierre
 
-- [ ] **T-09 · Implementar la vista previa del prompt**
+- [x] **T-09 · Implementar la vista previa del prompt**
   - Prompt compuesto por inquilino/producto con bloques y conteo de tokens.
   - Verificación: el preview coincide con lo que consume el motor para la misma versión.
 

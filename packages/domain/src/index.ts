@@ -63,3 +63,8 @@ export * from "./services/prompt-blocks.seed";
 export * from "./services/prompt-composer";
 export * from "./services/bubble-engine";
 export * from "./services/lead-classifier";
+export * from "./repositories/conversation-state.repository.interface";
+export * from "./repositories/drizzle-conversation-state.repository";
+export * from "./services/conversation-state.service";
+export * from "./services/prompt-engine";
+export * from "./services/bot-order-capture.service";

@@ -134,6 +134,17 @@ export class OrdersService {
    * y avance automático del prospecto en CRM a cliente (ORD-001 T-04, T-05, T-09).
    */
   async registerOrder(input: RegisterOrderInput): Promise<Result<OrderWithDetails>> {
+    const result = await this.registerOrderDetailed(input);
+    return result.ok ? ok(result.data.details) : result;
+  }
+
+  /**
+   * Igual que {@link OrdersService.registerOrder} pero indica si el pedido se creó en esta
+   * llamada (`created = true`) o se devolvió el existente por idempotencia (`created = false`).
+   */
+  async registerOrderDetailed(
+    input: RegisterOrderInput,
+  ): Promise<Result<{ details: OrderWithDetails; created: boolean }>> {
     const {
       cellId,
       clientId,
@@ -159,7 +170,7 @@ export class OrdersService {
         chatwootConversationId,
       );
       if (existingActive) {
-        return ok(existingActive);
+        return ok({ details: existingActive, created: false });
       }
     }
 
@@ -292,7 +303,7 @@ export class OrdersService {
       }
     }
 
-    return ok(created);
+    return ok({ details: created, created: true });
   }
 
   /**
