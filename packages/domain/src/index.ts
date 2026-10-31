@@ -59,3 +59,7 @@ export * from "./repositories/bot.repository.interface";
 export * from "./repositories/drizzle-bot.repository";
 export * from "./services/bot.service";
 export * from "./services/bot-catalog.seed";
+export * from "./services/prompt-blocks.seed";
+export * from "./services/prompt-composer";
+export * from "./services/bubble-engine";
+export * from "./services/lead-classifier";

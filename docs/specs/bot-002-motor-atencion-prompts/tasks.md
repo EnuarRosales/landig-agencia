@@ -25,15 +25,15 @@
 
 ## Fase 1 · Bloques y compositor
 
-- [ ] **T-02 · Crear las migraciones de bloques y estado**
+- [x] **T-02 · Crear las migraciones de bloques y estado**
   - `bot_prompt_blocks` (Router) versionado y `conversation_state`; auditoría y únicos declarados.
   - Verificación: `drizzle-kit check` pasa; solo una versión `active` por bloque.
 
-- [ ] **T-03 · Sembrar los bloques de plataforma**
+- [x] **T-03 · Sembrar los bloques de plataforma**
   - Identidad, personalidad, saludo, multimedia, splits, flujo de pedido, cierre, clasificador y formato, en es/en.
   - Verificación: el preview compone un prompt completo para un producto; cada bloque muestra su versión.
 
-- [ ] **T-04 · Implementar el compositor en runtime**
+- [x] **T-04 · Implementar el compositor en runtime**
   - Lee bloques + contexto del inquilino + producto activo + estado; arma el prompt por turno sin regeneración; registra versiones usadas.
   - Incluye el motor de burbujas: perfil por canal, pausa adaptativa 800–5.000 ms, máximo 4 burbujas y presets natural/rápido/pausado.
   - Verificación: agregar un producto y abrir conversación nueva lo incluye sin job; una conversación no mezcla productos; WhatsApp respeta el orden y las pausas del rango; un fallo de una burbuja no bloquea el resto.

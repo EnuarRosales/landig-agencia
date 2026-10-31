@@ -19,3 +19,4 @@ export * from "./chatwoot-media-onboarding";
 export * from "./notifications";
 export * from "./bot-catalog";
 export * from "./bot-tenancy";
+export * from "./bot-prompt-blocks";

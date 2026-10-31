@@ -10,3 +10,4 @@ export { cellIdentities, type CellIdentity, type NewCellIdentity } from "./ident
 export * from "./tenancy-catalog";
 export * from "./crm";
 export * from "./orders";
+export * from "./conversation-state";

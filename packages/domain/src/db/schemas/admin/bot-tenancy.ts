@@ -204,9 +204,6 @@ export const walletTransactions = adminSchema.table(
     outputTokens: integer("output_tokens"),
     balanceAfterUsdCents: bigint("balance_after_usd_cents", { mode: "number" }).notNull(),
     reference: text("reference").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
     ...auditColumns(),
   },
   (table) => [
