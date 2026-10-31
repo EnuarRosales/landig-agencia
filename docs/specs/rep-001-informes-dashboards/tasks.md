@@ -33,7 +33,7 @@
 
 ## Fase 1 · Motor de Períodos e Índices de Consulta
 
-- [ ] **T-02 · Asegurar índices compuestos de rango temporal en packages/domain**
+- [x] **T-02 · Asegurar índices compuestos de rango temporal en packages/domain**
   - Verificar y agregar los índices compuestos en esquemas de Drizzle:
     - `conversations`: `(client_id, created_at)`
     - `prospects`: `(client_id, created_at)`
@@ -42,7 +42,7 @@
     - `invoices`: `(client_id, created_at)`
   - Verificación: `pnpm --filter @mocter/domain exec drizzle-kit check` pasa; plan `EXPLAIN ANALYZE` confirma uso de `Index Scan`.
 
-- [ ] **T-03 · Implementar utilidad PeriodResolver con soporte de zonas horarias**
+- [x] **T-03 · Implementar utilidad PeriodResolver con soporte de zonas horarias**
   - Implementar la función de cálculo de rangos `resolvePeriod(periodType, customRange, timezone)` en `apps/web/lib/reports/periods.ts`.
   - Soportar: `daily`, `weekly`, `monthly`, `quarterly`, `semiannual`, `annual`, `custom`.
   - Calcular automáticamente el rango del período anterior equivalente para el delta.
@@ -52,7 +52,7 @@
 
 ## Fase 2 · Servicios de Métricas en Caliente
 
-- [ ] **T-04 · Implementar servicio de métricas del inquilino**
+- [x] **T-04 · Implementar servicio de métricas del inquilino**
   - Crear queries agregadas en `apps/web/server/services/tenant-reports.service.ts`:
     - Métricas de conversaciones (Chatwoot API + celda).
     - Métricas de prospectos (volumen, etapas, conversión y consentimiento).
