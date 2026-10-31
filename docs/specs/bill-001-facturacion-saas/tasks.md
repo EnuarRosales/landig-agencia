@@ -56,14 +56,14 @@
 
 ## Fase 2 · Pasarelas Duales (Wompi y Stripe)
 
-- [ ] **T-04 · [LAB] Implementar webhook de Wompi con checksum e idempotencia**
+- [x] **T-04 · [LAB] Implementar webhook de Wompi con checksum e idempotencia**
   - Crear endpoint `POST /api/webhooks/wompi`.
   - Validar firma HMAC SHA256 usando `WOMPI_EVENTS_SECRET`.
   - Comprobar idempotencia en `payments` por `gateway_reference`.
   - Actualizar `invoices.status = 'paid'` y `subscriptions.status = 'active'`.
   - Verificación: Test unitario con payload simulado de Wompi confirma transición de factura y rechazo de checksum erróneo.
 
-- [ ] **T-05 · [LAB] Implementar webhook de Stripe con firma e idempotencia**
+- [x] **T-05 · [LAB] Implementar webhook de Stripe con firma e idempotencia**
   - Crear endpoint `POST /api/webhooks/stripe`.
   - Validar cabecera `Stripe-Signature` mediante SDK oficial.
   - Procesar `payment_intent.succeeded` actualizando factura y suscripción.
