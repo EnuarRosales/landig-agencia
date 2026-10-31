@@ -73,3 +73,6 @@ export * from "./repositories/ai-assist.repository.interface";
 export * from "./repositories/drizzle-ai-assist.repository";
 export * from "./services/ai-assist-catalog.seed";
 export * from "./services/ai-assist.service";
+export * from "./repositories/billing.repository.interface";
+export * from "./repositories/drizzle-billing.repository";
+export * from "./services/billing.service";

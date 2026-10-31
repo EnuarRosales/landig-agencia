@@ -36,7 +36,7 @@
 
 ## Fase 1 · Esquema Drizzle y Modelado de Datos
 
-- [ ] **T-02 · Crear las entidades de billing en packages/domain**
+- [x] **T-02 · Crear las entidades de billing en packages/domain**
   - Implementar en `packages/domain/src/schema/admin/billing.ts` las tablas:
     - `client_billing_profiles` (con campos Matías API: `identity_document_id`, `dni`, `company_name`, `email`, `address`, `city_code`).
     - `payment_methods` (tokens de cliente/método, `brand`, `last4`, `is_default`, `status`; sin PAN/CVV).
@@ -47,7 +47,7 @@
     - `subscription_changes` (from/to plan, remaining_days, credit/charge/net, invoice_id).
   - Verificación: `pnpm --filter @mocter/domain exec drizzle-kit check` pasa sin errores sintácticos.
 
-- [ ] **T-03 · Generar y validar la migración SQL de billing**
+- [x] **T-03 · Generar y validar la migración SQL de billing**
   - Ejecutar `pnpm --filter @mocter/domain db:generate`.
   - Revisar el SQL generado asegurando llaves foráneas, índices por `client_id` y restricción de unicidad en `payments.gateway_reference`.
   - Verificación: SQL validado sin advertencias destructivas.
