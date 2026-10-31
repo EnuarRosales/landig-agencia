@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1440" />
+<title>03 — Grid de tarjetas por rol</title>
+<style>
+  :root {
+    --primitive-space-1:0.25rem;--primitive-space-2:0.5rem;--primitive-space-3:0.75rem;--primitive-space-4:1rem;--primitive-space-6:1.5rem;--primitive-space-8:2rem;
+    --primitive-radius-sm:0.375rem;--primitive-radius-md:0.5rem;--primitive-radius-lg:0.75rem;--primitive-radius-xl:1rem;--primitive-radius-full:9999px;
+    --primitive-touch-target:44px;
+    --dsn-background:#0a0a0b;--dsn-surface:#121214;--dsn-surface-secondary:#18181b;
+    --dsn-text:#ededef;--dsn-text-secondary:#8d8d93;--dsn-text-tertiary:#5c5c63;
+    --dsn-border:rgba(255,255,255,0.09);--dsn-border-subtle:rgba(255,255,255,0.05);
+    --dsn-accent:#22d3ee;--dsn-accent-subtle:rgba(34,211,238,0.1);
+    --dsn-success:#3ddc97;--dsn-warning:#f5a524;--dsn-error:#ff6b6b;
+    --brand-primary:#2f6bff;--bg:#05070f;--card:rgba(255,255,255,0.045);--stroke:var(--dsn-border);--stroke2:var(--dsn-border-subtle);--txt:var(--dsn-text);--muted:var(--dsn-text-secondary);
+    --color-cold:#5aa9ff;--color-warm:#ffb63d;--color-hot:#ff6b57;--color-done:#2fd483;
+    --radius-card:22px;
+    --font-sans:ui-sans-serif,system-ui,sans-serif;--font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--dsn-background);color:var(--dsn-text);font-family:var(--font-sans);font-size:14px;}
+  .app{min-height:100vh;}
+  .topbar{height:64px;border-bottom:1px solid var(--dsn-border);display:flex;align-items:center;justify-content:space-between;padding:0 32px;background:var(--dsn-surface);}
+  .brand{font-weight:600;font-size:16px;}
+  .user{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--dsn-text-secondary);}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--brand-primary);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:13px;}
+  .content{padding:40px 32px;max-width:1360px;margin:0 auto;}
+  .hero{text-align:center;margin-bottom:40px;}
+  .hero h1{font-size:32px;font-weight:600;}
+  .hero p{color:var(--muted);margin-top:8px;max-width:640px;margin-left:auto;margin-right:auto;}
+  .role-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-bottom:40px;}
+  .role-card{background:var(--card);border:1px solid var(--stroke);border-radius:var(--radius-card);padding:28px;display:flex;flex-direction:column;gap:12px;cursor:pointer;transition:border-color .2s;}
+  .role-card:hover{border-color:var(--dsn-accent);}
+  .role-card.active{border-color:var(--dsn-accent);background:var(--dsn-accent-subtle);}
+  .role-icon{width:48px;height:48px;border-radius:12px;background:var(--dsn-surface-secondary);display:flex;align-items:center;justify-content:center;font-size:22px;}
+  .role-title{font-size:18px;font-weight:600;color:var(--txt);}
+  .role-desc{font-size:13px;color:var(--muted);}
+  .role-meta{font-size:11px;color:var(--dsn-text-tertiary);margin-top:auto;}
+  .section{margin-bottom:32px;}
+  .section h2{font-size:18px;font-weight:600;margin-bottom:16px;}
+  .modules{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  .module{background:var(--card);border:1px solid var(--stroke);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:8px;min-height:140px;}
+  .module .ic{width:36px;height:36px;border-radius:8px;background:var(--dsn-accent-subtle);display:flex;align-items:center;justify-content:center;color:var(--dsn-accent);font-size:16px;}
+  .module .title{font-size:14px;font-weight:600;color:var(--txt);}
+  .module .desc{font-size:12px;color:var(--muted);}
+  .module .stat{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600;margin-top:auto;color:var(--txt);}
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px;}
+  .kpi{background:var(--card);border:1px solid var(--stroke);border-radius:12px;padding:16px;}
+  .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+  .kpi .v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:600;margin-top:6px;color:var(--txt);}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">Mocter Backoffice</div>
+    <div class="user">
+      <span>María Gómez · Admin inquilino</span>
+      <div class="avatar">MG</div>
+    </div>
+  </header>
+  <main class="content">
+    <div class="hero">
+      <h1>Elige tu espacio de trabajo</h1>
+      <p>Cada rol ve únicamente los módulos y métricas que le corresponden. Cambia de contexto en cualquier momento sin perder la sesión.</p>
+    </div>
+
+    <div class="role-grid">
+      <div class="role-card">
+        <div class="role-icon">🛡</div>
+        <div class="role-title">Platform Owner</div>
+        <div class="role-desc">Gestión global de organizaciones, planes, facturación y usuarios de plataforma. Visibilidad total.</div>
+        <div class="role-meta">1 usuario · acceso total</div>
+      </div>
+      <div class="role-card active">
+        <div class="role-icon">🏢</div>
+        <div class="role-title">Admin inquilino</div>
+        <div class="role-desc">Dashboard del negocio, equipo, productos, conversaciones y configuración del canal.</div>
+        <div class="role-meta">6 usuarios · Clínica Dental Sonrisa</div>
+      </div>
+      <div class="role-card">
+        <div class="role-icon">💬</div>
+        <div class="role-title">Agente</div>
+        <div class="role-desc">Bandeja de entrada, leads asignados y respuestas rápidas. Vista enfocada.</div>
+        <div class="role-meta">3 usuarios · turno mañana</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Vista previa · Admin inquilino</h2>
+      <div class="kpi-row">
+        <div class="kpi"><div class="l">Conversaciones activas</div><div class="v">148</div></div>
+        <div class="kpi"><div class="l">Leads calientes</div><div class="v">24</div></div>
+        <div class="kpi"><div class="l">Productos</div><div class="v">38</div></div>
+        <div class="kpi"><div class="l">Equipo</div><div class="v">6</div></div>
+      </div>
+      <div class="modules">
+        <div class="module"><div class="ic">💬</div><div class="title">Conversaciones</div><div class="desc">Bandeja unificada multicanal</div><div class="stat">148 activas</div></div>
+        <div class="module"><div class="ic">🎯</div><div class="title">Leads</div><div class="desc">Pipeline y calificación</div><div class="stat">24 calientes</div></div>
+        <div class="module"><div class="ic">📦</div><div class="title">Productos</div><div class="desc">Catálogo y precios</div><div class="stat">38 items</div></div>
+        <div class="module"><div class="ic">👥</div><div class="title">Equipo</div><div class="desc">Agentes e invitaciones</div><div class="stat">6 miembros</div></div>
+        <div class="module"><div class="ic">📊</div><div class="title">Reportes</div><div class="desc">Métricas y exportación</div><div class="stat">7 días</div></div>
+        <div class="module"><div class="ic">⚙</div><div class="title">Configuración</div><div class="desc">WhatsApp, IA, webchat</div><div class="stat">3 canales</div></div>
+        <div class="module"><div class="ic">🔔</div><div class="title">Notificaciones</div><div class="desc">Plantillas y eventos</div><div class="stat">12 plantillas</div></div>
+        <div class="module"><div class="ic">🧾</div><div class="title">Facturación</div><div class="desc">Plan y consumo</div><div class="stat">Pro · $49/mes</div></div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

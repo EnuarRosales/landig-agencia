@@ -179,7 +179,7 @@ export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
       <div>
         <label
           htmlFor="name"
-          className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
+          className="mb-1.5 block text-xs font-medium text-muted"
         >
           {t.nameLabel}
         </label>
@@ -211,7 +211,7 @@ export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
       <div>
         <label
           htmlFor="email"
-          className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
+          className="mb-1.5 block text-xs font-medium text-muted"
         >
           {t.emailLabel}
         </label>
@@ -243,7 +243,7 @@ export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
       <div>
         <label
           htmlFor="password"
-          className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
+          className="mb-1.5 block text-xs font-medium text-muted"
         >
           {t.passwordLabel}
         </label>

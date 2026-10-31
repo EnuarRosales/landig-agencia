@@ -279,7 +279,7 @@
     "login": {
       "title": "Sign in to your account",
       "subtitle": "Access your company's administration dashboard",
-      "emailLabel": "Email address",
+      "emailLabel": "Email Address",
       "emailPlaceholder": "yourname@company.com",
       "passwordLabel": "Password",
       "passwordPlaceholder": "••••••••",
@@ -293,9 +293,9 @@
     "register": {
       "title": "Create your company account",
       "subtitle": "Automate your customer service on WhatsApp in minutes",
-      "nameLabel": "Full name",
+      "nameLabel": "Full Name",
       "namePlaceholder": "Carlos Gómez",
-      "emailLabel": "Corporate email",
+      "emailLabel": "Corporate Email",
       "emailPlaceholder": "carlos@company.com",
       "passwordLabel": "Password",
       "passwordPlaceholder": "Minimum 7 characters with uppercase, number and symbol",

@@ -204,3 +204,4 @@ export type ClientFeatureOverride = typeof clientFeatureOverrides.$inferSelect;
 export type NewClientFeatureOverride = typeof clientFeatureOverrides.$inferInsert;
 export type VectorizationConfigRow = typeof vectorizationConfig.$inferSelect;
 export type NewVectorizationConfigRow = typeof vectorizationConfig.$inferInsert;
+

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1440" />
+<title>03 — Grid de módulos · SaaS</title>
+<style>
+  :root {
+    --primitive-space-1:0.25rem;--primitive-space-2:0.5rem;--primitive-space-3:0.75rem;--primitive-space-4:1rem;--primitive-space-6:1.5rem;--primitive-space-8:2rem;
+    --primitive-radius-sm:0.375rem;--primitive-radius-md:0.5rem;--primitive-radius-lg:0.75rem;--primitive-radius-xl:1rem;--primitive-radius-full:9999px;
+    --primitive-touch-target:44px;
+    --gris-mocter:#212121;--azul-mocter:#00C3FF;--blanco:#FFFFFF;--naranja:#FF6700;--verde:#8CFF00;--rosa:#E50C5F;
+    --radius-card:22px;
+    --font-sans:'Outfit',ui-sans-serif,system-ui,sans-serif;
+    --font-mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--gris-mocter);color:var(--blanco);font-family:var(--font-sans);font-size:14px;font-weight:300;}
+  .app{min-height:100vh;}
+  .topbar{height:64px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;padding:0 32px;background:rgba(33,33,33,0.7);}
+  .brand{font-weight:500;font-size:18px;letter-spacing:.02em;text-transform:uppercase;}
+  .brand span{color:var(--azul-mocter);}
+  .user{display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,0.7);}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--azul-mocter);display:flex;align-items:center;justify-content:center;color:var(--gris-mocter);font-weight:500;font-size:13px;}
+  .content{padding:40px 32px;max-width:1360px;margin:0 auto;}
+  .hero{text-align:center;margin-bottom:40px;}
+  .hero h1{font-size:32px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;}
+  .hero p{color:rgba(255,255,255,0.55);margin-top:8px;max-width:640px;margin-left:auto;margin-right:auto;}
+  .platform-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:9999px;background:rgba(0,195,255,0.12);color:var(--azul-mocter);font-size:12px;font-weight:500;margin-bottom:16px;}
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px;}
+  .kpi{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;}
+  .kpi .l{font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:.06em;font-family:var(--font-mono);font-weight:500;}
+  .kpi .v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:500;margin-top:6px;color:var(--blanco);}
+  .section{margin-bottom:32px;}
+  .section h2{font-size:18px;font-weight:500;margin-bottom:16px;text-transform:uppercase;letter-spacing:.04em;}
+  .modules{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  .module{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:8px;min-height:140px;cursor:pointer;}
+  .module:hover{border-color:var(--azul-mocter);}
+  .module .ic{width:36px;height:36px;border-radius:8px;background:rgba(0,195,255,0.12);display:flex;align-items:center;justify-content:center;color:var(--azul-mocter);font-size:16px;}
+  .module .title{font-size:14px;font-weight:500;color:var(--blanco);}
+  .module .desc{font-size:12px;color:rgba(255,255,255,0.55);}
+  .module .stat{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:500;margin-top:auto;color:var(--blanco);}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">Mocter <span>SaaS</span></div>
+    <div class="user">
+      <span>María Gómez · Superadmin</span>
+      <div class="avatar">MG</div>
+    </div>
+  </header>
+  <main class="content">
+    <div class="hero">
+      <span class="platform-badge">● Platform Owner</span>
+      <h1>Centro de control de plataforma</h1>
+      <p>Gestiona organizaciones, usuarios globales, planes, facturación y soporte desde un único espacio.</p>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="l">Organizaciones</div><div class="v">47</div></div>
+      <div class="kpi"><div class="l">MRR</div><div class="v">$12.4M</div></div>
+      <div class="kpi"><div class="l">Conversaciones/día</div><div class="v">1,284</div></div>
+      <div class="kpi"><div class="l">Tickets abiertos</div><div class="v">9</div></div>
+    </div>
+    <div class="section">
+      <h2>Módulos de plataforma</h2>
+      <div class="modules">
+        <div class="module"><div class="ic">🏢</div><div class="title">Organizaciones</div><div class="desc">Alta, suspensión, planes</div><div class="stat">47 activas</div></div>
+        <div class="module"><div class="ic">👥</div><div class="title">Usuarios globales</div><div class="desc">Invitaciones y roles</div><div class="stat">12 admins</div></div>
+        <div class="module"><div class="ic">💳</div><div class="title">Facturación</div><div class="desc">MRR, cobros, reembolsos</div><div class="stat">$12.4M</div></div>
+        <div class="module"><div class="ic">📦</div><div class="title">Planes</div><div class="desc">Límites y precios</div><div class="stat">4 planes</div></div>
+        <div class="module"><div class="ic">🎫</div><div class="title">Soporte</div><div class="desc">Tickets y SLA</div><div class="stat">9 abiertos</div></div>
+        <div class="module"><div class="ic">📜</div><div class="title">Auditoría</div><div class="desc">Eventos y trazas</div><div class="stat">1.2k hoy</div></div>
+        <div class="module"><div class="ic">⚙</div><div class="title">Configuración</div><div class="desc">Flags y parámetros</div><div class="stat">24 flags</div></div>
+        <div class="module"><div class="ic">❤</div><div class="title">Health</div><div class="desc">Estado de servicios</div><div class="stat">Todo OK</div></div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

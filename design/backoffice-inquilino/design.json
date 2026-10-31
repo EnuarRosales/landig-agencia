@@ -1,0 +1,9 @@
+{
+  "title": "Backoffice Inquilino",
+  "brief": "Backoffice exclusivo de los inquilinos (admin y agentes). No mezcla vistas de la plataforma SaaS. Marca institucional Mocter: Azul Mocter #00C3FF primario, colores por dominio (naranja ventas, verde pagos, rosa agenda), Outfit + Geist Mono.",
+  "artboards": [
+    { "file": "01-sidebar-shell.html", "title": "Sidebar shell · Inquilino", "tradeoff": "Navegación persistente y familiar; denso en desktop", "width": 1440, "height": 900 },
+    { "file": "02-topnav-command.html", "title": "Top nav + comandos · Inquilino", "tradeoff": "Máximo espacio horizontal y búsqueda global", "width": 1440, "height": 900 },
+    { "file": "03-card-grid.html", "title": "Grid de módulos · Inquilino", "tradeoff": "Descubrimiento de módulos del inquilino; menos denso para uso diario", "width": 1440, "height": 900 }
+  ]
+}

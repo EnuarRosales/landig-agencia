@@ -106,7 +106,7 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
       <div>
         <label
           htmlFor="email"
-          className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
+          className="mb-1.5 block text-xs font-medium text-muted"
         >
           {t.emailLabel}
         </label>
@@ -127,7 +127,7 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
       <div>
         <label
           htmlFor="password"
-          className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
+          className="mb-1.5 block text-xs font-medium text-muted"
         >
           {t.passwordLabel}
         </label>

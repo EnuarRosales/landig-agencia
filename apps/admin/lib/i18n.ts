@@ -31,10 +31,10 @@ export const adminDictionaries = {
       stepBusiness: "1. Datos del negocio",
       stepProduct: "2. Primer producto",
       stepBot: "3. Bot y canal web",
-      businessNameLabel: "Nombre del negocio",
-      slugLabel: "Identificador (slug)",
-      productNameLabel: "Nombre del producto o servicio",
-      productDescLabel: "Descripción breve",
+      businessNameLabel: "Nombre Del Negocio",
+      slugLabel: "Identificador (Slug)",
+      productNameLabel: "Nombre Del Producto O Servicio",
+      productDescLabel: "Descripción Breve",
       productPriceLabel: "Precio (COP)",
       aiEnhanceButton: "Mejorar con AI",
       submitAction: "Activar mi comercio ahora",
@@ -189,3 +189,4 @@ export function resolveActiveLocale(params: {
 export function getAdminDictionary(locale: AdminLocale = "es") {
   return adminDictionaries[locale];
 }
+

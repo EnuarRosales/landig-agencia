@@ -330,3 +330,4 @@ export type CellProductMedia = typeof cellProductMedia.$inferSelect;
 export type NewCellProductMedia = typeof cellProductMedia.$inferInsert;
 export type CellClientBusinessInfo = typeof cellClientBusinessInfo.$inferSelect;
 export type NewCellClientBusinessInfo = typeof cellClientBusinessInfo.$inferInsert;
+

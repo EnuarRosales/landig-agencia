@@ -287,3 +287,4 @@ export type PlatformUserRole = typeof platformUserRoles.$inferSelect;
 export type NewPlatformUserRole = typeof platformUserRoles.$inferInsert;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type NewAuditLogEntry = typeof auditLog.$inferInsert;
+

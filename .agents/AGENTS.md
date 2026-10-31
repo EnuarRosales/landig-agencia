@@ -104,6 +104,8 @@ Todo **campo de texto libre (`textarea`)** que el inquilino redacte cuenta con *
 
 Toda vista de Mocter se diseña **Mobile First**: la versión móvil se define primero y el escritorio la amplía, nunca al revés. El look & feel vive en el sistema de diseño [DSN-001](docs/specs/dsn-001-sistema-diseno/requirements.md): tokens en capas, paleta parametrizable (SaaS e inquilino por plan), tipografía (Chakra Petch/Space Grotesk · Inter/Geist · IBM Plex Mono), tablas con paginación/filtros/ordenamiento en todo el sistema, alto contraste (WCAG 2.2 AA) y el contrato de marca blanca por capas.
 
+**Regla de presentación para formularios:** En los label de los atributos que se capturen en formularios, queda prohibido el uso de letras en mayúsculas sostenidas (uppercase). Se debe usar siempre formato **Tipo Título (Title Case)** con las primeras letras en mayúscula (ej. «Nombre Del Platform Owner», «Correo Electrónico Corporativo»). Ningún label debe utilizar clases como uppercase ni fuentes tipográficas que fuercen la representación en mayúsculas sostenidas.
+
 ### 4.9 Time-to-value: operación en una sesión corta
 
 Un inquilino nuevo debe quedar **operativo en una sesión corta** (5 minutos como guía de diseño, no como SLA): onboarding guiado con defaults de plataforma, un producto, bot con preset y canal de atención activo. **WhatsApp es el canal preferido** y su conexión puede extenderse sin bloquear la operación; el widget web permite operar de inmediato. Todo lo demás (políticas, FAQs, catálogo completo) es opcional, se completa después y nunca bloquea. La configuración avanzada no es requisito del alta.
@@ -118,7 +120,7 @@ Queda estrictamente prohibido introducir o conservar código, APIs o dependencia
 
 ### 4.12 Prohibición de hardcoding y validación estricta de entorno (@t3-oss/env-nextjs)
 
-Queda estrictamente prohibido usar valores fijos (hardcoded) o acceder directamente a `process.env` en cualquier archivo del proyecto. Toda configuración externa debe ser procesada a través del módulo centralizado de entorno (`env.ts`) tipado, validado y segmentado estrictamente entre Cliente y Servidor mediante `@t3-oss/env-nextjs` (o `@t3-oss/env-core`) y `zod`. Los datos estáticos de la UI deben extraerse a `config/site.ts`. Consulte la directiva completa en [rules/rules-for-env-and-no-hardcoding.md](rules/rules-for-env-and-no-hardcoding.md).
+Queda estrictamente prohibido usar valores fijos (hardcoded) o acceder directamente a `process.env` en cualquier archivo del proyecto. Toda configuración externa debe ser procesada a través del módulo centralizado de entorno (`env.ts`) tipado, validado y segmentado estrictamente entre Cliente y Servidor mediante `@t3-oss/env-nextjs` (o `@t3-oss/env-core`) y `zod`. Los datos estáticos de la UI deben extraerse a `config/site.ts`. Toda variable de entorno que se defina o consuma en la logica de negocio o infraestructura debe ser obligatoriamente registrada y documentada en el archivo .env.example. Consulte la directiva completa en [rules/rules-for-env-and-no-hardcoding.md](rules/rules-for-env-and-no-hardcoding.md).
 
 ### 4.13 Gestión estructurada de logs y trazabilidad (Next.js 16 + TypeScript)
 

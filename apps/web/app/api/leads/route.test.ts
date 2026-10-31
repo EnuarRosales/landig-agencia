@@ -45,6 +45,11 @@ describe("POST /api/leads", () => {
         phone: "+573001234567",
         message: "Demo please",
         createdAt: new Date("2026-10-19T10:00:00Z"),
+        status: "new",
+        assignedToUserId: null,
+        notes: null,
+        updatedAt: new Date("2026-10-19T10:00:00Z"),
+        updatedBy: "public_landing",
       },
     });
 

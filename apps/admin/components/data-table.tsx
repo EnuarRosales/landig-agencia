@@ -231,3 +231,4 @@ export function DataTable<Row extends Record<string, unknown>>({
     </div>
   );
 }
+

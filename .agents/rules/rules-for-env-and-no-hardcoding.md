@@ -45,6 +45,10 @@ export const env = createEnv({
 
 ---
 
+## 2.1 Sincronización Obligatoria con .env.example
+
+Toda variable de entorno que se defina, valide o consuma en la lógica de negocio o infraestructura (pps/*, packages/*, docker-compose*.yml) DEBE ser obligatoriamente registrada y documentada con un comentario explicativo en el archivo .env.example en la raíz del proyecto. Queda prohibido introducir variables en esquemas Zod o compose sin su contraparte en .env.example.
+
 ## 3. Criterios de Aplicación y Consumo en Código
 
 - **Consumo Único:** Para leer cualquier configuración, el agente debe usar exclusivamente: `import { env } from "@/env";`. No se permite el uso de `process.env`.

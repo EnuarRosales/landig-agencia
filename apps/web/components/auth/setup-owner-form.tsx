@@ -95,9 +95,9 @@ export function SetupOwnerForm({ locale }: SetupOwnerFormProps) {
       <div>
         <label
           htmlFor="setup-token"
-          className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
+          className="mb-1.5 block text-xs font-medium text-muted"
         >
-          {isEs ? "Token de Inicialización (SETUP_OWNER_TOKEN)" : "Setup Token (SETUP_OWNER_TOKEN)"}
+          {isEs ? "Token De Inicialización (SETUP_OWNER_TOKEN)" : "Setup Token (SETUP_OWNER_TOKEN)"}
         </label>
         <div className="relative">
           <input
@@ -126,9 +126,9 @@ export function SetupOwnerForm({ locale }: SetupOwnerFormProps) {
       <div>
         <label
           htmlFor="name"
-          className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
+          className="mb-1.5 block text-xs font-medium text-muted"
         >
-          {isEs ? "Nombre del Platform Owner" : "Platform Owner Full Name"}
+          {isEs ? "Nombre Del Platform Owner" : "Platform Owner Full Name"}
         </label>
         <input
           id="name"
@@ -147,7 +147,7 @@ export function SetupOwnerForm({ locale }: SetupOwnerFormProps) {
       <div>
         <label
           htmlFor="email"
-          className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
+          className="mb-1.5 block text-xs font-medium text-muted"
         >
           {isEs ? "Correo Electrónico Corporativo" : "Corporate Email Address"}
         </label>
@@ -169,7 +169,7 @@ export function SetupOwnerForm({ locale }: SetupOwnerFormProps) {
       <div>
         <label
           htmlFor="password"
-          className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted"
+          className="mb-1.5 block text-xs font-medium text-muted"
         >
           {isEs ? "Contraseña Maestra" : "Master Password"}
         </label>

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1440" />
+<title>02 — Top nav + comandos · Inquilino</title>
+<style>
+  :root {
+    --primitive-space-1:0.25rem;--primitive-space-2:0.5rem;--primitive-space-3:0.75rem;--primitive-space-4:1rem;--primitive-space-6:1.5rem;--primitive-space-8:2rem;
+    --primitive-radius-sm:0.375rem;--primitive-radius-md:0.5rem;--primitive-radius-lg:0.75rem;--primitive-radius-xl:1rem;--primitive-radius-full:9999px;
+    --primitive-touch-target:44px;
+    --gris-mocter:#212121;--azul-mocter:#00C3FF;--blanco:#FFFFFF;--naranja:#FF6700;--verde:#8CFF00;--rosa:#E50C5F;
+    --radius-card:22px;
+    --font-sans:'Outfit',ui-sans-serif,system-ui,sans-serif;
+    --font-mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--gris-mocter);color:var(--blanco);font-family:var(--font-sans);font-size:14px;font-weight:300;}
+  .app{min-height:100vh;display:flex;flex-direction:column;}
+  .topbar{height:64px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;padding:0 32px;background:rgba(33,33,33,0.7);gap:24px;}
+  .brand{font-weight:500;font-size:18px;letter-spacing:.02em;text-transform:uppercase;}
+  .brand span{color:var(--azul-mocter);}
+  .tenant{font-size:12px;color:rgba(255,255,255,0.55);margin-left:12px;padding-left:12px;border-left:1px solid rgba(255,255,255,0.12);}
+  .nav{display:flex;gap:4px;}
+  .nav a{min-height:40px;display:flex;align-items:center;padding:0 14px;border-radius:8px;color:rgba(255,255,255,0.7);font-size:13px;text-decoration:none;font-weight:300;}
+  .nav a.active{background:rgba(0,195,255,0.12);color:var(--azul-mocter);font-weight:500;}
+  .search{flex:1;max-width:420px;min-height:40px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;display:flex;align-items:center;padding:0 12px;gap:8px;color:rgba(255,255,255,0.45);font-size:13px;}
+  .kbd{font-family:var(--font-mono);font-size:11px;padding:2px 6px;border:1px solid rgba(255,255,255,0.12);border-radius:4px;}
+  .user{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,0.7);}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--azul-mocter);display:flex;align-items:center;justify-content:center;color:var(--gris-mocter);font-weight:500;font-size:13px;}
+  .role-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:9999px;background:rgba(0,195,255,0.12);color:var(--azul-mocter);font-size:12px;font-weight:500;}
+  .content{padding:32px;display:flex;flex-direction:column;gap:24px;max-width:1360px;margin:0 auto;width:100%;}
+  .hero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;}
+  .hero h1{font-size:28px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;}
+  .hero p{color:rgba(255,255,255,0.55);margin-top:4px;}
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;}
+  .kpi-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-card);padding:18px;}
+  .kpi-label{font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:.06em;font-family:var(--font-mono);font-weight:500;}
+  .kpi-value{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:24px;font-weight:500;margin-top:6px;color:var(--blanco);}
+  .panel{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-card);padding:20px;}
+  .panel h3{font-size:15px;font-weight:500;margin-bottom:14px;color:var(--blanco);text-transform:uppercase;letter-spacing:.04em;}
+  .grid2{display:grid;grid-template-columns:1.6fr 1fr;gap:24px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.06);}
+  th{color:rgba(255,255,255,0.5);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-family:var(--font-mono);}
+  .badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:9999px;font-size:11px;font-weight:500;font-family:var(--font-mono);}
+  .badge.lead-hot{background:rgba(255,103,0,0.15);color:var(--naranja);}
+  .badge.lead-warm{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);}
+  .badge.lead-cold{background:rgba(0,195,255,0.12);color:var(--azul-mocter);}
+  .badge.done{background:rgba(140,255,0,0.15);color:var(--verde);}
+  .badge.agenda{background:rgba(229,12,95,0.15);color:var(--rosa);}
+  .cmd-palette{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-card);padding:16px;}
+  .cmd-item{min-height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-radius:8px;color:rgba(255,255,255,0.7);font-size:13px;}
+  .cmd-item:hover{background:rgba(255,255,255,0.06);color:var(--blanco);}
+  .cmd-item .hint{font-size:11px;color:rgba(255,255,255,0.4);font-family:var(--font-mono);}
+  .quick{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+  .quick-btn{min-height:56px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;display:flex;align-items:center;gap:12px;padding:0 14px;cursor:pointer;color:var(--blanco);font-size:13px;font-weight:300;}
+  .quick-btn .ic{width:32px;height:32px;border-radius:8px;background:rgba(0,195,255,0.12);display:flex;align-items:center;justify-content:center;color:var(--azul-mocter);font-size:15px;}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:16px;}
+  .tab{padding:10px 14px;font-size:13px;color:rgba(255,255,255,0.55);cursor:pointer;border-bottom:2px solid transparent;}
+  .tab.active{color:var(--azul-mocter);border-bottom-color:var(--azul-mocter);}
+  .activity{display:flex;flex-direction:column;gap:10px;font-size:13px;color:rgba(255,255,255,0.65);}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div style="display:flex;align-items:center;gap:24px;">
+      <div class="brand">Mocter <span>Inquilino</span></div>
+      <span class="tenant">Clínica Dental Sonrisa · Plan Pro</span>
+      <nav class="nav">
+        <a class="active" href="#">Dashboard</a>
+        <a href="#">Conversaciones</a>
+        <a href="#">Leads</a>
+        <a href="#">Productos</a>
+        <a href="#">Equipo</a>
+        <a href="#">Reportes</a>
+      </nav>
+    </div>
+    <div class="search"><span>⌘K</span><span>Buscar conversaciones, leads, clientes…</span><span class="kbd">Ctrl+K</span></div>
+    <div class="user">
+      <span class="role-pill">● Admin inquilino</span>
+      <span>María Gómez</span>
+      <div class="avatar">MG</div>
+    </div>
+  </header>
+  <main class="content">
+    <div class="hero">
+      <div>
+        <h1>Buenos días, María</h1>
+        <p>Resumen del inquilino · Clínica Dental Sonrisa · Plan Pro</p>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button style="min-height:40px;padding:0 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:var(--blanco);font-size:13px;font-weight:300;">Exportar</button>
+        <button style="min-height:40px;padding:0 14px;border-radius:8px;border:none;background:var(--azul-mocter);color:var(--gris-mocter);font-size:13px;font-weight:500;">+ Nueva campaña</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi-card"><div class="kpi-label">Conversaciones activas</div><div class="kpi-value">148</div></div>
+      <div class="kpi-card"><div class="kpi-label">Leads calientes</div><div class="kpi-value">24</div></div>
+      <div class="kpi-card"><div class="kpi-label">Tasa de respuesta</div><div class="kpi-value">94%</div></div>
+      <div class="kpi-card"><div class="kpi-label">Tiempo promedio</div><div class="kpi-value">2m 14s</div></div>
+      <div class="kpi-card"><div class="kpi-label">Satisfacción</div><div class="kpi-value">4.7★</div></div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <div class="tabs">
+          <div class="tab active">Conversaciones</div>
+          <div class="tab">Leads</div>
+          <div class="tab">Productos</div>
+        </div>
+        <table>
+          <thead><tr><th>Contacto</th><th>Canal</th><th>Último mensaje</th><th>Estado</th><th>Asignado</th></tr></thead>
+          <tbody>
+            <tr><td>Carlos Pérez</td><td>WhatsApp</td><td>"¿Tienen el repuesto X?"</td><td><span class="badge lead-warm">Pendiente</span></td><td>Bot IA</td></tr>
+            <tr><td>Laura Díaz</td><td>Webchat</td><td>"Gracias, agendo cita"</td><td><span class="badge done">Resuelto</span></td><td>María</td></tr>
+            <tr><td>Jorge Ruiz</td><td>Instagram</td><td>"Precio del servicio?"</td><td><span class="badge lead-cold">Bot IA</span></td><td>Sin asignar</td></tr>
+            <tr><td>Ana Torres</td><td>WhatsApp</td><td>"Confirmo la compra"</td><td><span class="badge done">Cerrado</span></td><td>María</td></tr>
+            <tr><td>Pedro Gómez</td><td>Webchat</td><td>"Necesito factura"</td><td><span class="badge lead-warm">Pendiente</span></td><td>Sin asignar</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:24px;">
+        <div class="cmd-palette">
+          <h3>Comandos rápidos</h3>
+          <div class="cmd-item"><span>Crear nueva campaña</span><span class="hint">C</span></div>
+          <div class="cmd-item"><span>Invitar miembro del equipo</span><span class="hint">I</span></div>
+          <div class="cmd-item"><span>Conectar WhatsApp Business</span><span class="hint">W</span></div>
+          <div class="cmd-item"><span>Generar reporte PDF</span><span class="hint">R</span></div>
+          <div class="cmd-item"><span>Configurar chatbot IA</span><span class="hint">A</span></div>
+          <div class="cmd-item"><span>Ver agenda (rosa)</span><span class="hint">G</span></div>
+        </div>
+        <div class="panel">
+          <h3>Actividad reciente</h3>
+          <div class="activity">
+            <div>• María respondió a Laura Díaz · hace 12 min</div>
+            <div>• Bot IA calificó lead Jorge Ruiz · hace 34 min</div>
+            <div>• Nuevo lead desde webchat · hace 1 h</div>
+            <div>• Cita agendada (rosa) · hace 2 h</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1440" />
+<title>03 — Grid de módulos · Inquilino</title>
+<style>
+  :root {
+    --primitive-space-1:0.25rem;--primitive-space-2:0.5rem;--primitive-space-3:0.75rem;--primitive-space-4:1rem;--primitive-space-6:1.5rem;--primitive-space-8:2rem;
+    --primitive-radius-sm:0.375rem;--primitive-radius-md:0.5rem;--primitive-radius-lg:0.75rem;--primitive-radius-xl:1rem;--primitive-radius-full:9999px;
+    --primitive-touch-target:44px;
+    --gris-mocter:#212121;--azul-mocter:#00C3FF;--blanco:#FFFFFF;--naranja:#FF6700;--verde:#8CFF00;--rosa:#E50C5F;
+    --radius-card:22px;
+    --font-sans:'Outfit',ui-sans-serif,system-ui,sans-serif;
+    --font-mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--gris-mocter);color:var(--blanco);font-family:var(--font-sans);font-size:14px;font-weight:300;}
+  .app{min-height:100vh;}
+  .topbar{height:64px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;padding:0 32px;background:rgba(33,33,33,0.7);}
+  .brand{font-weight:500;font-size:18px;letter-spacing:.02em;text-transform:uppercase;}
+  .brand span{color:var(--azul-mocter);}
+  .tenant{font-size:12px;color:rgba(255,255,255,0.55);margin-left:12px;padding-left:12px;border-left:1px solid rgba(255,255,255,0.12);}
+  .user{display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,0.7);}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--azul-mocter);display:flex;align-items:center;justify-content:center;color:var(--gris-mocter);font-weight:500;font-size:13px;}
+  .content{padding:40px 32px;max-width:1360px;margin:0 auto;}
+  .hero{text-align:center;margin-bottom:40px;}
+  .hero h1{font-size:32px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;}
+  .hero p{color:rgba(255,255,255,0.55);margin-top:8px;max-width:640px;margin-left:auto;margin-right:auto;}
+  .tenant-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:9999px;background:rgba(0,195,255,0.12);color:var(--azul-mocter);font-size:12px;font-weight:500;margin-bottom:16px;}
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px;}
+  .kpi{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;}
+  .kpi .l{font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:.06em;font-family:var(--font-mono);font-weight:500;}
+  .kpi .v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:500;margin-top:6px;color:var(--blanco);}
+  .section{margin-bottom:32px;}
+  .section h2{font-size:18px;font-weight:500;margin-bottom:16px;text-transform:uppercase;letter-spacing:.04em;}
+  .modules{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  .module{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:8px;min-height:140px;cursor:pointer;}
+  .module:hover{border-color:var(--azul-mocter);}
+  .module .ic{width:36px;height:36px;border-radius:8px;background:rgba(0,195,255,0.12);display:flex;align-items:center;justify-content:center;color:var(--azul-mocter);font-size:16px;}
+  .module .title{font-size:14px;font-weight:500;color:var(--blanco);}
+  .module .desc{font-size:12px;color:rgba(255,255,255,0.55);}
+  .module .stat{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:500;margin-top:auto;color:var(--blanco);}
+  .module.sales .ic{background:rgba(255,103,0,0.15);color:var(--naranja);}
+  .module.pay .ic{background:rgba(140,255,0,0.15);color:var(--verde);}
+  .module.agenda .ic{background:rgba(229,12,95,0.15);color:var(--rosa);}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">Mocter <span>Inquilino</span><span class="tenant">Clínica Dental Sonrisa</span></div>
+    <div class="user">
+      <span>María Gómez · Admin</span>
+      <div class="avatar">MG</div>
+    </div>
+  </header>
+  <main class="content">
+    <div class="hero">
+      <span class="tenant-badge">● Tenant backoffice</span>
+      <h1>Espacio de trabajo del inquilino</h1>
+      <p>Conversaciones, leads, productos, equipo y configuración del canal. Los agentes acceden a su bandeja enfocada.</p>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="l">Conversaciones activas</div><div class="v">148</div></div>
+      <div class="kpi"><div class="l">Leads calientes</div><div class="v">24</div></div>
+      <div class="kpi"><div class="l">Productos</div><div class="v">38</div></div>
+      <div class="kpi"><div class="l">Equipo</div><div class="v">6</div></div>
+    </div>
+    <div class="section">
+      <h2>Módulos del inquilino</h2>
+      <div class="modules">
+        <div class="module"><div class="ic">💬</div><div class="title">Conversaciones</div><div class="desc">Bandeja unificada multicanal</div><div class="stat">148 activas</div></div>
+        <div class="module sales"><div class="ic">🎯</div><div class="title">Leads (ventas)</div><div class="desc">Pipeline y calificación</div><div class="stat">24 calientes</div></div>
+        <div class="module"><div class="ic">📦</div><div class="title">Productos</div><div class="desc">Catálogo y precios</div><div class="stat">38 items</div></div>
+        <div class="module"><div class="ic">👥</div><div class="title">Equipo</div><div class="desc">Agentes e invitaciones</div><div class="stat">6 miembros</div></div>
+        <div class="module pay"><div class="ic">💳</div><div class="title">Facturación</div><div class="desc">Plan y consumo</div><div class="stat">Pro · $49/mes</div></div>
+        <div class="module agenda"><div class="ic">📅</div><div class="title">Agenda</div><div class="desc">Citas y disponibilidad</div><div class="stat">12 hoy</div></div>
+        <div class="module"><div class="ic">⚙</div><div class="title">Configuración</div><div class="desc">WhatsApp, IA, webchat</div><div class="stat">3 canales</div></div>
+        <div class="module"><div class="ic">🔔</div><div class="title">Notificaciones</div><div class="desc">Plantillas y eventos</div><div class="stat">12 plantillas</div></div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

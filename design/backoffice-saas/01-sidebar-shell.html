@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1440" />
+<title>01 — Sidebar shell · SaaS</title>
+<style>
+  :root {
+    --primitive-space-1:0.25rem;--primitive-space-2:0.5rem;--primitive-space-3:0.75rem;--primitive-space-4:1rem;--primitive-space-6:1.5rem;--primitive-space-8:2rem;
+    --primitive-radius-sm:0.375rem;--primitive-radius-md:0.5rem;--primitive-radius-lg:0.75rem;--primitive-radius-xl:1rem;--primitive-radius-full:9999px;
+    --primitive-sidebar-width:260px;--primitive-touch-target:44px;
+    --gris-mocter:#212121;--azul-mocter:#00C3FF;--blanco:#FFFFFF;--naranja:#FF6700;--verde:#8CFF00;--rosa:#E50C5F;
+    --dsn-background:#0a0a0b;--dsn-surface:#121214;--dsn-surface-secondary:#18181b;--dsn-sidebar:rgba(12,12,14,0.72);
+    --dsn-text:#ededef;--dsn-text-secondary:#8d8d93;--dsn-text-tertiary:#5c5c63;
+    --dsn-border:rgba(255,255,255,0.09);--dsn-border-subtle:rgba(255,255,255,0.05);
+    --dsn-success:#3ddc97;--dsn-warning:#f5a524;--dsn-error:#ff6b6b;
+    --radius-card:22px;
+    --font-sans:'Outfit',ui-sans-serif,system-ui,sans-serif;
+    --font-mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:var(--gris-mocter);color:var(--blanco);font-family:var(--font-sans);font-size:14px;line-height:1.5;font-weight:300;}
+  .app{display:grid;grid-template-columns:260px 1fr;height:100vh;overflow:hidden;}
+  .sidebar{background:rgba(0,0,0,0.35);border-right:1px solid rgba(255,255,255,0.08);padding:16px;display:flex;flex-direction:column;gap:8px;}
+  .brand{font-weight:500;font-size:18px;padding:8px 12px;color:var(--blanco);letter-spacing:.02em;text-transform:uppercase;}
+  .brand span{color:var(--azul-mocter);}
+  .nav-section{font-size:11px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:.1em;padding:14px 12px 4px;font-weight:500;}
+  .nav-item{min-height:44px;display:flex;align-items:center;gap:10px;padding:0 12px;border-radius:8px;color:rgba(255,255,255,0.7);cursor:pointer;font-size:14px;font-weight:300;}
+  .nav-item:hover{background:rgba(255,255,255,0.06);color:var(--blanco);}
+  .nav-item.active{background:rgba(0,195,255,0.12);color:var(--azul-mocter);font-weight:500;}
+  .nav-item .dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.3);}
+  .nav-item.active .dot{background:var(--azul-mocter);}
+  .main{display:flex;flex-direction:column;overflow:hidden;}
+  .topbar{height:64px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:rgba(33,33,33,0.6);backdrop-filter:blur(8px);}
+  .platform-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:9999px;background:rgba(0,195,255,0.12);color:var(--azul-mocter);font-size:12px;font-weight:500;}
+  .user-chip{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,0.7);}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--azul-mocter);display:flex;align-items:center;justify-content:center;color:var(--gris-mocter);font-weight:500;font-size:13px;}
+  .content{flex:1;overflow:auto;padding:24px;display:flex;flex-direction:column;gap:24px;}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  .kpi-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-card);padding:20px;}
+  .kpi-label{font-size:12px;color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:.06em;font-family:var(--font-mono);font-weight:500;}
+  .kpi-value{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:28px;font-weight:500;margin-top:8px;color:var(--blanco);}
+  .kpi-delta{font-size:12px;margin-top:4px;color:var(--verde);}
+  .panel{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-card);padding:20px;}
+  .panel h3{font-size:16px;font-weight:500;margin-bottom:12px;color:var(--blanco);text-transform:uppercase;letter-spacing:.04em;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.06);}
+  th{color:rgba(255,255,255,0.5);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-family:var(--font-mono);}
+  .badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:9999px;font-size:11px;font-weight:500;font-family:var(--font-mono);}
+  .badge.success{background:rgba(140,255,0,0.15);color:var(--verde);}
+  .badge.warning{background:rgba(255,103,0,0.15);color:var(--naranja);}
+  .badge.error{background:rgba(229,12,95,0.15);color:var(--rosa);}
+  .badge.info{background:rgba(0,195,255,0.12);color:var(--azul-mocter);}
+  .two-col{display:grid;grid-template-columns:2fr 1fr;gap:24px;}
+  .quick{display:flex;flex-direction:column;gap:8px;}
+  .quick-btn{min-height:44px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;display:flex;align-items:center;gap:12px;padding:0 14px;cursor:pointer;color:var(--blanco);font-size:13px;font-weight:300;}
+  .quick-btn .ic{width:32px;height:32px;border-radius:8px;background:rgba(0,195,255,0.12);display:flex;align-items:center;justify-content:center;color:var(--azul-mocter);font-size:15px;}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">Mocter <span>SaaS</span></div>
+    <div class="nav-section">Plataforma</div>
+    <div class="nav-item active"><span class="dot"></span>Dashboard</div>
+    <div class="nav-item"><span class="dot"></span>Organizaciones</div>
+    <div class="nav-item"><span class="dot"></span>Usuarios globales</div>
+    <div class="nav-item"><span class="dot"></span>Planes y facturación</div>
+    <div class="nav-section">Operaciones</div>
+    <div class="nav-item"><span class="dot"></span>Tickets de soporte</div>
+    <div class="nav-item"><span class="dot"></span>Auditoría</div>
+    <div class="nav-section">Sistema</div>
+    <div class="nav-item"><span class="dot"></span>Configuración global</div>
+    <div class="nav-item"><span class="dot"></span>Health checks</div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <span class="platform-badge">● Platform Owner</span>
+      <div class="user-chip">
+        <span>María Gómez · Superadmin</span>
+        <div class="avatar">MG</div>
+      </div>
+    </header>
+    <div class="content">
+      <div class="kpis">
+        <div class="kpi-card"><div class="kpi-label">Organizaciones activas</div><div class="kpi-value">47</div><div class="kpi-delta">+3 este mes</div></div>
+        <div class="kpi-card"><div class="kpi-label">MRR</div><div class="kpi-value">$12.4M</div><div class="kpi-delta">+8.2%</div></div>
+        <div class="kpi-card"><div class="kpi-label">Conversaciones / día</div><div class="kpi-value">1,284</div><div class="kpi-delta">+12%</div></div>
+        <div class="kpi-card"><div class="kpi-label">Tickets abiertos</div><div class="kpi-value">9</div><div class="kpi-delta" style="color:var(--naranja);">3 urgentes</div></div>
+      </div>
+      <div class="two-col">
+        <div class="panel">
+          <h3>Organizaciones recientes</h3>
+          <table>
+            <thead><tr><th>Organización</th><th>Plan</th><th>Usuarios</th><th>Estado</th></tr></thead>
+            <tbody>
+              <tr><td>Clínica Dental Sonrisa</td><td>Pro</td><td>6</td><td><span class="badge success">Activa</span></td></tr>
+              <tr><td>AutoRepuestos Norte</td><td>Básico</td><td>3</td><td><span class="badge success">Activa</span></td></tr>
+              <tr><td>Inmobiliaria Vista</td><td>Enterprise</td><td>12</td><td><span class="badge warning">Trial</span></td></tr>
+              <tr><td>Restaurante El Fogón</td><td>Básico</td><td>2</td><td><span class="badge error">Suspendida</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="panel">
+          <h3>Acciones rápidas</h3>
+          <div class="quick">
+            <button class="quick-btn"><span class="ic">+</span>Nueva organización</button>
+            <button class="quick-btn"><span class="ic">✉</span>Invitar usuario global</button>
+            <button class="quick-btn"><span class="ic">⚙</span>Configurar planes</button>
+            <button class="quick-btn"><span class="ic">🧾</span>Ver facturación</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

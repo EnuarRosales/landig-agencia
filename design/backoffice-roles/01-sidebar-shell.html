@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1440" />
+<title>01 — Sidebar shell unificado</title>
+<style>
+  :root {
+    --primitive-space-1:0.25rem;--primitive-space-2:0.5rem;--primitive-space-3:0.75rem;--primitive-space-4:1rem;--primitive-space-6:1.5rem;--primitive-space-8:2rem;
+    --primitive-radius-sm:0.375rem;--primitive-radius-md:0.5rem;--primitive-radius-lg:0.75rem;--primitive-radius-xl:1rem;--primitive-radius-full:9999px;
+    --primitive-sidebar-width:260px;--primitive-touch-target:44px;
+    --dsn-background:#0a0a0b;--dsn-surface:#121214;--dsn-surface-secondary:#18181b;--dsn-sidebar:rgba(12,12,14,0.72);
+    --dsn-text:#ededef;--dsn-text-secondary:#8d8d93;--dsn-text-tertiary:#5c5c63;
+    --dsn-border:rgba(255,255,255,0.09);--dsn-border-subtle:rgba(255,255,255,0.05);
+    --dsn-input-bg:#0c121a;--dsn-input-border:rgba(79,209,255,0.12);
+    --dsn-accent:#22d3ee;--dsn-accent-hover:#67e8f9;--dsn-accent-subtle:rgba(34,211,238,0.1);
+    --dsn-success:#3ddc97;--dsn-warning:#f5a524;--dsn-error:#ff6b6b;
+    --brand-primary:#2f6bff;--bg:#05070f;--card:rgba(255,255,255,0.045);--stroke:var(--dsn-border);--stroke2:var(--dsn-border-subtle);--txt:var(--dsn-text);--muted:var(--dsn-text-secondary);
+    --color-cold:#5aa9ff;--color-warm:#ffb63d;--color-hot:#ff6b57;--color-done:#2fd483;
+    --radius-card:22px;
+    --font-sans:ui-sans-serif,system-ui,sans-serif;--font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:var(--dsn-background);color:var(--dsn-text);font-family:var(--font-sans);font-size:14px;line-height:1.5;}
+  .app{display:grid;grid-template-columns:260px 1fr;height:100vh;overflow:hidden;}
+  .sidebar{background:var(--dsn-sidebar);border-right:1px solid var(--dsn-border);padding:16px;display:flex;flex-direction:column;gap:8px;}
+  .brand{font-weight:600;font-size:16px;padding:8px 12px;color:var(--dsn-text);}
+  .nav-section{font-size:11px;color:var(--dsn-text-tertiary);text-transform:uppercase;letter-spacing:.08em;padding:12px 12px 4px;}
+  .nav-item{min-height:44px;display:flex;align-items:center;gap:10px;padding:0 12px;border-radius:8px;color:var(--dsn-text-secondary);cursor:pointer;font-size:14px;}
+  .nav-item:hover{background:var(--dsn-surface-secondary);color:var(--dsn-text);}
+  .nav-item.active{background:var(--dsn-surface-secondary);color:var(--dsn-text);}
+  .nav-item .dot{width:6px;height:6px;border-radius:50%;background:var(--dsn-text-tertiary);}
+  .nav-item.active .dot{background:var(--dsn-accent);}
+  .main{display:flex;flex-direction:column;overflow:hidden;}
+  .topbar{height:64px;border-bottom:1px solid var(--dsn-border);display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--dsn-surface);}
+  .role-tabs{display:flex;gap:4px;background:var(--dsn-surface-secondary);padding:4px;border-radius:8px;}
+  .role-tab{min-height:36px;padding:0 12px;border-radius:6px;font-size:13px;font-weight:500;color:var(--dsn-text-secondary);cursor:pointer;border:none;background:transparent;}
+  .role-tab.active{background:var(--dsn-accent);color:#0a0a0b;}
+  .user-chip{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--dsn-text-secondary);}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--brand-primary);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:13px;}
+  .content{flex:1;overflow:auto;padding:24px;display:flex;flex-direction:column;gap:24px;}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  .kpi-card{background:var(--card);border:1px solid var(--stroke);border-radius:var(--radius-card);padding:20px;}
+  .kpi-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+  .kpi-value{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:28px;font-weight:600;margin-top:8px;color:var(--txt);}
+  .kpi-delta{font-size:12px;margin-top:4px;color:var(--dsn-success);}
+  .panel{background:var(--card);border:1px solid var(--stroke);border-radius:var(--radius-card);padding:20px;}
+  .panel h3{font-size:16px;font-weight:600;margin-bottom:12px;color:var(--txt);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--stroke2);}
+  th{color:var(--muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.06em;}
+  .badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:9999px;font-size:11px;font-weight:600;}
+  .badge.success{background:rgba(61,220,151,0.15);color:var(--dsn-success);}
+  .badge.warning{background:rgba(245,165,36,0.15);color:var(--dsn-warning);}
+  .badge.error{background:rgba(255,107,107,0.15);color:var(--dsn-error);}
+  .badge.info{background:var(--dsn-accent-subtle);color:var(--dsn-accent);}
+  .role-view{display:none;}
+  .role-view.active{display:flex;flex-direction:column;gap:24px;}
+  .quick{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+  .quick-btn{min-height:64px;background:var(--dsn-surface-secondary);border:1px solid var(--dsn-border);border-radius:12px;display:flex;align-items:center;gap:12px;padding:0 16px;cursor:pointer;color:var(--dsn-text);font-size:13px;font-weight:500;}
+  .quick-btn .ic{width:36px;height:36px;border-radius:8px;background:var(--dsn-accent-subtle);display:flex;align-items:center;justify-content:center;color:var(--dsn-accent);font-size:16px;}
+  .two-col{display:grid;grid-template-columns:2fr 1fr;gap:24px;}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">Mocter Admin</div>
+    <div class="nav-section">Plataforma</div>
+    <div class="nav-item active"><span class="dot"></span>Dashboard</div>
+    <div class="nav-item"><span class="dot"></span>Organizaciones</div>
+    <div class="nav-item"><span class="dot"></span>Usuarios globales</div>
+    <div class="nav-item"><span class="dot"></span>Facturación</div>
+    <div class="nav-section">Inquilino</div>
+    <div class="nav-item"><span class="dot"></span>Conversaciones</div>
+    <div class="nav-item"><span class="dot"></span>Leads</div>
+    <div class="nav-item"><span class="dot"></span>Productos</div>
+    <div class="nav-item"><span class="dot"></span>Equipo</div>
+    <div class="nav-section">Sistema</div>
+    <div class="nav-item"><span class="dot"></span>Notificaciones</div>
+    <div class="nav-item"><span class="dot"></span>Auditoría</div>
+    <div class="nav-item"><span class="dot"></span>Configuración</div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div class="role-tabs">
+        <button class="role-tab active" data-role="platform">Platform Owner</button>
+        <button class="role-tab" data-role="tenant-admin">Admin inquilino</button>
+        <button class="role-tab" data-role="agent">Agente</button>
+      </div>
+      <div class="user-chip">
+        <span>María Gómez</span>
+        <div class="avatar">MG</div>
+      </div>
+    </header>
+    <div class="content">
+
+      <!-- Platform Owner view -->
+      <div class="role-view active" data-view="platform">
+        <div class="kpis">
+          <div class="kpi-card"><div class="kpi-label">Organizaciones activas</div><div class="kpi-value">47</div><div class="kpi-delta">+3 este mes</div></div>
+          <div class="kpi-card"><div class="kpi-label">MRR</div><div class="kpi-value">$12.4M</div><div class="kpi-delta">+8.2%</div></div>
+          <div class="kpi-card"><div class="kpi-label">Conversaciones / día</div><div class="kpi-value">1,284</div><div class="kpi-delta">+12%</div></div>
+          <div class="kpi-card"><div class="kpi-label">Tickets abiertos</div><div class="kpi-value">9</div><div class="kpi-delta" style="color:var(--dsn-warning);">3 urgentes</div></div>
+        </div>
+        <div class="two-col">
+          <div class="panel">
+            <h3>Organizaciones recientes</h3>
+            <table>
+              <thead><tr><th>Organización</th><th>Plan</th><th>Usuarios</th><th>Estado</th></tr></thead>
+              <tbody>
+                <tr><td>Clínica Dental Sonrisa</td><td>Pro</td><td>6</td><td><span class="badge success">Activa</span></td></tr>
+                <tr><td>AutoRepuestos Norte</td><td>Básico</td><td>3</td><td><span class="badge success">Activa</span></td></tr>
+                <tr><td>Inmobiliaria Vista</td><td>Enterprise</td><td>12</td><td><span class="badge warning">Trial</span></td></tr>
+                <tr><td>Restaurante El Fogón</td><td>Básico</td><td>2</td><td><span class="badge error">Suspendida</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <h3>Acciones rápidas</h3>
+            <div class="quick" style="grid-template-columns:1fr;">
+              <button class="quick-btn"><span class="ic">+</span>Nueva organización</button>
+              <button class="quick-btn"><span class="ic">✉</span>Invitar usuario global</button>
+              <button class="quick-btn"><span class="ic">⚙</span>Configurar planes</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tenant admin view -->
+      <div class="role-view" data-view="tenant-admin">
+        <div class="kpis">
+          <div class="kpi-card"><div class="kpi-label">Conversaciones activas</div><div class="kpi-value">148</div><div class="kpi-delta">+12 hoy</div></div>
+          <div class="kpi-card"><div class="kpi-label">Leads calientes</div><div class="kpi-value">24</div><div class="kpi-delta">+3 esta semana</div></div>
+          <div class="kpi-card"><div class="kpi-label">Productos</div><div class="kpi-value">38</div><div class="kpi-delta">2 nuevos</div></div>
+          <div class="kpi-card"><div class="kpi-label">Equipo</div><div class="kpi-value">6</div><div class="kpi-delta">1 invitación pendiente</div></div>
+        </div>
+        <div class="two-col">
+          <div class="panel">
+            <h3>Últimos leads</h3>
+            <table>
+              <thead><tr><th>Nombre</th><th>Canal</th><th>Estado</th><th>Agente</th></tr></thead>
+              <tbody>
+                <tr><td>Carlos Pérez</td><td>WhatsApp</td><td><span class="badge hot" style="background:rgba(255,107,87,0.15);color:var(--color-hot);">Caliente</span></td><td>Bot IA</td></tr>
+                <tr><td>Laura Díaz</td><td>Webchat</td><td><span class="badge" style="background:rgba(255,182,61,0.15);color:var(--color-warm);">Tibio</span></td><td>María</td></tr>
+                <tr><td>Jorge Ruiz</td><td>Instagram</td><td><span class="badge" style="background:rgba(90,169,255,0.15);color:var(--color-cold);">Frío</span></td><td>Sin asignar</td></tr>
+                <tr><td>Ana Torres</td><td>WhatsApp</td><td><span class="badge success">Cerrado</span></td><td>María</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <h3>Acciones rápidas</h3>
+            <div class="quick" style="grid-template-columns:1fr;">
+              <button class="quick-btn"><span class="ic">+</span>Nuevo producto</button>
+              <button class="quick-btn"><span class="ic">✉</span>Invitar agente</button>
+              <button class="quick-btn"><span class="ic">⚙</span>Configurar WhatsApp</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent view -->
+      <div class="role-view" data-view="agent">
+        <div class="kpis">
+          <div class="kpi-card"><div class="kpi-label">Mis conversaciones</div><div class="kpi-value">12</div><div class="kpi-delta">4 sin leer</div></div>
+          <div class="kpi-card"><div class="kpi-label">Leads asignados</div><div class="kpi-value">8</div><div class="kpi-delta">2 para hoy</div></div>
+          <div class="kpi-card"><div class="kpi-label">Respuestas enviadas</div><div class="kpi-value">47</div><div class="kpi-delta">hoy</div></div>
+          <div class="kpi-card"><div class="kpi-label">Tiempo promedio</div><div class="kpi-value">2m 14s</div><div class="kpi-delta">+5%</div></div>
+        </div>
+        <div class="panel">
+          <h3>Bandeja de entrada</h3>
+          <table>
+            <thead><tr><th>Contacto</th><th>Canal</th><th>Último mensaje</th><th>Estado</th></tr></thead>
+            <tbody>
+              <tr><td>Carlos Pérez</td><td>WhatsApp</td><td>"¿Tienen el repuesto X?"</td><td><span class="badge warning">Pendiente</span></td></tr>
+              <tr><td>Laura Díaz</td><td>Webchat</td><td>"Gracias, agendo cita"</td><td><span class="badge success">Resuelto</span></td></tr>
+              <tr><td>María López</td><td>Instagram</td><td>"Precio del servicio?"</td><td><span class="badge info">Bot IA</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script>
+  document.querySelectorAll('.role-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const role = tab.dataset.role;
+      document.querySelectorAll('.role-view').forEach(v => v.classList.toggle('active', v.dataset.view === role));
+    });
+  });
+</script>
+</body>
+</html>

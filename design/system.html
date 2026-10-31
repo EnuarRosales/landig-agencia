@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1440" />
+<title>Mocter Design System</title>
+<style>
+  :root {
+    --primitive-space-1: 0.25rem; --primitive-space-2: 0.5rem; --primitive-space-3: 0.75rem; --primitive-space-4: 1rem; --primitive-space-6: 1.5rem; --primitive-space-8: 2rem;
+    --primitive-radius-sm: 0.375rem; --primitive-radius-md: 0.5rem; --primitive-radius-lg: 0.75rem; --primitive-radius-xl: 1rem; --primitive-radius-full: 9999px;
+    --primitive-sidebar-width: 260px; --primitive-content-max-width: 720px; --primitive-touch-target: 44px;
+    --primitive-duration-fast: 150ms; --primitive-duration-normal: 200ms; --primitive-duration-slow: 240ms;
+    --dsn-background: #0a0a0b; --dsn-surface: #121214; --dsn-surface-secondary: #18181b; --dsn-sidebar: rgba(12,12,14,0.72);
+    --dsn-text: #ededef; --dsn-text-secondary: #8d8d93; --dsn-text-tertiary: #5c5c63;
+    --dsn-border: rgba(255,255,255,0.09); --dsn-border-subtle: rgba(255,255,255,0.05);
+    --dsn-input-bg: #0c121a; --dsn-input-border: rgba(79,209,255,0.12);
+    --dsn-accent: #22d3ee; --dsn-accent-hover: #67e8f9; --dsn-accent-subtle: rgba(34,211,238,0.1); --dsn-accent-glow: rgba(34,211,238,0.3);
+    --dsn-accent-amber: #f5a524; --dsn-accent-purple: #b794ff;
+    --dsn-success: #3ddc97; --dsn-warning: #f5a524; --dsn-error: #ff6b6b; --dsn-code-bg: #0c121a;
+    --brand-primary: #2f6bff; --bg: #05070f; --bg2: #0a0e1c; --card: rgba(255,255,255,0.045); --card2: rgba(255,255,255,0.03);
+    --stroke: var(--dsn-border); --stroke2: var(--dsn-border-subtle); --txt: var(--dsn-text); --muted: var(--dsn-text-secondary);
+    --color-cold: #5aa9ff; --color-warm: #ffb63d; --color-hot: #ff6b57; --color-done: #2fd483;
+    --color-wa: #25d366;
+    --radius-card: 22px;
+    --font-sans: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background: var(--dsn-background); color: var(--dsn-text); font-family: var(--font-sans); line-height:1.6; }
+  .wrap { max-width: 1440px; margin: 0 auto; padding: 48px; }
+  h1 { font-size: 32px; font-weight: 600; margin: 0 0 8px; }
+  h2 { font-size: 20px; font-weight: 600; margin: 40px 0 16px; color: var(--dsn-text); border-bottom: 1px solid var(--dsn-border); padding-bottom: 8px; }
+  h3 { font-size: 14px; font-weight: 600; margin: 0 0 12px; color: var(--dsn-text-secondary); text-transform: uppercase; letter-spacing: 0.08em; }
+  p { color: var(--dsn-text-secondary); margin: 0 0 16px; }
+  .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+  .swatch { border-radius: 8px; overflow: hidden; border: 1px solid var(--dsn-border); }
+  .swatch .color { height: 64px; }
+  .swatch .meta { padding: 8px 10px; background: var(--dsn-surface); }
+  .swatch .name { font-size: 12px; font-weight: 600; color: var(--dsn-text); }
+  .swatch .val { font-size: 11px; color: var(--dsn-text-secondary); font-family: var(--font-mono); }
+  .type-row { display: flex; align-items: baseline; gap: 24px; padding: 12px 0; border-bottom: 1px solid var(--dsn-border-subtle); }
+  .type-row .label { width: 160px; font-size: 12px; color: var(--dsn-text-secondary); font-family: var(--font-mono); }
+  .space-row { display: flex; align-items: center; gap: 16px; padding: 8px 0; }
+  .space-bar { background: var(--dsn-accent); height: 8px; border-radius: 4px; }
+  .radius-row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .radius-box { width: 80px; height: 80px; background: var(--dsn-surface-secondary); border: 1px solid var(--dsn-border); display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--dsn-text-secondary); font-family: var(--font-mono); }
+  .comp-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; padding: 16px; background: var(--dsn-surface); border: 1px solid var(--dsn-border); border-radius: 12px; }
+  button { min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--dsn-border); background: var(--dsn-surface-secondary); color: var(--dsn-text); font-family: var(--font-sans); cursor: pointer; }
+  button.primary { background: var(--brand-primary); border-color: var(--brand-primary); color: #fff; }
+  button.accent { background: var(--dsn-accent); border-color: var(--dsn-accent); color: #0a0a0b; }
+  input { min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--dsn-input-border); background: var(--dsn-input-bg); color: var(--dsn-text); font-family: var(--font-sans); width: 240px; }
+  .card { background: var(--card); border: 1px solid var(--stroke); border-radius: 22px; padding: 24px; width: 320px; }
+  .kpi { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 28px; font-weight: 600; }
+  .badge { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+  .badge.success { background: rgba(61,220,151,0.15); color: var(--dsn-success); }
+  .badge.warning { background: rgba(245,165,36,0.15); color: var(--dsn-warning); }
+  .badge.error { background: rgba(255,107,107,0.15); color: var(--dsn-error); }
+  .sidebar { width: 260px; background: var(--dsn-sidebar); border-right: 1px solid var(--dsn-border); padding: 16px; border-radius: 12px; }
+  .sidebar .item { min-height: 44px; display: flex; align-items: center; padding: 0 12px; border-radius: 8px; color: var(--dsn-text-secondary); font-size: 14px; }
+  .sidebar .item.active { background: var(--dsn-surface-secondary); color: var(--dsn-text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mocter Design System</h1>
+  <p>Self-contained reference artboard. Dark default. Tokens sourced from <code>apps/web/app/globals.css</code> and <code>apps/admin/app/globals.css</code>.</p>
+
+  <h2>Colors — Semantic (dark)</h2>
+  <div class="grid" id="swatches"></div>
+
+  <h2>Typography</h2>
+  <div class="type-row"><span class="label">Display / 32px 600</span><span style="font-size:32px;font-weight:600;">Platform Owner dashboard</span></div>
+  <div class="type-row"><span class="label">Heading / 20px 600</span><span style="font-size:20px;font-weight:600;">Tenant administration</span></div>
+  <div class="type-row"><span class="label">Body / 14px 400</span><span style="font-size:14px;">Manage your conversations, leads and team members.</span></div>
+  <div class="type-row"><span class="label">Mono KPI / 28px</span><span class="kpi">12,450</span></div>
+  <div class="type-row"><span class="label">Muted / 12px</span><span style="font-size:12px;color:var(--muted);">Last updated 2 minutes ago</span></div>
+
+  <h2>Spacing (4px grid)</h2>
+  <div class="space-row"><span class="label" style="width:160px;font-family:var(--font-mono);font-size:12px;color:var(--dsn-text-secondary);">space-1 · 4px</span><div class="space-bar" style="width:4px;"></div></div>
+  <div class="space-row"><span class="label" style="width:160px;font-family:var(--font-mono);font-size:12px;color:var(--dsn-text-secondary);">space-2 · 8px</span><div class="space-bar" style="width:8px;"></div></div>
+  <div class="space-row"><span class="label" style="width:160px;font-family:var(--font-mono);font-size:12px;color:var(--dsn-text-secondary);">space-3 · 12px</span><div class="space-bar" style="width:12px;"></div></div>
+  <div class="space-row"><span class="label" style="width:160px;font-family:var(--font-mono);font-size:12px;color:var(--dsn-text-secondary);">space-4 · 16px</span><div class="space-bar" style="width:16px;"></div></div>
+  <div class="space-row"><span class="label" style="width:160px;font-family:var(--font-mono);font-size:12px;color:var(--dsn-text-secondary);">space-6 · 24px</span><div class="space-bar" style="width:24px;"></div></div>
+  <div class="space-row"><span class="label" style="width:160px;font-family:var(--font-mono);font-size:12px;color:var(--dsn-text-secondary);">space-8 · 32px</span><div class="space-bar" style="width:32px;"></div></div>
+
+  <h2>Radius</h2>
+  <div class="radius-row">
+    <div class="radius-box" style="border-radius:0.375rem;">sm 6</div>
+    <div class="radius-box" style="border-radius:0.5rem;">md 8</div>
+    <div class="radius-box" style="border-radius:0.75rem;">lg 12</div>
+    <div class="radius-box" style="border-radius:1rem;">xl 16</div>
+    <div class="radius-box" style="border-radius:22px;">card 22</div>
+    <div class="radius-box" style="border-radius:9999px;">full</div>
+  </div>
+
+  <h2>Components</h2>
+  <div class="comp-row">
+    <button class="primary">Primary button</button>
+    <button class="accent">Accent button</button>
+    <button>Ghost button</button>
+    <input placeholder="Search leads…" />
+    <span class="badge success">Active</span>
+    <span class="badge warning">Pending</span>
+    <span class="badge error">Failed</span>
+  </div>
+  <div style="margin-top:16px;display:flex;gap:16px;flex-wrap:wrap;">
+    <div class="card">
+      <h3 style="margin:0 0 8px;color:var(--dsn-text);font-size:14px;text-transform:none;letter-spacing:0;">Card title</h3>
+      <p style="margin:0;font-size:13px;">Surface card with 22px radius and subtle border.</p>
+    </div>
+    <div class="sidebar">
+      <div class="item active">Dashboard</div>
+      <div class="item">Leads</div>
+      <div class="item">Conversations</div>
+      <div class="item">Settings</div>
+    </div>
+  </div>
+</div>
+<script>
+  const swatches = [
+    ['#212121','Gris Mocter'],['#00C3FF','Azul Mocter (primary)'],['#FFFFFF','Blanco'],
+    ['#FF6700','Naranja Ventas'],['#8CFF00','Verde Pagos'],['#E50C5F','Rosa Agenda'],
+    ['#0a0a0b','--dsn-background'],['#121214','--dsn-surface'],['#18181b','--dsn-surface-secondary'],
+    ['#ededef','--dsn-text'],['#8d8d93','--dsn-text-secondary'],['#5c5c63','--dsn-text-tertiary'],
+    ['#22d3ee','--dsn-accent'],['#67e8f9','--dsn-accent-hover'],['#f5a524','--dsn-accent-amber'],
+    ['#b794ff','--dsn-accent-purple'],['#3ddc97','--dsn-success'],['#f5a524','--dsn-warning'],
+    ['#ff6b6b','--dsn-error'],['#2f6bff','--brand-primary'],['#5aa9ff','--color-cold'],
+    ['#ffb63d','--color-warm'],['#ff6b57','--color-hot'],['#2fd483','--color-done'],
+  ];
+  const c = document.getElementById('swatches');
+  swatches.forEach(([v,n]) => {
+    const d = document.createElement('div');
+    d.className = 'swatch';
+    d.innerHTML = `<div class="color" style="background:${v}"></div><div class="meta"><div class="name">${n}</div><div class="val">${v}</div></div>`;
+    c.appendChild(d);
+  });
+</script>
+</body>
+</html>

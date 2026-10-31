@@ -7,7 +7,6 @@ import { Logo } from "@/components/logo";
 import { FloatingBackground } from "@/components/sections/floating-background";
 import { SetupOwnerForm } from "@/components/auth";
 
-export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ locale: string }>;

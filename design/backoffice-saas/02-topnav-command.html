@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1440" />
+<title>02 — Top nav + comandos · SaaS</title>
+<style>
+  :root {
+    --primitive-space-1:0.25rem;--primitive-space-2:0.5rem;--primitive-space-3:0.75rem;--primitive-space-4:1rem;--primitive-space-6:1.5rem;--primitive-space-8:2rem;
+    --primitive-radius-sm:0.375rem;--primitive-radius-md:0.5rem;--primitive-radius-lg:0.75rem;--primitive-radius-xl:1rem;--primitive-radius-full:9999px;
+    --primitive-touch-target:44px;
+    --gris-mocter:#212121;--azul-mocter:#00C3FF;--blanco:#FFFFFF;--naranja:#FF6700;--verde:#8CFF00;--rosa:#E50C5F;
+    --radius-card:22px;
+    --font-sans:'Outfit',ui-sans-serif,system-ui,sans-serif;
+    --font-mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--gris-mocter);color:var(--blanco);font-family:var(--font-sans);font-size:14px;font-weight:300;}
+  .app{min-height:100vh;display:flex;flex-direction:column;}
+  .topbar{height:64px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;padding:0 32px;background:rgba(33,33,33,0.7);gap:24px;}
+  .brand{font-weight:500;font-size:18px;letter-spacing:.02em;text-transform:uppercase;}
+  .brand span{color:var(--azul-mocter);}
+  .nav{display:flex;gap:4px;}
+  .nav a{min-height:40px;display:flex;align-items:center;padding:0 14px;border-radius:8px;color:rgba(255,255,255,0.7);font-size:13px;text-decoration:none;font-weight:300;}
+  .nav a.active{background:rgba(0,195,255,0.12);color:var(--azul-mocter);font-weight:500;}
+  .search{flex:1;max-width:420px;min-height:40px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;display:flex;align-items:center;padding:0 12px;gap:8px;color:rgba(255,255,255,0.45);font-size:13px;}
+  .kbd{font-family:var(--font-mono);font-size:11px;padding:2px 6px;border:1px solid rgba(255,255,255,0.12);border-radius:4px;}
+  .user{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,0.7);}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--azul-mocter);display:flex;align-items:center;justify-content:center;color:var(--gris-mocter);font-weight:500;font-size:13px;}
+  .platform-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:9999px;background:rgba(0,195,255,0.12);color:var(--azul-mocter);font-size:12px;font-weight:500;}
+  .content{padding:32px;display:flex;flex-direction:column;gap:24px;max-width:1360px;margin:0 auto;width:100%;}
+  .hero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;}
+  .hero h1{font-size:28px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;}
+  .hero p{color:rgba(255,255,255,0.55);margin-top:4px;}
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;}
+  .kpi-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-card);padding:18px;}
+  .kpi-label{font-size:11px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:.06em;font-family:var(--font-mono);font-weight:500;}
+  .kpi-value{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:24px;font-weight:500;margin-top:6px;color:var(--blanco);}
+  .panel{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-card);padding:20px;}
+  .panel h3{font-size:15px;font-weight:500;margin-bottom:14px;color:var(--blanco);text-transform:uppercase;letter-spacing:.04em;}
+  .grid2{display:grid;grid-template-columns:1.6fr 1fr;gap:24px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.06);}
+  th{color:rgba(255,255,255,0.5);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-family:var(--font-mono);}
+  .badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:9999px;font-size:11px;font-weight:500;font-family:var(--font-mono);}
+  .badge.success{background:rgba(140,255,0,0.15);color:var(--verde);}
+  .badge.warning{background:rgba(255,103,0,0.15);color:var(--naranja);}
+  .badge.info{background:rgba(0,195,255,0.12);color:var(--azul-mocter);}
+  .cmd-palette{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius-card);padding:16px;}
+  .cmd-item{min-height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-radius:8px;color:rgba(255,255,255,0.7);font-size:13px;}
+  .cmd-item:hover{background:rgba(255,255,255,0.06);color:var(--blanco);}
+  .cmd-item .hint{font-size:11px;color:rgba(255,255,255,0.4);font-family:var(--font-mono);}
+  .quick{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+  .quick-btn{min-height:56px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;display:flex;align-items:center;gap:12px;padding:0 14px;cursor:pointer;color:var(--blanco);font-size:13px;font-weight:300;}
+  .quick-btn .ic{width:32px;height:32px;border-radius:8px;background:rgba(0,195,255,0.12);display:flex;align-items:center;justify-content:center;color:var(--azul-mocter);font-size:15px;}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:16px;}
+  .tab{padding:10px 14px;font-size:13px;color:rgba(255,255,255,0.55);cursor:pointer;border-bottom:2px solid transparent;}
+  .tab.active{color:var(--azul-mocter);border-bottom-color:var(--azul-mocter);}
+  .activity{display:flex;flex-direction:column;gap:10px;font-size:13px;color:rgba(255,255,255,0.65);}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div style="display:flex;align-items:center;gap:24px;">
+      <div class="brand">Mocter <span>SaaS</span></div>
+      <nav class="nav">
+        <a class="active" href="#">Dashboard</a>
+        <a href="#">Organizaciones</a>
+        <a href="#">Usuarios</a>
+        <a href="#">Planes</a>
+        <a href="#">Soporte</a>
+        <a href="#">Auditoría</a>
+      </nav>
+    </div>
+    <div class="search"><span>⌘K</span><span>Buscar orgs, usuarios, tickets…</span><span class="kbd">Ctrl+K</span></div>
+    <div class="user">
+      <span class="platform-badge">● Platform Owner</span>
+      <span>María Gómez</span>
+      <div class="avatar">MG</div>
+    </div>
+  </header>
+  <main class="content">
+    <div class="hero">
+      <div>
+        <h1>Panel de plataforma</h1>
+        <p>Vista global · 47 organizaciones activas · MRR $12.4M</p>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button style="min-height:40px;padding:0 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:var(--blanco);font-size:13px;font-weight:300;">Exportar</button>
+        <button style="min-height:40px;padding:0 14px;border-radius:8px;border:none;background:var(--azul-mocter);color:var(--gris-mocter);font-size:13px;font-weight:500;">+ Nueva organización</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi-card"><div class="kpi-label">Organizaciones</div><div class="kpi-value">47</div></div>
+      <div class="kpi-card"><div class="kpi-label">MRR</div><div class="kpi-value">$12.4M</div></div>
+      <div class="kpi-card"><div class="kpi-label">Conversaciones/día</div><div class="kpi-value">1,284</div></div>
+      <div class="kpi-card"><div class="kpi-label">Tickets abiertos</div><div class="kpi-value">9</div></div>
+      <div class="kpi-card"><div class="kpi-label">Churn 30d</div><div class="kpi-value">1.2%</div></div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <div class="tabs">
+          <div class="tab active">Organizaciones</div>
+          <div class="tab">Usuarios globales</div>
+          <div class="tab">Facturación</div>
+        </div>
+        <table>
+          <thead><tr><th>Organización</th><th>Plan</th><th>Usuarios</th><th>MRR</th><th>Estado</th></tr></thead>
+          <tbody>
+            <tr><td>Clínica Dental Sonrisa</td><td>Pro</td><td>6</td><td>$149</td><td><span class="badge success">Activa</span></td></tr>
+            <tr><td>AutoRepuestos Norte</td><td>Básico</td><td>3</td><td>$49</td><td><span class="badge success">Activa</span></td></tr>
+            <tr><td>Inmobiliaria Vista</td><td>Enterprise</td><td>12</td><td>$499</td><td><span class="badge warning">Trial</span></td></tr>
+            <tr><td>Restaurante El Fogón</td><td>Básico</td><td>2</td><td>$0</td><td><span class="badge" style="background:rgba(229,12,95,0.15);color:var(--rosa);">Suspendida</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:24px;">
+        <div class="cmd-palette">
+          <h3>Comandos rápidos</h3>
+          <div class="cmd-item"><span>Crear organización</span><span class="hint">O</span></div>
+          <div class="cmd-item"><span>Invitar usuario global</span><span class="hint">U</span></div>
+          <div class="cmd-item"><span>Configurar planes</span><span class="hint">P</span></div>
+          <div class="cmd-item"><span>Generar reporte global</span><span class="hint">R</span></div>
+          <div class="cmd-item"><span>Revisar auditoría</span><span class="hint">A</span></div>
+        </div>
+        <div class="panel">
+          <h3>Actividad reciente</h3>
+          <div class="activity">
+            <div>• Nueva org "Clínica Dental Sonrisa" · hace 2 h</div>
+            <div>• Plan Enterprise activado · hace 5 h</div>
+            <div>• Usuario global invitado · hace 1 d</div>
+            <div>• Ticket #482 resuelto · hace 1 d</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -279,7 +279,7 @@
     "login": {
       "title": "Inicia sesión en tu cuenta",
       "subtitle": "Accede al panel de administración de tu empresa",
-      "emailLabel": "Correo electrónico",
+      "emailLabel": "Correo Electrónico",
       "emailPlaceholder": "tunombre@empresa.com",
       "passwordLabel": "Contraseña",
       "passwordPlaceholder": "••••••••",
@@ -293,9 +293,9 @@
     "register": {
       "title": "Crea la cuenta de tu empresa",
       "subtitle": "Automatiza la atención por WhatsApp en minutos",
-      "nameLabel": "Nombre completo",
+      "nameLabel": "Nombre Completo",
       "namePlaceholder": "Carlos Gómez",
-      "emailLabel": "Correo corporativo",
+      "emailLabel": "Correo Corporativo",
       "emailPlaceholder": "carlos@empresa.com",
       "passwordLabel": "Contraseña",
       "passwordPlaceholder": "Mínimo 7 caracteres con mayúscula, número y símbolo",

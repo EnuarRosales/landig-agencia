@@ -88,6 +88,7 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM}
+      SETUP_OWNER_TOKEN: ${SETUP_OWNER_TOKEN}
       # File watching over a Windows bind mount requires polling.
       WATCHPACK_POLLING: "true"
     ports:

@@ -220,3 +220,4 @@ export type EmailDelivery = typeof emailDeliveries.$inferSelect;
 export type NewEmailDelivery = typeof emailDeliveries.$inferInsert;
 export type EmailDeliveryEvent = typeof emailDeliveryEvents.$inferSelect;
 export type NewEmailDeliveryEvent = typeof emailDeliveryEvents.$inferInsert;
+

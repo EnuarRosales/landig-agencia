@@ -48,3 +48,4 @@ describe("mocter-admin Phase 2 · i18n, DSN-001 & ADM-001 T-27, T-29, T-37", () 
     expect(en.notifications.maskedSecretLabel).toContain("AES-256-GCM");
   });
 });
+

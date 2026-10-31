@@ -1,0 +1,9 @@
+{
+  "title": "Backoffice por roles (SaaS e inquilino)",
+  "brief": "Shells de backoffice para los tres tipos de usuario: Platform Owner (SaaS), admin de inquilino y agente. Tres direcciones visuales: sidebar unificado con tabs de rol, top nav con paleta de comandos, y grid de tarjetas por rol con vista previa.",
+  "artboards": [
+    { "file": "01-sidebar-shell.html", "title": "Sidebar shell unificado", "tradeoff": "Navegación persistente y familiar; denso en desktop, requiere scroll en móvil", "width": 1440, "height": 900 },
+    { "file": "02-topnav-command.html", "title": "Top nav + paleta de comandos", "tradeoff": "Máximo espacio horizontal y búsqueda global; menos jerarquía visual para tareas profundas", "width": 1440, "height": 900 },
+    { "file": "03-card-grid-role.html", "title": "Grid de tarjetas por rol", "tradeoff": "Onboarding claro y descubrimiento de módulos; menos denso para uso diario intensivo", "width": 1440, "height": 900 }
+  ]
+}

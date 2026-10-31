@@ -1,0 +1,9 @@
+{
+  "title": "Backoffice SaaS (Platform Owner)",
+  "brief": "Backoffice exclusivo de la plataforma SaaS para el Platform Owner. No mezcla vistas de inquilino. Marca institucional Mocter: Azul Mocter #00C3FF primario, Outfit + Geist Mono.",
+  "artboards": [
+    { "file": "01-sidebar-shell.html", "title": "Sidebar shell · SaaS", "tradeoff": "Navegación persistente y familiar; denso en desktop", "width": 1440, "height": 900 },
+    { "file": "02-topnav-command.html", "title": "Top nav + comandos · SaaS", "tradeoff": "Máximo espacio horizontal y búsqueda global", "width": 1440, "height": 900 },
+    { "file": "03-card-grid.html", "title": "Grid de módulos · SaaS", "tradeoff": "Descubrimiento de módulos de plataforma; menos denso para uso diario", "width": 1440, "height": 900 }
+  ]
+}

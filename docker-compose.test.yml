@@ -87,6 +87,7 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM:-soporte@mocter.co}
+      SETUP_OWNER_TOKEN: ${SETUP_OWNER_TOKEN}
     networks: [ backend, traefik_network ]
     labels:
       - "traefik.enable=true"

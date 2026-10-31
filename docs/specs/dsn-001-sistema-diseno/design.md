@@ -152,3 +152,10 @@ Contraste 4.5:1 (texto) y 3:1 (UI y focus); foco visible consistente; navegació
 | MIG-001 | La landing adopta tokens y tipografía; Sora/Inter migran a Inter/Geist + display font |
 | AI-001 | Patrón visual del botón «Mejorar con AI» en el catálogo |
 | i18n | es/en y RTL preparado |
+
+
+### 3.4 Regla de presentación de etiquetas en formularios (Form Labels)
+
+- **Prohibición de mayúsculas sostenidas:** Queda terminantemente prohibido el uso de uppercase en los label de atributos capturados en cualquier formulario del ecosistema.
+- **Capitalización tipo título (Title Case):** Los labels deben presentarse en formato de tipo título con las iniciales en mayúscula (ej. «Nombre Completo», «Correo Electrónico Corporativo», «Contraseña Maestra»).
+- **Tipografía adaptable:** Está prohibido el uso de tipografías o variantes CSS (ll-petite-caps, uppercase) que fuercen la visualización en mayúsculas sostenidas en los elementos de captura.
