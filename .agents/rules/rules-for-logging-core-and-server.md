@@ -1,11 +1,6 @@
 ---
 description: "Parte 1/2: Reglas fundamentales de arquitectura, correlación y servidor para logging estructurado en Next.js 16 + TypeScript."
-globs:
-  - "app/**/*.{ts,tsx}"
-  - "src/**/*.{ts,tsx}"
-  - "lib/**/*.ts"
-  - "instrumentation.ts"
-  - "proxy.ts"
+globs: "app/**/*.{ts,tsx}, src/**/*.{ts,tsx}, lib/**/*.ts, instrumentation.ts, proxy.ts"
 alwaysApply: true
 ---
 

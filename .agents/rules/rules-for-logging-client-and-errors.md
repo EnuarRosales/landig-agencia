@@ -1,11 +1,6 @@
 ---
 description: "Parte 2/2: Reglas de cliente, Server Functions, boundaries, ingesta y verificación para logging en Next.js 16 + TypeScript."
-globs:
-  - "app/**/*.{ts,tsx}"
-  - "src/**/*.{ts,tsx}"
-  - "lib/**/*.ts"
-  - "instrumentation-client.ts"
-  - "next.config.ts"
+globs: "app/**/*.{ts,tsx}, src/**/*.{ts,tsx}, lib/**/*.ts, instrumentation-client.ts, next.config.ts"
 alwaysApply: true
 ---
 

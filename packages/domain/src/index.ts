@@ -49,3 +49,6 @@ export * from "./auth/chatwoot-sso";
 export * from "./redis/client";
 export * from "./redis/mock-redis";
 export * from "./utils/env";
+export * from "./repositories/crm.repository.interface";
+export * from "./repositories/drizzle-crm.repository";
+export * from "./services/crm.service";

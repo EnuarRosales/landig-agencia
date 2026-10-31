@@ -8,3 +8,4 @@ export { cellAdminSchema } from "./namespace";
 export { cellUsers, type CellUser, type NewCellUser } from "./users";
 export { cellIdentities, type CellIdentity, type NewCellIdentity } from "./identities";
 export * from "./tenancy-catalog";
+export * from "./crm";

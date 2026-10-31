@@ -1,10 +1,6 @@
 ---
 description: "Parte 1/2: Reglas fundamentales de clasificación de errores, tipos Result/AppError y Server Functions en Next.js 16 + TypeScript."
-globs:
-  - "app/**/*.{ts,tsx}"
-  - "src/**/*.{ts,tsx}"
-  - "lib/**/*.ts"
-  - "instrumentation.ts"
+globs: "app/**/*.{ts,tsx}, src/**/*.{ts,tsx}, lib/**/*.ts, instrumentation.ts"
 alwaysApply: true
 ---
 

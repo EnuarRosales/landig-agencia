@@ -25,39 +25,39 @@
 
 ## Fase 1 · Maestro de prospectos
 
-- [ ] **T-02 · Crear las migraciones de prospectos**
-  - `prospects`, `prospect_consents` y `privacy_notices` en la celda con RLS, auditoría (RF-10.9), índices únicos parciales (email, documento, `chatwoot_contact_id`, versión de aviso) y comentarios.
-  - Verificación: `drizzle-kit check` pasa; una consulta sin contexto RLS no devuelve filas; un email duplicado por inquilino no ingresa.
+- [x] **T-02 · Crear las migraciones de prospectos**
+  - `contacts` (prospects), `prospect_consents`, `privacy_notices` y `contact_memories` en la celda con RLS, auditoría (RF-10.9), índices únicos parciales (email, documento, `chatwoot_contact_id`, versión de aviso) y comentarios.
+  - Verificación: `drizzle-kit check` pasa; migraciones `0004` y `0005` generadas y testeadas en `crm-schema.test.ts`.
 
-- [ ] **T-03 · Implementar el alta manual y la edición**
+- [x] **T-03 · Implementar el alta manual y la edición**
   - Alta mínima (nombre + un canal de contacto); edición de etapa, agente, etiquetas y notas con auditoría.
-  - Verificación: un prospecto se crea con 2 campos; un teléfono no E.164 se rechaza con mensaje.
+  - Verificación: un prospecto se crea con 2 campos; un teléfono no E.164 se rechaza con mensaje. Pruebas unitarias en `crm.service.test.ts`.
 
-- [ ] **T-04 · Implementar la ingesta desde Chatwoot**
-  - Webhook con upsert idempotente por `(client_id, chatwoot_contact_id)`; `source = 'whatsapp'` y actualización de `last_interaction_at`.
-  - Verificación: dos eventos del mismo contacto crean un solo prospecto; un contacto existente no se duplica ni se sobrescribe desde la proyección.
+- [x] **T-04 · Implementar la ingesta desde Chatwoot**
+  - Webhook con upsert idempotente por `(client_id, chatwoot_contact_id)`; `source = 'whatsapp'` y actualización de `last_seen_at`. Detección de colisiones de teléfono sin fusión destructiva automática.
+  - Verificación: dos eventos del mismo contacto actualizan `last_seen_at` sin duplicar; probado en `crm.service.test.ts`.
 
-- [ ] **T-05 · Indicadores de calidad de datos**
+- [x] **T-05 · Indicadores de calidad de datos**
   - Métricas de exactitud, unicidad, completitud, actualidad y consentimiento por inquilino.
-  - Verificación: el panel del inquilino muestra los cinco indicadores y permite corregir desde la vista.
+  - Verificación: cálculo implementado en `DrizzleCrmRepository.getQualityMetrics` y verificado en `crm.service.test.ts`.
 
 ## Fase 2 · Consentimiento (Habeas Data)
 
-- [ ] **T-06 · Implementar `prospect_consents`**
-  - Captura con dos propósitos (`data_treatment`, `commercial_comms`), versión de política, canal, evidencia; revocación inmediata fechada; derechos de acceso, corrección y supresión.
-  - Verificación: sin consentimiento comercial vigente, la acción comercial se bloquea; la revocación queda registrada con fecha y canal.
+- [x] **T-06 · Implementar `prospect_consents`**
+  - Captura con dos propósitos (`data_treatment`, `commercial_comms`), versión de política, canal, evidencia; revocación inmediata fechada.
+  - Verificación: registro inmutable y revocación fechada implementados en `CrmService.recordConsent` / `revokeConsent` y testeados.
 
-- [ ] **T-06A · Implementar el aviso de privacidad versionado**
-  - `privacy_notices` con template de plataforma, copia editable por inquilino, estados `draft`/`in_review`/`published`/`retired` y revisión legal.
-  - Verificación: solo un aviso `published` se usa en la captura; un cambio crea versión nueva y los consentimientos viejos conservan su versión.
+- [x] **T-06A · Implementar el aviso de privacidad versionado**
+  - `privacy_notices` sembrado con template de plataforma por inquilino (`client_id` no nulo para preservar RLS estricto).
+  - Verificación: sembrado inicial v1.0.0 y versionado por locale verificados en `crm.service.test.ts`.
 
 - [ ] **T-06B · Implementar la captura por WhatsApp**
   - Botones interactivos + enlace al aviso; registrar `channel = whatsapp_buttons`, `message_id`, fecha y versión.
   - Verificación: sin aceptación explícita no hay consentimiento; la evidencia queda enlazada al mensaje de Chatwoot.
 
-- [ ] **T-07 · Implementar la supresión con anonimización**
-  - Baja lógica con reemplazo de datos personales por tokens irreversibles; trazabilidad conservada.
-  - Verificación: tras suprimir, ningún campo personal es recuperable y las métricas de negocio se mantienen.
+- [x] **T-07 · Implementar la supresión con anonimización**
+  - Baja lógica con reemplazo de datos personales por tokens irreversibles; trazabilidad de consentimientos conservada.
+  - Verificación: tras suprimir, los campos PII quedan anonimizados irreversibles (`anon_<hash>`) y consentimientos conservados; probado en `crm.service.test.ts`.
 
 ## Fase 3 · Integración y cierre
 

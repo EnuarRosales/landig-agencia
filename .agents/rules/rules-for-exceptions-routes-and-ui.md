@@ -1,10 +1,6 @@
 ---
 description: "Parte 2/2: Reglas de Route Handlers, límites de error (UI), Client Components y verificación de excepciones en Next.js 16 + TypeScript."
-globs:
-  - "app/**/*.{ts,tsx}"
-  - "src/**/*.{ts,tsx}"
-  - "lib/**/*.ts"
-  - "proxy.ts"
+globs: "app/**/*.{ts,tsx}, src/**/*.{ts,tsx}, lib/**/*.ts, proxy.ts"
 alwaysApply: true
 ---
 
