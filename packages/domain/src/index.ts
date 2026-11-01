@@ -84,3 +84,5 @@ export * from "./repositories/drizzle-referrals.repository";
 export * from "./services/referrals.service";
 export * from "./services/period-resolver";
 export * from "./services/reports.service";
+export * from "./services/platform-reports.service";
+export * from "./services/reports-export.service";

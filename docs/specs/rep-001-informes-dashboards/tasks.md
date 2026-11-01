@@ -61,7 +61,7 @@
   - Inyección estricta de `client_id` y filtro por `agent_id` cuando aplique el rol `tenant_agent`.
   - Verificación: Endpoint `GET /api/reports/tenant/metrics` responde en ≤ 800 ms.
 
-- [ ] **T-05 · Implementar servicio de métricas de la SaaS**
+- [x] **T-05 · Implementar servicio de métricas de la SaaS**
   - Crear queries consolidadas en `apps/web/server/services/platform-reports.service.ts`:
     - Inquilinos por plan, estado y vertical.
     - Crecimiento de almacenamiento y ratio de deduplicación de multimedia.
@@ -73,13 +73,13 @@
 
 ## Fase 3 · Exportadores Nativos (Excel y PDF)
 
-- [ ] **T-06 · Implementar exportador a Excel (.xlsx)**
+- [x] **T-06 · Implementar exportador a Excel (.xlsx)**
   - Implementar `apps/web/server/services/excel-exporter.service.ts` usando `exceljs`.
   - Hoja 1: Resumen de KPIs y variaciones.
   - Hoja 2: Tabla detallada de transacciones formateada con colores HUD de `DSN-001`.
   - Verificación: Descarga de archivo `.xlsx` funcional y validación de tipos de celda numéricos.
 
-- [ ] **T-07 · Implementar exportador a PDF (.pdf)**
+- [x] **T-07 · Implementar exportador a PDF (.pdf)**
   - Implementar `apps/web/server/services/pdf-exporter.service.ts`.
   - Generación de PDF con membrete institucional, tarjetas resumen y tabla paginada.
   - Verificación: Descarga de archivo `.pdf` con cabeceras limpias y paginación correcta.
@@ -88,7 +88,7 @@
 
 ## Fase 4 · Verificación de Criterios BDD y Cierre
 
-- [ ] **T-08 · Ejecutar suite de pruebas BDD para REP-001**
+- [x] **T-08 · Ejecutar suite de pruebas BDD para REP-001**
   - Validar CA-REP-01 (Cálculo en caliente períodos predefinidos).
   - Validar CA-REP-02 (Rango libre y validación temporal).
   - Validar CA-REP-03 (Exportación Excel).
