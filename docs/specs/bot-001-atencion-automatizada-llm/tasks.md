@@ -62,7 +62,7 @@
   - Habilitación/deshabilitación por integración aprovisionada, con saludo opcional por canal.
   - Verificación: un canal sin bot no recibe respuesta automática; un canal desactivado por el inquilino no responde.
 
-- [ ] **T-10 · i18n de la configuración**
+- [x] **T-10 · i18n de la configuración**
   - UI es/en (Español por defecto); etiquetas del catálogo en ambos idiomas.
   - Verificación: el alta del bot se completa en es y en en sin texto incrustado; ninguna etiqueta del catálogo queda sin traducción.
 
