@@ -90,3 +90,4 @@ export * from "./services/product-cloning.service";
 export * from "./services/communities-governance.service";
 export * from "./services/community-feed.service";
 export * from "./services/community-leadership-metrics.service";
+export * from "./services/chat-retention.service";

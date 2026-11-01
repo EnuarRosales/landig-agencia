@@ -183,19 +183,22 @@
 
 ## Fase 5 · Retención y operación
 
-- [ ] **T-24 · Implementar la retención de chats**
+- [x] **T-24 · Implementar la retención de chats**
   - Job por plan y piso legal; borrado por API de Chatwoot; auditoría.
   - Verificación: una conversación vencida se elimina; no queda copia en Mocter; el piso legal no se puede bajar.
+  - Evidencia: 2026-10-31 — Implementado `ChatRetentionService` (`chat-retention.service.ts`) con cálculo de retención efectiva con piso legal (RF-04.5), eliminación en Chatwoot (RF-04.6) y auditoría en `audit_log`, cubierto en `chat-retention.service.test.ts`.
   - RF-04.5, RF-04.6, D-27.
 
-- [ ] **T-25 · Implementar la purga de adjuntos**
+- [x] **T-25 · Implementar la purga de adjuntos**
   - Borrado de blobs al eliminar la conversación; limpieza de huérfanos si Chatwoot no los borra.
   - Verificación: no queda blob huérfano en ActiveStorage.
+  - Evidencia: 2026-10-31 — Integrada purga de blobs en ActiveStorage al eliminar conversaciones en `ChatRetentionService`, verificado en `chat-retention.service.test.ts`.
   - RF-07.11, D-28, criterio 30.
 
-- [ ] **T-26 · Implementar archivo legal opcional**
+- [x] **T-26 · Implementar archivo legal opcional**
   - Exportación cifrada a R2, retención propia y clave fuera del bucket.
   - Verificación: el archivo se restaura con la clave; sin plan de archivo legal no se exporta nada.
+  - Evidencia: 2026-10-31 — Implementado cifrado/descifrado AES-256-GCM y exportación en `ChatRetentionService` condicionado a `legal_archive`, verificado en `chat-retention.service.test.ts`.
   - D-27.
 
 ## Fase 6 · Interfaz
