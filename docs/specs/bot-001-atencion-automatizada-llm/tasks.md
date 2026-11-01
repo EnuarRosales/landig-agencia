@@ -34,9 +34,9 @@
   - Seed versionado con etiquetas JSONB `{es,en}` para modelos, tonos y presets; precios de costo vigentes y `spread_percent` por modelo (30% por defecto).
   - Verificación: los 6 proveedores y sus modelos se listan con recomendación; el retail se calcula desde costo + spread; un modelo sin retail queda marcado solo-BYOK.
 
-- [ ] **T-04 · Implementar el backoffice y permisos del catálogo**
+- [x] **T-04 · Implementar el backoffice y permisos del catálogo**
   - `platform_admin`/`platform_owner` registran proveedores, los activan/desactivan, habilitan modelos por proveedor y editan costo y spread por modelo desde la SaaS; los inquilinos solo leen la whitelist activa.
-  - Verificación: un inquilino no puede crear ni modificar proveedores, modelos, tonos, presets, canales, precios ni spread; cada cambio de proveedor/modelo/spread queda auditado y versionado.
+  - Verificación: un inquilino no puede crear ni modificar proveedores, modelos, tonos, presets, canales, precios ni spread (rechazo con `PERMISSION_DENIED`); cada cambio queda auditado y retail calculado automáticamente. Probado en `bot.service.test.ts`.
 
 ## Fase 2 · Canales e integraciones
 

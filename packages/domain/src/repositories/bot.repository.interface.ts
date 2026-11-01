@@ -40,8 +40,10 @@ export interface IBotRepository {
   listProviders(): Promise<AiProvider[]>;
   findProviderById(id: string): Promise<AiProvider | null>;
   findProviderByCode(code: string): Promise<AiProvider | null>;
+  updateProvider(id: string, patch: Partial<AiProvider>): Promise<AiProvider | null>;
   listModels(providerId?: string): Promise<AiModel[]>;
   findModelById(id: string): Promise<AiModel | null>;
+  updateModel(id: string, patch: Partial<AiModel>): Promise<AiModel | null>;
   listTones(): Promise<BotTone[]>;
   findToneById(id: string): Promise<BotTone | null>;
   listPresets(): Promise<BotPreset[]>;

@@ -192,8 +192,10 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
       listProviders: vi.fn().mockResolvedValue([sampleProvider]),
       findProviderById: vi.fn().mockResolvedValue(sampleProvider),
       findProviderByCode: vi.fn().mockResolvedValue(sampleProvider),
+      updateProvider: vi.fn().mockImplementation(async (id, patch) => ({ ...sampleProvider, ...patch })),
       listModels: vi.fn().mockResolvedValue([sampleModel]),
       findModelById: vi.fn().mockResolvedValue(sampleModel),
+      updateModel: vi.fn().mockImplementation(async (id, patch) => ({ ...sampleModel, ...patch })),
       listTones: vi.fn().mockResolvedValue([sampleTone]),
       findToneById: vi.fn().mockResolvedValue(sampleTone),
       listPresets: vi.fn().mockResolvedValue([samplePreset]),
@@ -425,6 +427,91 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
         sampleTenantBot.id,
         "active",
       );
+    });
+  });
+
+  describe("T-04 · Backoffice y permisos del catálogo (RBAC)", () => {
+    it("permite a platform_admin activar o desactivar un proveedor", async () => {
+      const result = await botService.updateProviderStatus(
+        sampleProvider.id,
+        false,
+        "platform_admin",
+        "admin-user",
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.isActive).toBe(false);
+      }
+      expect(mockBotRepo.updateProvider).toHaveBeenCalledWith(
+        sampleProvider.id,
+        expect.objectContaining({
+          isActive: false,
+          updatedBy: "admin-user",
+        }),
+      );
+    });
+
+    it("rechaza a tenant_owner con PERMISSION_DENIED al intentar modificar proveedores", async () => {
+      const result = await botService.updateProviderStatus(
+        sampleProvider.id,
+        false,
+        "tenant_owner",
+        "tenant-user",
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("PERMISSION_DENIED");
+      }
+      expect(mockBotRepo.updateProvider).not.toHaveBeenCalled();
+    });
+
+    it("permite a platform_owner actualizar costos y spread calculando retail automáticamente", async () => {
+      const result = await botService.updateModelPricingAndSpread({
+        modelId: sampleModel.id,
+        spreadPercent: 40,
+        costInputMtokUsdCents: 500,
+        costOutputMtokUsdCents: 2000,
+        actorRole: "platform_owner",
+        actor: "owner-user",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.spreadPercent).toBe(40);
+        // retail = cost * (1 + 40/100) -> 500 * 1.4 = 700; 2000 * 1.4 = 2800
+        expect(result.data.retailInputMtokUsdCents).toBe(700);
+        expect(result.data.retailOutputMtokUsdCents).toBe(2800);
+      }
+    });
+
+    it("rechaza spread porcentual negativo", async () => {
+      const result = await botService.updateModelPricingAndSpread({
+        modelId: sampleModel.id,
+        spreadPercent: -5,
+        actorRole: "platform_admin",
+        actor: "admin-user",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("INVALID_SPREAD_PERCENT");
+      }
+    });
+
+    it("rechaza a un usuario no autorizado al intentar actualizar precios o spread", async () => {
+      const result = await botService.updateModelPricingAndSpread({
+        modelId: sampleModel.id,
+        spreadPercent: 35,
+        actorRole: "tenant_agent",
+        actor: "agent-user",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("PERMISSION_DENIED");
+      }
     });
   });
 });

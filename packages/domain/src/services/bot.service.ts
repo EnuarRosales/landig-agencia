@@ -69,6 +69,19 @@ export interface MaskedTenantAiProvider {
 }
 
 /**
+ * Parámetros para la actualización administrativa de costos y spread de un modelo (BOT-001 T-04).
+ */
+export interface UpdateModelPricingInput {
+  modelId: string;
+  isActive?: boolean;
+  spreadPercent?: number;
+  costInputMtokUsdCents?: number;
+  costOutputMtokUsdCents?: number;
+  actorRole: string;
+  actor: string;
+}
+
+/**
  * Servicio de dominio para la gobernanza, configuración y resolución de bots e IA (BOT-001).
  */
 export class BotService {
@@ -171,6 +184,103 @@ export class BotService {
   async listChannelTypes(): Promise<Result<ChatwootChannelType[]>> {
     const channels = await this.botRepo.listChannelTypes();
     return ok(channels);
+  }
+
+  /**
+   * Actualiza el estado de activación de un proveedor de IA en el catálogo global (BOT-001 T-04).
+   * Restringido a platform_admin y platform_owner.
+   */
+  async updateProviderStatus(
+    providerId: string,
+    isActive: boolean,
+    actorRole: string,
+    actor: string,
+  ): Promise<Result<AiProvider>> {
+    if (actorRole !== "platform_admin" && actorRole !== "platform_owner") {
+      return err(
+        "Solo los roles platform_admin o platform_owner pueden modificar el catálogo de IA.",
+        "PERMISSION_DENIED",
+      );
+    }
+
+    const existing = await this.botRepo.findProviderById(providerId);
+    if (!existing) {
+      return err("El proveedor de IA especificado no existe.", "PROVIDER_NOT_FOUND");
+    }
+
+    const updated = await this.botRepo.updateProvider(providerId, {
+      isActive,
+      updatedBy: actor,
+    });
+
+    appLogger.info("[BotService] Estado de proveedor actualizado", {
+      providerId,
+      code: existing.code,
+      isActive,
+      actor,
+    });
+
+    return ok(updated!);
+  }
+
+  /**
+   * Actualiza costos, spread porcentual y precios retail de un modelo de IA (BOT-001 T-04).
+   * Restringido a platform_admin y platform_owner.
+   */
+  async updateModelPricingAndSpread(
+    input: UpdateModelPricingInput,
+  ): Promise<Result<AiModel>> {
+    const { modelId, actorRole, actor } = input;
+
+    if (actorRole !== "platform_admin" && actorRole !== "platform_owner") {
+      return err(
+        "Solo los roles platform_admin o platform_owner pueden modificar el catálogo de IA.",
+        "PERMISSION_DENIED",
+      );
+    }
+
+    const existing = await this.botRepo.findModelById(modelId);
+    if (!existing) {
+      return err("El modelo de IA especificado no existe.", "MODEL_NOT_FOUND");
+    }
+
+    const spreadPercent = input.spreadPercent ?? existing.spreadPercent;
+    if (spreadPercent < 0) {
+      return err("El spread porcentual no puede ser negativo.", "INVALID_SPREAD_PERCENT");
+    }
+
+    const costInput = input.costInputMtokUsdCents ?? existing.costInputMtokUsdCents;
+    const costOutput = input.costOutputMtokUsdCents ?? existing.costOutputMtokUsdCents;
+
+    const retailInput =
+      costInput !== null && costInput !== undefined
+        ? Math.round(costInput * (1 + spreadPercent / 100))
+        : null;
+
+    const retailOutput =
+      costOutput !== null && costOutput !== undefined
+        ? Math.round(costOutput * (1 + spreadPercent / 100))
+        : null;
+
+    const updated = await this.botRepo.updateModel(modelId, {
+      isActive: input.isActive ?? existing.isActive,
+      spreadPercent,
+      costInputMtokUsdCents: costInput,
+      costOutputMtokUsdCents: costOutput,
+      retailInputMtokUsdCents: retailInput,
+      retailOutputMtokUsdCents: retailOutput,
+      updatedBy: actor,
+    });
+
+    appLogger.info("[BotService] Precios y spread de modelo de IA actualizados", {
+      modelId,
+      spreadPercent,
+      retailInput,
+      retailOutput,
+      actor,
+    });
+
+    return ok(updated!);
   }
 
   /**

@@ -66,6 +66,15 @@ export class DrizzleBotRepository implements IBotRepository {
     return provider ?? null;
   }
 
+  async updateProvider(id: string, patch: Partial<AiProvider>): Promise<AiProvider | null> {
+    const [updated] = await this.db
+      .update(aiProviders)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(aiProviders.id, id))
+      .returning();
+    return updated ?? null;
+  }
+
   async listModels(providerId?: string): Promise<AiModel[]> {
     const conditions = [eq(aiModels.isActive, true)];
     if (providerId) {
@@ -85,6 +94,15 @@ export class DrizzleBotRepository implements IBotRepository {
       .where(eq(aiModels.id, id))
       .limit(1);
     return model ?? null;
+  }
+
+  async updateModel(id: string, patch: Partial<AiModel>): Promise<AiModel | null> {
+    const [updated] = await this.db
+      .update(aiModels)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(aiModels.id, id))
+      .returning();
+    return updated ?? null;
   }
 
   async listTones(): Promise<BotTone[]> {
