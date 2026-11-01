@@ -360,6 +360,33 @@
       "errorMessage": "Hubo un problema al establecer la sesión con el motor de chat. Por favor reintenta o verifica tu conexión.",
       "retryButton": "Reintentar Conexión",
       "reconnectButton": "Reconectar Sesión"
+    },
+    "branding": {
+      "title": "Marca Blanca e Identidad Visual",
+      "subtitle": "Personaliza la paleta de colores, logotipo y presencia de marca de tu espacio",
+      "planBadge": "Nivel de Plan",
+      "noPlanWarning": "Tu plan actual no incluye personalización de marca blanca. Actualiza a Pro o Enterprise para habilitar esta capacidad.",
+      "layer1Title": "Identidad Básica",
+      "brandNameLabel": "Nombre Comercial de la Marca",
+      "logoUrlLabel": "URL del Logotipo (SVG o PNG)",
+      "faviconUrlLabel": "URL del Favicon (ICO o PNG)",
+      "layer2Title": "Paleta de Colores Parametrizable",
+      "primaryColorLabel": "Color Primario (Botones y Acentos)",
+      "primaryTextColorLabel": "Color de Texto Primario",
+      "accentColorLabel": "Color Secundario / Acento",
+      "contrastRatioLabel": "Ratio de Contraste",
+      "contrastPassed": "Cumple WCAG AA",
+      "contrastFailed": "No Cumple Contraste",
+      "layer3Title": "Experiencia Propia y Dominio",
+      "customDomainLabel": "Dominio Personalizado",
+      "customFontLabel": "Tipografía de Marca",
+      "removeBrandingLabel": "Remover completamente la marca y pie de página de Mocter",
+      "previewTitle": "Vista Previa de Componentes",
+      "previewButtonText": "Botón de Acción Primaria",
+      "saveButton": "Guardar Identidad Visual",
+      "resetButton": "Restaurar Defaults",
+      "saving": "Guardando...",
+      "successMessage": "Identidad visual y paleta de colores actualizadas con éxito."
     }
   }
 }

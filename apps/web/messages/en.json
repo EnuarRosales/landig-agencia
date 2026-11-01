@@ -360,6 +360,33 @@
       "errorMessage": "There was a problem establishing the session with the chat engine. Please try again or check your connection.",
       "retryButton": "Retry Connection",
       "reconnectButton": "Reconnect Session"
+    },
+    "branding": {
+      "title": "White Label & Brand Identity",
+      "subtitle": "Customize your color palette, logos and presence across your workspace",
+      "planBadge": "Plan Tier",
+      "noPlanWarning": "Your current plan does not include white-label capabilities. Upgrade to Pro or Enterprise to enable this feature.",
+      "layer1Title": "Basic Brand Identity",
+      "brandNameLabel": "Commercial Brand Name",
+      "logoUrlLabel": "Logo URL (SVG or PNG)",
+      "faviconUrlLabel": "Favicon URL (ICO or PNG)",
+      "layer2Title": "Parametric Color Palette",
+      "primaryColorLabel": "Primary Color (Buttons & Accents)",
+      "primaryTextColorLabel": "Primary Text Color",
+      "accentColorLabel": "Secondary / Accent Color",
+      "contrastRatioLabel": "Contrast Ratio",
+      "contrastPassed": "WCAG AA Compliant",
+      "contrastFailed": "Insufficient Contrast",
+      "layer3Title": "Custom Domain & Own Experience",
+      "customDomainLabel": "Custom Domain",
+      "customFontLabel": "Brand Typography",
+      "removeBrandingLabel": "Completely remove Mocter badge and footer branding",
+      "previewTitle": "Live Component Preview",
+      "previewButtonText": "Primary Action Button",
+      "saveButton": "Save Brand Identity",
+      "resetButton": "Restore Defaults",
+      "saving": "Saving...",
+      "successMessage": "Brand identity and color palette updated successfully."
     }
   }
 }

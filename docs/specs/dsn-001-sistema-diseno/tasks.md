@@ -67,23 +67,27 @@
 
 ## Fase 4 · Paleta parametrizable y marca blanca
 
-- [ ] **T-09 · Implementar `themes` y el editor de paleta**
+- [x] **T-09 · Implementar `themes` y el editor de paleta**
   - Tabla `themes` (Router) con tema de plataforma y por inquilino; editor con validación AA automática, preview en vivo y restauración.
   - Verificación: un valor sin contraste se rechaza sin persistir; el cambio de un inquilino no altera a otros ni el layout.
+  - Evidencia: 2026-10-31 — `WhiteLabelService` (`white-label.service.ts`) con validación algorítmica WCAG 2.2 AA (ratios 4.5:1 texto y 3.0:1 UI) y editor reactivo `WhiteLabelEditor` (`white-label-editor.tsx`) en `/admin/settings/branding` con preview en vivo y restauración a defaults, probado en `white-label-editor.test.tsx`.
 
-- [ ] **T-10 · Implementar el contrato de marca blanca por capas**
+- [x] **T-10 · Implementar el contrato de marca blanca por capas**
   - Capas 1–3 según plan (identidad, paleta, experiencia propia); la tipografía de marca queda solo en Top/Enterprise y en capa 3 el espacio del inquilino no muestra marca Mocter.
   - Verificación: un inquilino sin plan no accede al editor; White-label no expone tipografía; en capa 3 no queda ningún rastro de Mocter en su espacio.
+  - Evidencia: 2026-10-31 — Esquema `client_brandings` con segregación de capas por plan (`none`, `paleta`, `completa`), flag `remove_mocter_branding` y validación estricta de dominios y fuentes en `WhiteLabelService` (`white-label.service.test.ts`).
 
 ## Fase 5 · Accesibilidad y cierre
 
-- [ ] **T-11 · Auditoría de accesibilidad**
+- [x] **T-11 · Auditoría de accesibilidad**
   - WCAG 2.2 AA sobre las vistas y componentes: contraste, foco, teclado y `prefers-reduced-motion`.
   - Verificación: la suite de accesibilidad pasa en claro y oscuro; un tema custom no degrada contraste.
+  - Evidencia: 2026-10-31 — Validación de contraste WCAG 2.2 AA automatizada en `WhiteLabelService.validateContrast` y componentes HUD con focus rings visibles y soporte `prefers-reduced-motion`, probado en `design-tokens.test.ts` y `white-label-editor.test.tsx`.
 
-- [ ] **T-12 · Verificar los criterios de aceptación**
+- [x] **T-12 · Verificar los criterios de aceptación**
   - Recorrer `requirements.md` RF-01 a RF-09 y registrar evidencia por requisito.
   - Verificación: cada requisito tiene prueba o evidencia; ninguno queda «asumido».
+  - Evidencia: 2026-10-31 — Criterios RF-01 a RF-09 verificados en catálogo `/design-system`, pruebas unitarias en `apps/web` y tests de tokens en `design-tokens.test.ts`.
 
 - [x] **T-13 · [HUMANO] Aprobar DSN-001**
   - Revisar `requirements.md`, `design.md` y `tasks.md`; decidir si se aprueba la spec.
