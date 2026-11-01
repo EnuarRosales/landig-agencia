@@ -21,6 +21,13 @@ import {
   botPromptBlocks,
   aiAssistFields,
   aiAssistPrompts,
+  referralPrograms,
+  referralCodes,
+  referrals,
+  referralRewards,
+  mediaCatalog,
+  mediaVariants,
+  aiUsageEvents,
   type Lead,
   type Cell,
   type Plan,
@@ -1980,5 +1987,380 @@ export async function updateAdminBotDefaults(
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[updateAdminBotDefaults Failed] ${msg}`, error);
     return err(`Error al actualizar parámetros globales de bots: ${msg}`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROGRAMA DE REFERIDOS Y AFILIADOS (REF-001)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AdminReferralProgramOverviewDto {
+  program: {
+    id: string;
+    name: string;
+    model: string;
+    rewardType: string;
+    rewardValue: number;
+    currency: string;
+    attributionDays: number;
+    creditValidityDays: number;
+    status: string;
+  };
+  metrics: {
+    totalReferrals: number;
+    pendingCount: number;
+    qualifiedCount: number;
+    rewardedCount: number;
+    rejectedCount: number;
+    totalRewardsIssuedCents: number;
+    totalCreditsRedeemedCents: number;
+    totalCreditsAvailableCents: number;
+  };
+  topReferrers: Array<{
+    clientId: string;
+    clientName: string;
+    clientSlug: string;
+    code: string;
+    conversionsCount: number;
+    earnedCents: number;
+  }>;
+}
+
+export interface UpdateAdminReferralProgramInput {
+  programId: string;
+  status?: "active" | "paused" | "ended";
+  rewardType?: "fixed" | "percent";
+  rewardValue?: number;
+  attributionDays?: number;
+  creditValidityDays?: number;
+  actorUserId?: string;
+}
+
+/**
+ * Consulta y auto-inicializa el programa de referidos de la SaaS (REF-001 §3, RF-06).
+ */
+export async function fetchAdminReferralsOverview(): Promise<AdminReferralProgramOverviewDto> {
+  const db = getDb();
+  const operator = "01a19874-1077-744c-8514-d4c990cd7259";
+
+  try {
+    let programRows = await db.select().from(referralPrograms).limit(1);
+
+    if (programRows.length === 0) {
+      const [newProg] = await db
+        .insert(referralPrograms)
+        .values({
+          name: "Programa Oficial De Créditos De Referidos Mocter",
+          model: "credit",
+          rewardType: "fixed",
+          rewardValue: 5000000, // $50.000 COP en centavos
+          currency: "COP",
+          trigger: "first_paid_invoice",
+          attributionDays: 60,
+          creditValidityDays: 365,
+          status: "active",
+          createdBy: operator,
+          updatedBy: operator,
+        })
+        .returning();
+      programRows = [newProg];
+    }
+
+    const currentProgram = programRows[0];
+
+    // Métricas de referidos
+    const refCounts = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        pending: sql<number>`count(*) filter (where status = 'pending')::int`,
+        qualified: sql<number>`count(*) filter (where status = 'qualified')::int`,
+        rewarded: sql<number>`count(*) filter (where status = 'rewarded')::int`,
+        rejected: sql<number>`count(*) filter (where status = 'rejected')::int`,
+      })
+      .from(referrals);
+
+    const rewSums = await db
+      .select({
+        totalIssued: sql<number>`coalesce(sum(amount_cents), 0)::bigint`,
+        totalAvailable: sql<number>`coalesce(sum(remaining_cents) filter (where status in ('available', 'partially_redeemed')), 0)::bigint`,
+      })
+      .from(referralRewards);
+
+    const totalIssued = Number(rewSums[0]?.totalIssued ?? 0);
+    const totalAvailable = Number(rewSums[0]?.totalAvailable ?? 0);
+    const totalRedeemed = Math.max(0, totalIssued - totalAvailable);
+
+    // Top referentes (inquilinos con códigos y conversiones)
+    const codeRows = await db
+      .select({
+        clientId: referralCodes.clientId,
+        code: referralCodes.code,
+        clientName: clients.displayName,
+        clientSlug: clients.slug,
+      })
+      .from(referralCodes)
+      .innerJoin(clients, eq(referralCodes.clientId, clients.id))
+      .limit(10);
+
+    const topReferrers = codeRows.map((c) => ({
+      clientId: c.clientId,
+      clientName: c.clientName,
+      clientSlug: c.clientSlug,
+      code: c.code,
+      conversionsCount: 0,
+      earnedCents: 0,
+    }));
+
+    return {
+      program: {
+        id: currentProgram.id,
+        name: currentProgram.name,
+        model: currentProgram.model,
+        rewardType: currentProgram.rewardType,
+        rewardValue: Number(currentProgram.rewardValue),
+        currency: currentProgram.currency,
+        attributionDays: currentProgram.attributionDays,
+        creditValidityDays: currentProgram.creditValidityDays,
+        status: currentProgram.status,
+      },
+      metrics: {
+        totalReferrals: Number(refCounts[0]?.total ?? 0),
+        pendingCount: Number(refCounts[0]?.pending ?? 0),
+        qualifiedCount: Number(refCounts[0]?.qualified ?? 0),
+        rewardedCount: Number(refCounts[0]?.rewarded ?? 0),
+        rejectedCount: Number(refCounts[0]?.rejected ?? 0),
+        totalRewardsIssuedCents: totalIssued,
+        totalCreditsRedeemedCents: totalRedeemed,
+        totalCreditsAvailableCents: totalAvailable,
+      },
+      topReferrers,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[fetchAdminReferralsOverview Failed] ${msg}`, error);
+    return {
+      program: {
+        id: "",
+        name: "Programa Oficial",
+        model: "credit",
+        rewardType: "fixed",
+        rewardValue: 5000000,
+        currency: "COP",
+        attributionDays: 60,
+        creditValidityDays: 365,
+        status: "active",
+      },
+      metrics: {
+        totalReferrals: 0,
+        pendingCount: 0,
+        qualifiedCount: 0,
+        rewardedCount: 0,
+        rejectedCount: 0,
+        totalRewardsIssuedCents: 0,
+        totalCreditsRedeemedCents: 0,
+        totalCreditsAvailableCents: 0,
+      },
+      topReferrers: [],
+    };
+  }
+}
+
+/**
+ * Actualiza la configuración comercial o el estado del programa de referidos (REF-001 RF-06.1).
+ */
+export async function updateAdminReferralProgram(
+  input: UpdateAdminReferralProgramInput,
+): Promise<Result<{ success: boolean; status: string }>> {
+  const db = getDb();
+  const actor = input.actorUserId || "01a19874-1077-744c-8514-d4c990cd7259";
+
+  try {
+    const existing = await db
+      .select()
+      .from(referralPrograms)
+      .where(eq(referralPrograms.id, input.programId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      return err("El programa de referidos especificado no existe.", "PROGRAM_NOT_FOUND");
+    }
+
+    const updates: Record<string, unknown> = {
+      updatedBy: actor,
+      updatedAt: new Date(),
+    };
+
+    if (input.status) updates.status = input.status;
+    if (input.rewardType) updates.rewardType = input.rewardType;
+    if (input.rewardValue !== undefined) updates.rewardValue = input.rewardValue;
+    if (input.attributionDays !== undefined) updates.attributionDays = input.attributionDays;
+    if (input.creditValidityDays !== undefined) updates.creditValidityDays = input.creditValidityDays;
+
+    await db.update(referralPrograms).set(updates).where(eq(referralPrograms.id, input.programId));
+
+    appLogger.info("[updateAdminReferralProgram] Programa de referidos actualizado", {
+      programId: input.programId,
+      updates,
+      actor,
+    });
+
+    return ok({ success: true, status: (input.status || existing[0].status) });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminReferralProgram Failed] ${msg}`, error);
+    return err(`Error al actualizar el programa de referidos: ${msg}`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INFORMES EJECUTIVOS Y ANALÍTICA GLOBAL (REP-001)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AdminPlatformReportsOverviewDto {
+  kpis: {
+    totalMrrCop: number;
+    activeTenants: number;
+    totalStorageMb: number;
+    totalTokensConsumed: number;
+  };
+  tenantsByPlan: Array<{
+    planCode: string;
+    planName: string;
+    count: number;
+    mrrCop: number;
+  }>;
+  tenantsByStatus: Array<{
+    status: string;
+    count: number;
+  }>;
+  storage: {
+    originalBytes: number;
+    variantsBytes: number;
+    totalBytes: number;
+    filesCount: number;
+  };
+  aiUsage: {
+    botTokens: number;
+    assistTokens: number;
+    totalTokens: number;
+    totalCostUsdCents: number;
+  };
+}
+
+/**
+ * Computa las métricas analíticas globales agregadas para el plano de control (REP-001 §2, T-05).
+ * Cero exposición de PII: consolidado numérico por plan, almacenamiento SeaweedFS y consumo AI.
+ */
+export async function fetchAdminPlatformReports(): Promise<AdminPlatformReportsOverviewDto> {
+  const db = getDb();
+
+  try {
+    // 1. Clientes y suscripciones
+    const clientRows = await db
+      .select({
+        lifecycleStatus: clients.lifecycleStatus,
+        planCode: plans.code,
+        planNameJson: plans.name,
+        priceMonthlyCents: plans.priceMonthlyCents,
+      })
+      .from(clients)
+      .innerJoin(plans, eq(clients.planId, plans.id));
+
+    let activeTenants = 0;
+    let totalMrrCop = 0;
+    const planMap = new Map<string, { code: string; name: string; count: number; mrrCop: number }>();
+    const statusMap = new Map<string, number>();
+
+    for (const r of clientRows) {
+      const priceMonthlyCop = Math.round(Number(r.priceMonthlyCents || 0) / 100);
+      const st = r.lifecycleStatus || "activo";
+
+      statusMap.set(st, (statusMap.get(st) || 0) + 1);
+
+      if (st === "activo" || st === "alta") {
+        activeTenants++;
+        totalMrrCop += priceMonthlyCop;
+      }
+
+      const pObj = r.planNameJson as { es?: string; en?: string } | null;
+      const planName = pObj?.es || r.planCode;
+
+      const currentPlan = planMap.get(r.planCode) || {
+        code: r.planCode,
+        name: planName,
+        count: 0,
+        mrrCop: 0,
+      };
+      currentPlan.count++;
+      currentPlan.mrrCop += priceMonthlyCop;
+      planMap.set(r.planCode, currentPlan);
+    }
+
+    // 2. Almacenamiento SeaweedFS y variantes
+    const mediaCatalogStats = await db
+      .select({
+        count: sql<number>`count(*)::int`,
+        totalSize: sql<number>`coalesce(sum(size_bytes), 0)::bigint`,
+      })
+      .from(mediaCatalog);
+
+    const mediaVariantsStats = await db
+      .select({
+        totalSize: sql<number>`coalesce(sum(size_bytes), 0)::bigint`,
+      })
+      .from(mediaVariants);
+
+    const origBytes = Number(mediaCatalogStats[0]?.totalSize || 0);
+    const varBytes = Number(mediaVariantsStats[0]?.totalSize || 0);
+    const totalStorageBytes = origBytes + varBytes;
+    const totalStorageMb = Math.round((totalStorageBytes / (1024 * 1024)) * 100) / 100;
+
+    // 3. Consumo de Tokens AI
+    const aiStats = await db
+      .select({
+        botTokens: sql<number>`coalesce(sum(input_tokens + output_tokens) filter (where purpose = 'bot'), 0)::bigint`,
+        assistTokens: sql<number>`coalesce(sum(input_tokens + output_tokens) filter (where purpose = 'assist'), 0)::bigint`,
+        totalTokens: sql<number>`coalesce(sum(input_tokens + output_tokens), 0)::bigint`,
+        totalCostUsdCents: sql<number>`coalesce(sum(cost_usd_cents), 0)::bigint`,
+      })
+      .from(aiUsageEvents);
+
+    const botTokens = Number(aiStats[0]?.botTokens || 0);
+    const assistTokens = Number(aiStats[0]?.assistTokens || 0);
+    const totalTokens = Number(aiStats[0]?.totalTokens || 0);
+    const totalCostUsdCents = Number(aiStats[0]?.totalCostUsdCents || 0);
+
+    return {
+      kpis: {
+        totalMrrCop,
+        activeTenants,
+        totalStorageMb,
+        totalTokensConsumed: totalTokens,
+      },
+      tenantsByPlan: Array.from(planMap.values()),
+      tenantsByStatus: Array.from(statusMap.entries()).map(([status, count]) => ({ status, count })),
+      storage: {
+        originalBytes: origBytes,
+        variantsBytes: varBytes,
+        totalBytes: totalStorageBytes,
+        filesCount: Number(mediaCatalogStats[0]?.count || 0),
+      },
+      aiUsage: {
+        botTokens,
+        assistTokens,
+        totalTokens,
+        totalCostUsdCents,
+      },
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[fetchAdminPlatformReports Failed] ${msg}`, error);
+    return {
+      kpis: { totalMrrCop: 0, activeTenants: 0, totalStorageMb: 0, totalTokensConsumed: 0 },
+      tenantsByPlan: [],
+      tenantsByStatus: [],
+      storage: { originalBytes: 0, variantsBytes: 0, totalBytes: 0, filesCount: 0 },
+      aiUsage: { botTokens: 0, assistTokens: 0, totalTokens: 0, totalCostUsdCents: 0 },
+    };
   }
 }

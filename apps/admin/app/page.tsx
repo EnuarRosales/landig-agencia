@@ -85,6 +85,18 @@ export default async function AdminHomePage() {
       badge: "Inferencia",
     },
     {
+      title: "Programa De Referidos y Afiliados",
+      description: "Modelo de recompensas por recomendación, códigos de comercio y créditos acumulados.",
+      href: "/admin/referrals",
+      badge: "Crecimiento",
+    },
+    {
+      title: "Informes Ejecutivos y Analítica",
+      description: "Supervisión consolidada de MRR, almacenamiento SeaweedFS y consumo de tokens AI.",
+      href: "/admin/reports",
+      badge: "Analítica",
+    },
+    {
       title: dict.dashboard.cardCellsTitle || "Células de Datos",
       description: dict.dashboard.cardCellsDesc || "Aprovisionamiento y topes de capacidad de nodos PostgreSQL celulares.",
       href: "/admin/cells",

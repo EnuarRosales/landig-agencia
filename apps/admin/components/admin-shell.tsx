@@ -11,6 +11,8 @@ import {
   CreditCard,
   Store,
   Bot,
+  Gift,
+  BarChart3,
   Server,
   Layers,
   Mail,
@@ -111,6 +113,16 @@ export function AdminShell({ children }: AdminShellProps) {
       href: "/admin/ai",
       label: dict.navAi || "Inteligencia y Prompts",
       icon: Bot,
+    },
+    {
+      href: "/admin/referrals",
+      label: dict.navReferrals || "Programa de Referidos",
+      icon: Gift,
+    },
+    {
+      href: "/admin/reports",
+      label: dict.navReports || "Informes y Analítica",
+      icon: BarChart3,
     },
     {
       href: "/admin/cells",
