@@ -175,9 +175,10 @@
   - Evidencia: 2026-10-31 — Esquemas `feed_posts`, `feed_moderation_events` (migración `0019_nice_krista_starr.sql` y `0019_phase4_feed_moderation_grants_comments.sql`) y métodos `createPost` y `moderatePost` en `CommunityFeedService` (`community-feed.service.test.ts`).
   - RF-08.7, RF-08.8, RF-08.13, RF-08.19, D-17.
 
-- [ ] **T-23 · Implementar métricas del liderazgo**
+- [x] **T-23 · Implementar métricas del liderazgo**
   - Agregación por API desde cada celda, por miembro y agregada; sin Chatwoot; `tenant_owner` del líder/co-líder ve la comunidad y `tenant_agent` solo sus propias métricas.
   - Verificación: el liderazgo ve ventas y desempeño; no ve chats, clientes ni datos operativos; el agent no ve métricas agregadas.
+  - Evidencia: 2026-10-31 — Implementado `CommunityLeadershipMetricsService` (`community-leadership-metrics.service.ts`) con agregación en memoria por celda y RBAC estricto, cubierto con 6 pruebas unitarias al 100% en `community-leadership-metrics.service.test.ts`.
   - RF-08.9, D-19.
 
 ## Fase 5 · Retención y operación
