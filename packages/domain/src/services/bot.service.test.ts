@@ -19,6 +19,11 @@ import type {
   WalletTransaction,
   AiUsageEvent,
 } from "../db/schemas/admin/bot-tenancy";
+import type {
+  BotFollowup,
+  BotFollowupStep,
+  BotFollowupRun,
+} from "../db/schemas/admin/bot-followups";
 
 describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", () => {
   let mockBotRepo: IBotRepository;
@@ -326,6 +331,106 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
         },
         eventsCount: 42,
       }),
+      createFollowupSequence: vi.fn().mockImplementation(async (params) => {
+        const followup: BotFollowup = {
+          id: "fol-01",
+          clientId: params.clientId,
+          botId: params.botId ?? null,
+          name: params.name,
+          origin: params.origin ?? "tenant_custom",
+          triggerInactivityMinutes: params.triggerInactivityMinutes,
+          status: "draft",
+          revision: 1,
+          deletedAt: null,
+          deletedBy: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: params.actor,
+          updatedBy: params.actor,
+        };
+        const steps: BotFollowupStep[] = params.steps.map((s: any, idx: number) => ({
+          id: `step-${idx + 1}`,
+          followupId: "fol-01",
+          position: s.position,
+          delayMinutes: s.delayMinutes,
+          message: s.message,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: params.actor,
+          updatedBy: params.actor,
+        }));
+        return { followup, steps };
+      }),
+      listFollowups: vi.fn().mockResolvedValue([]),
+      findFollowupById: vi.fn().mockImplementation(async (id) => ({
+        id,
+        clientId: sampleTenantBot.clientId,
+        botId: sampleTenantBot.id,
+        name: "Secuencia Activa",
+        origin: "tenant_custom",
+        triggerInactivityMinutes: 60,
+        status: "active",
+        revision: 1,
+        deletedAt: null,
+        deletedBy: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "owner",
+        updatedBy: "owner",
+        steps: [
+          {
+            id: "step-1",
+            followupId: id,
+            position: 1,
+            delayMinutes: 0,
+            message: "Paso 1",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            createdBy: "owner",
+            updatedBy: "owner",
+          },
+        ],
+      })),
+      updateFollowupStatus: vi.fn().mockImplementation(async (id, status, actor) => ({
+        id,
+        clientId: sampleTenantBot.clientId,
+        botId: sampleTenantBot.id,
+        name: "Secuencia Activa",
+        origin: "tenant_custom",
+        triggerInactivityMinutes: 60,
+        status,
+        revision: 1,
+        deletedAt: null,
+        deletedBy: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: actor,
+        updatedBy: actor,
+      })),
+      findActiveFollowupRun: vi.fn().mockResolvedValue(null),
+      createFollowupRun: vi.fn().mockImplementation(async (run) => ({
+        id: "run-01",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        ...run,
+      })),
+      updateFollowupRun: vi.fn().mockImplementation(async (id, patch) => ({
+        id,
+        clientId: sampleTenantBot.clientId,
+        followupId: "fol-01",
+        prospectContactId: "prospect-01",
+        chatwootConversationId: 100,
+        currentStep: 1,
+        nextSendAt: new Date(),
+        status: "running",
+        stopReason: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "bot",
+        updatedBy: "bot",
+        ...patch,
+      })),
+      stopFollowupRunsForProspect: vi.fn().mockResolvedValue(1),
     };
 
     botService = new BotService(mockBotRepo);
@@ -1179,6 +1284,156 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
         expect(result.data.tokensByPurpose.bot).toBe(900000);
         expect(result.data.tokensByPurpose.assist).toBe(300000);
         expect(result.data.eventsCount).toBe(42);
+      }
+    });
+  });
+
+  describe("T-21 · Configuración y seed de secuencias de seguimiento (RF-11)", () => {
+    it("crea una secuencia personalizada con pasos ordenados y tiempos de espera", async () => {
+      const result = await botService.createFollowupSequence({
+        clientId: sampleTenantBot.clientId,
+        name: "Secuencia Carrito Abandonado",
+        triggerInactivityMinutes: 120,
+        origin: "tenant_custom",
+        steps: [
+          { position: 1, delayMinutes: 0, message: "¿Deseas finalizar tu pedido?" },
+          { position: 2, delayMinutes: 60, message: "Te reservamos los productos por 1 hora más." },
+        ],
+        actor: "owner-user",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.followup.name).toBe("Secuencia Carrito Abandonado");
+        expect(result.data.steps).toHaveLength(2);
+      }
+    });
+
+    it("rechaza si se excede el límite máximo de 10 pasos (RF-11.7)", async () => {
+      const steps = Array.from({ length: 11 }, (_, i) => ({
+        position: i + 1,
+        delayMinutes: 10,
+        message: `Paso ${i + 1}`,
+      }));
+
+      const result = await botService.createFollowupSequence({
+        clientId: sampleTenantBot.clientId,
+        name: "Secuencia Excesiva",
+        triggerInactivityMinutes: 60,
+        steps,
+        actor: "owner-user",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("MAX_STEPS_EXCEEDED");
+      }
+    });
+
+    it("siembra la secuencia por defecto con 3 pasos y estado draft (RF-11.8)", async () => {
+      const result = await botService.seedDefaultFollowupSequence(sampleTenantBot.clientId);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.followup.origin).toBe("platform_default");
+        expect(result.data.steps).toHaveLength(3);
+      }
+    });
+
+    it("permite a tenant_owner actualizar el estado a activa o pausada", async () => {
+      const result = await botService.updateFollowupStatus(
+        "fol-01",
+        "active",
+        "tenant_owner",
+        "owner-user",
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.status).toBe("active");
+      }
+    });
+  });
+
+  describe("T-22 · Ejecución de seguimientos y reglas de parada (RF-11.3, RF-11.4)", () => {
+    it("inicia la ejecución cuando el prospecto posee consentimiento comercial vigente", async () => {
+      const result = await botService.triggerFollowupExecution({
+        clientId: sampleTenantBot.clientId,
+        followupId: "fol-01",
+        prospectContactId: "prospect-01",
+        chatwootConversationId: 501,
+        hasCommercialConsent: true,
+        actor: "bot",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.status).toBe("running");
+        expect(result.data.currentStep).toBe(1);
+        expect(result.data.nextSendAt).toBeDefined();
+      }
+    });
+
+    it("rechaza iniciar si el prospecto no posee consentimiento comercial (RF-11.6)", async () => {
+      const result = await botService.triggerFollowupExecution({
+        clientId: sampleTenantBot.clientId,
+        followupId: "fol-01",
+        prospectContactId: "prospect-no-consent",
+        chatwootConversationId: 502,
+        hasCommercialConsent: false,
+        actor: "bot",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("COMMERCIAL_CONSENT_REQUIRED");
+      }
+    });
+
+    it("rechaza si el prospecto ya tiene una secuencia activa en ejecución (RF-11.3)", async () => {
+      vi.mocked(mockBotRepo.findActiveFollowupRun).mockResolvedValueOnce({
+        id: "run-active",
+        clientId: sampleTenantBot.clientId,
+        followupId: "fol-01",
+        prospectContactId: "prospect-01",
+        chatwootConversationId: 501,
+        currentStep: 1,
+        nextSendAt: new Date(),
+        status: "running",
+        stopReason: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "bot",
+        updatedBy: "bot",
+      });
+
+      const result = await botService.triggerFollowupExecution({
+        clientId: sampleTenantBot.clientId,
+        followupId: "fol-01",
+        prospectContactId: "prospect-01",
+        chatwootConversationId: 501,
+        hasCommercialConsent: true,
+        actor: "bot",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("ACTIVE_RUN_EXISTS");
+      }
+    });
+
+    it("aplica reglas de parada cancelando ejecuciones activas ante respuesta o agente", async () => {
+      const result = await botService.stopFollowupRuns({
+        clientId: sampleTenantBot.clientId,
+        prospectContactId: "prospect-01",
+        stopReason: "prospect_replied",
+        actor: "bot-listener",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.stoppedCount).toBe(1);
+        expect(result.data.stopReason).toBe("prospect_replied");
       }
     });
   });

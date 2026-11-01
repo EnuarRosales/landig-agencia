@@ -115,12 +115,12 @@
   - `bot_followups`, `bot_followup_steps` y `bot_followup_runs` con auditoría, `(followup_id, position)` único y comentarios.
   - Verificación: `drizzle-kit check` pasa; una secuencia no admite dos pasos con la misma posición.
 
-- [ ] **T-21 · Implementar la configuración de secuencias**
+- [x] **T-21 · Implementar la configuración de secuencias**
   - UI del inquilino para crear secuencias personalizadas: nombre, inactividad de disparo, pasos con texto y espera, pausa/activación; textos asistidos por AI-001 (`followup_step.message`).
   - Seed por inquilino con la secuencia de ejemplo (`origin = platform_default`, estado `draft`); el inquilino la adopta, edita o archiva.
   - Verificación: una secuencia se crea con pasos ordenados e intervalos libres; el máximo de 10 pasos se respeta; la secuencia por defecto llega como borrador editable y no se envía hasta activarla; pausar la secuencia detiene los envíos pendientes.
 
-- [ ] **T-22 · Implementar la ejecución y las reglas de parada**
+- [x] **T-22 · Implementar la ejecución y las reglas de parada**
   - BOT-002 agenda y envía los pasos por el canal de la conversación; consulta `prospect_consents` antes de cada paso comercial; cancela ante respuesta, agente, revocación o pausa; una secuencia activa por prospecto; auditoría con actor `bot`.
   - Verificación: la respuesta del prospecto cancela los pasos pendientes; sin consentimiento comercial no se envía el paso; el estado queda en `bot_followup_runs` con motivo de parada.
 

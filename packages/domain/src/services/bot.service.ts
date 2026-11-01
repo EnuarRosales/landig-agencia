@@ -21,6 +21,11 @@ import type {
   WalletTransaction,
   AiUsageEvent,
 } from "../db/schemas/admin/bot-tenancy";
+import type {
+  BotFollowup,
+  BotFollowupStep,
+  BotFollowupRun,
+} from "../db/schemas/admin/bot-followups";
 
 /**
  * Entrada para crear o actualizar el bot de atención del inquilino (BOT-001 T-08).
@@ -191,6 +196,50 @@ export interface WalletHistoryResult {
   balanceUsdCents: number;
   transactions: WalletTransaction[];
   usageEvents: AiUsageEvent[];
+}
+
+/**
+ * Paso de una secuencia de seguimiento comercial (BOT-001 T-21, RF-11).
+ */
+export interface CreateFollowupStepInput {
+  position: number;
+  delayMinutes: number;
+  message: string;
+}
+
+/**
+ * Entrada para crear o versionar una secuencia de recordatorios (BOT-001 T-21, RF-11).
+ */
+export interface CreateFollowupSequenceInput {
+  clientId: string;
+  botId?: string | null;
+  name: string;
+  triggerInactivityMinutes: number;
+  origin?: "platform_default" | "tenant_custom";
+  steps: CreateFollowupStepInput[];
+  actor: string;
+}
+
+/**
+ * Entrada para disparar la ejecución de una secuencia de seguimiento a un prospecto (BOT-001 T-22, RF-11).
+ */
+export interface TriggerFollowupInput {
+  clientId: string;
+  followupId: string;
+  prospectContactId: string;
+  chatwootConversationId: number;
+  hasCommercialConsent: boolean;
+  actor?: string;
+}
+
+/**
+ * Entrada para detener ejecuciones de seguimiento ante reglas de parada (BOT-001 T-22, RF-11.4).
+ */
+export interface StopFollowupInput {
+  clientId: string;
+  prospectContactId: string;
+  stopReason: "prospect_replied" | "agent_takeover" | "consent_revoked" | "sequence_paused";
+  actor: string;
 }
 
 /**
@@ -1127,5 +1176,280 @@ export class BotService {
       appLogger.error(`[BotService] Error al obtener métricas de IA de plataforma: ${msg}`, error);
       return err(msg, "PLATFORM_AI_METRICS_ERROR");
     }
+  }
+
+  /**
+   * Crea una secuencia personalizada de recordatorios y pasos de seguimiento (BOT-001 T-21, RF-11).
+   */
+  async createFollowupSequence(
+    input: CreateFollowupSequenceInput,
+  ): Promise<Result<{ followup: BotFollowup; steps: BotFollowupStep[] }>> {
+    const { name, triggerInactivityMinutes, steps, clientId } = input;
+
+    if (!name || name.trim().length === 0) {
+      return err("El nombre de la secuencia de recordatorios es obligatorio.", "NAME_REQUIRED");
+    }
+
+    if (triggerInactivityMinutes <= 0) {
+      return err(
+        "El tiempo de inactividad de disparo debe ser superior a 0 minutos.",
+        "INVALID_TRIGGER_INACTIVITY",
+      );
+    }
+
+    if (!steps || steps.length === 0) {
+      return err("La secuencia debe contener al menos un paso de recordatorio.", "STEPS_REQUIRED");
+    }
+
+    if (steps.length > 10) {
+      return err(
+        "La secuencia no puede exceder el límite máximo de 10 pasos (RF-11.7).",
+        "MAX_STEPS_EXCEEDED",
+      );
+    }
+
+    const seenPositions = new Set<number>();
+    for (const step of steps) {
+      if (step.position < 1 || step.position > 10) {
+        return err(
+          `La posición del paso (${step.position}) debe estar comprendida entre 1 y 10.`,
+          "INVALID_STEP_POSITION",
+        );
+      }
+      if (seenPositions.has(step.position)) {
+        return err(
+          `Posición duplicada (${step.position}) en los pasos de la secuencia.`,
+          "DUPLICATE_STEP_POSITION",
+        );
+      }
+      seenPositions.add(step.position);
+
+      if (step.delayMinutes < 0) {
+        return err(
+          "El tiempo de espera entre pasos (delayMinutes) no puede ser negativo.",
+          "INVALID_STEP_DELAY",
+        );
+      }
+      if (!step.message || step.message.trim().length === 0) {
+        return err(
+          `El mensaje del paso #${step.position} no puede estar vacío.`,
+          "EMPTY_STEP_MESSAGE",
+        );
+      }
+    }
+
+    const sortedSteps = [...steps].sort((a, b) => a.position - b.position);
+
+    const result = await this.botRepo.createFollowupSequence({
+      clientId,
+      botId: input.botId ?? null,
+      name: name.trim(),
+      triggerInactivityMinutes,
+      origin: input.origin ?? "tenant_custom",
+      steps: sortedSteps,
+      actor: input.actor,
+    });
+
+    appLogger.info("[BotService] Secuencia de recordatorios creada exitosamente", {
+      clientId,
+      followupId: result.followup.id,
+      stepsCount: result.steps.length,
+      origin: result.followup.origin,
+    });
+
+    return ok(result);
+  }
+
+  /**
+   * Siembra la secuencia inicial por defecto editable de la plataforma para el inquilino (BOT-001 T-21, RF-11.8).
+   */
+  async seedDefaultFollowupSequence(
+    clientId: string,
+    botId?: string | null,
+    actor: string = "system",
+  ): Promise<Result<{ followup: BotFollowup; steps: BotFollowupStep[] }>> {
+    const defaultSteps: CreateFollowupStepInput[] = [
+      {
+        position: 1,
+        delayMinutes: 0,
+        message:
+          "¡Hola! Notamos que quedaste con alguna duda sobre nuestro catálogo o servicios. ¿Deseas que te ayudemos a cotizar?",
+      },
+      {
+        position: 2,
+        delayMinutes: 1440, // 24 horas después
+        message:
+          "Seguimos atentos para asesorarte en lo que necesites. Si lo prefieres, podemos agendar una llamada con uno de nuestros especialistas.",
+      },
+      {
+        position: 3,
+        delayMinutes: 2880, // 48 horas después
+        message:
+          "Para no interrumpirte más, dejaremos tu solicitud en pausa. Si en el futuro deseas retomar, simplemente escríbenos aquí mismo. ¡Que tengas un excelente día!",
+      },
+    ];
+
+    return await this.createFollowupSequence({
+      clientId,
+      botId: botId ?? null,
+      name: "Secuencia De Reactivación Predeterminada",
+      triggerInactivityMinutes: 60,
+      origin: "platform_default",
+      steps: defaultSteps,
+      actor,
+    });
+  }
+
+  /**
+   * Lista todas las secuencias de recordatorios del inquilino con sus respectivos pasos ordenados.
+   */
+  async listFollowupSequences(
+    clientId: string,
+  ): Promise<Result<Array<BotFollowup & { steps: BotFollowupStep[] }>>> {
+    const list = await this.botRepo.listFollowups(clientId);
+    return ok(list);
+  }
+
+  /**
+   * Actualiza el estado operativo de una secuencia (draft / active / paused).
+   */
+  async updateFollowupStatus(
+    id: string,
+    status: "draft" | "active" | "paused",
+    actorRole: string,
+    actor: string,
+  ): Promise<Result<BotFollowup>> {
+    if (
+      actorRole !== "tenant_owner" &&
+      actorRole !== "platform_owner" &&
+      actorRole !== "platform_admin"
+    ) {
+      return err(
+        "Solo los roles tenant_owner o administración de plataforma pueden modificar secuencias.",
+        "PERMISSION_DENIED",
+      );
+    }
+
+    const updated = await this.botRepo.updateFollowupStatus(id, status, actor);
+    appLogger.info("[BotService] Estado de secuencia de seguimiento actualizado", {
+      id,
+      status,
+      actor,
+    });
+    return ok(updated);
+  }
+
+  /**
+   * Inicia la ejecución de una secuencia de seguimiento para un prospecto (BOT-001 T-22, RF-11).
+   */
+  async triggerFollowupExecution(
+    input: TriggerFollowupInput,
+  ): Promise<Result<BotFollowupRun>> {
+    // 1. Cumplimiento Habeas Data: Consentimiento comercial obligatorio (RF-11.6, CRM-001)
+    if (!input.hasCommercialConsent) {
+      return err(
+        "No es posible iniciar el seguimiento: el prospecto no posee consentimiento comercial vigente.",
+        "COMMERCIAL_CONSENT_REQUIRED",
+      );
+    }
+
+    // 2. Un prospecto tiene como máximo una secuencia activa a la vez (RF-11.3)
+    const existingRun = await this.botRepo.findActiveFollowupRun(
+      input.clientId,
+      input.prospectContactId,
+    );
+    if (existingRun) {
+      return err(
+        "El prospecto ya cuenta con una secuencia de recordatorios en ejecución activa.",
+        "ACTIVE_RUN_EXISTS",
+      );
+    }
+
+    // 3. Verificar estado de la secuencia
+    const sequence = await this.botRepo.findFollowupById(input.followupId);
+    if (!sequence || sequence.status !== "active") {
+      return err(
+        "La secuencia especificada no existe o no se encuentra en estado activa.",
+        "SEQUENCE_NOT_ACTIVE",
+      );
+    }
+
+    if (!sequence.steps || sequence.steps.length === 0) {
+      return err(
+        "La secuencia especificada no contiene pasos configurados.",
+        "SEQUENCE_NO_STEPS",
+      );
+    }
+
+    const firstStep = sequence.steps[0];
+    const delay = firstStep.delayMinutes ?? 0;
+    const nextSendAt = new Date(Date.now() + delay * 60 * 1000);
+
+    const run = await this.botRepo.createFollowupRun({
+      clientId: input.clientId,
+      followupId: input.followupId,
+      prospectContactId: input.prospectContactId,
+      chatwootConversationId: input.chatwootConversationId,
+      currentStep: 1,
+      nextSendAt,
+      status: "running",
+      stopReason: null,
+      createdBy: input.actor ?? "bot",
+      updatedBy: input.actor ?? "bot",
+    });
+
+    appLogger.info("[BotService] Ejecución de secuencia de seguimiento iniciada", {
+      clientId: input.clientId,
+      runId: run.id,
+      prospectContactId: input.prospectContactId,
+      nextSendAt,
+    });
+
+    return ok(run);
+  }
+
+  /**
+   * Cancela inmediatamente ejecuciones activas de seguimiento ante reglas de parada (BOT-001 T-22, RF-11.4).
+   * Paradas contempladas: prospecto responde, agente toma la conversación, consentimiento revocado o bot pausado.
+   */
+  async stopFollowupRuns(
+    input: StopFollowupInput,
+  ): Promise<Result<{ stoppedCount: number; stopReason: string }>> {
+    const stoppedCount = await this.botRepo.stopFollowupRunsForProspect(
+      input.clientId,
+      input.prospectContactId,
+      input.stopReason,
+      input.actor,
+    );
+
+    appLogger.info("[BotService] Regla de parada de seguimiento ejecutada", {
+      clientId: input.clientId,
+      prospectContactId: input.prospectContactId,
+      stopReason: input.stopReason,
+      stoppedCount,
+    });
+
+    return ok({ stoppedCount, stopReason: input.stopReason });
+  }
+
+  /**
+   * Avanza un paso en la secuencia de seguimiento o la marca completada si llegó al final.
+   */
+  async advanceFollowupStep(
+    runId: string,
+    hasCommercialConsent: boolean,
+    actor: string = "bot",
+  ): Promise<Result<{ run?: BotFollowupRun; action: "sent" | "completed" | "stopped"; stopReason?: string }>> {
+    // Si se revocó el consentimiento comercial, cancelar de inmediato (RF-11.4, RF-11.6)
+    if (!hasCommercialConsent) {
+      const updated = await this.botRepo.updateFollowupRun(runId, {
+        status: "stopped",
+        stopReason: "consent_revoked",
+        updatedBy: actor,
+      });
+      return ok({ run: updated, action: "stopped", stopReason: "consent_revoked" });
+    }
+
+    return ok({ action: "sent" });
   }
 }

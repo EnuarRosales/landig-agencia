@@ -39,6 +39,17 @@ import {
   type AuditLogEntry,
   type NewAuditLogEntry,
 } from "../db/schemas/admin/chatwoot-media-onboarding";
+import {
+  botFollowups,
+  botFollowupSteps,
+  botFollowupRuns,
+  type BotFollowup,
+  type NewBotFollowup,
+  type BotFollowupStep,
+  type NewBotFollowupStep,
+  type BotFollowupRun,
+  type NewBotFollowupRun,
+} from "../db/schemas/admin/bot-followups";
 import type {
   IBotRepository,
   PlatformAiRevenueMetrics,
@@ -605,6 +616,175 @@ export class DrizzleBotRepository implements IBotRepository {
       },
       eventsCount: usageRow?.eventsCount ?? 0,
     };
+  }
+
+  async createFollowupSequence(params: {
+    clientId: string;
+    botId?: string | null;
+    name: string;
+    triggerInactivityMinutes: number;
+    origin?: "platform_default" | "tenant_custom";
+    steps: Array<{ position: number; delayMinutes: number; message: string }>;
+    actor: string;
+  }): Promise<{ followup: BotFollowup; steps: BotFollowupStep[] }> {
+    return await this.db.transaction(async (tx) => {
+      const [followup] = await tx
+        .insert(botFollowups)
+        .values({
+          clientId: params.clientId,
+          botId: params.botId ?? null,
+          name: params.name,
+          origin: params.origin ?? "tenant_custom",
+          triggerInactivityMinutes: params.triggerInactivityMinutes,
+          status: "draft",
+          revision: 1,
+          createdBy: params.actor,
+          updatedBy: params.actor,
+        })
+        .returning();
+
+      const createdSteps: BotFollowupStep[] = [];
+      for (const s of params.steps) {
+        const [createdStep] = await tx
+          .insert(botFollowupSteps)
+          .values({
+            followupId: followup!.id,
+            position: s.position,
+            delayMinutes: s.delayMinutes,
+            message: s.message,
+            createdBy: params.actor,
+            updatedBy: params.actor,
+          })
+          .returning();
+        createdSteps.push(createdStep!);
+      }
+
+      return {
+        followup: followup!,
+        steps: createdSteps,
+      };
+    });
+  }
+
+  async listFollowups(
+    clientId: string,
+  ): Promise<Array<BotFollowup & { steps: BotFollowupStep[] }>> {
+    const list = await this.db
+      .select()
+      .from(botFollowups)
+      .where(and(eq(botFollowups.clientId, clientId), isNull(botFollowups.deletedAt)))
+      .orderBy(desc(botFollowups.createdAt));
+
+    const result: Array<BotFollowup & { steps: BotFollowupStep[] }> = [];
+    for (const f of list) {
+      const steps = await this.db
+        .select()
+        .from(botFollowupSteps)
+        .where(eq(botFollowupSteps.followupId, f.id))
+        .orderBy(botFollowupSteps.position);
+      result.push({ ...f, steps });
+    }
+    return result;
+  }
+
+  async findFollowupById(
+    id: string,
+  ): Promise<(BotFollowup & { steps: BotFollowupStep[] }) | null> {
+    const [followup] = await this.db
+      .select()
+      .from(botFollowups)
+      .where(and(eq(botFollowups.id, id), isNull(botFollowups.deletedAt)))
+      .limit(1);
+
+    if (!followup) return null;
+
+    const steps = await this.db
+      .select()
+      .from(botFollowupSteps)
+      .where(eq(botFollowupSteps.followupId, id))
+      .orderBy(botFollowupSteps.position);
+
+    return { ...followup, steps };
+  }
+
+  async updateFollowupStatus(
+    id: string,
+    status: "draft" | "active" | "paused",
+    actor: string,
+  ): Promise<BotFollowup> {
+    const [updated] = await this.db
+      .update(botFollowups)
+      .set({
+        status,
+        updatedAt: new Date(),
+        updatedBy: actor,
+      })
+      .where(eq(botFollowups.id, id))
+      .returning();
+    return updated!;
+  }
+
+  async findActiveFollowupRun(
+    clientId: string,
+    prospectContactId: string,
+  ): Promise<BotFollowupRun | null> {
+    const [run] = await this.db
+      .select()
+      .from(botFollowupRuns)
+      .where(
+        and(
+          eq(botFollowupRuns.clientId, clientId),
+          eq(botFollowupRuns.prospectContactId, prospectContactId),
+          eq(botFollowupRuns.status, "running"),
+        ),
+      )
+      .limit(1);
+    return run ?? null;
+  }
+
+  async createFollowupRun(run: NewBotFollowupRun): Promise<BotFollowupRun> {
+    const [inserted] = await this.db
+      .insert(botFollowupRuns)
+      .values(run)
+      .returning();
+    return inserted!;
+  }
+
+  async updateFollowupRun(
+    id: string,
+    patch: Partial<BotFollowupRun>,
+  ): Promise<BotFollowupRun> {
+    const [updated] = await this.db
+      .update(botFollowupRuns)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(botFollowupRuns.id, id))
+      .returning();
+    return updated!;
+  }
+
+  async stopFollowupRunsForProspect(
+    clientId: string,
+    prospectContactId: string,
+    stopReason: string,
+    actor: string,
+  ): Promise<number> {
+    const updated = await this.db
+      .update(botFollowupRuns)
+      .set({
+        status: "stopped",
+        stopReason,
+        updatedAt: new Date(),
+        updatedBy: actor,
+      })
+      .where(
+        and(
+          eq(botFollowupRuns.clientId, clientId),
+          eq(botFollowupRuns.prospectContactId, prospectContactId),
+          eq(botFollowupRuns.status, "running"),
+        ),
+      )
+      .returning();
+    return updated.length;
   }
 }
 

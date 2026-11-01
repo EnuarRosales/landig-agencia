@@ -22,6 +22,14 @@ import type {
   AuditLogEntry,
   NewAuditLogEntry,
 } from "../db/schemas/admin/chatwoot-media-onboarding";
+import type {
+  BotFollowup,
+  NewBotFollowup,
+  BotFollowupStep,
+  NewBotFollowupStep,
+  BotFollowupRun,
+  NewBotFollowupRun,
+} from "../db/schemas/admin/bot-followups";
 
 /**
  * Métricas consolidadas de consumo y recaudación de IA en la plataforma (BOT-001 T-16, OPS-001).
@@ -132,5 +140,35 @@ export interface IBotRepository {
   // Auditoría y observabilidad de recaudación (BOT-001 T-16, OPS-001)
   recordAuditLog(entry: NewAuditLogEntry): Promise<AuditLogEntry>;
   getPlatformAiRevenueMetrics(start?: Date, end?: Date): Promise<PlatformAiRevenueMetrics>;
+
+  // Secuencias de recordatorios y seguimientos (BOT-001 T-20, T-21, T-22, RF-11)
+  createFollowupSequence(params: {
+    clientId: string;
+    botId?: string | null;
+    name: string;
+    triggerInactivityMinutes: number;
+    origin?: "platform_default" | "tenant_custom";
+    steps: Array<{ position: number; delayMinutes: number; message: string }>;
+    actor: string;
+  }): Promise<{ followup: BotFollowup; steps: BotFollowupStep[] }>;
+  listFollowups(clientId: string): Promise<Array<BotFollowup & { steps: BotFollowupStep[] }>>;
+  findFollowupById(id: string): Promise<(BotFollowup & { steps: BotFollowupStep[] }) | null>;
+  updateFollowupStatus(
+    id: string,
+    status: "draft" | "active" | "paused",
+    actor: string,
+  ): Promise<BotFollowup>;
+  findActiveFollowupRun(
+    clientId: string,
+    prospectContactId: string,
+  ): Promise<BotFollowupRun | null>;
+  createFollowupRun(run: NewBotFollowupRun): Promise<BotFollowupRun>;
+  updateFollowupRun(id: string, patch: Partial<BotFollowupRun>): Promise<BotFollowupRun>;
+  stopFollowupRunsForProspect(
+    clientId: string,
+    prospectContactId: string,
+    stopReason: string,
+    actor: string,
+  ): Promise<number>;
 }
 
