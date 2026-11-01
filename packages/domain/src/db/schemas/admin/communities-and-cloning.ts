@@ -280,6 +280,53 @@ export const syncRuns = adminSchema.table("sync_runs", {
     .defaultNow(),
 });
 
+/**
+ * Publicaciones en el feed de la comunidad (`admin.feed_posts`, ADM-001 T-22, RF-08.8, RF-08.13).
+ */
+export const feedPosts = adminSchema.table(
+  "feed_posts",
+  {
+    id: uuid("id").primaryKey().default(sql`uuidv7()`),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    authorClientId: uuid("author_client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "restrict" }),
+    authorUserId: uuid("author_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    body: text("body").notNull(),
+    status: varchar("status", { length: 20 }).notNull().default("pending_review"), // 'pending_review' | 'published' | 'rejected' | 'hidden'
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    ...auditColumns(),
+  },
+);
+
+/**
+ * Eventos de moderación del feed (`admin.feed_moderation_events`, ADM-001 T-22, RF-08.19).
+ */
+export const feedModerationEvents = adminSchema.table(
+  "feed_moderation_events",
+  {
+    id: uuid("id").primaryKey().default(sql`uuidv7()`),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => feedPosts.id, { onDelete: "cascade" }),
+    actorClientId: uuid("actor_client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "restrict" }),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    action: varchar("action", { length: 20 }).notNull(), // 'approve' | 'reject' | 'hide'
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+);
+
 export type Organization = typeof organizations.$inferSelect;
 export type OrganizationMember = typeof organizationMembers.$inferSelect;
 export type ProductShare = typeof productShares.$inferSelect;
@@ -287,4 +334,8 @@ export type ProductShareVersion = typeof productShareVersions.$inferSelect;
 export type ProductAdoption = typeof productAdoptions.$inferSelect;
 export type CloneSyncPolicy = typeof cloneSyncPolicies.$inferSelect;
 export type SyncRun = typeof syncRuns.$inferSelect;
+export type FeedPost = typeof feedPosts.$inferSelect;
+export type FeedModerationEvent = typeof feedModerationEvents.$inferSelect;
+export type ClientSharingProfile = typeof clientSharingProfiles.$inferSelect;
+
 

@@ -163,14 +163,16 @@
   - Evidencia: 2026-10-31 — Esquemas `organization_join_requests`, `organization_promotions` y métodos `decideJoinRequest` (exclusivo originador), `promoteMemberToCoLeader` y `acceptPromotion` (con validación de aceptación expresa por tenant_owner del target) en `CommunitiesGovernanceService`.
   - RF-01.8, RF-08.6, D-14, D-31.
 
-- [ ] **T-21 · Implementar perfiles de compartición**
+- [x] **T-21 · Implementar perfiles de compartición**
   - Nombre y correo visibles por defecto; resto opt-in; autoría del feed según el perfil.
   - Verificación: un miembro que oculta su nombre publica pseudónimamente; el liderazgo no ve chats ni clientes.
+  - Evidencia: 2026-10-31 — Esquema `client_sharing_profiles` en `communities-and-cloning.ts` y método `getFeed` en `CommunityFeedService` con filtrado estricto de PII (teléfono y dirección ocultos salvo opt-in).
   - RF-08.9, RF-08.10, D-16, D-20.
 
-- [ ] **T-22 · Implementar el feed y la moderación**
+- [x] **T-22 · Implementar el feed y la moderación**
   - Publicaciones, estados, modos `pre`/`post`/`none`, historial de moderación, orden cronológico y por relevancia; publican `tenant_owner` y `tenant_agent`, moderan los del líder o co-líder.
   - Verificación: en `pre` nada se publica sin aprobación; en `post` se oculta o retira; solo el `tenant_owner` del originador cambia el modo; un miembro no modera.
+  - Evidencia: 2026-10-31 — Esquemas `feed_posts`, `feed_moderation_events` (migración `0019_nice_krista_starr.sql` y `0019_phase4_feed_moderation_grants_comments.sql`) y métodos `createPost` y `moderatePost` en `CommunityFeedService` (`community-feed.service.test.ts`).
   - RF-08.7, RF-08.8, RF-08.13, RF-08.19, D-17.
 
 - [ ] **T-23 · Implementar métricas del liderazgo**
