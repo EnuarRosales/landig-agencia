@@ -5,6 +5,9 @@ import {
   leads,
   cells,
   plans,
+  users,
+  clientRouting,
+  clientPlans,
   subscriptions,
   emailProviderConfigs,
   emailSenders,
@@ -1010,5 +1013,405 @@ export async function saveAdminEmailTemplate(
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[saveAdminEmailTemplate Failed] ${msg}`, error);
     return err(`Error al guardar plantilla de correo: ${msg}`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DIRECTORIO Y GESTIÓN DE INQUILINOS Y COMERCIOS (ADM-001, DAT-001)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AdminTenantItemDto {
+  id: string;
+  slug: string;
+  displayName: string;
+  contactEmail: string;
+  phone: string | null;
+  lifecycleStatus: "alta" | "activo" | "suspendido" | "baja";
+  locale: string;
+  currency: string;
+  planId: string;
+  planCode: string;
+  planName: string;
+  cellId: string;
+  cellCode: string;
+  cellTier: string;
+  ownerUserId: string;
+  ownerName: string | null;
+  ownerEmail: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminTenantsOverviewDto {
+  kpis: {
+    totalTenants: number;
+    activeTenants: number;
+    suspendedTenants: number;
+    onboardingTenants: number;
+  };
+  tenants: AdminTenantItemDto[];
+  availablePlans: Array<{ id: string; code: string; name: string }>;
+  availableCells: Array<{ id: string; code: string; currentClients: number; maxClients: number }>;
+}
+
+export interface CreateAdminTenantInput {
+  displayName: string;
+  slug: string;
+  ownerEmail: string;
+  ownerDisplayName?: string;
+  planId: string;
+  cellId?: string;
+  phone?: string;
+  locale?: "es" | "en";
+  actorUserId?: string;
+}
+
+export interface UpdateAdminTenantLifecycleInput {
+  clientId: string;
+  lifecycleStatus: "activo" | "suspendido" | "baja";
+  actorUserId?: string;
+}
+
+/**
+ * Consulta el directorio integral de inquilinos y comercios registrados en el plano de control (ADM-001, DAT-001).
+ * Correlaciona cliente, propietario, plan asignado y enrutamiento a la célula PostgreSQL.
+ */
+export async function fetchAdminTenantsOverview(): Promise<AdminTenantsOverviewDto> {
+  const db = getDb();
+  try {
+    const rows = await db
+      .select({
+        id: clients.id,
+        slug: clients.slug,
+        displayName: clients.displayName,
+        contactEmail: clients.contactEmail,
+        phone: clients.phone,
+        lifecycleStatus: clients.lifecycleStatus,
+        locale: clients.locale,
+        currency: clients.currency,
+        planId: clients.planId,
+        planCode: plans.code,
+        planNameJson: plans.name,
+        cellId: clientRouting.cellId,
+        cellCode: cells.code,
+        cellTier: cells.tier,
+        ownerUserId: users.id,
+        ownerDisplayName: users.displayName,
+        ownerEmail: users.email,
+        createdAt: clients.createdAt,
+        updatedAt: clients.updatedAt,
+      })
+      .from(clients)
+      .innerJoin(users, eq(clients.ownerUserId, users.id))
+      .innerJoin(plans, eq(clients.planId, plans.id))
+      .leftJoin(clientRouting, eq(clients.id, clientRouting.clientId))
+      .leftJoin(cells, eq(clientRouting.cellId, cells.id))
+      .orderBy(desc(clients.createdAt));
+
+    let activeTenants = 0;
+    let suspendedTenants = 0;
+    let onboardingTenants = 0;
+
+    const tenants: AdminTenantItemDto[] = rows.map((r) => {
+      const status = (r.lifecycleStatus || "activo") as "alta" | "activo" | "suspendido" | "baja";
+      if (status === "activo") activeTenants++;
+      else if (status === "suspendido") suspendedTenants++;
+      else if (status === "alta") onboardingTenants++;
+
+      const nameObj = r.planNameJson as { es?: string; en?: string } | null;
+      const planName = nameObj?.es || r.planCode;
+
+      return {
+        id: r.id,
+        slug: r.slug,
+        displayName: r.displayName,
+        contactEmail: r.contactEmail,
+        phone: r.phone,
+        lifecycleStatus: status,
+        locale: r.locale,
+        currency: r.currency,
+        planId: r.planId,
+        planCode: r.planCode,
+        planName,
+        cellId: r.cellId || "",
+        cellCode: r.cellCode || "cell-default",
+        cellTier: r.cellTier || "standard",
+        ownerUserId: r.ownerUserId,
+        ownerName: r.ownerDisplayName,
+        ownerEmail: r.ownerEmail,
+        createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString(),
+        updatedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : new Date().toISOString(),
+      };
+    });
+
+    const activePlans = await db
+      .select({ id: plans.id, code: plans.code, nameJson: plans.name })
+      .from(plans)
+      .where(eq(plans.status, "active"))
+      .orderBy(asc(plans.code));
+
+    const activeCells = await db
+      .select({
+        id: cells.id,
+        code: cells.code,
+        currentClients: cells.currentClients,
+        maxClients: cells.maxClients,
+      })
+      .from(cells)
+      .where(eq(cells.status, "active"))
+      .orderBy(asc(cells.code));
+
+    return {
+      kpis: {
+        totalTenants: tenants.length,
+        activeTenants,
+        suspendedTenants,
+        onboardingTenants,
+      },
+      tenants,
+      availablePlans: activePlans.map((p) => {
+        const pObj = p.nameJson as { es?: string; en?: string } | null;
+        return { id: p.id, code: p.code, name: pObj?.es || p.code };
+      }),
+      availableCells: activeCells,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[fetchAdminTenantsOverview Failed] ${msg}`, error);
+    return {
+      kpis: { totalTenants: 0, activeTenants: 0, suspendedTenants: 0, onboardingTenants: 0 },
+      tenants: [],
+      availablePlans: [],
+      availableCells: [],
+    };
+  }
+}
+
+/**
+ * Aprovisiona manualmente un nuevo comercio/inquilino coordinando usuario dueño, celda y plan (ADM-001 §6.3, T-06).
+ */
+export async function createAdminTenant(input: CreateAdminTenantInput): Promise<Result<AdminTenantItemDto>> {
+  const db = getDb();
+  const actor = input.actorUserId || "01a19874-1077-744c-8514-d4c990cd7259";
+
+  const slug = input.slug.trim().toLowerCase();
+  if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return err("El identificador (slug) debe contener solo minúsculas y guiones sin espacios.", "INVALID_SLUG");
+  }
+
+  const ownerEmail = input.ownerEmail.trim().toLowerCase();
+  if (!ownerEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
+    return err("El correo del propietario debe ser un email válido.", "INVALID_EMAIL");
+  }
+
+  try {
+    // 1. Verificar unicidad de slug
+    const existingClient = await db.select({ id: clients.id }).from(clients).where(eq(clients.slug, slug)).limit(1);
+    if (existingClient.length > 0) {
+      return err("El slug ingresado ya está en uso por otro comercio.", "SLUG_ALREADY_TAKEN");
+    }
+
+    // 2. Verificar o crear el usuario dueño en admin.users
+    let ownerId: string;
+    let ownerDisplayName = input.ownerDisplayName || input.displayName;
+    const existingUser = await db.select().from(users).where(eq(users.email, ownerEmail)).limit(1);
+
+    if (existingUser.length > 0) {
+      const u = existingUser[0];
+      if (u.activeClientId) {
+        const liveOwned = await db
+          .select({ id: clients.id, status: clients.lifecycleStatus })
+          .from(clients)
+          .where(and(eq(clients.ownerUserId, u.id), sql`lifecycle_status <> 'baja'`))
+          .limit(1);
+        if (liveOwned.length > 0) {
+          return err("El propietario especificado ya posee un comercio activo o en alta.", "OWNER_ALREADY_OWNS_LIVE_TENANT");
+        }
+      }
+      ownerId = u.id;
+      ownerDisplayName = u.displayName || ownerDisplayName;
+    } else {
+      const [newUser] = await db
+        .insert(users)
+        .values({
+          email: ownerEmail,
+          displayName: ownerDisplayName,
+          status: "active",
+          emailVerifiedAt: new Date(),
+          createdBy: actor,
+          updatedBy: actor,
+        })
+        .returning();
+      ownerId = newUser.id;
+    }
+
+    // 3. Resolver plan
+    const planRows = await db.select().from(plans).where(eq(plans.id, input.planId)).limit(1);
+    if (planRows.length === 0) {
+      return err("El plan seleccionado no existe en el catálogo.", "PLAN_NOT_FOUND");
+    }
+    const selectedPlan = planRows[0];
+
+    // 4. Resolver celda
+    let assignedCellId = input.cellId;
+    if (!assignedCellId) {
+      const availableCell = await db
+        .select()
+        .from(cells)
+        .where(and(eq(cells.status, "active"), sql`${cells.currentClients} < ${cells.maxClients}`))
+        .orderBy(asc(cells.currentClients))
+        .limit(1);
+      if (availableCell.length === 0) {
+        return err("No hay celdas de base de datos activas con capacidad disponible.", "NO_AVAILABLE_CELL");
+      }
+      assignedCellId = availableCell[0].id;
+    }
+
+    const assignedCell = (await db.select().from(cells).where(eq(cells.id, assignedCellId)).limit(1))[0];
+
+    // 5. Insertar cliente
+    const [newClient] = await db
+      .insert(clients)
+      .values({
+        displayName: input.displayName.trim(),
+        slug,
+        contactEmail: ownerEmail,
+        phone: input.phone?.trim() || null,
+        ownerUserId: ownerId,
+        planId: selectedPlan.id,
+        lifecycleStatus: "activo",
+        locale: input.locale || "es",
+        currency: "COP",
+        createdBy: actor,
+        updatedBy: actor,
+      })
+      .returning();
+
+    // 6. Actualizar active_client_id del dueño
+    await db
+      .update(users)
+      .set({ activeClientId: newClient.id, updatedBy: actor, updatedAt: new Date() })
+      .where(eq(users.id, ownerId));
+
+    // 7. Insertar enrutamiento en admin.client_routing
+    await db
+      .insert(clientRouting)
+      .values({
+        clientId: newClient.id,
+        cellId: assignedCell.id,
+        routingStatus: "active",
+        routingVersion: 1,
+        createdBy: actor,
+        updatedBy: actor,
+      });
+
+    // 8. Incrementar current_clients en la celda
+    await db
+      .update(cells)
+      .set({
+        currentClients: sql`${cells.currentClients} + 1`,
+        updatedBy: actor,
+        updatedAt: new Date(),
+      })
+      .where(eq(cells.id, assignedCell.id));
+
+    // 9. Registrar historial de asignación de plan en admin.client_plans
+    await db
+      .insert(clientPlans)
+      .values({
+        clientId: newClient.id,
+        planId: selectedPlan.id,
+        source: "manual",
+        assignedByUserId: actor,
+        createdBy: actor,
+        updatedBy: actor,
+      });
+
+    const pObj = selectedPlan.name as { es?: string; en?: string } | null;
+    const planName = pObj?.es || selectedPlan.code;
+
+    appLogger.info("[createAdminTenant] Inquilino aprovisionado con éxito", {
+      clientId: newClient.id,
+      slug: newClient.slug,
+      cellId: assignedCell.id,
+      ownerEmail,
+    });
+
+    return ok({
+      id: newClient.id,
+      slug: newClient.slug,
+      displayName: newClient.displayName,
+      contactEmail: newClient.contactEmail,
+      phone: newClient.phone,
+      lifecycleStatus: "activo",
+      locale: newClient.locale,
+      currency: newClient.currency,
+      planId: selectedPlan.id,
+      planCode: selectedPlan.code,
+      planName,
+      cellId: assignedCell.id,
+      cellCode: assignedCell.code,
+      cellTier: assignedCell.tier,
+      ownerUserId: ownerId,
+      ownerName: ownerDisplayName,
+      ownerEmail,
+      createdAt: newClient.createdAt ? new Date(newClient.createdAt).toISOString() : new Date().toISOString(),
+      updatedAt: newClient.updatedAt ? new Date(newClient.updatedAt).toISOString() : new Date().toISOString(),
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[createAdminTenant Failed] ${msg}`, error);
+    return err(`Error al registrar el inquilino: ${msg}`);
+  }
+}
+
+/**
+ * Actualiza el estado de ciclo de vida de un inquilino (activo, suspendido o baja) (ADM-001 T-06).
+ */
+export async function updateAdminTenantLifecycle(
+  input: UpdateAdminTenantLifecycleInput,
+): Promise<Result<{ success: boolean; lifecycleStatus: string }>> {
+  const db = getDb();
+  const actor = input.actorUserId || "01a19874-1077-744c-8514-d4c990cd7259";
+
+  try {
+    const existing = await db
+      .select({ id: clients.id, ownerUserId: clients.ownerUserId })
+      .from(clients)
+      .where(eq(clients.id, input.clientId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      return err("El inquilino especificado no existe.", "TENANT_NOT_FOUND");
+    }
+
+    await db
+      .update(clients)
+      .set({
+        lifecycleStatus: input.lifecycleStatus,
+        updatedBy: actor,
+        updatedAt: new Date(),
+      })
+      .where(eq(clients.id, input.clientId));
+
+    // Si se da de baja, desasociar active_client_id
+    if (input.lifecycleStatus === "baja") {
+      await db
+        .update(users)
+        .set({ activeClientId: null, updatedBy: actor, updatedAt: new Date() })
+        .where(eq(users.id, existing[0].ownerUserId));
+    }
+
+    appLogger.info("[updateAdminTenantLifecycle] Estado de ciclo de vida actualizado", {
+      clientId: input.clientId,
+      status: input.lifecycleStatus,
+      actor,
+    });
+
+    return ok({ success: true, lifecycleStatus: input.lifecycleStatus });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminTenantLifecycle Failed] ${msg}`, error);
+    return err(`Error al actualizar estado del inquilino: ${msg}`);
   }
 }

@@ -73,6 +73,12 @@ export default async function AdminHomePage() {
       badge: "Omnicanal",
     },
     {
+      title: "Directorio De Inquilinos y Comercios",
+      description: "Supervisión del universo de comercios, control de suspensión y enrutamiento a celdas.",
+      href: "/admin/tenants",
+      badge: "Tenencia",
+    },
+    {
       title: dict.dashboard.cardCellsTitle || "Células de Datos",
       description: dict.dashboard.cardCellsDesc || "Aprovisionamiento y topes de capacidad de nodos PostgreSQL celulares.",
       href: "/admin/cells",
