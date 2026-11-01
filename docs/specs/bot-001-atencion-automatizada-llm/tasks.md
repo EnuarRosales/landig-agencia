@@ -111,7 +111,7 @@
 
 ## Fase 7 · Recordatorios y seguimientos (agregada el 2026-10-23, se ejecuta junto a la Fase 3)
 
-- [ ] **T-20 · Crear las migraciones de recordatorios**
+- [x] **T-20 · Crear las migraciones de recordatorios**
   - `bot_followups`, `bot_followup_steps` y `bot_followup_runs` con auditoría, `(followup_id, position)` único y comentarios.
   - Verificación: `drizzle-kit check` pasa; una secuencia no admite dos pasos con la misma posición.
 

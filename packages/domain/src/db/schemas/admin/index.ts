@@ -25,3 +25,4 @@ export * from "./billing";
 export * from "./referrals";
 export * from "./communities-and-cloning";
 export * from "./client-brandings";
+export * from "./bot-followups";

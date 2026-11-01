@@ -20,6 +20,11 @@ import {
   aiUsageEvents,
   aiPlatformKeys,
 } from "./bot-tenancy";
+import {
+  botFollowups,
+  botFollowupSteps,
+  botFollowupRuns,
+} from "./bot-followups";
 
 const dialect = new PgDialect();
 
@@ -132,6 +137,62 @@ describe("BOT-001 T-02 & T-07 · Persistencia del Catálogo de IA, Bots y Billet
     expect(txChecks["wallet_transactions_balance_after_check"]).toContain(
       "balance_after_usd_cents >= 0",
     );
+  });
+
+  it("T-20 · define bot_followups con origen, estado e inactividad mínima", () => {
+    const config = getTableConfig(botFollowups);
+    expect(config.name).toBe("bot_followups");
+    expect(config.schema).toBe("admin");
+
+    const cols = columnNames(botFollowups);
+    expect(cols).toContain("name");
+    expect(cols).toContain("origin");
+    expect(cols).toContain("trigger_inactivity_minutes");
+    expect(cols).toContain("status");
+    expect(cols).toContain("created_at");
+    expect(cols).toContain("updated_at");
+
+    const checks = checkSql(botFollowups);
+    expect(checks["bot_followups_origin_check"]).toContain(
+      "origin IN ('platform_default', 'tenant_custom')",
+    );
+    expect(checks["bot_followups_status_check"]).toContain(
+      "status IN ('draft', 'active', 'paused')",
+    );
+    expect(checks["bot_followups_trigger_inactivity_check"]).toContain(
+      "trigger_inactivity_minutes > 0",
+    );
+  });
+
+  it("T-20 · define bot_followup_steps con índice único (followup_id, position) y límite de 10 pasos", () => {
+    const config = getTableConfig(botFollowupSteps);
+    expect(config.name).toBe("bot_followup_steps");
+
+    const uniqueIdx = config.indexes.find(
+      (idx) => idx.config.name === "bot_followup_steps_followup_position_unique",
+    );
+    expect(uniqueIdx).toBeDefined();
+    expect(uniqueIdx?.config.unique).toBe(true);
+
+    const checks = checkSql(botFollowupSteps);
+    expect(checks["bot_followup_steps_position_check"]).toContain(
+      "position >= 1 AND position <= 10",
+    );
+    expect(checks["bot_followup_steps_delay_check"]).toContain("delay_minutes >= 0");
+  });
+
+  it("T-20 · define bot_followup_runs con estados autorizados e índices de búsqueda", () => {
+    const config = getTableConfig(botFollowupRuns);
+    expect(config.name).toBe("bot_followup_runs");
+
+    const checks = checkSql(botFollowupRuns);
+    expect(checks["bot_followup_runs_status_check"]).toContain(
+      "status IN ('running', 'completed', 'stopped')",
+    );
+
+    const indexNames = config.indexes.map((idx) => idx.config.name);
+    expect(indexNames).toContain("bot_followup_runs_client_status_idx");
+    expect(indexNames).toContain("bot_followup_runs_prospect_idx");
   });
 
   it("garantiza que las migraciones SQL crean todas las tablas y asignan privilegios", () => {
