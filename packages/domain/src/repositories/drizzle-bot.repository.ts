@@ -160,6 +160,24 @@ export class DrizzleBotRepository implements IBotRepository {
       .orderBy(chatwootChannelTypes.sortOrder);
   }
 
+  async findChannelTypeByCode(code: string): Promise<ChatwootChannelType | null> {
+    const [channel] = await this.db
+      .select()
+      .from(chatwootChannelTypes)
+      .where(eq(chatwootChannelTypes.code, code))
+      .limit(1);
+    return channel ?? null;
+  }
+
+  async findChannelTypeById(id: string): Promise<ChatwootChannelType | null> {
+    const [channel] = await this.db
+      .select()
+      .from(chatwootChannelTypes)
+      .where(eq(chatwootChannelTypes.id, id))
+      .limit(1);
+    return channel ?? null;
+  }
+
   async findTenantBot(clientId: string): Promise<TenantBot | null> {
     const [bot] = await this.db
       .select()

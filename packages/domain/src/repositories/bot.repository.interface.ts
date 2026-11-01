@@ -50,6 +50,8 @@ export interface IBotRepository {
   findPresetById(id: string): Promise<BotPreset | null>;
   getBotDefaults(): Promise<BotDefault>;
   listChannelTypes(): Promise<ChatwootChannelType[]>;
+  findChannelTypeByCode(code: string): Promise<ChatwootChannelType | null>;
+  findChannelTypeById(id: string): Promise<ChatwootChannelType | null>;
 
   // Configuración del bot del inquilino
   findTenantBot(clientId: string): Promise<TenantBot | null>;

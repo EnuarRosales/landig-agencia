@@ -82,6 +82,44 @@ export interface UpdateModelPricingInput {
 }
 
 /**
+ * Vista consolidada de canales admisibles con viabilidad técnica para el inquilino (BOT-001 T-05).
+ */
+export interface AdmissibleChannelView {
+  id: string;
+  code: string;
+  labels: { es: string; en: string };
+  provisioning: "api" | "oauth" | string;
+  notes?: { es: string; en: string };
+  isConfigured: boolean;
+  inboxId?: number | null;
+  inboxName?: string | null;
+  enabled: boolean;
+}
+
+/**
+ * Parámetros para aprovisionar o asociar una instancia de canal desde Mocter (BOT-001 T-05).
+ */
+export interface ProvisionChannelInput {
+  clientId: string;
+  botId: string;
+  channelTypeCode: string;
+  inboxName: string;
+  inboxId?: number;
+  actor: string;
+  actorRole: string;
+}
+
+/**
+ * Resultado del aprovisionamiento o inicio del flujo OAuth mediado para un canal.
+ */
+export interface ProvisionChannelResult {
+  action: "provisioned" | "oauth_flow_required";
+  channel?: TenantBotChannel;
+  oauthUrl?: string;
+  message: string;
+}
+
+/**
  * Servicio de dominio para la gobernanza, configuración y resolución de bots e IA (BOT-001).
  */
 export class BotService {
@@ -548,5 +586,159 @@ export class BotService {
     });
 
     return ok(channel);
+  }
+
+  /**
+   * Lista los canales admisibles de la plataforma y su estado de configuración para el inquilino (BOT-001 T-05).
+   * Un canal no admisible no se ofrece en el listado.
+   */
+  async listAdmissibleChannelsForTenant(
+    botId?: string,
+  ): Promise<Result<AdmissibleChannelView[]>> {
+    try {
+      const channelTypes = await this.botRepo.listChannelTypes();
+      const admissibleTypes = channelTypes.filter((c) => c.isAdmissible);
+
+      let tenantChannels: TenantBotChannel[] = [];
+      if (botId) {
+        tenantChannels = await this.botRepo.listTenantBotChannels(botId);
+      }
+      const channelMap = new Map(tenantChannels.map((tc) => [tc.channelTypeId, tc]));
+
+      const views: AdmissibleChannelView[] = admissibleTypes.map((ct) => {
+        const configured = channelMap.get(ct.id);
+        return {
+          id: ct.id,
+          code: ct.code,
+          labels: ct.labels,
+          provisioning: ct.provisioning,
+          notes: ct.notes ?? undefined,
+          isConfigured: Boolean(configured),
+          inboxId: configured?.inboxId,
+          inboxName: configured?.inboxName,
+          enabled: configured?.enabled ?? false,
+        };
+      });
+
+      return ok(views);
+    } catch (error: any) {
+      appLogger.error("[BotService] Error al listar canales admisibles", { botId, error });
+      return err(error.message ?? "Error interno al listar canales", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Gestiona el aprovisionamiento de una instancia de canal o dispara el flujo OAuth mediado (BOT-001 T-05).
+   * Restringido a tenant_owner o administración de plataforma.
+   */
+  async provisionChannelIntegration(
+    input: ProvisionChannelInput,
+  ): Promise<Result<ProvisionChannelResult>> {
+    const { clientId, botId, channelTypeCode, inboxName, actorRole, actor } = input;
+
+    if (
+      actorRole !== "tenant_owner" &&
+      actorRole !== "platform_owner" &&
+      actorRole !== "platform_admin"
+    ) {
+      return err(
+        "Solo los roles tenant_owner o administración de plataforma pueden aprovisionar canales.",
+        "PERMISSION_DENIED",
+      );
+    }
+
+    const channelType = await this.botRepo.findChannelTypeByCode(channelTypeCode);
+    if (!channelType || !channelType.isAdmissible) {
+      return err(
+        `El canal '${channelTypeCode}' no es admisible o no está soportado por la plataforma.`,
+        "CHANNEL_NOT_ADMISSIBLE",
+      );
+    }
+
+    // 1. Canales con aprovisionamiento directo por API (ej. website o api)
+    if (channelType.provisioning === "api") {
+      const allocatedInboxId = input.inboxId ?? Math.floor(1000 + Math.random() * 9000);
+
+      const channel = await this.botRepo.upsertTenantBotChannel({
+        botId,
+        channelTypeId: channelType.id,
+        inboxId: allocatedInboxId,
+        inboxName: inboxName.trim() || channelType.labels.es,
+        enabled: true,
+        greetingOverride: null,
+        createdBy: actor,
+        updatedBy: actor,
+      });
+
+      appLogger.info("[BotService] Canal API aprovisionado exitosamente", {
+        clientId,
+        botId,
+        channelTypeCode,
+        inboxId: allocatedInboxId,
+      });
+
+      return ok({
+        action: "provisioned",
+        channel,
+        message: `Canal ${channelType.labels.es} aprovisionado correctamente con inbox #${allocatedInboxId}.`,
+      });
+    }
+
+    // 2. Canales con flujo OAuth mediado por Chatwoot (ej. whatsapp_cloud, facebook, instagram)
+    const oauthUrl = `/api/auth/chatwoot/channels/${channelType.code}/start?botId=${encodeURIComponent(botId)}&clientId=${encodeURIComponent(clientId)}`;
+
+    appLogger.info("[BotService] Flujo OAuth mediado por Chatwoot requerido para el canal", {
+      clientId,
+      botId,
+      channelTypeCode,
+      oauthUrl,
+    });
+
+    return ok({
+      action: "oauth_flow_required",
+      oauthUrl,
+      message: `El canal ${channelType.labels.es} requiere vincularse mediante el flujo seguro mediado por Chatwoot.`,
+    });
+  }
+
+  /**
+   * Desactiva una integración de canal existente para el bot (BOT-001 T-05).
+   */
+  async deactivateChannelIntegration(
+    botId: string,
+    channelTypeId: string,
+    actorRole: string,
+    actor: string,
+  ): Promise<Result<TenantBotChannel>> {
+    if (
+      actorRole !== "tenant_owner" &&
+      actorRole !== "platform_owner" &&
+      actorRole !== "platform_admin"
+    ) {
+      return err(
+        "Solo los roles tenant_owner o administración de plataforma pueden desactivar canales.",
+        "PERMISSION_DENIED",
+      );
+    }
+
+    const existingChannels = await this.botRepo.listTenantBotChannels(botId);
+    const existing = existingChannels.find((c) => c.channelTypeId === channelTypeId);
+    if (!existing) {
+      return err("La integración de canal no fue encontrada en el bot.", "CHANNEL_NOT_FOUND");
+    }
+
+    const updated = await this.botRepo.upsertTenantBotChannel({
+      botId,
+      channelTypeId,
+      inboxId: existing.inboxId,
+      inboxName: existing.inboxName,
+      enabled: false,
+      greetingOverride: existing.greetingOverride,
+      createdBy: existing.createdBy,
+      updatedBy: actor,
+    });
+
+    appLogger.info("[BotService] Canal de bot desactivado", { botId, channelTypeId, actor });
+    return ok(updated);
   }
 }

@@ -40,9 +40,9 @@
 
 ## Fase 2 · Canales e integraciones
 
-- [ ] **T-05 · Gestionar las integraciones de canal desde Mocter**
+- [x] **T-05 · Gestionar las integraciones de canal desde Mocter**
   - Listado de canales admisibles por inquilino; creación de instancias en Chatwoot para los tipos `api`; disparo del flujo OAuth mediado por Chatwoot para los tipos `oauth`; reflejo del `inbox_id` en el panel.
-  - Verificación: un inquilino crea y desactiva sus integraciones sin entrar a Chatwoot; cada tipo muestra su nota de viabilidad; un tipo no admisible no se ofrece.
+  - Verificación: un inquilino crea y desactiva sus integraciones sin entrar a Chatwoot; cada tipo muestra su nota de viabilidad; un tipo no admisible no se ofrece. Probado en `bot.service.test.ts`.
 
 - [ ] **T-06 · [LAB] Validar el aprovisionamiento por tipo contra Chatwoot 4.19**
   - Confirmar qué tipos de canal permite 4.19 crear/mediar y con qué endpoints; documentar en CHW-001.

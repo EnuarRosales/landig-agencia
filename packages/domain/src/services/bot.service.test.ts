@@ -202,6 +202,12 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
       findPresetById: vi.fn().mockResolvedValue(samplePreset),
       getBotDefaults: vi.fn().mockResolvedValue(sampleDefaults),
       listChannelTypes: vi.fn().mockResolvedValue([sampleChannelType]),
+      findChannelTypeByCode: vi.fn().mockImplementation(async (code) =>
+        code === sampleChannelType.code ? sampleChannelType : null,
+      ),
+      findChannelTypeById: vi.fn().mockImplementation(async (id) =>
+        id === sampleChannelType.id ? sampleChannelType : null,
+      ),
       findTenantBot: vi.fn().mockResolvedValue(sampleTenantBot),
       upsertTenantBot: vi.fn().mockResolvedValue(sampleTenantBot),
       updateTenantBotStatus: vi.fn().mockResolvedValue({
@@ -216,7 +222,7 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
       })),
       disableTenantAiProvider: vi.fn().mockResolvedValue(undefined),
       listTenantBotChannels: vi.fn().mockResolvedValue([sampleBotChannel]),
-      upsertTenantBotChannel: vi.fn().mockResolvedValue(sampleBotChannel),
+      upsertTenantBotChannel: vi.fn().mockImplementation(async (ch) => ({ ...sampleBotChannel, ...ch })),
       getWallet: vi.fn().mockResolvedValue(null),
       recordUsageEvent: vi.fn().mockResolvedValue({} as any),
     };
@@ -512,6 +518,155 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
       if (!result.ok) {
         expect(result.code).toBe("PERMISSION_DENIED");
       }
+    });
+  });
+
+  describe("T-05 · Gestión de integraciones de canal desde Mocter", () => {
+    it("lista solo canales admisibles reflejando configuración e inboxId", async () => {
+      const nonAdmissibleChannel: ChatwootChannelType = {
+        id: "01930000-0000-7000-8000-000000000099",
+        code: "line",
+        labels: { es: "Line", en: "Line" },
+        provisioning: "oauth",
+        notes: { es: "No soportado en Colombia", en: "Unsupported" },
+        isAdmissible: false,
+        sortOrder: 10,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      vi.mocked(mockBotRepo.listChannelTypes).mockResolvedValue([
+        sampleChannelType,
+        nonAdmissibleChannel,
+      ]);
+
+      const result = await botService.listAdmissibleChannelsForTenant(sampleTenantBot.id);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0]?.code).toBe("website");
+        expect(result.data[0]?.isConfigured).toBe(true);
+        expect(result.data[0]?.inboxId).toBe(45);
+        expect(result.data[0]?.enabled).toBe(true);
+      }
+    });
+
+    it("aprovisiona directamente canales tipo 'api' (ej. website) asignando inbox", async () => {
+      const result = await botService.provisionChannelIntegration({
+        clientId: sampleTenantBot.clientId,
+        botId: sampleTenantBot.id,
+        channelTypeCode: "website",
+        inboxName: "Canal Web Principal",
+        inboxId: 88,
+        actor: "owner-user",
+        actorRole: "tenant_owner",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.action).toBe("provisioned");
+        expect(result.data.channel?.inboxId).toBe(88);
+      }
+    });
+
+    it("retorna requerimiento de flujo OAuth para canales tipo 'oauth' (ej. whatsapp_cloud)", async () => {
+      const oauthChannel: ChatwootChannelType = {
+        id: "01930000-0000-7000-8000-000000000007",
+        code: "whatsapp_cloud",
+        labels: { es: "WhatsApp Cloud", en: "WhatsApp Cloud" },
+        provisioning: "oauth",
+        notes: { es: "Meta Cloud API mediado por Chatwoot", en: "Meta Cloud API" },
+        isAdmissible: true,
+        sortOrder: 2,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      vi.mocked(mockBotRepo.findChannelTypeByCode).mockResolvedValue(oauthChannel);
+
+      const result = await botService.provisionChannelIntegration({
+        clientId: sampleTenantBot.clientId,
+        botId: sampleTenantBot.id,
+        channelTypeCode: "whatsapp_cloud",
+        inboxName: "Línea WhatsApp Oficial",
+        actor: "owner-user",
+        actorRole: "tenant_owner",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.action).toBe("oauth_flow_required");
+        expect(result.data.oauthUrl).toContain("/api/auth/chatwoot/channels/whatsapp_cloud/start");
+      }
+    });
+
+    it("rechaza tipos no admisibles con CHANNEL_NOT_ADMISSIBLE", async () => {
+      const inadmissibleChannel: ChatwootChannelType = {
+        id: "01930000-0000-7000-8000-000000000099",
+        code: "line",
+        labels: { es: "Line", en: "Line" },
+        provisioning: "oauth",
+        isAdmissible: false,
+        sortOrder: 10,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      };
+
+      vi.mocked(mockBotRepo.findChannelTypeByCode).mockResolvedValue(inadmissibleChannel);
+
+      const result = await botService.provisionChannelIntegration({
+        clientId: sampleTenantBot.clientId,
+        botId: sampleTenantBot.id,
+        channelTypeCode: "line",
+        inboxName: "Canal Line",
+        actor: "owner-user",
+        actorRole: "tenant_owner",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("CHANNEL_NOT_ADMISSIBLE");
+      }
+    });
+
+    it("rechaza a tenant_agent al intentar aprovisionar canales", async () => {
+      const result = await botService.provisionChannelIntegration({
+        clientId: sampleTenantBot.clientId,
+        botId: sampleTenantBot.id,
+        channelTypeCode: "website",
+        inboxName: "Canal Web",
+        actor: "agent-user",
+        actorRole: "tenant_agent",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("PERMISSION_DENIED");
+      }
+    });
+
+    it("desactiva una integración de canal existente para el bot", async () => {
+      const result = await botService.deactivateChannelIntegration(
+        sampleTenantBot.id,
+        sampleChannelType.id,
+        "tenant_owner",
+        "owner-user",
+      );
+
+      expect(result.ok).toBe(true);
+      expect(mockBotRepo.upsertTenantBotChannel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          botId: sampleTenantBot.id,
+          channelTypeId: sampleChannelType.id,
+          enabled: false,
+        }),
+      );
     });
   });
 });
