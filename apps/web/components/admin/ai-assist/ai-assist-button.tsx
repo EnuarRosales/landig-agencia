@@ -30,7 +30,7 @@ const defaultTranslations: Record<string, string> = {
  * La sugerencia NUNCA se persiste sola; el inquilino siempre la compara, edita, acepta o descarta.
  */
 export function AiAssistButton({
-  fieldKey,
+  fieldKey: _fieldKey,
   draft,
   hasCredentials = true,
   onAccept,

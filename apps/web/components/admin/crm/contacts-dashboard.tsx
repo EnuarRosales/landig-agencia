@@ -519,7 +519,11 @@ export function ContactsDashboard({
                   </label>
                   <select
                     value={newDocType}
-                    onChange={(e) => setNewDocType(e.target.value as any)}
+                    onChange={(e) =>
+                      setNewDocType(
+                        e.target.value as "CC" | "NIT" | "CE" | "PASSPORT" | "other",
+                      )
+                    }
                     className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
                   >
                     <option value="CC">Cédula De Ciudadanía</option>
@@ -549,7 +553,16 @@ export function ContactsDashboard({
                   </label>
                   <select
                     value={newStage}
-                    onChange={(e) => setNewStage(e.target.value as any)}
+                    onChange={(e) =>
+                      setNewStage(
+                        e.target.value as
+                          | "new"
+                          | "in_conversation"
+                          | "qualified"
+                          | "customer"
+                          | "discarded",
+                      )
+                    }
                     className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
                   >
                     <option value="new">{i18n.stageNew}</option>
@@ -667,7 +680,7 @@ export function ContactsDashboard({
                   onChange={(e) =>
                     setEditingContact({
                       ...editingContact,
-                      stage: e.target.value as any,
+                      stage: e.target.value as CrmContactItem["stage"],
                     })
                   }
                   className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"

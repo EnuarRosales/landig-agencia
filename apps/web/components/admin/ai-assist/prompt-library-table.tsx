@@ -47,12 +47,11 @@ const defaultTranslations: Record<string, string> = {
  */
 export function PromptLibraryTable({
   fields,
-  userRole = "platform_admin",
-  onPromote,
+  userRole: _userRole = "platform_admin",
+  onPromote: _onPromote,
   t: customT,
 }: PromptLibraryTableProps) {
   const t = (key: string) => customT?.[key] ?? defaultTranslations[key] ?? key;
-  const isReadOnly = userRole === "platform_sales";
 
   const [selectedField, setSelectedField] = useState<PromptLibraryItem | null>(null);
 

@@ -54,14 +54,14 @@ export interface WhiteLabelEditorProps {
  * Valida contraste WCAG 2.2 AA en vivo y aplica el contrato por capas según el plan.
  */
 export function WhiteLabelEditor({
-  clientId,
+  clientId: _clientId,
   planMode,
   initialBranding,
   t,
 }: WhiteLabelEditorProps) {
   const [brandName, setBrandName] = useState(initialBranding?.brandName || "");
   const [logoUrl, setLogoUrl] = useState(initialBranding?.logoUrl || "");
-  const [faviconUrl, setFaviconUrl] = useState(initialBranding?.faviconUrl || "");
+  const [_faviconUrl, setFaviconUrl] = useState(initialBranding?.faviconUrl || "");
   const [primaryColor, setPrimaryColor] = useState(
     initialBranding?.palette?.primary || "#1E3A8A",
   );
@@ -217,7 +217,11 @@ export function WhiteLabelEditor({
         </section>
 
         {/* Capa 2: Paleta de Colores con Validación AA */}
-        <section className="p-5 rounded-lg border border-white/10 bg-[#090d16]">
+        <section
+          className={`p-5 rounded-lg border border-white/10 bg-[#090d16] ${
+            !canEditPalette ? "opacity-50 pointer-events-none" : ""
+          }`}
+        >
           <h2 className="text-sm font-mono font-semibold uppercase tracking-wider text-white mb-4">
             Capa 2 · {t.layer2Title} (WCAG 2.2 AA)
           </h2>

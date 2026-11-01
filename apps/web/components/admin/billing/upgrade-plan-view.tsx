@@ -44,7 +44,6 @@ export function UpgradePlanView({
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   const currentPlan = availablePlans.find((p) => p.code === currentPlanCode) ?? availablePlans[0];
-  const selectedPlan = availablePlans.find((p) => p.code === selectedPlanCode);
 
   const handleInitiateUpgrade = async (targetPlan: Plan) => {
     setSelectedPlanCode(targetPlan.code);
@@ -67,12 +66,13 @@ export function UpgradePlanView({
 
       const data = await response.json();
       if (data?.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
+        window.location.assign(data.checkoutUrl);
       } else {
         setFeedbackMessage("Upgrade registrado con éxito. El prorrateo ha sido aplicado.");
       }
-    } catch (err: any) {
-      setFeedbackMessage(err.message || "Ocurrió un error al procesar el cambio de plan.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Ocurrió un error al procesar el cambio de plan.";
+      setFeedbackMessage(message);
     } finally {
       setIsProcessing(false);
     }

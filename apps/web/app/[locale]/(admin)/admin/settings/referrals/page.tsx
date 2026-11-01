@@ -13,7 +13,7 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { locale } = await params;
+  const { locale: _locale } = await params;
   const t = await getTranslations({ locale, namespace: "admin.referralSettings" });
 
   return {
@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
  * Vista de backoffice SaaS para gestión comercial del programa de referidos (REF-001 T-06, RF-06.1).
  */
 export default async function ReferralSettingsPage({ params, searchParams }: Props) {
-  const { locale } = await params;
+  const { locale: _locale } = await params;
   const sParams = await searchParams;
 
   const rawRole = typeof sParams?.role === "string" ? sParams.role : "platform_admin";

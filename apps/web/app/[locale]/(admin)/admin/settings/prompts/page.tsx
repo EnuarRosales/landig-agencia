@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 /**
  * Vista administrativa de la biblioteca de prompts maestros de AI Assist (AI-001 T-03, RF-02).
  */
-export default async function PromptLibrarySettingsPage({ params }: Props) {
+export default async function PromptLibrarySettingsPage({ params: _params }: Props) {
   return (
     <main className="min-h-screen bg-background py-8">
       <PromptLibraryTable

@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 /**
  * Vista de panel de referidos para el inquilino / referente (REF-001 T-07, RF-05.1).
  */
-export default async function ReferralsPage({ params }: Props) {
+export default async function ReferralsPage({ params: _params }: Props) {
   return (
     <main className="min-h-screen bg-background py-8">
       <ReferrerPanelView
