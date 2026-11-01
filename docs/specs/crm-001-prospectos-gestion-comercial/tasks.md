@@ -51,9 +51,9 @@
   - `privacy_notices` sembrado con template de plataforma por inquilino (`client_id` no nulo para preservar RLS estricto).
   - Verificación: sembrado inicial v1.0.0 y versionado por locale verificados en `crm.service.test.ts`.
 
-- [ ] **T-06B · Implementar la captura por WhatsApp**
+- [x] **T-06B · Implementar la captura por WhatsApp**
   - Botones interactivos + enlace al aviso; registrar `channel = whatsapp_buttons`, `message_id`, fecha y versión.
-  - Verificación: sin aceptación explícita no hay consentimiento; la evidencia queda enlazada al mensaje de Chatwoot.
+  - Verificación: sin aceptación explícita no hay consentimiento; la evidencia queda enlazada al mensaje de Chatwoot. Probado en `crm.service.test.ts`.
 
 - [x] **T-07 · Implementar la supresión con anonimización**
   - Baja lógica con reemplazo de datos personales por tokens irreversibles; trazabilidad de consentimientos conservada.

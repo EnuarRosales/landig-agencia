@@ -89,6 +89,45 @@ export interface RecordConsentInput {
 }
 
 /**
+ * Botón interactivo para mensajes de consentimiento en WhatsApp (CRM-001 T-06B).
+ */
+export interface WhatsAppConsentButton {
+  id: "accept_treatment" | "accept_all" | "reject";
+  title: string;
+}
+
+/**
+ * Carga estructurada de mensaje interactivo para WhatsApp con aviso de privacidad y botones.
+ */
+export interface WhatsAppConsentMessagePayload {
+  bodyText: string;
+  noticeUrl: string;
+  policyVersion: string;
+  buttons: WhatsAppConsentButton[];
+}
+
+/**
+ * Parámetros para procesar la respuesta interactiva de consentimiento desde WhatsApp/Chatwoot.
+ */
+export interface HandleWhatsAppConsentInput {
+  prospectId: string;
+  buttonId: string;
+  messageId: string;
+  policyVersion?: string;
+  executedBy?: string;
+}
+
+/**
+ * Resultado del procesamiento de consentimiento interactivo por WhatsApp.
+ */
+export interface WhatsAppConsentResult {
+  granted: boolean;
+  reason?: string;
+  purposes: ("data_treatment" | "commercial_comms")[];
+  consents: CellProspectConsent[];
+}
+
+/**
  * Servicio de negocio para la gestión comercial de prospectos, consentimientos Habeas Data
  * e indicadores de calidad de datos en Mocter (CRM-001).
  */
@@ -427,6 +466,169 @@ export class CrmService {
     } catch (error: any) {
       appLogger.error("Error al calcular métricas de calidad", { cellId, clientId, error });
       return err(error.message ?? "Error interno al calcular métricas de calidad", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Genera la carga interactiva para WhatsApp con botones de aceptación y enlace al aviso legal (T-06B, RF-03.7).
+   */
+  async generateWhatsAppConsentMessage(
+    cellId: string,
+    clientId: string,
+    options?: { locale?: "es" | "en"; customNoticeUrl?: string },
+  ): Promise<Result<WhatsAppConsentMessagePayload>> {
+    const locale = options?.locale ?? "es";
+    try {
+      const notice = await this.repository.findPublishedPrivacyNotice(cellId, clientId, locale);
+      const version = notice?.version ?? "1.0.0";
+      const noticeUrl =
+        options?.customNoticeUrl ??
+        `https://mocter.co/privacy/tenant/${clientId}?v=${version}&lang=${locale}`;
+
+      if (locale === "en") {
+        return ok({
+          bodyText:
+            `Privacy Notice: To provide you with personalized attention and manage your orders, ` +
+            `we require your authorization for personal data processing. Please review our full notice at: ${noticeUrl}`,
+          noticeUrl,
+          policyVersion: version,
+          buttons: [
+            { id: "accept_treatment", title: "Accept Treatment" },
+            { id: "accept_all", title: "Accept All" },
+            { id: "reject", title: "Reject" },
+          ],
+        });
+      }
+
+      return ok({
+        bodyText:
+          `Aviso de Privacidad (Ley 1581 de 2012): Para brindarte atención personalizada y gestionar tus pedidos, ` +
+          `requerimos tu autorización para el tratamiento de tus datos personales. Consulta nuestro aviso completo en: ${noticeUrl}`,
+        noticeUrl,
+        policyVersion: version,
+        buttons: [
+          { id: "accept_treatment", title: "Acepto Tratamiento" },
+          { id: "accept_all", title: "Acepto Todo" },
+          { id: "reject", title: "Rechazar" },
+        ],
+      });
+    } catch (error: any) {
+      appLogger.error("Error al generar mensaje de consentimiento WhatsApp", { cellId, clientId, error });
+      return err(error.message ?? "Error al generar mensaje de consentimiento WhatsApp", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Procesa la respuesta interactiva de botones de WhatsApp registrando el consentimiento explícito
+   * enlazado al message_id de Chatwoot como evidencia (CRM-001 T-06B, RF-03.7).
+   *
+   * Regla no negociable: Sin aceptación explícita (botón accept_treatment o accept_all) NO hay consentimiento.
+   */
+  async handleWhatsAppConsentResponse(
+    cellId: string,
+    clientId: string,
+    input: HandleWhatsAppConsentInput,
+  ): Promise<Result<WhatsAppConsentResult>> {
+    if (!input.messageId || input.messageId.trim().length === 0) {
+      return err("El identificador de mensaje (messageId) de Chatwoot es obligatorio como evidencia.", "VALIDATION_ERROR");
+    }
+
+    if (!input.prospectId || input.prospectId.trim().length === 0) {
+      return err("El identificador del prospecto es obligatorio.", "VALIDATION_ERROR");
+    }
+
+    // Verificación estricta: si el botón no es de aceptación expresa, no se otorga consentimiento
+    if (input.buttonId !== "accept_treatment" && input.buttonId !== "accept_all") {
+      appLogger.info("Consentimiento interactivo rechazado u omitido por el prospecto", {
+        clientId,
+        prospectId: input.prospectId,
+        buttonId: input.buttonId,
+      });
+
+      return ok({
+        granted: false,
+        reason: "EXPLICIT_REJECTION_OR_UNRECOGNIZED",
+        purposes: [],
+        consents: [],
+      });
+    }
+
+    try {
+      const existing = await this.repository.findContactById(cellId, clientId, input.prospectId);
+      if (!existing) {
+        return err(`Prospecto ${input.prospectId} no encontrado en la celda.`, "NOT_FOUND");
+      }
+
+      let policyVersion = input.policyVersion;
+      if (!policyVersion) {
+        const publishedNotice = await this.repository.findPublishedPrivacyNotice(cellId, clientId, "es");
+        policyVersion = publishedNotice?.version ?? "1.0.0";
+      }
+
+      const createdConsents: CellProspectConsent[] = [];
+      const author = input.executedBy ?? "bot";
+
+      // 1. Tratamiento de datos obligatorio (incluye Chatwoot como encargado)
+      const treatmentConsent = await this.repository.createConsent(cellId, clientId, {
+        prospectId: input.prospectId,
+        purpose: "data_treatment",
+        policyVersion,
+        status: "granted",
+        channel: "whatsapp_buttons",
+        evidenceRef: input.messageId,
+        createdBy: author,
+        updatedBy: author,
+      });
+      createdConsents.push(treatmentConsent);
+
+      const grantedPurposes: ("data_treatment" | "commercial_comms")[] = ["data_treatment"];
+
+      // 2. Comunicaciones comerciales opcionales si aceptó todo
+      if (input.buttonId === "accept_all") {
+        const commsConsent = await this.repository.createConsent(cellId, clientId, {
+          prospectId: input.prospectId,
+          purpose: "commercial_comms",
+          policyVersion,
+          status: "granted",
+          channel: "whatsapp_buttons",
+          evidenceRef: input.messageId,
+          createdBy: author,
+          updatedBy: author,
+        });
+        createdConsents.push(commsConsent);
+        grantedPurposes.push("commercial_comms");
+      }
+
+      return ok({
+        granted: true,
+        purposes: grantedPurposes,
+        consents: createdConsents,
+      });
+    } catch (error: any) {
+      appLogger.error("Error al procesar consentimiento por WhatsApp", { cellId, clientId, input, error });
+      return err(error.message ?? "Error interno al registrar consentimiento interactivo", "DB_ERROR");
+    }
+  }
+
+  /**
+   * Comprueba si un prospecto cuenta con consentimiento activo para comunicaciones comerciales (RF-03.2).
+   */
+  async canSendCommercialCommunication(
+    cellId: string,
+    clientId: string,
+    prospectId: string,
+  ): Promise<boolean> {
+    try {
+      const activeConsent = await this.repository.findActiveConsent(
+        cellId,
+        clientId,
+        prospectId,
+        "commercial_comms",
+      );
+
+      return Boolean(activeConsent && activeConsent.status === "granted" && !activeConsent.revokedAt);
+    } catch {
+      return false;
     }
   }
 }

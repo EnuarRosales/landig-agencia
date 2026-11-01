@@ -494,4 +494,241 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
       }
     });
   });
+
+  describe("T-06B · Captura de consentimiento por WhatsApp (botones interactivos)", () => {
+    it("genera la carga interactiva con botones y enlace en español e inglés", async () => {
+      vi.mocked(mockRepo.findPublishedPrivacyNotice).mockResolvedValue({
+        id: "notice-uuid",
+        clientId,
+        version: "1.2.0",
+        locale: "es",
+        title: "Aviso Legal",
+        bodyMarkdown: "Texto legal...",
+        status: "published",
+        reviewedBy: null,
+        reviewedAt: new Date(),
+        publishedAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "system",
+        updatedBy: "system",
+      });
+
+      const esResult = await service.generateWhatsAppConsentMessage(cellId, clientId, { locale: "es" });
+      expect(esResult.ok).toBe(true);
+      if (esResult.ok) {
+        expect(esResult.data.policyVersion).toBe("1.2.0");
+        expect(esResult.data.noticeUrl).toContain("lang=es");
+        expect(esResult.data.buttons.map((b) => b.id)).toEqual(["accept_treatment", "accept_all", "reject"]);
+        expect(esResult.data.buttons[0]?.title).toBe("Acepto Tratamiento");
+      }
+
+      const enResult = await service.generateWhatsAppConsentMessage(cellId, clientId, { locale: "en" });
+      expect(enResult.ok).toBe(true);
+      if (enResult.ok) {
+        expect(enResult.data.buttons[0]?.title).toBe("Accept Treatment");
+      }
+    });
+
+    it("rechazo explícito no otorga consentimiento ni crea registros", async () => {
+      const rejectResult = await service.handleWhatsAppConsentResponse(cellId, clientId, {
+        prospectId: "22222222-2222-7222-8222-222222222222",
+        buttonId: "reject",
+        messageId: "cw_msg_reject_1",
+      });
+
+      expect(rejectResult.ok).toBe(true);
+      if (rejectResult.ok) {
+        expect(rejectResult.data.granted).toBe(false);
+        expect(rejectResult.data.purposes).toHaveLength(0);
+        expect(mockRepo.createConsent).not.toHaveBeenCalled();
+      }
+    });
+
+    it("registra únicamente tratamiento de datos cuando el usuario selecciona accept_treatment", async () => {
+      vi.mocked(mockRepo.findContactById).mockResolvedValue({
+        id: "22222222-2222-7222-8222-222222222222",
+        clientId,
+        fullName: "Diana Prince",
+        documentType: null,
+        documentNumber: null,
+        email: null,
+        phoneMobile: "+573009998877",
+        phoneLandline: null,
+        country: null,
+        state: null,
+        city: null,
+        addressLine: null,
+        postalCode: null,
+        source: "whatsapp",
+        channel: "whatsapp",
+        chatwootContactId: 9988,
+        assignedUserId: null,
+        stage: "new",
+        tags: [],
+        language: "es",
+        notes: null,
+        firstContactedAt: new Date(),
+        lastSeenAt: new Date(),
+        deletedAt: null,
+        deletedBy: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "bot",
+        updatedBy: "bot",
+      });
+
+      const fakeConsent: CellProspectConsent = {
+        id: "consent-treat-1",
+        clientId,
+        prospectId: "22222222-2222-7222-8222-222222222222",
+        purpose: "data_treatment",
+        policyVersion: "1.0.0",
+        status: "granted",
+        grantedAt: new Date(),
+        revokedAt: null,
+        channel: "whatsapp_buttons",
+        evidenceRef: "cw_msg_btn_101",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "bot",
+        updatedBy: "bot",
+      };
+      vi.mocked(mockRepo.createConsent).mockResolvedValue(fakeConsent);
+
+      const result = await service.handleWhatsAppConsentResponse(cellId, clientId, {
+        prospectId: "22222222-2222-7222-8222-222222222222",
+        buttonId: "accept_treatment",
+        messageId: "cw_msg_btn_101",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.granted).toBe(true);
+        expect(result.data.purposes).toEqual(["data_treatment"]);
+        expect(result.data.consents[0]?.evidenceRef).toBe("cw_msg_btn_101");
+        expect(mockRepo.createConsent).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it("registra tratamiento y comunicaciones comerciales cuando el usuario selecciona accept_all", async () => {
+      vi.mocked(mockRepo.findContactById).mockResolvedValue({
+        id: "22222222-2222-7222-8222-222222222222",
+        clientId,
+        fullName: "Diana Prince",
+        documentType: null,
+        documentNumber: null,
+        email: null,
+        phoneMobile: "+573009998877",
+        phoneLandline: null,
+        country: null,
+        state: null,
+        city: null,
+        addressLine: null,
+        postalCode: null,
+        source: "whatsapp",
+        channel: "whatsapp",
+        chatwootContactId: 9988,
+        assignedUserId: null,
+        stage: "new",
+        tags: [],
+        language: "es",
+        notes: null,
+        firstContactedAt: new Date(),
+        lastSeenAt: new Date(),
+        deletedAt: null,
+        deletedBy: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "bot",
+        updatedBy: "bot",
+      });
+
+      vi.mocked(mockRepo.createConsent)
+        .mockResolvedValueOnce({
+          id: "consent-treat-all",
+          clientId,
+          prospectId: "22222222-2222-7222-8222-222222222222",
+          purpose: "data_treatment",
+          policyVersion: "1.0.0",
+          status: "granted",
+          grantedAt: new Date(),
+          revokedAt: null,
+          channel: "whatsapp_buttons",
+          evidenceRef: "cw_msg_all_202",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: "bot",
+          updatedBy: "bot",
+        })
+        .mockResolvedValueOnce({
+          id: "consent-comms-all",
+          clientId,
+          prospectId: "22222222-2222-7222-8222-222222222222",
+          purpose: "commercial_comms",
+          policyVersion: "1.0.0",
+          status: "granted",
+          grantedAt: new Date(),
+          revokedAt: null,
+          channel: "whatsapp_buttons",
+          evidenceRef: "cw_msg_all_202",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: "bot",
+          updatedBy: "bot",
+        });
+
+      const result = await service.handleWhatsAppConsentResponse(cellId, clientId, {
+        prospectId: "22222222-2222-7222-8222-222222222222",
+        buttonId: "accept_all",
+        messageId: "cw_msg_all_202",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.granted).toBe(true);
+        expect(result.data.purposes).toEqual(["data_treatment", "commercial_comms"]);
+        expect(mockRepo.createConsent).toHaveBeenCalledTimes(2);
+      }
+    });
+
+    it("falla si messageId es vacío", async () => {
+      const result = await service.handleWhatsAppConsentResponse(cellId, clientId, {
+        prospectId: "22222222-2222-7222-8222-222222222222",
+        buttonId: "accept_all",
+        messageId: "   ",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain("messageId");
+      }
+    });
+
+    it("evalúa canSendCommercialCommunication con base en el consentimiento activo", async () => {
+      vi.mocked(mockRepo.findActiveConsent).mockResolvedValueOnce({
+        id: "active-comms-consent",
+        clientId,
+        prospectId: "22222222-2222-7222-8222-222222222222",
+        purpose: "commercial_comms",
+        policyVersion: "1.0.0",
+        status: "granted",
+        grantedAt: new Date(),
+        revokedAt: null,
+        channel: "whatsapp_buttons",
+        evidenceRef: "cw_msg_1",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "bot",
+        updatedBy: "bot",
+      });
+
+      const canSend = await service.canSendCommercialCommunication(cellId, clientId, "22222222-2222-7222-8222-222222222222");
+      expect(canSend).toBe(true);
+
+      vi.mocked(mockRepo.findActiveConsent).mockResolvedValueOnce(null);
+      const cannotSend = await service.canSendCommercialCommunication(cellId, clientId, "22222222-2222-7222-8222-222222222222");
+      expect(cannotSend).toBe(false);
+    });
+  });
 });
