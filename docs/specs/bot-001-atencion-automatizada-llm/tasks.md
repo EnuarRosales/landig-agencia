@@ -101,7 +101,7 @@
   - Llamadas reales a los 6 proveedores con la llave del inquilino; versiones de modelo fijadas.
   - Verificación: cada proveedor responde con la versión configurada; los tokens y el costo registrados coinciden con lo reportado por el proveedor.
 
-- [ ] **T-18 · Verificar los criterios de aceptación**
+- [x] **T-18 · Verificar los criterios de aceptación**
   - Recorrer `requirements.md` RF-01 a RF-12 y registrar evidencia por requisito, separando día uno de fundaciones.
   - Verificación: cada requisito tiene prueba o evidencia de laboratorio; ninguno queda «asumido».
 
