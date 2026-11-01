@@ -18,6 +18,25 @@ import type {
   AiUsageEvent,
   NewAiUsageEvent,
 } from "../db/schemas/admin/bot-tenancy";
+import type {
+  AuditLogEntry,
+  NewAuditLogEntry,
+} from "../db/schemas/admin/chatwoot-media-onboarding";
+
+/**
+ * Métricas consolidadas de consumo y recaudación de IA en la plataforma (BOT-001 T-16, OPS-001).
+ */
+export interface PlatformAiRevenueMetrics {
+  totalRechargedUsdCents: number;
+  totalCostUsdCents: number;
+  totalTokensConsumed: number;
+  tokensByPurpose: {
+    bot: number;
+    assist: number;
+    trial: number;
+  };
+  eventsCount: number;
+}
 
 /**
  * Snapshot resuelto con defaults listos para el consumo por el motor de conversación BOT-002.
@@ -109,5 +128,9 @@ export interface IBotRepository {
     actor: string;
   }): Promise<{ wallet: Wallet; transaction: WalletTransaction; usageEvent: AiUsageEvent }>;
   recordUsageEvent(event: NewAiUsageEvent): Promise<AiUsageEvent>;
+
+  // Auditoría y observabilidad de recaudación (BOT-001 T-16, OPS-001)
+  recordAuditLog(entry: NewAuditLogEntry): Promise<AuditLogEntry>;
+  getPlatformAiRevenueMetrics(start?: Date, end?: Date): Promise<PlatformAiRevenueMetrics>;
 }
 

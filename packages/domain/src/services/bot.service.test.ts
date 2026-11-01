@@ -310,6 +310,22 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
         createdAt: new Date(),
         ...ev,
       })),
+      recordAuditLog: vi.fn().mockImplementation(async (entry) => ({
+        id: "audit-01",
+        createdAt: new Date(),
+        ...entry,
+      })),
+      getPlatformAiRevenueMetrics: vi.fn().mockResolvedValue({
+        totalRechargedUsdCents: 15000,
+        totalCostUsdCents: 4500,
+        totalTokensConsumed: 1200000,
+        tokensByPurpose: {
+          bot: 900000,
+          assist: 300000,
+          trial: 0,
+        },
+        eventsCount: 42,
+      }),
     };
 
     botService = new BotService(mockBotRepo);
@@ -1076,6 +1092,93 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
         expect(result.data.balanceUsdCents).toBe(3000);
         expect(result.data.transactions).toHaveLength(1);
         expect(result.data.usageEvents).toHaveLength(1);
+      }
+    });
+  });
+
+  describe("T-16 · Auditoría de precios, claves y recargas; monitoreo de recaudación", () => {
+    it("registra en audit_log la actualización de precios y spread de modelos", async () => {
+      await botService.updateModelPricingAndSpread({
+        modelId: sampleModel.id,
+        spreadPercent: 35,
+        costInputMtokUsdCents: 300,
+        costOutputMtokUsdCents: 1200,
+        actor: "platform-superadmin",
+        actorRole: "platform_admin",
+      });
+
+      expect(mockBotRepo.recordAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "ai_model.pricing_updated",
+          entityType: "ai_model",
+          entityId: sampleModel.id,
+          actorRole: "platform_admin",
+          metadata: expect.objectContaining({
+            spreadPercent: 35,
+            actor: "platform-superadmin",
+          }),
+        }),
+      );
+    });
+
+    it("registra en audit_log el alta de clave BYOK con máscara last4 sin exponer secreto", async () => {
+      await botService.saveByokKey({
+        clientId: sampleTenantBot.clientId,
+        providerId: sampleProvider.id,
+        plainApiKey: "sk-ant-api03-abcdef1234567890",
+        actor: "owner-user",
+      });
+
+      expect(mockBotRepo.recordAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "tenant_ai_provider.key_registered",
+          entityType: "tenant_ai_provider",
+          entityId: sampleProvider.id,
+          clientId: sampleTenantBot.clientId,
+          metadata: expect.objectContaining({
+            apiKeyLast4: "7890",
+            actor: "owner-user",
+          }),
+        }),
+      );
+    });
+
+    it("registra en audit_log la recarga exitosa de billetera", async () => {
+      await botService.rechargeWallet({
+        clientId: sampleTenantBot.clientId,
+        gateway: "stripe",
+        reference: "ref-audit-check-1",
+        currency: "USD",
+        amountLocalCents: 8000,
+        actor: "owner-user",
+      });
+
+      expect(mockBotRepo.recordAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "wallet.recharged",
+          entityType: "wallet",
+          entityId: sampleTenantBot.clientId,
+          clientId: sampleTenantBot.clientId,
+          metadata: expect.objectContaining({
+            amountUsdCents: 8000,
+            currency: "USD",
+            reference: "ref-audit-check-1",
+          }),
+        }),
+      );
+    });
+
+    it("obtiene métricas consolidadas de recaudación y consumo de IA de plataforma", async () => {
+      const result = await botService.getPlatformAiRevenueMetrics();
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.totalRechargedUsdCents).toBe(15000);
+        expect(result.data.totalCostUsdCents).toBe(4500);
+        expect(result.data.totalTokensConsumed).toBe(1200000);
+        expect(result.data.tokensByPurpose.bot).toBe(900000);
+        expect(result.data.tokensByPurpose.assist).toBe(300000);
+        expect(result.data.eventsCount).toBe(42);
       }
     });
   });

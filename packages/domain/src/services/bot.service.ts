@@ -4,6 +4,7 @@ import { appLogger } from "../utils/logger";
 import type {
   IBotRepository,
   EffectiveBotSnapshot,
+  PlatformAiRevenueMetrics,
 } from "../repositories/bot.repository.interface";
 import type {
   AiProvider,
@@ -391,6 +392,23 @@ export class BotService {
       actor,
     });
 
+    // Registrar en audit_log (BOT-001 T-16, RF-09.3)
+    await this.botRepo.recordAuditLog({
+      actorUserId: null,
+      actorRole,
+      action: "ai_model.pricing_updated",
+      entityType: "ai_model",
+      entityId: modelId,
+      clientId: null,
+      justification: "Actualización de precios y spread de modelo de IA",
+      metadata: {
+        spreadPercent,
+        retailInput,
+        retailOutput,
+        actor,
+      },
+    });
+
     return ok(updated!);
   }
 
@@ -534,6 +552,23 @@ export class BotService {
       providerId,
       providerCode: provider.code,
       last4,
+    });
+
+    // Registrar en audit_log sin exponer la clave en claro (BOT-001 T-16, RF-09.3)
+    await this.botRepo.recordAuditLog({
+      actorUserId: null,
+      actorRole: "tenant_owner",
+      action: "tenant_ai_provider.key_registered",
+      entityType: "tenant_ai_provider",
+      entityId: providerId,
+      clientId,
+      justification: "Registro de clave de API BYOK del inquilino",
+      metadata: {
+        providerId,
+        providerCode: provider.code,
+        apiKeyLast4: last4,
+        actor,
+      },
     });
 
     return ok({
@@ -885,6 +920,27 @@ export class BotService {
       newBalanceUsdCents: result.wallet.balanceUsdCents,
     });
 
+    // Registrar en audit_log (BOT-001 T-16, RF-09.3)
+    await this.botRepo.recordAuditLog({
+      actorUserId: null,
+      actorRole: "tenant_owner",
+      action: "wallet.recharged",
+      entityType: "wallet",
+      entityId: input.clientId,
+      clientId: input.clientId,
+      justification: "Recarga de saldo en billetera para inferencia de bot y asistente",
+      metadata: {
+        gateway: input.gateway,
+        reference: input.reference,
+        amountUsdCents,
+        currency: input.currency,
+        amountLocalCents: input.amountLocalCents,
+        fxRate: effectiveFx,
+        newBalanceUsdCents: result.wallet.balanceUsdCents,
+        actor: input.actor,
+      },
+    });
+
     return ok({
       transaction: result.transaction,
       newBalanceUsdCents: result.wallet.balanceUsdCents,
@@ -1054,5 +1110,22 @@ export class BotService {
       transactions,
       usageEvents,
     });
+  }
+
+  /**
+   * Obtiene métricas consolidadas de recaudación y consumo de inferencia en la plataforma (BOT-001 T-16, OPS-001).
+   */
+  async getPlatformAiRevenueMetrics(
+    start?: Date,
+    end?: Date,
+  ): Promise<Result<PlatformAiRevenueMetrics>> {
+    try {
+      const metrics = await this.botRepo.getPlatformAiRevenueMetrics(start, end);
+      return ok(metrics);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[BotService] Error al obtener métricas de IA de plataforma: ${msg}`, error);
+      return err(msg, "PLATFORM_AI_METRICS_ERROR");
+    }
   }
 }

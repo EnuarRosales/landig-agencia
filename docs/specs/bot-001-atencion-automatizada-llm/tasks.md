@@ -91,7 +91,7 @@
   - Prepago estricto: sin saldo, proveedor BYOK habilitado; si no hay, fallback configurado y pausa del modo Mocter. La billetera cubre bot y asistente.
   - Verificación: el inquilino ve recargas, consumos con tokens/costo y el estado de sus modos; el consumo del asistente usa `purpose = assist`.
 
-- [ ] **T-16 · Auditar precios, claves y saldos; monitorear recaudación**
+- [x] **T-16 · Auditar precios, claves y saldos; monitorear recaudación**
   - Cambios de proveedor/modelo/spread, registro/rotación de claves, recargas y ajustes en `audit_log`; métricas de consumo y recaudación (OPS-001).
   - Verificación: cada evento sensible tiene actor, entidad y fecha; el dashboard muestra consumo y costo con el desglose declarado.
 

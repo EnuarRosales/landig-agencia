@@ -34,7 +34,15 @@ import {
   type AiUsageEvent,
   type NewAiUsageEvent,
 } from "../db/schemas/admin/bot-tenancy";
-import type { IBotRepository } from "./bot.repository.interface";
+import {
+  auditLog,
+  type AuditLogEntry,
+  type NewAuditLogEntry,
+} from "../db/schemas/admin/chatwoot-media-onboarding";
+import type {
+  IBotRepository,
+  PlatformAiRevenueMetrics,
+} from "./bot.repository.interface";
 
 /**
  * Implementación Drizzle ORM del repositorio de gobernanza de bots e IA en el Router Global.
@@ -557,6 +565,46 @@ export class DrizzleBotRepository implements IBotRepository {
       .values(event)
       .returning();
     return inserted!;
+  }
+
+  async recordAuditLog(entry: NewAuditLogEntry): Promise<AuditLogEntry> {
+    const [inserted] = await this.db.insert(auditLog).values(entry).returning();
+    return inserted!;
+  }
+
+  async getPlatformAiRevenueMetrics(
+    _start?: Date,
+    _end?: Date,
+  ): Promise<PlatformAiRevenueMetrics> {
+    const [rechargeRow] = await this.db
+      .select({
+        totalRecharged: sql<number>`coalesce(sum(${walletTransactions.amountUsdCents}), 0)::int`,
+      })
+      .from(walletTransactions)
+      .where(eq(walletTransactions.type, "recharge"));
+
+    const [usageRow] = await this.db
+      .select({
+        totalCost: sql<number>`coalesce(sum(${aiUsageEvents.costUsdCents}), 0)::int`,
+        totalTokens: sql<number>`coalesce(sum(${aiUsageEvents.inputTokens} + ${aiUsageEvents.outputTokens}), 0)::int`,
+        botTokens: sql<number>`coalesce(sum(case when ${aiUsageEvents.purpose} = 'bot' then ${aiUsageEvents.inputTokens} + ${aiUsageEvents.outputTokens} else 0 end), 0)::int`,
+        assistTokens: sql<number>`coalesce(sum(case when ${aiUsageEvents.purpose} = 'assist' then ${aiUsageEvents.inputTokens} + ${aiUsageEvents.outputTokens} else 0 end), 0)::int`,
+        trialTokens: sql<number>`coalesce(sum(case when ${aiUsageEvents.purpose} = 'trial' then ${aiUsageEvents.inputTokens} + ${aiUsageEvents.outputTokens} else 0 end), 0)::int`,
+        eventsCount: sql<number>`count(*)::int`,
+      })
+      .from(aiUsageEvents);
+
+    return {
+      totalRechargedUsdCents: rechargeRow?.totalRecharged ?? 0,
+      totalCostUsdCents: usageRow?.totalCost ?? 0,
+      totalTokensConsumed: usageRow?.totalTokens ?? 0,
+      tokensByPurpose: {
+        bot: usageRow?.botTokens ?? 0,
+        assist: usageRow?.assistTokens ?? 0,
+        trial: usageRow?.trialTokens ?? 0,
+      },
+      eventsCount: usageRow?.eventsCount ?? 0,
+    };
   }
 }
 
