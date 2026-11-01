@@ -31,6 +31,7 @@ describe("BILL-001 T-10 · ReferralCreditBillingManager", () => {
       createPayment: vi.fn().mockImplementation((pay) => Promise.resolve({ ...pay, id: "pay-symb-1" })),
       createReceipt: vi.fn().mockImplementation((rec) => Promise.resolve({ ...rec, id: "rec-symb-1" })),
       getReceiptByPaymentId: vi.fn(),
+      updateReceiptEmailStatus: vi.fn(),
       recordSubscriptionChange: vi.fn(),
     };
 

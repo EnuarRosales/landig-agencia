@@ -198,7 +198,9 @@ export class ChatRetentionService {
         }
       }
 
-      appLogger.info("[ChatRetentionService] Job de retención finalizado satisfactoriamente", result);
+      appLogger.info("[ChatRetentionService] Job de retención finalizado satisfactoriamente", {
+        ...result,
+      });
       return ok(result);
     } catch (jobErr) {
       appLogger.error("[ChatRetentionService] Error global en job de retención", jobErr as Error);

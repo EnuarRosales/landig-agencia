@@ -351,6 +351,15 @@
       "confirmUpgrade": "Confirmar Upgrade de Plan",
       "checkoutButton": "Proceder al Pago Seguro",
       "backToSettings": "Volver a Configuración"
+    },
+    "conversations": {
+      "title": "Bandeja de Atención",
+      "subtitle": "Gestión unificada de conversaciones, canales y clientes",
+      "loading": "Conectando con la bandeja segura de conversaciones...",
+      "errorTitle": "No se pudo cargar la bandeja",
+      "errorMessage": "Hubo un problema al establecer la sesión con el motor de chat. Por favor reintenta o verifica tu conexión.",
+      "retryButton": "Reintentar Conexión",
+      "reconnectButton": "Reconectar Sesión"
     }
   }
 }

@@ -351,6 +351,15 @@
       "confirmUpgrade": "Confirm Plan Upgrade",
       "checkoutButton": "Proceed to Secure Checkout",
       "backToSettings": "Back to Settings"
+    },
+    "conversations": {
+      "title": "Inbox & Conversations",
+      "subtitle": "Unified customer communications across all channels",
+      "loading": "Connecting to the secure inbox...",
+      "errorTitle": "Unable to load inbox",
+      "errorMessage": "There was a problem establishing the session with the chat engine. Please try again or check your connection.",
+      "retryButton": "Retry Connection",
+      "reconnectButton": "Reconnect Session"
     }
   }
 }

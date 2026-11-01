@@ -209,9 +209,10 @@
   - Evidencia: 2026-10-30 — Diccionarios ES/EN y `resolveActiveLocale` (`usuario -> clients.locale -> navegador -> 'es'`) en `apps/admin/lib/i18n.ts`, tokens claro/oscuro en `apps/admin/app/globals.css`, cubierto en `apps/admin/lib/i18n.test.ts`.
   - RF-11, RF-12.
 
-- [ ] **T-28 · Implementar marca blanca**
+- [x] **T-28 · Implementar marca blanca**
   - Tokens de identidad visual por plan; validación de contraste; restauración en una acción.
   - Verificación: un color inválido se rechaza con mensaje; sin plan no se accede a la personalización.
+  - Evidencia: 2026-10-31 — Esquema `client_brandings` (migración `0020_funny_slapstick.sql` y `0020_phase6_whitelabel_grants_comments.sql`) y servicio `WhiteLabelService` (`white-label.service.ts`) con validación de contraste WCAG 2.2 AA (4.5:1 / 3:1) y control de acceso por plan, cubierto en `white-label.service.test.ts`.
   - RF-15.
 
 - [x] **T-29 · Implementar la simplicidad de las vistas**
@@ -220,10 +221,10 @@
   - Evidencia: 2026-10-30 — Vistas de `apps/admin` (`/`, `/admin/leads`, `/admin/settings/notifications`, `/design-system`) estructuradas con una sola acción principal por encabezado y estados vacíos explícitos en `DataTable`.
   - RF-13.
 
-- [ ] **T-36 · Implementar el acceso embebido a Chatwoot**
+- [x] **T-36 · Implementar el acceso embebido a Chatwoot**
   - Shell con iframe same-site (`chat.mocter.co`), `frame-src`/`frame-ancestors`, handoff `/auth/chatwoot/embed`, estados de carga/error/reconexión y altura responsive.
   - Verificación: el usuario entra a la bandeja sin abandonar `admin.mocter.co`; no hay pestaña nueva ni redirect de nivel superior; un fallo de framing muestra error con reintento; móvil validado.
-  - Evidencia: ADM-001 §8.3, AUTH-001 T-38/T-39, CHW-001 T-17/T-18.
+  - Evidencia: 2026-10-31 — Endpoint de handoff auto-POST con JWT efímero en `/auth/chatwoot/embed` (`route.ts`, cubierto en `route.test.ts`), vista App Router `/admin/conversations` y componente `ChatwootEmbeddedView` (`chatwoot-embedded-view.tsx`, probado en `chatwoot-embedded-view.test.tsx`).
   - RF-02.2, RF-02.4, RF-02.5, D-32.
 
 - [x] **T-37 · Implementar la bandeja de contactos de la landing**

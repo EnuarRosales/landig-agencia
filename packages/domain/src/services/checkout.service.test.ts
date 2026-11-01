@@ -26,6 +26,7 @@ describe("BILL-001 T-06 · CheckoutService", () => {
       createPayment: vi.fn(),
       createReceipt: vi.fn(),
       getReceiptByPaymentId: vi.fn(),
+      updateReceiptEmailStatus: vi.fn(),
       recordSubscriptionChange: vi.fn(),
     };
     service = new CheckoutService(mockRepo, "pub_test_wompi", "pk_test_stripe");

@@ -13,18 +13,19 @@ describe("REP-001 T-06 / T-07 · ReportsExportService", () => {
     metrics: {
       period: PeriodResolver.resolve("monthly", undefined, "America/Bogota"),
       orders: {
-        totalOrders: { current: 120, previous: 95 },
-        revenueCents: { current: 15000000, previous: 12000000 },
+        totalOrders: { current: 120, previous: 95, deltaPercent: 26.32 },
+        revenueCents: { current: 15000000, previous: 12000000, deltaPercent: 25 },
+        averageOrderValueCents: { current: 125000, previous: 126315, deltaPercent: -1.04 },
       },
       leads: {
-        totalLeads: { current: 200, previous: 180 },
-        qualifiedLeads: { current: 60, previous: 45 },
-        conversionRatePercent: { current: 30, previous: 25 },
+        totalLeads: { current: 200, previous: 180, deltaPercent: 11.11 },
+        qualifiedLeads: { current: 60, previous: 45, deltaPercent: 33.33 },
+        conversionRatePercent: { current: 30, previous: 25, deltaPercent: 20 },
       },
       bot: {
-        conversationsHandled: { current: 150, previous: 130 },
-        humanHandoffs: { current: 15, previous: 20 },
-        aiTokensConsumed: { current: 75000, previous: 60000 },
+        conversationsHandled: { current: 150, previous: 130, deltaPercent: 15.38 },
+        humanHandoffs: { current: 15, previous: 20, deltaPercent: -25 },
+        aiTokensConsumed: { current: 75000, previous: 60000, deltaPercent: 25 },
       },
     },
     transactions: [
