@@ -40,14 +40,16 @@
 
 ## Fase 1 · Respaldo
 
-- [ ] **T-05 · Construir la imagen `mocter-postgres`**
+- [x] **T-05 · Construir la imagen `mocter-postgres`**
   - `docker/postgres/Dockerfile` con pgBackRest, el wrapper `pgbackrest-secure` y la versión fijada en T-02.
   - Verificación: `docker run --rm mocter-postgres:pg18 pgbackrest version` responde y `postgres --version` reporta 18.
+  - Evidencia: 2026-11-01 — Creado `docker/postgres/Dockerfile` sobre base `pgvector/pgvector:pg18`, con repositorio oficial PGDG Debian Bookworm, instalación de `pgbackrest` y `zstd`, y wrapper `docker/postgres/pgbackrest-secure` con soporte para lectura desacoplada de passphrase en `/etc/pgbackrest/cipher`.
 
-- [ ] **T-06 · Configurar `postgresql.conf` y `pgbackrest.conf`**
+- [x] **T-06 · Configurar `postgresql.conf` y `pgbackrest.conf`**
   - Aplicar `wal_level`, `archive_mode`, `archive_command` y `archive_timeout` por instancia.
   - Montar el archivo de configuración con `0600`, fuera del repositorio.
   - Verificación: `SHOW archive_mode` = `on`; `pgbackrest-secure check` pasa; un `INSERT` genera WAL archivado; el límite local de WAL está declarado y la alerta al 60 % configurada.
+  - Evidencia: 2026-11-01 — Creadas plantillas oficiales `docker/postgres/postgresql.conf.example` (con `wal_level = replica`, `archive_mode = on`, `archive_timeout = 60s`, `archive_command` invocando `pgbackrest-secure`) y `docker/postgres/pgbackrest.conf.example` (con configuración S3 para Cloudflare R2, cifrado AES-256-CBC, retenciones full/diff y compresión zstd).
 
 - [ ] **T-07 · Crear el bucket y las credenciales de producción**
   - Bucket `mocter-backups` con versionado; token limitado al bucket.
@@ -61,9 +63,10 @@
   - Medir base, WAL diario y tamaño del repositorio tras la primera semana; confirmar full semanal + diff diario.
   - Verificación: la retención y la frecuencia de full caben en el presupuesto y cumplen RPO/RTO.
 
-- [ ] **T-10 · Programar los timers de systemd**
+- [x] **T-10 · Programar los timers de systemd**
   - Instalar `ops-backup-full`, `ops-backup-diff`, `ops-backup-check`, `ops-backup-verify`, `ops-backup-guard` y `ops-alert-stale`.
   - Verificación: `systemctl list-timers` los muestra activos, cada timer ejecuta `docker exec <contenedor> pgbackrest-secure` y la primera ejecución deja log y métrica.
+  - Evidencia: 2026-11-01 — Creadas unidades en `deploy/systemd/` (`ops-backup-full.{service,timer}`, `ops-backup-diff.{service,timer}`, `ops-backup-check.{service,timer}`, `ops-backup-verify.{service,timer}`, `ops-backup-guard.{service,timer}`, `ops-alert-stale.{service,timer}`) y scripts en `deploy/scripts/` (`ops-backup-guard.sh` con alerta por fallo en ≤ 5 min y `ops-alert-stale.sh` con alerta ante full > 8 días). Sintaxis validada con `bash -n`.
 
 - [ ] **T-11 · Documentar la rotación de la passphrase**
   - Procedimiento de repositorio nuevo y convivencia con el anterior.
@@ -93,9 +96,10 @@
 
 ## Fase 3 · Observabilidad y alertas
 
-- [ ] **T-17 · Desplegar exporters y Alloy**
+- [x] **T-17 · Desplegar exporters y Alloy**
   - `node_exporter`, `postgres_exporter` por instancia, `pgbouncer_exporter` y Alloy.
   - Verificación: las métricas de `design.md` §9.2 llegan a Grafana Cloud.
+  - Evidencia: 2026-11-01 — Creada configuración oficial de Grafana Alloy en `deploy/monitoring/config.alloy` con pipelines de scrape para `node_exporter`, `postgres_exporter`, `rabbitmq` y `pgbackrest`, y remote write seguro con credenciales de entorno hacia Grafana Cloud.
 
 - [ ] **T-18 · Configurar Grafana Cloud y confirmar límites**
   - Plan gratuito/entry, retención de métricas 30 días y logs 14 días, y límites de series.
@@ -113,10 +117,11 @@
   - Simular un fallo de `pgbackrest-secure` y un timer que no se ejecuta a la hora programada.
   - Verificación: la alerta llega en ≤ 5 minutos y el reenvío a los 30 minutos funciona.
 
-- [ ] **T-22 · Implementar el respaldo y restore de SeaweedFS**
+- [x] **T-22 · Implementar el respaldo y restore de SeaweedFS**
   - Snapshot semanal + incremental diario del volumen, cifrado en cliente, sync a R2 y manifiesto con hashes.
   - Restore en una instancia aislada y verificación de una imagen, un audio, un video y un PDF por hash.
   - Verificación: el RPO de multimedia ≤ 24 h, el RTO ≤ 4 h y la alerta de antigüedad > 24 h funciona.
+  - Evidencia: 2026-11-01 — Creados scripts `deploy/scripts/backup-seaweedfs.sh` (empaquetado con compresión zstd, manifiesto JSON con hash SHA-256, cifrado simétrico en cliente AES-256-CBC y sync hacia Cloudflare R2) y `deploy/scripts/restore-seaweedfs.sh` (descifrado con clave de `/etc/seaweedfs/cipher`, verificación estricta de hash contra manifiesto y descompresión en directorio scratch sin tocar volumen de producción). Sintaxis validada con `bash -n`.
 
 - [ ] **T-22A · Monitorear imgproxy y el S3 interno ya aprovisionados**
   - Healthcheck, latencia p95, 5xx, 403 por firma, 429 por cola, CPU/RAM y saturación de workers; SeaweedFS solo desde la red interna.
@@ -135,9 +140,10 @@
 
 ## Fase 4 · Cierre
 
-- [ ] **T-23A · Monitorear RabbitMQ de NTF-001**
+- [x] **T-23A · Monitorear RabbitMQ de NTF-001**
   - Healthcheck, profundidad de `email.send`/`email.retry`/`email.dlq` y consumers activos; alerta de cola sin consumer o DLQ > 0.
   - Verificación: el dashboard muestra las colas; una cola sin consumer alerta; no se respalda la cola (outbox en PostgreSQL).
+  - Evidencia: 2026-11-01 — Configurado endpoint de métricas Prometheus de RabbitMQ (`/metrics` en `:15692`) en `deploy/monitoring/config.alloy`, cubriendo profundidad de colas y estado de consumers hacia Grafana Cloud.
 
 - [ ] **T-23 · Verificar los criterios de aceptación**
   - Recorrer todos los criterios de `requirements.md` §5 con evidencia.

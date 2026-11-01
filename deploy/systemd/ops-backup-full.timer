@@ -1,0 +1,9 @@
+[Unit]
+Description=Mocter - Timer para Respaldo Full Semanal pgBackRest (OPS-001 §5)
+
+[Timer]
+OnCalendar=Sun *-*-* 02:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

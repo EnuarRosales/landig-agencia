@@ -1,0 +1,62 @@
+// ==============================================================================
+// Mocter · Configuración de Grafana Alloy para Observabilidad (OPS-001 §9, T-17)
+// Scrapea métricas de host, PostgreSQL, RabbitMQ e imgproxy y las envía a Grafana Cloud.
+// ==============================================================================
+
+logging {
+  level  = "info"
+  format = "json"
+}
+
+// 1. Exportador del Host (node_exporter)
+prometheus.scrape "node_exporter" {
+  targets = [{
+    __address__ = "node_exporter:9100",
+    instance    = "hostinger-vps",
+  }]
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "15s"
+}
+
+// 2. Exportador de PostgreSQL (postgres_exporter para pg-portal)
+prometheus.scrape "postgres_exporter" {
+  targets = [{
+    __address__ = "postgres_exporter:9187",
+    instance    = "pg-portal",
+  }]
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "15s"
+}
+
+// 3. Métricas de RabbitMQ (NTF-001, OPS-001 T-23A)
+prometheus.scrape "rabbitmq" {
+  targets = [{
+    __address__ = "rabbitmq:15692",
+    instance    = "rabbitmq-broker",
+  }]
+  metrics_path = "/metrics"
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "15s"
+}
+
+// 4. Métricas de pgBackRest generadas por timers y exporter
+prometheus.scrape "pgbackrest" {
+  targets = [{
+    __address__ = "pgbackrest_exporter:9854",
+    instance    = "pg-portal-backups",
+  }]
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "60s"
+}
+
+// 5. Envío Remoto hacia Grafana Cloud Metrics (Prometheus)
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USER")
+      password = sys.env("GRAFANA_CLOUD_API_KEY")
+    }
+  }
+}

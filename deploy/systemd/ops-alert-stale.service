@@ -1,0 +1,10 @@
+[Unit]
+Description=Mocter - Monitoreo Horario de Antigüedad de Respaldo Full (OPS-001 §5)
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/mocter-admin/scripts/ops-alert-stale.sh
+StandardOutput=journal
+StandardError=journal

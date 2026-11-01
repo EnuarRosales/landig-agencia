@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Mocter · Wrapper seguro para pgBackRest (OPS-001 §4.3, T-05)
+# Permisos requeridos: 0755 (o 0700 postgres)
+#
+# Lee la passphrase de cifrado cliente desde /etc/pgbackrest/cipher (0600)
+# y ejecuta pgbackrest sin exponer la clave en línea de comandos ni en logs.
+# ==============================================================================
+
+set -euo pipefail
+
+CIPHER_FILE="/etc/pgbackrest/cipher"
+
+if [[ -f "$CIPHER_FILE" ]]; then
+  # Leer la clave eliminando saltos de línea y espacios
+  CIPHER_PASS=$(tr -d '\r\n' < "$CIPHER_FILE")
+  exec /usr/bin/pgbackrest "$@" --repo1-cipher-pass="$CIPHER_PASS"
+else
+  exec /usr/bin/pgbackrest "$@"
+fi

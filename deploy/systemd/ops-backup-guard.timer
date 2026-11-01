@@ -1,0 +1,10 @@
+[Unit]
+Description=Mocter - Timer de Guardián de Respaldos Cada 5 Minutos (OPS-001 §5)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

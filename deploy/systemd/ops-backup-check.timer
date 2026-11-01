@@ -1,0 +1,9 @@
+[Unit]
+Description=Mocter - Timer para Verificación Diaria de pgBackRest (OPS-001 §5)
+
+[Timer]
+OnCalendar=*-*-* 01:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

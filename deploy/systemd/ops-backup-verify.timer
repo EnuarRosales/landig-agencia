@@ -1,0 +1,9 @@
+[Unit]
+Description=Mocter - Timer para Verificación Semanal de Checksums en R2 (OPS-001 §5)
+
+[Timer]
+OnCalendar=Mon *-*-* 04:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

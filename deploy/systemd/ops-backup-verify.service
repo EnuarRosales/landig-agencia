@@ -1,0 +1,11 @@
+[Unit]
+Description=Mocter - Verificación de Checksums del Repositorio en R2 (OPS-001 §5)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/docker exec pg-portal pgbackrest-secure --stanza=pg-portal --repo1-verify verify
+StandardOutput=journal
+StandardError=journal

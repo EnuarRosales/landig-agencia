@@ -1,0 +1,9 @@
+[Unit]
+Description=Mocter - Timer Horario para Antigüedad de Respaldo Full (OPS-001 §5)
+
+[Timer]
+OnCalendar=*-*-* *:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

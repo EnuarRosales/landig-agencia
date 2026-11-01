@@ -1,0 +1,10 @@
+[Unit]
+Description=Mocter - Guardián de Ejecución y Estado de Respaldos (OPS-001 §5)
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/mocter-admin/scripts/ops-backup-guard.sh
+StandardOutput=journal
+StandardError=journal
