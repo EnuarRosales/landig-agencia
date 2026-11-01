@@ -136,6 +136,10 @@ Todo error en el proyecto pertenece estrictamente a una de tres categorías inmu
 - Parte 1 (Clasificación, Tipos y Servidor): [rules/rules-for-exceptions-core-and-server.md](rules/rules-for-exceptions-core-and-server.md).
 - Parte 2 (Rutas, UI y Verificación): [rules/rules-for-exceptions-routes-and-ui.md](rules/rules-for-exceptions-routes-and-ui.md).
 
+### 4.15 Prohibición de identificadores de especificaciones en vistas de usuario final
+
+Queda terminantemente prohibido exponer códigos, identificadores o siglas de especificaciones técnicas y requisitos de ingeniería (`ADM-001`, `CHW-001`, `DAT-001`, `BILL-001`, `NTF-001`, `DSN-001`, `RF-XX`, `D-XX`, etc.) en cualquier elemento visible de la interfaz de usuario final (badges, pills, encabezados, botones o textos). Dicha información pertenece exclusivamente a la trazabilidad interna de ingeniería y solo puede residir en comentarios de código (TSDoc/JSDoc), documentación en `docs/specs/` y commits. Todos los textos visibles deben formularse en lenguaje semántico y comprensible para el usuario u operador. Consulte la directiva completa en [rules/rules-for-no-spec-codes-in-ui.md](rules/rules-for-no-spec-codes-in-ui.md).
+
 ## 5. Formato del reporte del agente
 
 Al terminar una especificación, entrega:

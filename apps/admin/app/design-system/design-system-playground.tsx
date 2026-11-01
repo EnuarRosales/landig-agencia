@@ -543,7 +543,7 @@ export function DesignSystemPlayground() {
           <div className="flex items-center gap-2">
             <Layers className="h-4 w-4 text-[var(--dsn-accent)]" />
             <h2 className="text-sm font-bold text-[var(--dsn-text)]">
-              Catálogo Documentado De Tokens En 3 Capas (DSN-001)
+              Catálogo Documentado De Tokens En 3 Capas
             </h2>
           </div>
           <span className="text-xs text-[var(--dsn-text-secondary)]">

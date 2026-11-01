@@ -83,7 +83,6 @@ export function AdminShell({ children }: AdminShellProps) {
     {
       href: "/admin/leads",
       label: dict.navLeads,
-      badge: "ADM-001",
       icon: Inbox,
     },
     {
@@ -94,37 +93,31 @@ export function AdminShell({ children }: AdminShellProps) {
     {
       href: "/admin/conversations",
       label: dict.navConversations,
-      badge: "Chatwoot",
       icon: MessageSquare,
     },
     {
       href: "/admin/orders",
       label: dict.navOrders || "Suscripciones y Ventas",
-      badge: "BILL-001",
       icon: CreditCard,
     },
     {
       href: "/admin/cells",
       label: dict.navCells || "Celdas de Datos",
-      badge: "DAT-001",
       icon: Server,
     },
     {
       href: "/admin/plans",
       label: dict.navPlans || "Planes y Cuotas",
-      badge: "ADM-001",
       icon: Layers,
     },
     {
       href: "/admin/users",
       label: dict.navUsersRoles || "Usuarios y Roles",
-      badge: "RBAC",
       icon: ShieldCheck,
     },
     {
       href: "/admin/settings/notifications",
       label: dict.navEmailsSmtp || "Correos y SMTP",
-      badge: "NTF-001",
       icon: Mail,
     },
     {

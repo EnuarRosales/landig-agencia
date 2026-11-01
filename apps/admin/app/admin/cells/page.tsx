@@ -5,7 +5,7 @@ import { CreateCellForm } from "./create-cell-form";
 
 export const metadata = {
   title: "Células De Datos · mocter-admin",
-  description: "Aprovisionamiento y topes de capacidad de nodos PostgreSQL celulares (DAT-001).",
+  description: "Aprovisionamiento y topes de capacidad de nodos PostgreSQL celulares.",
 };
 
 /**
@@ -30,7 +30,7 @@ export default async function AdminCellsPage() {
               Células De Datos Multi-Inquilino
             </h1>
             <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-xs font-mono font-medium text-[var(--dsn-accent)] flex items-center gap-1 border border-cyan-500/20">
-              DAT-001 §3.3
+              Nodos Celulares
             </span>
           </div>
           <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">

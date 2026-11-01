@@ -29,7 +29,7 @@ export default async function AdminNotificationsSettingsPage() {
                 Correos Institucionales y Pasarela SMTP
               </h1>
               <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-mono font-medium text-emerald-400 flex items-center gap-1">
-                <ShieldCheck className="h-3.5 w-3.5" /> NTF-001
+                <ShieldCheck className="h-3.5 w-3.5" /> Pasarela Activa
               </span>
             </div>
             <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-0.5">

@@ -5,7 +5,7 @@ import { CreatePlanForm } from "./create-plan-form";
 
 export const metadata = {
   title: "Planes Y Cuotas · mocter-admin",
-  description: "Parametrización dinámica de planes comerciales, cuotas y tiers VIP (ADM-001).",
+  description: "Parametrización dinámica de planes comerciales, cuotas y tiers VIP.",
 };
 
 /**
@@ -30,7 +30,7 @@ export default async function AdminPlansPage() {
               Catálogo Y Parametrización De Planes
             </h1>
             <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-xs font-mono font-medium text-[var(--dsn-accent)] flex items-center gap-1 border border-cyan-500/20">
-              ADM-001 · DAT-001
+              Catálogo Corporativo
             </span>
           </div>
           <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">
