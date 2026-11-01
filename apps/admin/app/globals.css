@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-:root {
+:root,
+.dark {
   /* Capa 1: Primitivos (DSN-001 §3.1) */
   --primitive-space-1: 0.25rem;
   --primitive-space-2: 0.5rem;

@@ -38,6 +38,7 @@ export const env = createEnv({
     NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3001"),
     NEXT_PUBLIC_SITE_URL: z.string().url().default("https://mocter.co"),
     NEXT_PUBLIC_API_URL: z.string().url().default("http://localhost:3001/api"),
+    NEXT_PUBLIC_ADMIN_URL: z.string().url().default("http://localhost:3003"),
     NEXT_PUBLIC_NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -68,6 +69,7 @@ export const env = createEnv({
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+    NEXT_PUBLIC_ADMIN_URL: process.env.NEXT_PUBLIC_ADMIN_URL,
     NEXT_PUBLIC_NODE_ENV: process.env.NEXT_PUBLIC_NODE_ENV || process.env.NODE_ENV,
   },
   skipValidation: Boolean(

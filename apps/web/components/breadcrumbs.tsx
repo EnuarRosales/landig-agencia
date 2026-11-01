@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { siteConfig } from "@/config/site";
 
 export interface BreadcrumbItem {
@@ -44,20 +45,10 @@ export function Breadcrumbs({ items, className = "" }: BreadcrumbsProps) {
             return (
               <li key={`${item.label}-${index}`} className="flex items-center gap-2">
                 {index > 0 && (
-                  <svg
-                    className="h-3.5 w-3.5 text-muted/40"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                  <ChevronRight
+                    className="h-3.5 w-3.5 text-muted/40 shrink-0"
                     aria-hidden="true"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
+                  />
                 )}
                 {isLast || !item.href ? (
                   <span

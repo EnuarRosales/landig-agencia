@@ -92,3 +92,5 @@ export * from "./services/community-feed.service";
 export * from "./services/community-leadership-metrics.service";
 export * from "./services/chat-retention.service";
 export * from "./services/white-label.service";
+export * from "./services/admin-dashboard.service";
+export * from "./services/rbac.service";

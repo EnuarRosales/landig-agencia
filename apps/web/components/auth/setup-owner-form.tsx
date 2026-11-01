@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { env } from "@/env";
 import { clientLog } from "@/lib/logger/client";
 import { serializeError } from "@/lib/logger/serialize-error";
 
@@ -19,7 +19,6 @@ interface SetupOwnerFormProps {
  * - Contraseña maestra con requisitos de robustez.
  */
 export function SetupOwnerForm({ locale }: SetupOwnerFormProps) {
-  const router = useRouter();
   const [token, setToken] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -64,8 +63,8 @@ export function SetupOwnerForm({ locale }: SetupOwnerFormProps) {
         return;
       }
 
-      // Redirección hacia la consola administrativa
-      router.push(`/${locale}/admin`);
+      // Redirección hacia la consola administrativa de Mocter SaaS (mocter-admin)
+      window.location.href = env.NEXT_PUBLIC_ADMIN_URL;
     } catch (err: unknown) {
       clientLog("error", "auth.client_setup_owner_network_error", { err: serializeError(err) });
       setErrorMessage(

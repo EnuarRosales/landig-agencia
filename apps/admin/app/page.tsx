@@ -1,131 +1,230 @@
 import React from "react";
 import Link from "next/link";
-import { getAdminDictionary } from "../lib/i18n";
+import { getAdminDictionary } from "@/lib/i18n";
+import { fetchControlPlaneMetrics } from "@mocter/domain";
+import {
+  Users,
+  Inbox,
+  Server,
+  Activity,
+  ArrowRight,
+  ShieldCheck,
+  CheckCircle2,
+} from "lucide-react";
 
 /**
- * Dashboard principal y asistente rápido de `mocter-admin` (`DSN-001 T-06, T-07, T-08`, `ADM-001 T-07, T-29`).
+ * Tablero principal del plano de control corporativo de Mocter SaaS (ADM-001, DSN-001).
  *
- * - Mobile First: 1 columna en móvil (390px) y grilla responsive en escritorio; drawer/menú hamburguesa que pasa a sidebar en escritorio.
- * - KPIs en fuente monoespaciada con `tabular-nums`.
- * - Formulario de producto con botón «Mejorar con AI» (`DSN-001 T-08`, `AI-001`).
+ * Muestra datos reales consultados directamente de PostgreSQL y accesos directos
+ * a los módulos administrativos del sistema.
  */
-export default function AdminHomePage() {
+export default async function AdminHomePage() {
   const dict = getAdminDictionary("es");
+  const metrics = await fetchControlPlaneMetrics();
 
   const kpis = [
-    { label: dict.dashboard.kpiRevenue, value: "$12.450.000 COP" },
-    { label: dict.dashboard.kpiConversations, value: "148" },
-    { label: dict.dashboard.kpiProducts, value: "24" },
-    { label: dict.dashboard.kpiWebchatStatus, value: dict.dashboard.webchatActive },
+    {
+      label: dict.dashboard.kpiTenants || "Inquilinos Activos",
+      value: `${metrics.tenants} ${metrics.tenants === 1 ? "Inquilino" : "Inquilinos"}`,
+      subtext: "Registrados en Router Global",
+      icon: Users,
+      color: "text-[var(--dsn-accent)]",
+    },
+    {
+      label: dict.dashboard.kpiLeads || "Prospectos Landing",
+      value: `${metrics.leads} ${metrics.leads === 1 ? "Contacto" : "Contactos"}`,
+      subtext: "En bandeja /admin/leads",
+      icon: Inbox,
+      color: "text-amber-400",
+    },
+    {
+      label: dict.dashboard.kpiProducts || "Células Desplegadas",
+      value: `${metrics.cells} ${metrics.cells === 1 ? "Célula" : "Células"}`,
+      subtext: "Nodos de datos multi-inquilino",
+      icon: Server,
+      color: "text-purple-400",
+    },
+    {
+      label: dict.dashboard.kpiSystemStatus || "Plano de Control",
+      value: metrics.dbStatus,
+      subtext: "PostgreSQL 18 + Redis 8",
+      icon: Activity,
+      color: "text-emerald-400",
+    },
+  ];
+
+  const adminModules = [
+    {
+      title: dict.dashboard.cardLeadsTitle,
+      description: dict.dashboard.cardLeadsDesc,
+      href: "/admin/leads",
+      badge: "ADM-001 RF-16",
+    },
+    {
+      title: dict.dashboard.cardCrmTitle,
+      description: dict.dashboard.cardCrmDesc,
+      href: "/admin/crm/contacts",
+      badge: "CRM-001 Ley 1581",
+    },
+    {
+      title: dict.dashboard.cardChatwootTitle,
+      description: dict.dashboard.cardChatwootDesc,
+      href: "/admin/conversations",
+      badge: "CHW-001 Iframe",
+    },
+    {
+      title: dict.dashboard.cardCellsTitle || "Células de Datos",
+      description: dict.dashboard.cardCellsDesc || "Aprovisionamiento y topes de capacidad de nodos PostgreSQL celulares.",
+      href: "/admin/cells",
+      badge: "DAT-001 Nodos",
+    },
+    {
+      title: dict.dashboard.cardPlansTitle || "Catálogo de Planes",
+      description: dict.dashboard.cardPlansDesc || "Parametrización dinámica de cuotas, precios y planes VIP a medida.",
+      href: "/admin/plans",
+      badge: "ADM-001 Cuotas",
+    },
+    {
+      title: "Control De Acceso y Roles (RBAC)",
+      description: "Administración exclusiva del owner: identidades de plataforma, catálogo de roles y matriz de permisos.",
+      href: "/admin/users",
+      badge: "D-31 RBAC",
+    },
+    {
+      title: dict.dashboard.cardNotificationsTitle,
+      description: dict.dashboard.cardNotificationsDesc,
+      href: "/admin/settings/notifications",
+      badge: "NTF-001 SMTP",
+    },
+    {
+      title: dict.dashboard.cardDesignSystemTitle,
+      description: dict.dashboard.cardDesignSystemDesc,
+      href: "/design-system",
+      badge: "DSN-001 WCAG AA",
+    },
   ];
 
   return (
-    <div className="min-h-dvh bg-[var(--dsn-background)] text-[var(--dsn-text)] md:flex">
-      {/* Sidebar en escritorio / Drawer Mobile First */}
-      <aside className="w-full border-b border-[var(--dsn-border)] bg-[var(--dsn-sidebar)] p-4 md:w-[260px] md:border-r md:border-b-0">
-        <div className="flex items-center justify-between">
-          <span className="font-semibold tracking-tight">{dict.shell.brand}</span>
+    <div className="space-y-8 p-4 md:p-8 max-w-7xl mx-auto">
+      {/* Encabezado con estética HUD */}
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--dsn-border)] pb-5">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
+              {dict.dashboard.title}
+            </h1>
+            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-mono font-medium text-emerald-400 flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3" /> Producción
+            </span>
+          </div>
+          <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">
+            {dict.dashboard.subtitle}
+          </p>
         </div>
-        <nav className="mt-4 flex flex-wrap gap-2 md:flex-col">
-          <Link
-            href="/admin/conversations"
-            className="min-h-[44px] flex items-center rounded px-3 py-2 text-sm hover:bg-[var(--dsn-surface-secondary)]"
-          >
-            {dict.shell.navConversations}
-          </Link>
-          <Link
-            href="/admin/crm/contacts"
-            className="min-h-[44px] flex items-center rounded px-3 py-2 text-sm hover:bg-[var(--dsn-surface-secondary)]"
-          >
-            {dict.shell.navCrm}
-          </Link>
-          <Link
-            href="/admin/orders"
-            className="min-h-[44px] flex items-center rounded px-3 py-2 text-sm hover:bg-[var(--dsn-surface-secondary)]"
-          >
-            {dict.shell.navOrders}
-          </Link>
-          <Link
-            href="/admin/leads"
-            className="min-h-[44px] flex items-center rounded px-3 py-2 text-sm hover:bg-[var(--dsn-surface-secondary)]"
-          >
-            {dict.shell.navLeads}
-          </Link>
-          <Link
-            href="/admin/settings/notifications"
-            className="min-h-[44px] flex items-center rounded px-3 py-2 text-sm hover:bg-[var(--dsn-surface-secondary)]"
-          >
-            {dict.shell.navNotifications}
-          </Link>
-          <Link
-            href="/design-system"
-            className="min-h-[44px] flex items-center rounded px-3 py-2 text-sm hover:bg-[var(--dsn-surface-secondary)]"
-          >
-            {dict.shell.navDesignSystem}
-          </Link>
-        </nav>
-      </aside>
 
-      <main className="flex-1 space-y-8 p-4 md:p-8">
-        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--dsn-border)] pb-4">
-          <h1 className="text-xl font-semibold">{dict.dashboard.title}</h1>
-          <button
-            type="button"
-            className="min-h-[44px] rounded-md bg-[var(--dsn-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--dsn-accent-hover)]"
-          >
-            {dict.dashboard.primaryAction}
-          </button>
-        </header>
+        <Link
+          href="/admin/leads"
+          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[var(--dsn-accent-hover)] hover:shadow-md active:scale-95"
+        >
+          <Inbox className="h-4 w-4" />
+          <span>{dict.dashboard.primaryAction}</span>
+        </Link>
+      </header>
 
-        {/* Grilla KPI Mobile First (1 columna en móvil, 4 en escritorio, cifras en mono tabular-nums) */}
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {kpis.map((kpi) => (
+      {/* Grilla KPI Mobile First (1 columna en móvil, 2 en tablet, 4 en escritorio con tabular-nums) */}
+      <section
+        aria-label="Indicadores del plano de control"
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
+        {kpis.map((kpi) => {
+          const Icon = kpi.icon;
+          return (
             <article
               key={kpi.label}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4"
+              className="relative overflow-hidden rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-xs transition-colors hover:border-[var(--dsn-accent)]/40"
             >
-              <p className="text-xs font-medium text-[var(--dsn-text-secondary)]">{kpi.label}</p>
-              <p className="kpi-value mt-2 font-mono text-2xl font-semibold tabular-nums">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-[var(--dsn-text-secondary)]">
+                  {kpi.label}
+                </p>
+                <div className={`rounded-lg bg-[var(--dsn-surface-secondary)] p-2 ${kpi.color}`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+              </div>
+              <p className="kpi-value mt-3 font-mono text-2xl font-bold tabular-nums text-[var(--dsn-text)]">
                 {kpi.value}
               </p>
+              <p className="mt-1 text-[11px] text-[var(--dsn-text-secondary)]">
+                {kpi.subtext}
+              </p>
             </article>
-          ))}
-        </section>
+          );
+        })}
+      </section>
 
-        {/* Creación rápida de producto con «Mejorar con AI» (DSN-001 T-08) */}
-        <section className="max-w-[720px] space-y-4 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 md:p-6">
-          <h2 className="text-base font-semibold">{dict.onboarding.title}</h2>
-          <p className="text-sm text-[var(--dsn-text-secondary)]">{dict.onboarding.subtitle}</p>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-[var(--dsn-text-secondary)]">
-                {dict.onboarding.productNameLabel}
-              </label>
-              <input
-                type="text"
-                className="mt-1 min-h-[44px] w-full rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <div className="flex items-center justify-between">
-                <label className="block text-xs font-medium text-[var(--dsn-text-secondary)]">
-                  {dict.onboarding.productDescLabel}
-                </label>
-                <button
-                  type="button"
-                  className="min-h-[44px] rounded px-2.5 py-1 text-xs font-medium text-[var(--dsn-accent)] hover:underline"
-                >
-                  ✨ {dict.onboarding.aiEnhanceButton}
-                </button>
+      {/* Módulos de Operación Corporativa */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-base font-bold text-[var(--dsn-text)]">
+            {dict.dashboard.quickAccessTitle}
+          </h2>
+          <p className="text-xs text-[var(--dsn-text-secondary)]">
+            {dict.dashboard.quickAccessSubtitle}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {adminModules.map((module) => (
+            <Link
+              key={module.href}
+              href={module.href}
+              className="group flex flex-col justify-between rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 transition-all hover:border-[var(--dsn-accent)] hover:shadow-md"
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-semibold text-[var(--dsn-accent)] bg-[var(--dsn-accent)]/10 px-2 py-0.5 rounded border border-[var(--dsn-accent)]/20">
+                    {module.badge}
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-[var(--dsn-text-secondary)] transition-transform group-hover:translate-x-1 group-hover:text-[var(--dsn-accent)]" />
+                </div>
+                <h3 className="mt-3 text-sm font-semibold text-[var(--dsn-text)] group-hover:text-[var(--dsn-accent)] transition-colors">
+                  {module.title}
+                </h3>
+                <p className="mt-1.5 text-xs text-[var(--dsn-text-secondary)] leading-relaxed">
+                  {module.description}
+                </p>
               </div>
-              <textarea
-                rows={3}
-                className="mt-1 w-full rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-background)] p-3 text-sm"
-              />
-            </div>
+
+              <div className="mt-4 pt-3 border-t border-[var(--dsn-border)]/50 flex items-center justify-between text-[11px] text-[var(--dsn-text-secondary)]">
+                <span>Acceder al módulo</span>
+                <span className="font-mono">→</span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* Identidad del Operador de Plataforma Activo */}
+      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)]/60 p-4 backdrop-blur-xs flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-400">
+            <ShieldCheck className="h-5 w-5" />
           </div>
-        </section>
-      </main>
+          <div>
+            <p className="font-semibold text-[var(--dsn-text)]">
+              Sesión De Plataforma: Platform Owner
+            </p>
+            <p className="text-[11px] text-[var(--dsn-text-secondary)] font-mono">
+              soporte@mocter.co · Ubicación de identidad: Router Global
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded bg-[var(--dsn-surface-secondary)] px-2 py-1 font-mono text-[11px] text-[var(--dsn-text-secondary)]">
+            Aislamiento de Seguridad: Celda Cero
+          </span>
+        </div>
+      </section>
     </div>
   );
 }

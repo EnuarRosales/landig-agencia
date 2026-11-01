@@ -816,6 +816,7 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
         code: "line",
         labels: { es: "Line", en: "Line" },
         provisioning: "oauth",
+        notes: { es: "No soportado en Colombia", en: "Unsupported" },
         isAdmissible: false,
         sortOrder: 10,
         createdAt: new Date(),

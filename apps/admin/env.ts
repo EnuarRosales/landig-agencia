@@ -15,19 +15,34 @@ export const env = createEnv({
     DATABASE_URL: z.string().min(1, "DATABASE_URL es requerida"),
     REDIS_URL: z.string().optional(),
     REDIS_PASSWORD: z.string().optional(),
+    CHATWOOT_BASE_URL: z.string().url().default("http://localhost:3000"),
   },
   client: {
     NEXT_PUBLIC_ADMIN_URL: z
       .string()
       .url()
       .default("http://localhost:3003"),
+    NEXT_PUBLIC_CHATWOOT_URL: z
+      .string()
+      .url()
+      .default("http://localhost:3000"),
+    NEXT_PUBLIC_SAAS_BRAND_NAME: z
+      .string()
+      .default("Mocter"),
+    NEXT_PUBLIC_SAAS_LOGO_URL: z
+      .string()
+      .optional(),
   },
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
     DATABASE_URL: process.env.DATABASE_URL,
     REDIS_URL: process.env.REDIS_URL,
     REDIS_PASSWORD: process.env.REDIS_PASSWORD,
+    CHATWOOT_BASE_URL: process.env.CHATWOOT_BASE_URL,
     NEXT_PUBLIC_ADMIN_URL: process.env.NEXT_PUBLIC_ADMIN_URL,
+    NEXT_PUBLIC_CHATWOOT_URL: process.env.NEXT_PUBLIC_CHATWOOT_URL,
+    NEXT_PUBLIC_SAAS_BRAND_NAME: process.env.NEXT_PUBLIC_SAAS_BRAND_NAME,
+    NEXT_PUBLIC_SAAS_LOGO_URL: process.env.NEXT_PUBLIC_SAAS_LOGO_URL,
   },
   skipValidation: Boolean(
     process.env.SKIP_ENV_VALIDATION || process.env.NODE_ENV === "test",

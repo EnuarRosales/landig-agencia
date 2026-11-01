@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { clientLog } from "@/lib/logger/client";
 import { serializeError } from "@/lib/logger/serialize-error";
 
@@ -75,7 +76,7 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
       }
 
       // Redirección exitosa hacia el panel administrativo o return_to
-      const target = returnTo || `/${locale}/admin`;
+      const target = returnTo || process.env.NEXT_PUBLIC_ADMIN_URL || "http://localhost:3003";
       // Utilizar location.href para asegurar la inicialización completa de la sesión
       window.location.href = target;
     } catch (err: unknown) {
@@ -97,7 +98,7 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
           className="rounded-xl border border-red-500/40 bg-red-950/40 p-3.5 text-xs text-red-200 backdrop-blur-md animate-in fade-in"
         >
           <div className="flex items-center gap-2">
-            <span className="text-red-400">⚠️</span>
+            <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
             <span>{errorMessage}</span>
           </div>
         </div>
@@ -152,25 +153,7 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
       >
         {isSubmitting ? (
           <span className="flex items-center gap-2">
-            <svg
-              className="h-4 w-4 animate-spin text-white"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v8H4z"
-              />
-            </svg>
+            <Loader2 className="h-4 w-4 animate-spin text-white" />
             <span>{t.submitting}</span>
           </span>
         ) : (

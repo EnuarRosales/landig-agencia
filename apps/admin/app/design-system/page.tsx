@@ -1,62 +1,39 @@
 import React from "react";
-import { DataTable } from "../components/data-table";
-import { getAdminDictionary } from "../lib/i18n";
+import { getAdminDictionary } from "@/lib/i18n";
+import { DesignSystemPlayground } from "./design-system-playground";
+import { Palette } from "lucide-react";
 
 /**
- * Catálogo interno vivo del sistema de diseño (`DSN-001 T-04, T-05`, `/design-system`).
+ * Catálogo interno interactivo del sistema de diseño (`DSN-001 T-04, T-05`, `/design-system`).
  *
- * Ruta protegida y no indexada (`robots: noindex, nofollow`) que exhibe los tokens en 3 capas,
- * componentes base Mobile First y el componente `DataTable` en temas claro y oscuro.
+ * Ruta protegida y no indexada (`robots: noindex, nofollow`) que exhibe:
+ * 1. Tokens en 3 capas (Primitivos, Semánticos y Marca).
+ * 2. Editor interactivo de tokens en caliente con persistencia de sesión.
+ * 3. Validación algorítmica estricta de contraste accesible WCAG 2.2 AA (mínimo 4.5:1 texto, 3.0:1 UI).
+ * 4. Sandbox reactivo de componentes vivos (Botones, AI-001, Inputs, DataTable).
  */
 export default function DesignSystemCatalogPage() {
   const dict = getAdminDictionary("es").designSystem;
 
-  const sampleRows = [
-    {
-      token: "--dsn-background",
-      layer: "Semántico",
-      dark: "#0a0a0a",
-      light: "#f9f9f9",
-      wcagRatio: "18.1:1",
-    },
-    {
-      token: "--dsn-accent",
-      layer: "Semántico / Marca",
-      dark: "#14b8a6",
-      light: "#0f766e",
-      wcagRatio: "5.4:1",
-    },
-    {
-      token: "--dsn-warning",
-      layer: "Semántico",
-      dark: "#f59e0b",
-      light: "#a16207",
-      wcagRatio: "4.75:1",
-    },
-  ];
-
   return (
     <main className="mx-auto max-w-5xl space-y-8 p-4 md:p-8">
-      <header className="space-y-2 border-b border-[var(--dsn-border)] pb-4">
-        <h1 className="text-2xl font-semibold text-[var(--dsn-text)]">{dict.title}</h1>
-        <p className="text-sm text-[var(--dsn-text-secondary)]">{dict.subtitle}</p>
+      <header className="border-b border-[var(--dsn-border)] pb-4">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-[var(--dsn-accent)]/15 p-2 text-[var(--dsn-accent)]">
+            <Palette className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-[var(--dsn-text)]">
+              {dict.title}
+            </h1>
+            <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
+              {dict.subtitle}
+            </p>
+          </div>
+        </div>
       </header>
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-medium text-[var(--dsn-text)]">{dict.tableSection}</h2>
-        <DataTable
-          columns={[
-            { key: "token", header: "Token", sortable: true, filterable: true },
-            { key: "layer", header: "Capa", sortable: true, filterable: true },
-            { key: "dark", header: "Oscuro" },
-            { key: "light", header: "Claro" },
-            { key: "wcagRatio", header: "Contraste AA", isNumeric: true, sortable: true },
-          ]}
-          rows={sampleRows}
-          emptyMessage="Sin tokens"
-        />
-      </section>
+      <DesignSystemPlayground />
     </main>
   );
 }
-

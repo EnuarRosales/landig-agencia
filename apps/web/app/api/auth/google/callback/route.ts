@@ -232,7 +232,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           },
           { status: 200 },
         )
-      : NextResponse.redirect(new URL("/admin", req.nextUrl.origin), {
+      : NextResponse.redirect(new URL(process.env.NEXT_PUBLIC_ADMIN_URL || "http://localhost:3003"), {
           status: 303,
         });
 

@@ -1,0 +1,274 @@
+"use client";
+
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Server, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+
+interface CreateCellFormProps {
+  onSuccess?: () => void;
+}
+
+/**
+ * Formulario interactivo para registrar una nueva célula de datos en Mocter (DAT-001 §3.3).
+ *
+ * Cumple estrictamente con la directiva AGENTS.md §4.8:
+ * Todos los labels utilizan formato Title Case sin mayúsculas sostenidas ni clases uppercase.
+ */
+export function CreateCellForm({ onSuccess }: CreateCellFormProps) {
+  const router = useRouter();
+  const [isOpen, setIsOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const [formData, setFormData] = useState({
+    code: "",
+    tier: "standard",
+    pgbouncerHost: "pg-portal",
+    pgbouncerPort: 5432,
+    databaseName: "",
+    maxClients: 100,
+    region: "us-east-1",
+  });
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      const res = await fetch("/api/admin/cells", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Fallo al registrar la célula de datos");
+      }
+
+      setSuccess(true);
+      setFormData({
+        code: "",
+        tier: "standard",
+        pgbouncerHost: "pg-portal",
+        pgbouncerPort: 5432,
+        databaseName: "",
+        maxClients: 100,
+        region: "us-east-1",
+      });
+      router.refresh();
+      if (onSuccess) onSuccess();
+      setTimeout(() => {
+        setIsOpen(false);
+        setSuccess(false);
+      }, 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error inesperado");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!isOpen) {
+    return (
+      <button
+        type="button"
+        onClick={() => setIsOpen(true)}
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95"
+      >
+        <Plus className="h-4 w-4" />
+        <span>Registrar Nueva Célula</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-lg transition-all animate-in fade-in duration-200">
+      <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3 mb-4">
+        <div className="flex items-center gap-2">
+          <Server className="h-5 w-5 text-[var(--dsn-accent)]" />
+          <h2 className="text-base font-semibold text-[var(--dsn-text)]">
+            Aprovisionamiento De Célula De Datos
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsOpen(false)}
+          className="text-xs text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] min-h-[44px] px-2 flex items-center"
+        >
+          Cancelar
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/30 p-3 text-xs text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {success && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-400">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <span>Célula registrada exitosamente en el Router Global.</span>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="cell-code"
+              className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+            >
+              Código De La Célula
+            </label>
+            <input
+              id="cell-code"
+              type="text"
+              required
+              placeholder="ej. cell-01 o cell-vip"
+              value={formData.code}
+              onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="cell-tier"
+              className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+            >
+              Nivel De Servicio
+            </label>
+            <select
+              id="cell-tier"
+              value={formData.tier}
+              onChange={(e) => setFormData({ ...formData, tier: e.target.value })}
+              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            >
+              <option value="standard">Estándar (Multi-Inquilino Compartido)</option>
+              <option value="dedicated">Dedicado (Inquilino Enterprise VIP)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <label
+              htmlFor="cell-host"
+              className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+            >
+              Host De PgBouncer O PostgreSQL
+            </label>
+            <input
+              id="cell-host"
+              type="text"
+              required
+              placeholder="ej. pg-portal o 127.0.0.1"
+              value={formData.pgbouncerHost}
+              onChange={(e) => setFormData({ ...formData, pgbouncerHost: e.target.value })}
+              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="cell-port"
+              className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+            >
+              Puerto De Conexión
+            </label>
+            <input
+              id="cell-port"
+              type="number"
+              required
+              value={formData.pgbouncerPort}
+              onChange={(e) => setFormData({ ...formData, pgbouncerPort: Number(e.target.value) })}
+              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="cell-dbname"
+              className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+            >
+              Nombre De Base De Datos
+            </label>
+            <input
+              id="cell-dbname"
+              type="text"
+              required
+              placeholder="ej. db-portal o mocter_cell_01"
+              value={formData.databaseName}
+              onChange={(e) => setFormData({ ...formData, databaseName: e.target.value })}
+              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="cell-capacity"
+              className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+            >
+              Capacidad Máxima De Inquilinos
+            </label>
+            <input
+              id="cell-capacity"
+              type="number"
+              min="1"
+              max="500"
+              required
+              value={formData.maxClients}
+              onChange={(e) => setFormData({ ...formData, maxClients: Number(e.target.value) })}
+              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="cell-region"
+              className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+            >
+              Región Geográfica De Despliegue
+            </label>
+            <input
+              id="cell-region"
+              type="text"
+              required
+              placeholder="ej. us-east-1 o co-bogota-1"
+              value={formData.region}
+              onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 pt-2">
+          <button
+            type="button"
+            onClick={() => setIsOpen(false)}
+            className="min-h-[44px] px-4 py-2 rounded-lg border border-[var(--dsn-border)] text-xs text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[var(--dsn-accent-hover)] disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            <span>Registrar Célula</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+

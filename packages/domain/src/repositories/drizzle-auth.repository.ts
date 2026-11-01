@@ -1324,6 +1324,14 @@ export class DrizzleAuthRepository implements IAuthRepository {
         throw new Error("DrizzleAuthRepository: createInitialPlatformOwner returned no rows");
       }
 
+      await this.db.insert(schema.platformUserRoles).values({
+        userId: user.id,
+        role: "platform_owner",
+        grantedByUserId: user.id,
+        createdBy: "setup-owner",
+        updatedBy: "setup-owner",
+      });
+
       return user;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
