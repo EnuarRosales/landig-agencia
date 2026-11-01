@@ -87,3 +87,4 @@ export * from "./services/reports.service";
 export * from "./services/platform-reports.service";
 export * from "./services/reports-export.service";
 export * from "./services/product-cloning.service";
+export * from "./services/communities-governance.service";

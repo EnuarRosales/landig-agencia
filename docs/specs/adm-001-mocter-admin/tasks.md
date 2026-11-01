@@ -151,14 +151,16 @@
 
 ## Fase 4 · Comunidades y feed
 
-- [ ] **T-19 · Implementar organizaciones y membresías**
+- [x] **T-19 · Implementar organizaciones y membresías**
   - Organización, roles (`originator`, `co_leader`, `member`), historial, índice único de membresía activa, asignación de líder por `platform_admin` y promociones en `organization_promotions`.
   - Verificación: un inquilino no puede tener dos membresías activas; un usuario no puede tener dos membresías de inquilino activas; un solo originador activo por comunidad; salir y reingresar conserva el historial; solo `platform_admin` asigna líder; una promoción no se activa sin aceptación del `tenant_owner` promovido.
+  - Evidencia: 2026-10-31 — Esquemas `organizations`, `organization_members` con índice único parcial `organization_members_one_active_per_client` (migración `0018_jittery_emma_frost.sql` y `0018_phase4_communities_governance_grants_comments.sql`) y método `createOrganization` / `leaveOrganization` en `CommunitiesGovernanceService` (`communities-governance.service.test.ts`).
   - RF-08.1 a RF-08.5, RF-08.18, D-14, D-15, D-31.
 
-- [ ] **T-20 · Implementar admisión y gobierno**
+- [x] **T-20 · Implementar admisión y gobierno**
   - Solo el `tenant_owner` del originador acepta solicitudes y promueve co-líderes; los co-líderes moderan y no admiten ni promueven. El inquilino #1 puede ser la SaaS y su `tenant_owner` puede tener rol de plataforma.
   - Verificación: un co-líder no puede aceptar una solicitud ni promover; el originador sí; un usuario con rol de plataforma y `tenant_owner` del inquilino #1 no obtiene permisos cruzados.
+  - Evidencia: 2026-10-31 — Esquemas `organization_join_requests`, `organization_promotions` y métodos `decideJoinRequest` (exclusivo originador), `promoteMemberToCoLeader` y `acceptPromotion` (con validación de aceptación expresa por tenant_owner del target) en `CommunitiesGovernanceService`.
   - RF-01.8, RF-08.6, D-14, D-31.
 
 - [ ] **T-21 · Implementar perfiles de compartición**

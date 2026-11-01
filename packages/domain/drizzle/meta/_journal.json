@@ -127,6 +127,13 @@
       "when": 1793493464019,
       "tag": "0017_cultured_skaar",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793493996413,
+      "tag": "0018_jittery_emma_frost",
+      "breakpoints": true
     }
   ]
 }
