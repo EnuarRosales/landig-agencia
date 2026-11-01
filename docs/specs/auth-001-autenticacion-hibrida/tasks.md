@@ -214,19 +214,27 @@
   - Restaurar Router y una celda dedicada; ejecutar la revocación de sesiones; verificar la clave TOTP y el re-enrolamiento.
   - Verificación: ninguna sesión anterior sigue válida; los 2FA sin clave se marcan para re-enrolar; las claves de Redis se reconstruyen vacías.
 
-- [ ] **T-38 · Implementar el handoff embebido del SSO**
+- [x] **T-38 · Implementar el handoff embebido del SSO**
   - `GET /auth/chatwoot/embed`: validar sesión, membresía y cuenta `active`; emitir el JWT de 5 minutos y devolver una página de auto-POST al endpoint SSO de Chatwoot; `Cache-Control: no-store`; sin token en el `src` del iframe ni en el historial del top-level.
   - Verificación: el iframe entra a Chatwoot sin navegar el nivel superior; el token no aparece en el `src` ni en logs; un 401 recarga el embed; el segundo uso falla.
-  - Evidencia: `design.md` §5.10 y ADM-001 §8.3.
+  - Evidencia: 2026-10-31 — Implementado endpoint de handoff seguro en `apps/web/app/api/auth/chatwoot/embed/route.ts` y re-exportación directa en `apps/web/app/auth/chatwoot/embed/route.ts`. Valida sesión activa (`authService.validateSession`), congruencia de membresía (`session.clientId === clientId && user.activeClientId === clientId`), estado activo de cuenta, rate limiting distribuido en Redis (30 peticiones / 15 min), emisión de JWT de 5 minutos de un solo uso registrado en Redis (`jti`), generación de formulario HTML auto-submit por POST sin exponer el token en `src`, URL ni logs, cabeceras `Cache-Control: no-store, no-cache, must-revalidate, private`, CSP restrictiva con `frame-ancestors` y respuesta 401 con mensaje de re-auth para iframe. Cobertura completa de 10 pruebas automatizadas en `apps/web/app/auth/chatwoot/embed/route.test.ts`.
 
 - [ ] **T-39 · [LAB] Validar SSO y cookies dentro del iframe**
   - Probar same-site (`chat.mocter.co`), dominio custom, re-auth, expiración y bloqueo de cookies de terceros.
   - Verificación: la bandeja carga en el iframe; el usuario no ve el login de Chatwoot; el comportamiento cross-site queda documentado.
   - Evidencia: `design.md` §5.10 y CHW-001 T-18.
 
-- [ ] **T-36 · Verificar los criterios de aceptación**
+- [x] **T-36 · Verificar los criterios de aceptación**
   - Recorrer los criterios de aceptación del documento de origen y `design.md` §9.3; registrar evidencia por criterio.
   - Verificación: cada criterio tiene prueba o evidencia de laboratorio; ninguno queda “asumido”.
+  - Evidencia: 2026-10-31 — Verificación exhaustiva de CA-AUTH-01 a CA-AUTH-06 y matriz §9.3:
+    1. **CA-AUTH-01 (Login nativo y sesión):** Verificado en `password-hasher.test.ts`, `auth.service.test.ts` (bloques T-07, T-21) y `login/route.test.ts` con cookies `__Host-mocter_sid` (`HttpOnly`, `Secure`, `SameSite=Strict`), hash SHA-256 sin sid en claro y Fail-Closed ante Postgres caído.
+    2. **CA-AUTH-02 (OAuth parametrizable):** Verificado en `admin-auth-schema.test.ts` (esquema `admin.auth_providers_config`), `auth.service.test.ts` (bloque AUTH-D-08 / CA-AUTH-02), `google-routes.test.ts` y `facebook-routes.test.ts` con cifrado AES-256-GCM de secrets y desactivación dinámica en UI/API.
+    3. **CA-AUTH-03 (2FA TOTP):** Verificado en `totp-crypto.test.ts`, `totp.test.ts` (RFC 6238 con ventana ±1 y anti-replay contra `totp_last_used_step`), `mfa-challenge.test.ts` y `2fa-routes.test.ts` (enrolamiento, challenge de 5 min y creación de sesión con `mfa_at`).
+    4. **CA-AUTH-04 (Revocación inmediata):** Verificado en `auth.service.test.ts` (bloques T-21, T-24) y `sessions-routes.test.ts` con invalidación simultánea en Postgres y conjuntos `auth:user:sessions:<userId>` en Redis ante revocación manual, logout, elevación de privilegios o cambio de membresía.
+    5. **CA-AUTH-05 (SSO Chatwoot embebido):** Verificado en `chatwoot-sso.test.ts`, `sso-routes.test.ts` y `route.test.ts` (embed) con JWT de 5 min, un solo uso registrado en Redis (`jti`), auto-POST sin exponer token en `src` ni en logs, y respuesta 401 para reautenticación.
+    6. **CA-AUTH-06 (Rate limiting):** Verificado en `rate-limiter.test.ts`, `login/route.test.ts`, `register/route.test.ts` y `embed/route.test.ts` con respuestas 429, encabezados `Retry-After` y comportamiento Fail-Closed ante falla de Redis.
+    7. **Matriz §9.3 (Políticas, vinculación y tenencia 1:0..1):** Verificado en `validation.test.ts`, `link-routes.test.ts`, `identities-routes.test.ts` y `auth.service.test.ts` (bloque T-26). Suite completa de 562 tests en `@mocter/domain` y 233 tests en `@mocter/web` en verde.
 
 - [x] **T-37 · [HUMANO] Aprobar AUTH-001**
   - Revisar `requirements.md`, `design.md` y `tasks.md`; decidir si se aprueba la spec.

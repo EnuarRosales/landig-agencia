@@ -139,7 +139,7 @@ export function FollowupSequencesView({
       ? `${current} Quedamos atentos para asesorarte y resolver cualquier inquietud.`
       : "¡Hola! Notamos tu interés en nuestros servicios. ¿Te gustaría agendar una llamada con uno de nuestros especialistas?";
     handleStepChange(index, "message", improved);
-    setAiFeedback(t.aiImprovedNotice);
+    setAiFeedback(t.aiImprovedNotice ?? null);
     setTimeout(() => setAiFeedback(null), 3000);
   };
 
