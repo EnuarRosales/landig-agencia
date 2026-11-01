@@ -28,13 +28,16 @@ import {
   mediaCatalog,
   mediaVariants,
   aiUsageEvents,
+  clientBrandings,
   type Lead,
   type Cell,
   type Plan,
+  type BrandingPaletteTokens,
 } from "../db/schemas";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 import { CANONICAL_EMAIL_SENDERS, CANONICAL_EMAIL_EVENTS } from "./notifications-and-leads.service";
+import { WhiteLabelService } from "./white-label.service";
 import { INITIAL_AI_PROVIDERS, INITIAL_BOT_DEFAULTS } from "./bot-catalog.seed";
 import { INITIAL_PROMPT_BLOCKS } from "./prompt-blocks.seed";
 import { INITIAL_AI_ASSIST_FIELDS, INITIAL_AI_ASSIST_PROMPTS } from "./ai-assist-catalog.seed";
@@ -2362,5 +2365,273 @@ export async function fetchAdminPlatformReports(): Promise<AdminPlatformReportsO
       storage: { originalBytes: 0, variantsBytes: 0, totalBytes: 0, filesCount: 0 },
       aiUsage: { botTokens: 0, assistTokens: 0, totalTokens: 0, totalCostUsdCents: 0 },
     };
+  }
+}
+
+export interface AdminPlatformBrandingDto {
+  brandName: string;
+  logoUrl: string | null;
+  faviconUrl: string | null;
+  palette: {
+    primary: string;
+    primaryForeground: string;
+    accent: string;
+    accentForeground: string;
+    background?: string;
+    foreground?: string;
+  };
+  customDomain: string | null;
+  customFont: string | null;
+  removeMocterBranding: boolean;
+}
+
+export interface AdminTenantBrandingItemDto {
+  clientId: string;
+  clientDisplayName: string;
+  clientSlug: string;
+  brandName: string | null;
+  logoUrl: string | null;
+  primaryColor: string;
+  customDomain: string | null;
+  hasCustomBranding: boolean;
+  updatedAt: Date | null;
+}
+
+export interface AdminBrandingSettingsDto {
+  platformBranding: AdminPlatformBrandingDto;
+  tenantsBrandings: AdminTenantBrandingItemDto[];
+}
+
+export interface SaveAdminBrandingInput {
+  clientId?: string;
+  brandName?: string | null;
+  logoUrl?: string | null;
+  faviconUrl?: string | null;
+  primaryColor?: string;
+  primaryForeground?: string;
+  accentColor?: string;
+  accentForeground?: string;
+  customDomain?: string | null;
+  customFont?: string | null;
+  removeMocterBranding?: boolean;
+}
+
+/**
+ * Consulta la configuración de marca institucional y el inventario de marca blanca de inquilinos (ADM-001 T-28, DSN-001 §7).
+ */
+export async function fetchAdminBrandingSettings(): Promise<AdminBrandingSettingsDto> {
+  const db = getDb();
+
+  const defaultPlatform: AdminPlatformBrandingDto = {
+    brandName: "Mocter",
+    logoUrl: null,
+    faviconUrl: null,
+    palette: {
+      primary: "#2F6BFF",
+      primaryForeground: "#FFFFFF",
+      accent: "#22D3EE",
+      accentForeground: "#0F172A",
+      background: "#0F172A",
+      foreground: "#F8FAFC",
+    },
+    customDomain: "mocter.co",
+    customFont: "Chakra Petch, Inter, sans-serif",
+    removeMocterBranding: false,
+  };
+
+  try {
+    const allClients = await db
+      .select({
+        id: clients.id,
+        displayName: clients.displayName,
+        slug: clients.slug,
+        lifecycleStatus: clients.lifecycleStatus,
+        createdAt: clients.createdAt,
+      })
+      .from(clients)
+      .orderBy(asc(clients.createdAt));
+
+    const brandings = await db.select().from(clientBrandings);
+    const brandingMap = new Map<string, typeof clientBrandings.$inferSelect>();
+    for (const b of brandings) {
+      brandingMap.set(b.clientId, b);
+    }
+
+    const rootClient = allClients.find((c) => c.slug === "mocter") || allClients[0];
+    const rootBranding = rootClient ? brandingMap.get(rootClient.id) : null;
+
+    const platformBranding: AdminPlatformBrandingDto = rootBranding
+      ? {
+          brandName: rootBranding.brandName || "Mocter",
+          logoUrl: rootBranding.logoUrl,
+          faviconUrl: rootBranding.faviconUrl,
+          palette: {
+            primary: rootBranding.palette?.primary || "#2F6BFF",
+            primaryForeground: rootBranding.palette?.primaryForeground || "#FFFFFF",
+            accent: rootBranding.palette?.accent || "#22D3EE",
+            accentForeground: rootBranding.palette?.accentForeground || "#0F172A",
+            background: rootBranding.palette?.background || "#0F172A",
+            foreground: rootBranding.palette?.foreground || "#F8FAFC",
+          },
+          customDomain: rootBranding.customDomain || "mocter.co",
+          customFont: rootBranding.customFont || "Chakra Petch, Inter, sans-serif",
+          removeMocterBranding: rootBranding.removeMocterBranding ?? false,
+        }
+      : defaultPlatform;
+
+    const tenantsBrandings: AdminTenantBrandingItemDto[] = allClients.map((c) => {
+      const b = brandingMap.get(c.id);
+      return {
+        clientId: c.id,
+        clientDisplayName: c.displayName,
+        clientSlug: c.slug,
+        brandName: b?.brandName || null,
+        logoUrl: b?.logoUrl || null,
+        primaryColor: b?.palette?.primary || "#2F6BFF",
+        customDomain: b?.customDomain || null,
+        hasCustomBranding: Boolean(b && (b.brandName || b.logoUrl || b.palette?.primary)),
+        updatedAt: b?.updatedAt || null,
+      };
+    });
+
+    return {
+      platformBranding,
+      tenantsBrandings,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[fetchAdminBrandingSettings Failed] ${msg}`, error);
+    return {
+      platformBranding: defaultPlatform,
+      tenantsBrandings: [],
+    };
+  }
+}
+
+/**
+ * Guarda o actualiza la configuración de identidad corporativa o de marca blanca (ADM-001 RF-15, DSN-001 §7).
+ * Valida ratio de contraste accesible WCAG 2.2 AA (4.5:1 para texto normal) antes de persistir.
+ */
+export async function saveAdminBrandingSettings(
+  input: SaveAdminBrandingInput,
+): Promise<Result<{ clientId: string; brandName: string; palette: BrandingPaletteTokens }>> {
+  const db = getDb();
+
+  try {
+    const primary = input.primaryColor?.trim() || "#2F6BFF";
+    const primaryFg = input.primaryForeground?.trim() || "#FFFFFF";
+
+    // 1. Validar contraste accesible (WCAG 2.2 AA)
+    const contrast = WhiteLabelService.validateContrast(primaryFg, primary, true);
+    if (!contrast.valid) {
+      return err(
+        contrast.message || "Fallo de contraste accesible entre el color primario y el texto (mínimo 4.5:1).",
+        "CONTRAST_RATIO_FAILED",
+      );
+    }
+
+    // 2. Resolver clientId objetivo
+    let targetClientId = input.clientId;
+    if (!targetClientId) {
+      const allClients = await db
+        .select({ id: clients.id, slug: clients.slug })
+        .from(clients)
+        .orderBy(asc(clients.createdAt))
+        .limit(1);
+
+      if (allClients.length === 0) {
+        return err(
+          "No existe ningún inquilino registrado en la plataforma para asociar la identidad visual.",
+          "TENANT_NOT_FOUND",
+        );
+      }
+      targetClientId = allClients[0].id;
+    } else {
+      const clientExists = await db
+        .select({ id: clients.id })
+        .from(clients)
+        .where(eq(clients.id, targetClientId))
+        .limit(1);
+
+      if (clientExists.length === 0) {
+        return err(`El comercio con ID ${targetClientId} no existe.`, "TENANT_NOT_FOUND");
+      }
+    }
+
+    const palette: BrandingPaletteTokens = {
+      primary,
+      primaryForeground: primaryFg,
+      accent: input.accentColor?.trim() || "#22D3EE",
+      accentForeground: input.accentForeground?.trim() || "#0F172A",
+    };
+
+    const existing = await db
+      .select({ clientId: clientBrandings.clientId })
+      .from(clientBrandings)
+      .where(eq(clientBrandings.clientId, targetClientId))
+      .limit(1);
+
+    const now = new Date();
+
+    if (existing.length > 0) {
+      await db
+        .update(clientBrandings)
+        .set({
+          brandName: input.brandName !== undefined ? input.brandName : undefined,
+          logoUrl: input.logoUrl !== undefined ? input.logoUrl : undefined,
+          faviconUrl: input.faviconUrl !== undefined ? input.faviconUrl : undefined,
+          palette,
+          customDomain: input.customDomain !== undefined ? input.customDomain : undefined,
+          customFont: input.customFont !== undefined ? input.customFont : undefined,
+          removeMocterBranding: input.removeMocterBranding !== undefined ? input.removeMocterBranding : undefined,
+          updatedAt: now,
+        })
+        .where(eq(clientBrandings.clientId, targetClientId));
+    } else {
+      await db.insert(clientBrandings).values({
+        clientId: targetClientId,
+        brandName: input.brandName || "Mocter",
+        logoUrl: input.logoUrl || null,
+        faviconUrl: input.faviconUrl || null,
+        palette,
+        customDomain: input.customDomain || null,
+        customFont: input.customFont || "Chakra Petch, Inter, sans-serif",
+        removeMocterBranding: input.removeMocterBranding ?? false,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    appLogger.info("[saveAdminBrandingSettings] Identidad visual actualizada con éxito", {
+      targetClientId,
+      brandName: input.brandName,
+      primary,
+    });
+
+    return ok({
+      clientId: targetClientId,
+      brandName: input.brandName || "Mocter",
+      palette,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[saveAdminBrandingSettings Failed] ${msg}`, error);
+    return err(`Error interno al guardar identidad visual: ${msg}`, "SAVE_BRANDING_ERROR");
+  }
+}
+
+/**
+ * Restaura la identidad visual de un inquilino a los valores por defecto de la plataforma (ADM-001 RF-15.5).
+ */
+export async function resetAdminTenantBranding(clientId: string): Promise<Result<{ restored: boolean }>> {
+  const db = getDb();
+  try {
+    await db.delete(clientBrandings).where(eq(clientBrandings.clientId, clientId));
+    appLogger.info("[resetAdminTenantBranding] Marca blanca restaurada a defaults", { clientId });
+    return ok({ restored: true });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[resetAdminTenantBranding Failed] ${msg}`, error);
+    return err(`Error interno al restaurar marca de inquilino: ${msg}`, "RESET_BRANDING_ERROR");
   }
 }

@@ -17,6 +17,7 @@ import {
   Layers,
   Mail,
   Palette,
+  Paintbrush,
   Menu,
   X,
   ShieldCheck,
@@ -143,6 +144,11 @@ export function AdminShell({ children }: AdminShellProps) {
       href: "/admin/settings/notifications",
       label: dict.navEmailsSmtp || "Correos y SMTP",
       icon: Mail,
+    },
+    {
+      href: "/admin/settings/branding",
+      label: dict.navBranding || "Identidad y Marca",
+      icon: Paintbrush,
     },
     {
       href: "/design-system",

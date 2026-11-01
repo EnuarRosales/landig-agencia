@@ -62,7 +62,7 @@ export default async function AdminConversationsPage({
                 {dict.title || "Administración Y Atención Omnicanal (Chatwoot)"}
               </h1>
               <span className="rounded bg-amber-500/15 text-amber-400 px-2 py-0.5 text-[10px] font-mono font-semibold border border-amber-500/20">
-                Owner Admin Zone
+                Zona Superadministrador
               </span>
             </div>
             <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
