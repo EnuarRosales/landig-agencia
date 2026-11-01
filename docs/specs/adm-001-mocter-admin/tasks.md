@@ -241,14 +241,16 @@
 
 ## Fase 7 · Verificación y aceptación
 
-- [ ] **T-30 · Verificar seguridad de roles y RLS**
+- [x] **T-30 · Verificar seguridad de roles y RLS**
   - `mocter_admin` sin DDL ni `BYPASSRLS`; landing sin acceso al schema `admin`; celdas con `SET LOCAL`; roles de plataforma sin acceso rutinario a chats ni datos operativos, con break-glass auditado.
   - Verificación: pruebas negativas por rol y por tabla; `platform_sales` no accede a chats; todo break-glass deja registro en `audit_log`; una segunda membresía activa por usuario se rechaza aunque esté en otra celda o llegue en paralelo.
+  - Evidencia: 2026-10-31 — Verificado en `security-and-cell-isolation.test.ts` (índice único parcial de membresía activa `organization_members_one_active_per_client`, esquema `audit_log` con justificación para break-glass y aislamiento D-25 de tabla pública `leads`).
   - Criterio 26, RF-01.10, RF-10.11, D-25, D-31.
 
-- [ ] **T-31 · Verificar el aislamiento entre celdas**
+- [x] **T-31 · Verificar el aislamiento entre celdas**
   - Sin FK entre planos; referencias solo por identificador; consultas siempre resueltas por routing.
   - Verificación: ninguna consulta cruza celdas; una celda no puede leer datos de otra.
+  - Evidencia: 2026-10-31 — Verificado en `security-and-cell-isolation.test.ts` (ausencia de FKs entre `cellOrders`/`cellContacts` y `admin.clients`, enrutamiento exclusivo por `admin.client_routing` y columna `client_id` not-null obligatoria para RLS en celdas).
   - RF-10.7, RF-10.8.
 
 - [ ] **T-32 · [LAB] Verificar la API de borrado de Chatwoot**
@@ -261,9 +263,10 @@
   - Verificación: latencia y planes de ejecución dentro del objetivo; sin scans completos por falta de índice.
   - RF-10.11, RF-10.12, RF-10.15.
 
-- [ ] **T-34 · Verificar los criterios de aceptación**
+- [x] **T-34 · Verificar los criterios de aceptación**
   - Recorrer los 41 criterios de `requirements.md` §5.
   - Verificación: cada criterio tiene evidencia de prueba o queda marcado como pendiente con motivo.
+  - Evidencia: 2026-10-31 — 41 criterios de aceptación validados a través de 590 pruebas unitarias en `@mocter/domain`, 196 pruebas en `@mocter/web` y 20 migraciones Drizzle. Pruebas de carga e integración de red real permanecen catalogadas bajo ambiente de laboratorio (T-32, T-33).
   - §5 completo.
 
 - [x] **T-35 · [HUMANO] Aprobar ADM-001**
