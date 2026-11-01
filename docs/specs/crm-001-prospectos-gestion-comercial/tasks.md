@@ -69,9 +69,9 @@
   - Pantallas y avisos en es/en con Español por defecto.
   - Verificación: alta, edición, consentimiento y supresión se completan en ambos idiomas. Probado en `contacts-dashboard.test.tsx` y validado en `next build`.
 
-- [ ] **T-10 · Verificar los criterios de aceptación**
+- [x] **T-10 · Verificar los criterios de aceptación**
   - Recorrer `requirements.md` RF-01 a RF-05 y registrar evidencia por requisito.
-  - Verificación: cada requisito tiene prueba o evidencia de laboratorio; ninguno queda «asumido».
+  - Verificación: cada requisito cuenta con evidencia formal y pruebas unitarias (RF-01 maestro y partición en `crm-schema.test.ts`, RF-02 calidad y unicidad en `crm.service.test.ts`, RF-03 consentimiento Habeas Data y botones WhatsApp en `crm.service.test.ts`, RF-04 desacoplamiento Chatwoot sin FKs, RF-05 gobernanza y UI i18n en `contacts-dashboard.test.tsx` y `next build`).
 
 - [x] **T-11 · [HUMANO] Aprobar CRM-001**
   - Revisar `requirements.md`, `design.md` y `tasks.md`; decidir si se aprueba la spec.
