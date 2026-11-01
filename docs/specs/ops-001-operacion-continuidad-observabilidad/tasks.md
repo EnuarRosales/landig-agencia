@@ -128,9 +128,10 @@
   - Incluir los adjuntos en el respaldo offsite y probar el restore junto con la base de Chatwoot.
   - Verificación: una conversación con adjunto se recupera completa; el `pg_dump` por sí solo no se acepta como evidencia.
 
-- [ ] **T-22C · Verificar el smoke del gateway S3 en el deploy**
-  - En `deploy/vps-deploy.sh`, ejecutar dentro de SeaweedFS: `curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8333/`.
+- [x] **T-22C · Verificar el smoke del gateway S3 en el deploy**
+  - En `deploy/server/deploy.sh`, ejecutar dentro de SeaweedFS: `curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8333/`.
   - Verificación: `403` sin credenciales; `200`, `000` o timeout deben abortar el deploy con mensaje claro.
+  - Evidencia: 2026-11-01 — Añadido paso de smoke test (§7.1) en `deploy/server/deploy.sh` validando el gateway S3 en `:8333`. Verifica código HTTP `403` (esperado sin credenciales); cualquier otro código (`200`, `000`, timeout) dispara rollback automático al compose previo y aborta la ejecución con mensaje de error explícito. Sintaxis validada con `bash -n`.
 
 ## Fase 4 · Cierre
 

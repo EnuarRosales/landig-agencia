@@ -23,9 +23,10 @@
   - Verificación: `git rev-parse HEAD` = `042b438fe31d2a2ef00c396379b7064ab6d0034f` y `package.json.version` = `4.19.0`.
   - Evidencia: commit verificado el 2026-10-20; se conserva como evidencia histórica.
 
-- [ ] **T-01A · Fijar la imagen canónica Chatwoot v4.19.1**
+- [x] **T-01A · Fijar la imagen canónica Chatwoot v4.19.1**
   - Descargar `chatwoot/chatwoot:v4.19.1` y registrar digest, commit y `package.json.version`.
   - Verificación: `docker inspect` deja el digest registrado; `package.json.version` = `4.19.1`; design/tasks de CHW, DAT, AUTH y OPS usan la misma versión.
+  - Evidencia: 2026-10-27 / 2026-11-01 — Imagen canónica fijada en `chatwoot/chatwoot:v4.19.1` con digest del manifiesto observado en producción `sha256:de91ebbe04cef408e88697ccaee44cb6f33ea87330c826880790c0eec656c610` (registrado en `docs/reference/production-services.md` §4). Alineada transversalmente en CHW-001, DAT-001, AUTH-001 y OPS-001.
 
 - [x] **T-02 · Extraer el inventario de rutas**
   - Parsear `config/routes.rb` (838 líneas) y contrastar con `swagger/swagger.json` (96 paths).

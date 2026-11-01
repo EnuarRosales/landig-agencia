@@ -207,6 +207,24 @@ else
   exit 1
 fi
 
+# 7.1 Smoke test del gateway S3 interno de SeaweedFS (OPS-001 T-22C)
+S3_CONTAINER=$(docker ps -q --filter "name=seaweedfs" 2>/dev/null | head -n 1 || true)
+if [[ -n "$S3_CONTAINER" && "$(docker inspect -f '{{.State.Running}}' "$S3_CONTAINER" 2>/dev/null)" == "true" ]]; then
+  log "Ejecutando smoke test en gateway S3 interno de SeaweedFS (:8333)..."
+  S3_CODE=$(docker exec "$S3_CONTAINER" curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8333/ || echo "000")
+  if [[ "$S3_CODE" == "403" ]]; then
+    log "Smoke test de SeaweedFS S3 exitoso: HTTP 403 (rechazo esperado sin credenciales)."
+  else
+    error "Smoke test del gateway S3 falló con código HTTP '$S3_CODE' (se esperaba 403 sin credenciales). Abortando despliegue."
+    if [[ -f "$COMPOSE_PREV" ]]; then
+      mv "$COMPOSE_PREV" "$COMPOSE_FILE"
+      docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --remove-orphans --wait || true
+      error "Rollback completado a la versión previa."
+    fi
+    exit 1
+  fi
+fi
+
 # 8. Registro de éxito
 rm -f "$COMPOSE_PREV"
 RELEASE_ENTRY="$(date -u +"%Y-%m-%dT%H:%M:%SZ") | ${ENVIRONMENT} | ${IMAGE_TAG} | ${GIT_REF} | SUCCESS"
