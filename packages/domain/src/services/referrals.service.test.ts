@@ -57,7 +57,21 @@ describe("REF-001 · ReferralsService", () => {
   beforeEach(() => {
     mockRepo = {
       getActiveProgram: vi.fn().mockResolvedValue(mockProgram),
+      getProgram: vi.fn().mockResolvedValue(mockProgram),
       saveProgram: vi.fn(),
+      updateProgram: vi.fn().mockImplementation((id, updates) =>
+        Promise.resolve({ ...mockProgram, ...updates, id }),
+      ),
+      getProgramMetrics: vi.fn().mockResolvedValue({
+        totalReferrals: 12,
+        pendingCount: 4,
+        qualifiedCount: 2,
+        rewardedCount: 5,
+        rejectedCount: 1,
+        totalRewardsIssuedCents: 25000000,
+        totalCreditsRedeemedCents: 15000000,
+        totalCreditsAvailableCents: 10000000,
+      }),
       getCodeByClientId: vi.fn().mockResolvedValue(mockCode),
       getClientByCode: vi.fn().mockResolvedValue(mockCode),
       createCode: vi.fn(),
@@ -67,6 +81,14 @@ describe("REF-001 · ReferralsService", () => {
         Promise.resolve({ ...mockReferral, id, status }),
       ),
       countRewardedReferralsByReferrer: vi.fn().mockResolvedValue(2),
+      listReferralsByReferrer: vi.fn().mockResolvedValue([mockReferral]),
+      getReferrerMetrics: vi.fn().mockResolvedValue({
+        totalReferred: 3,
+        pendingCount: 1,
+        rewardedCount: 2,
+        totalEarnedCents: 10000000,
+        availableCreditCents: 5000000,
+      }),
       createReward: vi.fn().mockImplementation((rew) => Promise.resolve({ ...rew, id: "rew-new" })),
       getRewardByReferralId: vi.fn(),
       listAvailableRewardsByReferrer: vi.fn(),
@@ -130,6 +152,86 @@ describe("REF-001 · ReferralsService", () => {
     const diffDays =
       (res.data.reward!.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
     expect(Math.round(diffDays)).toBe(365);
+  });
+
+  describe("T-06 · Gestión del Programa y Toggle (RF-06.1)", () => {
+    it("permite a platform_owner y platform_admin actualizar y pausar el programa", async () => {
+      const res = await service.updateProgramSettings({
+        programId: "prog-1",
+        status: "paused",
+        rewardType: "percent",
+        rewardValue: 25,
+        attributionDays: 45,
+        capReferralsPerReferrer: 5,
+        creditValidityDays: 180,
+        userRole: "platform_admin",
+        executedBy: "admin@mocter.co",
+      });
+
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+
+      expect(res.data.status).toBe("paused");
+      expect(res.data.rewardType).toBe("percent");
+      expect(res.data.rewardValue).toBe(25);
+      expect(res.data.attributionDays).toBe(45);
+      expect(res.data.capReferralsPerReferrer).toBe(5);
+      expect(res.data.creditValidityDays).toBe(180);
+    });
+
+    it("rechaza modificaciones si el rol es platform_sales (FORBIDDEN_INSUFFICIENT_PERMISSIONS)", async () => {
+      const res = await service.updateProgramSettings({
+        programId: "prog-1",
+        status: "paused",
+        userRole: "platform_sales",
+        executedBy: "sales@mocter.co",
+      });
+
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.code).toBe("FORBIDDEN_INSUFFICIENT_PERMISSIONS");
+    });
+
+    it("valida valores comerciales y rechaza valores inválidos", async () => {
+      const res = await service.updateProgramSettings({
+        programId: "prog-1",
+        rewardValue: -10,
+        userRole: "platform_owner",
+        executedBy: "owner@mocter.co",
+      });
+
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.code).toBe("INVALID_REWARD_VALUE");
+    });
+
+    it("retorna métricas agregadas del programa de referidos para el backoffice", async () => {
+      const res = await service.getDashboardMetrics();
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+
+      expect(res.data.totalReferrals).toBe(12);
+      expect(res.data.pendingCount).toBe(4);
+      expect(res.data.totalRewardsIssuedCents).toBe(25000000);
+      expect(res.data.totalCreditsAvailableCents).toBe(10000000);
+    });
+  });
+
+  describe("T-07 · Panel del Referente y Métricas (RF-05.1)", () => {
+    it("obtiene el enlace de invitación, métricas y lista de referidos del inquilino", async () => {
+      const res = await service.getReferrerPanel("referrer-100", "ALFA", "https://app.mocter.co");
+
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+
+      expect(res.data.code).toBe("ALFA100");
+      expect(res.data.referralLink).toBe("https://app.mocter.co/register?ref=ALFA100");
+      expect(res.data.metrics.totalReferred).toBe(3);
+      expect(res.data.metrics.rewardedCount).toBe(2);
+      expect(res.data.metrics.totalEarnedCents).toBe(10000000);
+      expect(res.data.metrics.availableCreditCents).toBe(5000000);
+      expect(res.data.referrals.length).toBe(1);
+    });
   });
 });
 

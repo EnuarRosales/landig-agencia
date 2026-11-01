@@ -30,9 +30,73 @@ export class DrizzleReferralsRepository implements IReferralsRepository {
     return (rows[0] as ReferralProgram) ?? null;
   }
 
+  async getProgram(): Promise<ReferralProgram | null> {
+    const rows = await this.db
+      .select()
+      .from(referralPrograms)
+      .orderBy(sql`created_at DESC`)
+      .limit(1);
+    return (rows[0] as ReferralProgram) ?? null;
+  }
+
   async saveProgram(program: NewReferralProgram): Promise<ReferralProgram> {
     const rows = await this.db.insert(referralPrograms).values(program).returning();
     return rows[0] as unknown as ReferralProgram;
+  }
+
+  async updateProgram(id: string, updates: Partial<NewReferralProgram>): Promise<ReferralProgram> {
+    const rows = await this.db
+      .update(referralPrograms)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(referralPrograms.id, id))
+      .returning();
+    return rows[0] as unknown as ReferralProgram;
+  }
+
+  async getProgramMetrics(): Promise<{
+    totalReferrals: number;
+    pendingCount: number;
+    qualifiedCount: number;
+    rewardedCount: number;
+    rejectedCount: number;
+    totalRewardsIssuedCents: number;
+    totalCreditsRedeemedCents: number;
+    totalCreditsAvailableCents: number;
+  }> {
+    const refCounts = await this.db
+      .select({
+        total: sql<number>`count(*)::int`,
+        pending: sql<number>`count(*) filter (where status = 'pending')::int`,
+        qualified: sql<number>`count(*) filter (where status = 'qualified')::int`,
+        rewarded: sql<number>`count(*) filter (where status = 'rewarded')::int`,
+        rejected: sql<number>`count(*) filter (where status = 'rejected')::int`,
+      })
+      .from(referrals);
+
+    const rewSums = await this.db
+      .select({
+        totalIssued: sql<number>`coalesce(sum(amount_cents), 0)::bigint`,
+        totalAvailable: sql<number>`coalesce(sum(remaining_cents) filter (where status in ('available', 'partially_redeemed')), 0)::bigint`,
+      })
+      .from(referralRewards);
+
+    const totalIssued = Number(rewSums[0]?.totalIssued ?? 0);
+    const totalAvailable = Number(rewSums[0]?.totalAvailable ?? 0);
+    const totalRedeemed = Math.max(0, totalIssued - totalAvailable);
+
+    return {
+      totalReferrals: refCounts[0]?.total ?? 0,
+      pendingCount: refCounts[0]?.pending ?? 0,
+      qualifiedCount: refCounts[0]?.qualified ?? 0,
+      rewardedCount: refCounts[0]?.rewarded ?? 0,
+      rejectedCount: refCounts[0]?.rejected ?? 0,
+      totalRewardsIssuedCents: totalIssued,
+      totalCreditsRedeemedCents: totalRedeemed,
+      totalCreditsAvailableCents: totalAvailable,
+    };
   }
 
   async getCodeByClientId(clientId: string): Promise<ReferralCode | null> {
@@ -99,6 +163,47 @@ export class DrizzleReferralsRepository implements IReferralsRepository {
         ),
       );
     return rows[0]?.count ?? 0;
+  }
+
+  async listReferralsByReferrer(referrerClientId: string): Promise<Referral[]> {
+    return this.db
+      .select()
+      .from(referrals)
+      .where(eq(referrals.referrerClientId, referrerClientId))
+      .orderBy(sql`attributed_at DESC`) as unknown as Promise<Referral[]>;
+  }
+
+  async getReferrerMetrics(referrerClientId: string): Promise<{
+    totalReferred: number;
+    pendingCount: number;
+    rewardedCount: number;
+    totalEarnedCents: number;
+    availableCreditCents: number;
+  }> {
+    const refStats = await this.db
+      .select({
+        total: sql<number>`count(*)::int`,
+        pending: sql<number>`count(*) filter (where status = 'pending')::int`,
+        rewarded: sql<number>`count(*) filter (where status = 'rewarded')::int`,
+      })
+      .from(referrals)
+      .where(eq(referrals.referrerClientId, referrerClientId));
+
+    const rewStats = await this.db
+      .select({
+        earned: sql<number>`coalesce(sum(amount_cents), 0)::bigint`,
+        available: sql<number>`coalesce(sum(remaining_cents) filter (where status in ('available', 'partially_redeemed') and expires_at > now()), 0)::bigint`,
+      })
+      .from(referralRewards)
+      .where(eq(referralRewards.referrerClientId, referrerClientId));
+
+    return {
+      totalReferred: refStats[0]?.total ?? 0,
+      pendingCount: refStats[0]?.pending ?? 0,
+      rewardedCount: refStats[0]?.rewarded ?? 0,
+      totalEarnedCents: Number(rewStats[0]?.earned ?? 0),
+      availableCreditCents: Number(rewStats[0]?.available ?? 0),
+    };
   }
 
   async createReward(reward: NewReferralReward): Promise<ReferralReward> {

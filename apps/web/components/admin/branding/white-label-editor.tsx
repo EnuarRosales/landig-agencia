@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { WhiteLabelService } from "@mocter/domain";
+import { validateContrast } from "@/lib/contrast";
 
 export interface WhiteLabelEditorProps {
   clientId: string;
@@ -84,7 +84,7 @@ export function WhiteLabelEditor({
   // Validación de contraste accesible en tiempo real (RF-15.4, DSN-001 §9)
   const contrastResult = useMemo(() => {
     try {
-      return WhiteLabelService.validateContrast(primaryTextColor, primaryColor, true);
+      return validateContrast(primaryTextColor, primaryColor, true);
     } catch {
       return { valid: false, ratio: 0, requiredRatio: 4.5, message: "Color hexadecimal inválido" };
     }

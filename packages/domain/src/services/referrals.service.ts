@@ -5,6 +5,7 @@ import type {
   Referral,
   ReferralReward,
   ReferralCode,
+  ReferralProgram,
 } from "../db/schemas/admin/referrals";
 
 export interface AttributeReferralInput {
@@ -28,6 +29,43 @@ export interface QualifyReferralResult {
   reward?: ReferralReward;
   qualified: boolean;
   rejectedReason?: string;
+}
+
+export interface UpdateProgramSettingsInput {
+  programId: string;
+  status?: "active" | "paused" | "ended";
+  rewardType?: "fixed" | "percent";
+  rewardValue?: number;
+  currency?: "COP" | "USD";
+  attributionDays?: number;
+  capReferralsPerReferrer?: number | null;
+  creditValidityDays?: number;
+  userRole: string;
+  executedBy: string;
+}
+
+export interface ReferralProgramMetrics {
+  totalReferrals: number;
+  pendingCount: number;
+  qualifiedCount: number;
+  rewardedCount: number;
+  rejectedCount: number;
+  totalRewardsIssuedCents: number;
+  totalCreditsRedeemedCents: number;
+  totalCreditsAvailableCents: number;
+}
+
+export interface ReferrerPanelData {
+  code: string;
+  referralLink: string;
+  metrics: {
+    totalReferred: number;
+    pendingCount: number;
+    rewardedCount: number;
+    totalEarnedCents: number;
+    availableCreditCents: number;
+  };
+  referrals: Referral[];
 }
 
 /**
@@ -235,6 +273,122 @@ export class ReferralsService {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[ReferralsService] Error al calificar referido: ${msg}`, error);
       return err(msg, "QUALIFICATION_ERROR");
+    }
+  }
+
+  /**
+   * Obtiene la configuración del programa de referidos (RF-06.1).
+   */
+  async getProgram(): Promise<Result<ReferralProgram | null>> {
+    try {
+      const program = await this.repository.getProgram();
+      return ok(program);
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[ReferralsService] Error al obtener programa: ${msg}`, error);
+      return err(msg, "GET_PROGRAM_ERROR");
+    }
+  }
+
+  /**
+   * Modifica la configuración y/o activa/pausa el programa de referidos (T-06, RF-06.1).
+   * Restricción RBAC: solo 'platform_owner' y 'platform_admin' pueden modificar.
+   * 'platform_sales' solo consulta.
+   */
+  async updateProgramSettings(
+    input: UpdateProgramSettingsInput,
+  ): Promise<Result<ReferralProgram>> {
+    try {
+      // 1. RBAC estricto
+      const allowedRoles = ["platform_owner", "platform_admin"];
+      if (!allowedRoles.includes(input.userRole)) {
+        return err(
+          "Permiso denegado: solo platform_owner y platform_admin pueden modificar el programa de referidos.",
+          "FORBIDDEN_INSUFFICIENT_PERMISSIONS",
+        );
+      }
+
+      // 2. Validaciones de dominio
+      if (input.rewardValue !== undefined && input.rewardValue <= 0) {
+        return err("El valor de la recompensa debe ser mayor a cero.", "INVALID_REWARD_VALUE");
+      }
+
+      if (input.attributionDays !== undefined && input.attributionDays < 1) {
+        return err("La ventana de atribución debe ser de al menos 1 día.", "INVALID_ATTRIBUTION_DAYS");
+      }
+
+      if (input.creditValidityDays !== undefined && input.creditValidityDays < 1) {
+        return err("La vigencia del crédito debe ser de al menos 1 día.", "INVALID_VALIDITY_DAYS");
+      }
+
+      // 3. Persistir actualización
+      const updated = await this.repository.updateProgram(input.programId, {
+        ...(input.status && { status: input.status }),
+        ...(input.rewardType && { rewardType: input.rewardType }),
+        ...(input.rewardValue !== undefined && { rewardValue: input.rewardValue }),
+        ...(input.currency && { currency: input.currency }),
+        ...(input.attributionDays !== undefined && { attributionDays: input.attributionDays }),
+        ...(input.capReferralsPerReferrer !== undefined && { capReferralsPerReferrer: input.capReferralsPerReferrer }),
+        ...(input.creditValidityDays !== undefined && { creditValidityDays: input.creditValidityDays }),
+        updatedBy: input.executedBy,
+      });
+
+      appLogger.info("[ReferralsService] Configuración del programa de referidos actualizada", {
+        programId: input.programId,
+        status: updated.status,
+        rewardType: updated.rewardType,
+        rewardValue: updated.rewardValue,
+        executedBy: input.executedBy,
+        userRole: input.userRole,
+      });
+
+      return ok(updated);
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[ReferralsService] Error al actualizar programa: ${msg}`, error);
+      return err(msg, "UPDATE_PROGRAM_ERROR");
+    }
+  }
+
+  /**
+   * Obtiene métricas agregadas del programa para el dashboard de backoffice (RF-06.4).
+   */
+  async getDashboardMetrics(): Promise<Result<ReferralProgramMetrics>> {
+    try {
+      const metrics = await this.repository.getProgramMetrics();
+      return ok(metrics);
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[ReferralsService] Error al consultar métricas del programa: ${msg}`, error);
+      return err(msg, "METRICS_ERROR");
+    }
+  }
+
+  /**
+   * Obtiene la información del panel del referente con métricas y listado de referidos (T-07, RF-05.1).
+   */
+  async getReferrerPanel(
+    referrerClientId: string,
+    clientSlug: string,
+    baseUrl = "https://mocter.co",
+  ): Promise<Result<ReferrerPanelData>> {
+    try {
+      const codeRes = await this.ensureReferralCode(referrerClientId, clientSlug);
+      if (!codeRes.ok) return err(codeRes.error, codeRes.code);
+
+      const metrics = await this.repository.getReferrerMetrics(referrerClientId);
+      const referralsList = await this.repository.listReferralsByReferrer(referrerClientId);
+
+      return ok({
+        code: codeRes.data.code,
+        referralLink: `${baseUrl}/register?ref=${codeRes.data.code}`,
+        metrics,
+        referrals: referralsList,
+      });
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[ReferralsService] Error al obtener panel del referente: ${msg}`, error);
+      return err(msg, "PANEL_ERROR");
     }
   }
 }

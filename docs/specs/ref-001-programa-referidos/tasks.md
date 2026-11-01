@@ -49,25 +49,29 @@
   - Job diario idempotente que marca `expired` los créditos vencidos y anula el saldo.
   - Verificación: el crédito se aplica una sola vez, reduce el total de la factura y expira a los 365 días.
 
-- [ ] **T-06 · Implementar el área de gestión y el toggle**
+- [x] **T-06 · Implementar el área de gestión y el toggle**
   - Ruta de backoffice SaaS para activar/desactivar el programa con un clic, configurar `reward_type`, `reward_value`, `currency`, `attribution_days`, `cap_referrals_per_referrer` y `credit_validity_days`.
   - Estado inicial `active`; al pausar se detienen nuevas atribuciones/acreditaciones y se conservan los créditos existentes.
   - Permisos `platform_owner`/`platform_admin`; `platform_sales` solo lectura; auditoría de cambios.
   - Verificación: el toggle cambia el estado; un crédito existente sigue disponible al pausar; los cambios de configuración solo afectan nuevas calificaciones.
+  - Evidencia: 2026-10-31 — `ReferralsService.updateProgramSettings` con control RBAC estricto (`platform_sales` rechazado con `FORBIDDEN_INSUFFICIENT_PERMISSIONS`) y dashboard reactivo `ReferralManagementDashboard` en `/admin/settings/referrals` con toggle de 1 clic, probado en `referrals.service.test.ts` y `referral-management-dashboard.test.tsx`.
 
 ## Fase 3 · Panel y cierre
 
-- [ ] **T-07 · Implementar el panel del referente y las métricas**
+- [x] **T-07 · Implementar el panel del referente y las métricas**
   - Código, referidos, estado y créditos acumulados; REP-001 con conversión, CAC y costo.
   - Verificación: el panel refleja el estado real y el dashboard coincide con los créditos del período.
+  - Evidencia: 2026-10-31 — `ReferralsService.getReferrerPanel` y componente HUD `ReferrerPanelView` en `/admin/referrals` con código único, enlace copiable, métricas de cartera y tabla de historial, probado en `referrer-panel-view.test.tsx`.
 
-- [ ] **T-08 · i18n y accesibilidad del panel y del backoffice**
+- [x] **T-08 · i18n y accesibilidad del panel y del backoffice**
   - es/en y DSN-001.
   - Verificación: las vistas se completan en ambos idiomas con la tabla estándar.
+  - Evidencia: 2026-10-31 — Traducciones completas en `messages/es.json` y `en.json` bajo `admin.referrals` y `admin.referralSettings`, labels en Title Case según regla 4.8 y contraste WCAG 2.2 AA validado mediante `apps/web/lib/contrast.ts`.
 
-- [ ] **T-09 · Verificar los criterios de aceptación**
+- [x] **T-09 · Verificar los criterios de aceptación**
   - Recorrer `requirements.md` RF-01 a RF-06 y registrar evidencia por requisito.
   - Verificación: cada requisito tiene prueba o evidencia; ninguno queda «asumido».
+  - Evidencia: 2026-10-31 — Requisitos RF-01 a RF-06 verificados mediante 8 tests en domain (`referrals.service.test.ts`), 6 tests en web (`referral-management-dashboard.test.tsx`, `referrer-panel-view.test.tsx`), y generación estática exitosa de 74 páginas en Next.js 16.
 
 - [ ] **T-10 · [HUMANO] Aprobar REF-001**
   - Revisar `requirements.md`, `design.md` y `tasks.md`; decidir si se aprueba la spec.
