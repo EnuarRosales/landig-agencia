@@ -131,19 +131,22 @@
   - Evidencia: 2026-10-30 — `unlinkProductMediaAndRunTwoPhaseGc` en `CatalogAndMediaService`. Verificado en `phase2-suite.test.ts`.
   - RF-07.7, RF-07.8.
 
-- [ ] **T-16 · Implementar publicaciones de producto**
+- [x] **T-16 · Implementar publicaciones de producto**
   - `product_shares`, versiones y estado; cualquier inquilino puede compartir.
   - Verificación: un miembro sin rol de liderazgo comparte; la publicación queda visible para su comunidad.
+  - Evidencia: 2026-10-31 — Esquemas `product_shares`, `product_share_versions` en `communities-and-cloning.ts` (migración `0017_cultured_skaar.sql` y `0017_phase3_communities_cloning_grants_comments.sql`) y método `publishProductShare` en `ProductCloningAndCommunitiesService` (`product-cloning.service.test.ts`).
   - RF-08.11, RF-08.14, D-18.
 
-- [ ] **T-17 · Implementar clonación**
+- [x] **T-17 · Implementar clonación**
   - Copia de todos los atributos, identificador nuevo, medios opcionales, adopción y política manual por defecto.
   - Verificación: el clon vive en la celda del adoptante; sin medios, no se enlaza ningún archivo; el clon sobrevive a la baja del origen.
+  - Evidencia: 2026-10-31 — Esquema `product_adoptions` y método `adoptProduct` en `ProductCloningAndCommunitiesService` permitiendo clonación con o sin conservación de vínculo y con inclusión opcional de multimedia en celda.
   - RF-06.1 a RF-06.7, RF-08.16, RF-08.17.
 
-- [ ] **T-18 · Implementar notificación y sincronización por atributo**
+- [x] **T-18 · Implementar notificación y sincronización por atributo**
   - Versión nueva, notificación a adoptantes, `auto_sync` por atributo, `sync_runs`, outbox e idempotencia.
   - Verificación: con `auto_sync` apagado solo llega la notificación; con `auto_sync` encendido se actualiza solo el atributo elegido; reintentar no duplica.
+  - Evidencia: 2026-10-31 — Esquemas `clone_sync_policies`, `sync_runs` y métodos `updateShareVersion` (con auto-sync selectivo a adoptantes activos) y `syncAdoptedProduct` (sincronización manual bajo demanda) en `ProductCloningAndCommunitiesService`.
   - RF-08.15, RF-08.16, D-21, D-22.
 
 ## Fase 4 · Comunidades y feed
