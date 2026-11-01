@@ -435,6 +435,35 @@
       "totalRedeemed": "Créditos Redimidos",
       "totalAvailable": "Créditos Activos En Cartera",
       "successUpdate": "Configuración del programa actualizada exitosamente."
+    },
+    "aiAssist": {
+      "buttonText": "Mejorar Con AI",
+      "improving": "Mejorando Con AI...",
+      "modalTitle": "Revisar Sugerencia De AI",
+      "modalSubtitle": "Compara tu borrador original con la versión sugerida antes de aceptar",
+      "originalDraft": "Borrador Original",
+      "aiSuggestion": "Sugerencia De AI (Editable)",
+      "acceptButton": "Aceptar Sugerencia",
+      "discardButton": "Descartar",
+      "noCredentialsWarning": "Para usar «Mejorar con AI» debes configurar tu proveedor de inferencia (BYOK) o recargar tu billetera Mocter.",
+      "rateLimitWarning": "Has alcanzado el límite de peticiones por minuto. Espera un momento antes de volver a intentar.",
+      "emptyDraftWarning": "Escribe un borrador primero para que la AI pueda mejorarlo."
+    },
+    "promptLibrary": {
+      "title": "Biblioteca De Prompts Maestros",
+      "subtitle": "Catálogo de campos asistidos, prompts versionados y reglas de formato",
+      "tableField": "Campo Asistido",
+      "tableEntity": "Entidad / Columna",
+      "tableVersion": "Versión Activa",
+      "tableVersionsCount": "Historial",
+      "tableStatus": "Estado",
+      "statusActive": "Activo",
+      "statusDraft": "Borrador",
+      "statusRetired": "Retirado",
+      "promoteButton": "Activar Versión",
+      "newVersionButton": "Nueva Versión De Prompt",
+      "promptContent": "Prompt Maestro",
+      "inputHint": "Guía Del Inquilino"
     }
   }
 }

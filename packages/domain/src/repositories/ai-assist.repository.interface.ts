@@ -6,9 +6,24 @@ import type { AiAssistField, AiAssistPrompt } from "../db/schemas/admin/ai-assis
  */
 export interface IAiAssistRepository {
   /**
+   * Obtiene todos los campos asistidos (activos e inactivos).
+   */
+  getAllFields(): Promise<AiAssistField[]>;
+
+  /**
    * Obtiene todos los campos asistidos activos.
    */
   getActiveFields(): Promise<AiAssistField[]>;
+
+  /**
+   * Obtiene todas las versiones de prompts maestros para un campo asistido.
+   */
+  listPromptsByFieldKey(fieldKey: string): Promise<AiAssistPrompt[]>;
+
+  /**
+   * Obtiene el siguiente número de versión disponible para un campo.
+   */
+  getNextVersionForField(fieldKey: string): Promise<number>;
 
   /**
    * Obtiene la definición de un campo asistido por su clave.

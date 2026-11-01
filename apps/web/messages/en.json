@@ -435,6 +435,35 @@
       "totalRedeemed": "Credits Redeemed",
       "totalAvailable": "Active Portfolio Credits",
       "successUpdate": "Program settings updated successfully."
+    },
+    "aiAssist": {
+      "buttonText": "Improve With AI",
+      "improving": "Improving With AI...",
+      "modalTitle": "Review AI Suggestion",
+      "modalSubtitle": "Compare your original draft with the suggested version before accepting",
+      "originalDraft": "Original Draft",
+      "aiSuggestion": "AI Suggestion (Editable)",
+      "acceptButton": "Accept Suggestion",
+      "discardButton": "Discard",
+      "noCredentialsWarning": "To use «Improve with AI» you must configure your BYOK inference provider or top up your Mocter wallet.",
+      "rateLimitWarning": "You have reached the requests-per-minute limit. Please wait a moment before trying again.",
+      "emptyDraftWarning": "Please write a draft first so the AI can improve it."
+    },
+    "promptLibrary": {
+      "title": "Master Prompt Library",
+      "subtitle": "Catalog of assisted fields, versioned prompts, and formatting rules",
+      "tableField": "Assisted Field",
+      "tableEntity": "Entity / Column",
+      "tableVersion": "Active Version",
+      "tableVersionsCount": "History",
+      "tableStatus": "Status",
+      "statusActive": "Active",
+      "statusDraft": "Draft",
+      "statusRetired": "Retired",
+      "promoteButton": "Activate Version",
+      "newVersionButton": "New Prompt Version",
+      "promptContent": "Master Prompt",
+      "inputHint": "Tenant Hint"
     }
   }
 }

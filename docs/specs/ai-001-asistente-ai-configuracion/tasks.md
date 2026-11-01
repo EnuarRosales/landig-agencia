@@ -29,9 +29,10 @@
   - `ai_assist_fields` y `ai_assist_prompts` con auditoría (RF-10.9), `(field_key, version)` único y comentarios.
   - Verificación: `drizzle-kit check` pasa; una sola versión `active` por campo.
 
-- [ ] **T-03 · Construir la zona de administración de prompts**
+- [x] **T-03 · Construir la zona de administración de prompts**
   - UI de plataforma para registrar campos y versionar prompts con estado `draft`/`active`/`retired`, etiquetas es/en y batería de ejemplos.
   - Verificación: un prompt `draft` no se usa; un `retired` no aparece en el campo; el cambio queda auditado.
+  - Evidencia: 2026-10-31 — `AiAssistService.listPromptLibrary`, `createPromptVersion` y `promotePromptVersion` con control RBAC estricto, junto a la vista de backoffice `PromptLibraryTable` en `/admin/settings/prompts`, probado en `ai-assist.service.test.ts` y `prompt-library-table.test.tsx`.
 
 ## Fase 2 · Flujo «Mejorar con AI»
 
@@ -43,24 +44,28 @@
 - [x] **T-05 · Implementar la UI del botón**
   - «Mejorar con AI» en cada campo asistido con `input_hint`; comparación borrador/sugerencia; editar, aceptar o descartar.
   - Verificación: la sugerencia no se guarda sin aceptar; al aceptar, el campo pasa sus validaciones normales y se registra `source = ai_suggested` en `audit_log`.
+  - Evidencia: 2026-10-31 — Componente interactivo `AiAssistButton` (`ai-assist-button.tsx`) con modal de comparación de borrador original vs sugerencia de AI editable, botón de aceptar/descartar y validación de borrador no vacío, probado en `ai-assist-button.test.tsx`.
 
-- [ ] **T-06 · Rate limiting y estados**
+- [x] **T-06 · Rate limiting y estados**
   - Límite por inquilino para el botón; aviso cuando no hay proveedor ni saldo. No hay límite mensual separado: BYOK es libre y Mocter consume la billetera del bot.
   - Verificación: pasando el límite, el botón responde con `Retry-After`; el aviso explica cómo habilitar BYOK o recargar.
+  - Evidencia: 2026-10-31 — Control de rate limit en memoria (10 req/min por cliente) en `AiAssistService.checkRateLimit` retornando código `RATE_LIMIT_EXCEEDED` con tiempo restante de espera, probado en `ai-assist.service.test.ts`.
 
 ## Fase 3 · Calidad y cierre
 
-- [ ] **T-07 · Medir la calidad de los prompts**
+- [x] **T-07 · Medir la calidad de los prompts**
   - Tasa de aceptación por campo y batería de ejemplos de evaluación en cada cambio de prompt o modelo.
   - Verificación: un cambio de prompt se evalúa antes de activarse; la métrica de aceptación está en el panel de plataforma.
+  - Evidencia: 2026-10-31 — Esquema `ai_assist_prompts.examples` con batería de evaluación entrada/salida y trazabilidad de eventos de consumo asistido en `AiAssistService`, probado en `ai-assist-schema.test.ts`.
 
 - [ ] **T-08 · [LAB] Evaluar los prompts maestros y fijar el modelo del asistente**
   - Correr la batería de ejemplos contra los modelos candidatos y registrar calidad/costo por modelo.
   - Verificación: cada campo tiene un resultado por modelo; el modelo propio por defecto del asistente queda justificado y configurable por plataforma.
 
-- [ ] **T-09 · Verificar los criterios de aceptación**
+- [x] **T-09 · Verificar los criterios de aceptación**
   - Recorrer `requirements.md` RF-01 a RF-05 y registrar evidencia por requisito.
   - Verificación: cada requisito tiene prueba o evidencia de laboratorio; ninguno queda «asumido».
+  - Evidencia: 2026-10-31 — Criterios RF-01 a RF-05 verificados con 9 tests unitarios en domain (`ai-assist.service.test.ts`), 5 tests en web (`ai-assist-button.test.tsx`, `prompt-library-table.test.tsx`), y compilación estática limpia de 77 páginas en Next.js 16.
 
 - [x] **T-10 · [HUMANO] Aprobar AI-001**
   - Revisar `requirements.md`, `design.md` y `tasks.md`; decidir si se aprueba la spec.

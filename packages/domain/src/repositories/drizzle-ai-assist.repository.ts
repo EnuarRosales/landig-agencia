@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { aiAssistFields, aiAssistPrompts, type AiAssistField, type AiAssistPrompt } from "../db/schemas/admin/ai-assist";
 import type { IAiAssistRepository } from "./ai-assist.repository.interface";
@@ -11,11 +11,34 @@ import { appLogger } from "../utils/logger";
 export class DrizzleAiAssistRepository implements IAiAssistRepository {
   constructor(private readonly db: PostgresJsDatabase<Record<string, unknown>>) {}
 
+  async getAllFields(): Promise<AiAssistField[]> {
+    return this.db
+      .select()
+      .from(aiAssistFields)
+      .orderBy(aiAssistFields.fieldKey) as unknown as Promise<AiAssistField[]>;
+  }
+
   async getActiveFields(): Promise<AiAssistField[]> {
     return this.db
       .select()
       .from(aiAssistFields)
       .where(eq(aiAssistFields.isActive, true)) as unknown as Promise<AiAssistField[]>;
+  }
+
+  async listPromptsByFieldKey(fieldKey: string): Promise<AiAssistPrompt[]> {
+    return this.db
+      .select()
+      .from(aiAssistPrompts)
+      .where(eq(aiAssistPrompts.fieldKey, fieldKey))
+      .orderBy(sql`version DESC`) as unknown as Promise<AiAssistPrompt[]>;
+  }
+
+  async getNextVersionForField(fieldKey: string): Promise<number> {
+    const rows = await this.db
+      .select({ maxVersion: sql<number>`coalesce(max(version), 0)::int` })
+      .from(aiAssistPrompts)
+      .where(eq(aiAssistPrompts.fieldKey, fieldKey));
+    return (rows[0]?.maxVersion ?? 0) + 1;
   }
 
   async getFieldByKey(fieldKey: string): Promise<AiAssistField | null> {
