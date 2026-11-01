@@ -65,9 +65,9 @@
   - Webhook de contactos, correlación por cuenta e idempotencia con datos reales de laboratorio.
   - Verificación: un contacto creado en Chatwoot por una conversación aparece como prospecto; la reconciliación no duplica.
 
-- [ ] **T-09 · i18n de la UI de prospectos**
+- [x] **T-09 · i18n de la UI de prospectos**
   - Pantallas y avisos en es/en con Español por defecto.
-  - Verificación: alta, edición, consentimiento y supresión se completan en ambos idiomas.
+  - Verificación: alta, edición, consentimiento y supresión se completan en ambos idiomas. Probado en `contacts-dashboard.test.tsx` y validado en `next build`.
 
 - [ ] **T-10 · Verificar los criterios de aceptación**
   - Recorrer `requirements.md` RF-01 a RF-05 y registrar evidencia por requisito.
