@@ -13,6 +13,14 @@ import {
   emailSenders,
   emailEvents,
   emailTemplates,
+  aiProviders,
+  aiModels,
+  botTones,
+  botPresets,
+  botDefaults,
+  botPromptBlocks,
+  aiAssistFields,
+  aiAssistPrompts,
   type Lead,
   type Cell,
   type Plan,
@@ -20,6 +28,9 @@ import {
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 import { CANONICAL_EMAIL_SENDERS, CANONICAL_EMAIL_EVENTS } from "./notifications-and-leads.service";
+import { INITIAL_AI_PROVIDERS, INITIAL_BOT_DEFAULTS } from "./bot-catalog.seed";
+import { INITIAL_PROMPT_BLOCKS } from "./prompt-blocks.seed";
+import { INITIAL_AI_ASSIST_FIELDS, INITIAL_AI_ASSIST_PROMPTS } from "./ai-assist-catalog.seed";
 import { createCipheriv, randomBytes, createHash } from "node:crypto";
 
 export interface ControlPlaneMetricsDto {
@@ -1413,5 +1424,561 @@ export async function updateAdminTenantLifecycle(
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[updateAdminTenantLifecycle Failed] ${msg}`, error);
     return err(`Error al actualizar estado del inquilino: ${msg}`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOBERNANZA DE INTELIGENCIA ARTIFICIAL, PROVEEDORES LLM Y PROMPTS (BOT-001, BOT-002, AI-001)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AdminAiProviderDto {
+  id: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+  supportedModes: { byok: boolean; mocter: boolean };
+  modelsCount: number;
+}
+
+export interface AdminAiModelDto {
+  id: string;
+  providerId: string;
+  providerCode: string;
+  modelId: string;
+  displayName: string;
+  contextWindow: number;
+  maxOutputTokens: number;
+  spreadPercent: number;
+  costInputMtokUsdCents: number;
+  costOutputMtokUsdCents: number;
+  retailInputMtokUsdCents: number;
+  retailOutputMtokUsdCents: number;
+  isActive: boolean;
+}
+
+export interface AdminPromptBlockDto {
+  id: string;
+  blockKey: string;
+  version: number;
+  contentEs: string;
+  contentEn: string;
+  status: string;
+}
+
+export interface AdminAiAssistPromptDto {
+  id: string;
+  fieldKey: string;
+  fieldLabel: string;
+  version: number;
+  masterPrompt: string;
+  inputHint: string;
+  status: string;
+}
+
+export interface AdminAiGovernanceOverviewDto {
+  kpis: {
+    totalProviders: number;
+    totalModels: number;
+    activePrompts: number;
+    defaultSpreadPercent: number;
+  };
+  providers: AdminAiProviderDto[];
+  models: AdminAiModelDto[];
+  promptBlocks: AdminPromptBlockDto[];
+  aiAssistPrompts: AdminAiAssistPromptDto[];
+  defaults: {
+    defaultMaxTurns: number;
+    defaultAnswerPolicy: string;
+    defaultHandoffTriggers: string[];
+    defaultMaxMessagesPerContact: number;
+  };
+}
+
+export interface UpdateAdminModelSpreadInput {
+  modelId: string;
+  spreadPercent: number;
+  isActive?: boolean;
+  actorUserId?: string;
+}
+
+export interface UpdateAdminPromptBlockInput {
+  blockKey: string;
+  contentEs: string;
+  contentEn: string;
+  actorUserId?: string;
+}
+
+export interface UpdateAdminBotDefaultsInput {
+  defaultMaxTurns?: number;
+  defaultAnswerPolicy?: string;
+  defaultHandoffTriggers?: string[];
+  defaultMaxMessagesPerContact?: number;
+  actorUserId?: string;
+}
+
+const CANONICAL_INITIAL_MODELS = [
+  {
+    providerCode: "openai",
+    modelId: "gpt-4o-mini",
+    displayName: "GPT-4o Mini",
+    contextWindow: 128000,
+    maxOutputTokens: 4096,
+    costInput: 15,
+    costOutput: 60,
+    spreadPercent: 30,
+    recommendedUse: { es: "Atención ágil, respuestas rápidas y bajo costo", en: "Fast customer responses at low cost" },
+  },
+  {
+    providerCode: "openai",
+    modelId: "gpt-4o",
+    displayName: "GPT-4o Multimodal",
+    contextWindow: 128000,
+    maxOutputTokens: 4096,
+    costInput: 250,
+    costOutput: 1000,
+    spreadPercent: 30,
+    recommendedUse: { es: "Negociaciones complejas y análisis de catálogo denso", en: "Complex sales and heavy catalog parsing" },
+  },
+  {
+    providerCode: "anthropic",
+    modelId: "claude-3-5-sonnet-20241022",
+    displayName: "Claude 3.5 Sonnet",
+    contextWindow: 200000,
+    maxOutputTokens: 8192,
+    costInput: 300,
+    costOutput: 1500,
+    spreadPercent: 30,
+    recommendedUse: { es: "Máxima adherencia a instrucciones y empatía consultiva", en: "Highest adherence and consultative empathy" },
+  },
+  {
+    providerCode: "anthropic",
+    modelId: "claude-3-5-haiku-20241022",
+    displayName: "Claude 3.5 Haiku",
+    contextWindow: 200000,
+    maxOutputTokens: 8192,
+    costInput: 80,
+    costOutput: 400,
+    spreadPercent: 30,
+    recommendedUse: { es: "Clasificación de prospectos y respuestas en tiempo real", en: "Lead triage and instant replies" },
+  },
+  {
+    providerCode: "google",
+    modelId: "gemini-1.5-flash",
+    displayName: "Gemini 1.5 Flash",
+    contextWindow: 1000000,
+    maxOutputTokens: 8192,
+    costInput: 7,
+    costOutput: 30,
+    spreadPercent: 30,
+    recommendedUse: { es: "Gran ventana de contexto para catálogos masivos y alta velocidad", en: "Huge context window for large catalogs" },
+  },
+  {
+    providerCode: "deepseek",
+    modelId: "deepseek-chat",
+    displayName: "DeepSeek Chat",
+    contextWindow: 64000,
+    maxOutputTokens: 4096,
+    costInput: 14,
+    costOutput: 28,
+    spreadPercent: 30,
+    recommendedUse: { es: "Excelente costo-beneficio para alta concurrencia", en: "Cost-effective high concurrency" },
+  },
+];
+
+/**
+ * Consulta y auto-inicializa idempotentemente el ecosistema de IA, modelos LLM y prompts maestros (BOT-001, BOT-002, AI-001).
+ */
+export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanceOverviewDto> {
+  const db = getDb();
+  const operator = "01a19874-1077-744c-8514-d4c990cd7259";
+
+  try {
+    // 1. Auto-inicialización de Proveedores y Modelos si está vacía
+    const existingProviders = await db.select().from(aiProviders);
+    if (existingProviders.length === 0) {
+      for (const p of INITIAL_AI_PROVIDERS) {
+        const [insertedProvider] = await db
+          .insert(aiProviders)
+          .values({
+            code: p.code,
+            name: p.name,
+            isActive: p.isActive,
+            docsUrl: p.docsUrl,
+            supportedModes: p.supportedModes,
+            sortOrder: p.sortOrder,
+            createdBy: operator,
+            updatedBy: operator,
+          })
+          .returning();
+
+        // Modelos canónicos correspondientes a este proveedor
+        const modelsToInsert = CANONICAL_INITIAL_MODELS.filter((m) => m.providerCode === p.code);
+        for (const m of modelsToInsert) {
+          const retailInput = Math.round(m.costInput * (1 + m.spreadPercent / 100));
+          const retailOutput = Math.round(m.costOutput * (1 + m.spreadPercent / 100));
+
+          await db.insert(aiModels).values({
+            providerId: insertedProvider.id,
+            modelId: m.modelId,
+            displayName: m.displayName,
+            contextWindow: m.contextWindow,
+            maxOutputTokens: m.maxOutputTokens,
+            recommendedUse: m.recommendedUse,
+            spreadPercent: m.spreadPercent,
+            costInputMtokUsdCents: m.costInput,
+            costOutputMtokUsdCents: m.costOutput,
+            retailInputMtokUsdCents: retailInput,
+            retailOutputMtokUsdCents: retailOutput,
+            isActive: true,
+            createdBy: operator,
+            updatedBy: operator,
+          });
+        }
+      }
+    }
+
+    // 2. Auto-inicialización de Bloques de Prompt de BOT-002
+    const existingBlocks = await db.select().from(botPromptBlocks);
+    if (existingBlocks.length === 0) {
+      for (const b of INITIAL_PROMPT_BLOCKS) {
+        await db.insert(botPromptBlocks).values({
+          blockKey: b.blockKey,
+          version: b.version,
+          content: b.content,
+          status: "active",
+          createdBy: operator,
+          updatedBy: operator,
+        });
+      }
+    }
+
+    // 3. Auto-inicialización de Parámetros Globales (botDefaults)
+    const existingDefaults = await db.select().from(botDefaults);
+    if (existingDefaults.length === 0) {
+      await db.insert(botDefaults).values({
+        defaultMaxTurns: INITIAL_BOT_DEFAULTS.defaultMaxTurns,
+        defaultAnswerPolicy: INITIAL_BOT_DEFAULTS.defaultAnswerPolicy,
+        defaultHandoffTriggers: [...INITIAL_BOT_DEFAULTS.defaultHandoffTriggers],
+        defaultResponseLanguageBehavior: INITIAL_BOT_DEFAULTS.defaultResponseLanguageBehavior,
+        greetingMessageKey: INITIAL_BOT_DEFAULTS.greetingMessageKey,
+        fallbackMessageKey: INITIAL_BOT_DEFAULTS.fallbackMessageKey,
+        defaultMaxMessagesPerContact: INITIAL_BOT_DEFAULTS.defaultMaxMessagesPerContact,
+        version: 1,
+        createdBy: operator,
+        updatedBy: operator,
+      });
+    }
+
+    // 4. Auto-inicialización de Campos y Prompts de AI-001 (AiAssist)
+    const existingFields = await db.select().from(aiAssistFields);
+    if (existingFields.length === 0) {
+      for (const f of INITIAL_AI_ASSIST_FIELDS) {
+        await db.insert(aiAssistFields).values({
+          fieldKey: f.fieldKey,
+          entity: f.entity,
+          columnName: f.columnName,
+          labels: f.labels,
+          isActive: f.isActive,
+          createdBy: operator,
+          updatedBy: operator,
+        });
+      }
+      for (const ap of INITIAL_AI_ASSIST_PROMPTS) {
+        await db.insert(aiAssistPrompts).values({
+          fieldKey: ap.fieldKey,
+          version: ap.version,
+          status: ap.status,
+          masterPrompt: ap.masterPrompt,
+          inputHint: ap.inputHint,
+          outputRules: ap.outputRules,
+          examples: ap.examples,
+          createdBy: operator,
+          updatedBy: operator,
+        });
+      }
+    }
+
+    // 5. Cargar datos consolidados
+    const providerRows = await db.select().from(aiProviders).orderBy(asc(aiProviders.sortOrder));
+    const modelRows = await db
+      .select({
+        id: aiModels.id,
+        providerId: aiModels.providerId,
+        providerCode: aiProviders.code,
+        modelId: aiModels.modelId,
+        displayName: aiModels.displayName,
+        contextWindow: aiModels.contextWindow,
+        maxOutputTokens: aiModels.maxOutputTokens,
+        spreadPercent: aiModels.spreadPercent,
+        costInputMtokUsdCents: aiModels.costInputMtokUsdCents,
+        costOutputMtokUsdCents: aiModels.costOutputMtokUsdCents,
+        retailInputMtokUsdCents: aiModels.retailInputMtokUsdCents,
+        retailOutputMtokUsdCents: aiModels.retailOutputMtokUsdCents,
+        isActive: aiModels.isActive,
+      })
+      .from(aiModels)
+      .innerJoin(aiProviders, eq(aiModels.providerId, aiProviders.id))
+      .orderBy(asc(aiProviders.sortOrder), asc(aiModels.displayName));
+
+    const blockRows = await db
+      .select()
+      .from(botPromptBlocks)
+      .where(eq(botPromptBlocks.status, "active"))
+      .orderBy(asc(botPromptBlocks.blockKey));
+
+    const assistPromptRows = await db
+      .select({
+        id: aiAssistPrompts.id,
+        fieldKey: aiAssistPrompts.fieldKey,
+        fieldLabel: aiAssistFields.labels,
+        version: aiAssistPrompts.version,
+        masterPrompt: aiAssistPrompts.masterPrompt,
+        inputHint: aiAssistPrompts.inputHint,
+        status: aiAssistPrompts.status,
+      })
+      .from(aiAssistPrompts)
+      .innerJoin(aiAssistFields, eq(aiAssistPrompts.fieldKey, aiAssistFields.fieldKey))
+      .where(eq(aiAssistPrompts.status, "active"))
+      .orderBy(asc(aiAssistPrompts.fieldKey));
+
+    const currentDefaults = (await db.select().from(botDefaults).limit(1))[0] || {
+      defaultMaxTurns: 10,
+      defaultAnswerPolicy: "solo_conocimiento",
+      defaultHandoffTriggers: ["asesor", "humano"],
+      defaultMaxMessagesPerContact: 50,
+    };
+
+    const providers: AdminAiProviderDto[] = providerRows.map((p) => {
+      const pModels = modelRows.filter((m) => m.providerId === p.id);
+      return {
+        id: p.id,
+        code: p.code,
+        name: p.name,
+        isActive: p.isActive,
+        supportedModes: p.supportedModes,
+        modelsCount: pModels.length,
+      };
+    });
+
+    const models: AdminAiModelDto[] = modelRows.map((m) => ({
+      id: m.id,
+      providerId: m.providerId,
+      providerCode: m.providerCode,
+      modelId: m.modelId,
+      displayName: m.displayName,
+      contextWindow: m.contextWindow,
+      maxOutputTokens: m.maxOutputTokens,
+      spreadPercent: m.spreadPercent,
+      costInputMtokUsdCents: Number(m.costInputMtokUsdCents || 0),
+      costOutputMtokUsdCents: Number(m.costOutputMtokUsdCents || 0),
+      retailInputMtokUsdCents: Number(m.retailInputMtokUsdCents || 0),
+      retailOutputMtokUsdCents: Number(m.retailOutputMtokUsdCents || 0),
+      isActive: m.isActive,
+    }));
+
+    const promptBlocks: AdminPromptBlockDto[] = blockRows.map((b) => ({
+      id: b.id,
+      blockKey: b.blockKey,
+      version: b.version,
+      contentEs: b.content.es,
+      contentEn: b.content.en,
+      status: b.status,
+    }));
+
+    const aiAssistPromptsList: AdminAiAssistPromptDto[] = assistPromptRows.map((ap) => {
+      const labels = ap.fieldLabel as { es?: string; en?: string } | null;
+      return {
+        id: ap.id,
+        fieldKey: ap.fieldKey,
+        fieldLabel: labels?.es || ap.fieldKey,
+        version: ap.version,
+        masterPrompt: ap.masterPrompt,
+        inputHint: ap.inputHint,
+        status: ap.status,
+      };
+    });
+
+    return {
+      kpis: {
+        totalProviders: providers.filter((p) => p.isActive).length,
+        totalModels: models.filter((m) => m.isActive).length,
+        activePrompts: promptBlocks.length + aiAssistPromptsList.length,
+        defaultSpreadPercent: 30,
+      },
+      providers,
+      models,
+      promptBlocks,
+      aiAssistPrompts: aiAssistPromptsList,
+      defaults: {
+        defaultMaxTurns: currentDefaults.defaultMaxTurns,
+        defaultAnswerPolicy: currentDefaults.defaultAnswerPolicy,
+        defaultHandoffTriggers: currentDefaults.defaultHandoffTriggers,
+        defaultMaxMessagesPerContact: currentDefaults.defaultMaxMessagesPerContact,
+      },
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[fetchAdminAiGovernanceOverview Failed] ${msg}`, error);
+    return {
+      kpis: { totalProviders: 0, totalModels: 0, activePrompts: 0, defaultSpreadPercent: 30 },
+      providers: [],
+      models: [],
+      promptBlocks: [],
+      aiAssistPrompts: [],
+      defaults: {
+        defaultMaxTurns: 10,
+        defaultAnswerPolicy: "solo_conocimiento",
+        defaultHandoffTriggers: ["asesor", "humano"],
+        defaultMaxMessagesPerContact: 50,
+      },
+    };
+  }
+}
+
+/**
+ * Actualiza el spread porcentual y activación de un modelo LLM en el plano de control (BOT-001 §4.1).
+ */
+export async function updateAdminModelSpread(
+  input: UpdateAdminModelSpreadInput,
+): Promise<Result<{ modelId: string; spreadPercent: number; isActive: boolean }>> {
+  const db = getDb();
+  const actor = input.actorUserId || "01a19874-1077-744c-8514-d4c990cd7259";
+
+  try {
+    const existing = await db.select().from(aiModels).where(eq(aiModels.id, input.modelId)).limit(1);
+    if (existing.length === 0) {
+      return err("El modelo especificado no existe en el catálogo de IA.", "MODEL_NOT_FOUND");
+    }
+
+    const current = existing[0];
+    const spread = Math.max(0, input.spreadPercent);
+    const active = input.isActive !== undefined ? input.isActive : current.isActive;
+
+    const retailInput = Math.round(Number(current.costInputMtokUsdCents || 0) * (1 + spread / 100));
+    const retailOutput = Math.round(Number(current.costOutputMtokUsdCents || 0) * (1 + spread / 100));
+
+    await db
+      .update(aiModels)
+      .set({
+        spreadPercent: spread,
+        retailInputMtokUsdCents: retailInput,
+        retailOutputMtokUsdCents: retailOutput,
+        isActive: active,
+        updatedBy: actor,
+        updatedAt: new Date(),
+      })
+      .where(eq(aiModels.id, input.modelId));
+
+    appLogger.info("[updateAdminModelSpread] Spread de modelo actualizado", {
+      modelId: input.modelId,
+      spreadPercent: spread,
+      isActive: active,
+      actor,
+    });
+
+    return ok({ modelId: input.modelId, spreadPercent: spread, isActive: active });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminModelSpread Failed] ${msg}`, error);
+    return err(`Error al actualizar el modelo: ${msg}`);
+  }
+}
+
+/**
+ * Versiona y actualiza un bloque modular de prompt de bot (BOT-002 §3, T-02).
+ */
+export async function updateAdminPromptBlock(
+  input: UpdateAdminPromptBlockInput,
+): Promise<Result<{ blockKey: string; version: number }>> {
+  const db = getDb();
+  const actor = input.actorUserId || "01a19874-1077-744c-8514-d4c990cd7259";
+
+  try {
+    const currentActive = await db
+      .select()
+      .from(botPromptBlocks)
+      .where(and(eq(botPromptBlocks.blockKey, input.blockKey), eq(botPromptBlocks.status, "active")))
+      .limit(1);
+
+    const nextVersion = currentActive.length > 0 ? currentActive[0].version + 1 : 1;
+
+    // Desactivar versión anterior
+    if (currentActive.length > 0) {
+      await db
+        .update(botPromptBlocks)
+        .set({ status: "retired", updatedBy: actor, updatedAt: new Date() })
+        .where(eq(botPromptBlocks.id, currentActive[0].id));
+    }
+
+    // Insertar nueva versión activa
+    const [newBlock] = await db
+      .insert(botPromptBlocks)
+      .values({
+        blockKey: input.blockKey,
+        version: nextVersion,
+        content: {
+          es: input.contentEs.trim(),
+          en: input.contentEn.trim(),
+        },
+        status: "active",
+        createdBy: actor,
+        updatedBy: actor,
+      })
+      .returning();
+
+    appLogger.info("[updateAdminPromptBlock] Bloque de prompt versionado con éxito", {
+      blockKey: input.blockKey,
+      version: nextVersion,
+      actor,
+    });
+
+    return ok({ blockKey: newBlock.blockKey, version: newBlock.version });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminPromptBlock Failed] ${msg}`, error);
+    return err(`Error al versionar bloque de prompt: ${msg}`);
+  }
+}
+
+/**
+ * Actualiza los parámetros globales por defecto para bots y guardrails (BOT-001 RF-03.3).
+ */
+export async function updateAdminBotDefaults(
+  input: UpdateAdminBotDefaultsInput,
+): Promise<Result<{ success: boolean }>> {
+  const db = getDb();
+  const actor = input.actorUserId || "01a19874-1077-744c-8514-d4c990cd7259";
+
+  try {
+    const existing = await db.select().from(botDefaults).limit(1);
+    if (existing.length === 0) {
+      await db.insert(botDefaults).values({
+        defaultMaxTurns: input.defaultMaxTurns || 10,
+        defaultAnswerPolicy: input.defaultAnswerPolicy || "solo_conocimiento",
+        defaultHandoffTriggers: input.defaultHandoffTriggers || ["asesor", "humano"],
+        defaultMaxMessagesPerContact: input.defaultMaxMessagesPerContact || 50,
+        version: 1,
+        createdBy: actor,
+        updatedBy: actor,
+      });
+    } else {
+      await db
+        .update(botDefaults)
+        .set({
+          defaultMaxTurns: input.defaultMaxTurns ?? existing[0].defaultMaxTurns,
+          defaultAnswerPolicy: input.defaultAnswerPolicy ?? existing[0].defaultAnswerPolicy,
+          defaultHandoffTriggers: input.defaultHandoffTriggers ?? existing[0].defaultHandoffTriggers,
+          defaultMaxMessagesPerContact: input.defaultMaxMessagesPerContact ?? existing[0].defaultMaxMessagesPerContact,
+          updatedBy: actor,
+          updatedAt: new Date(),
+        })
+        .where(eq(botDefaults.id, existing[0].id));
+    }
+
+    return ok({ success: true });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminBotDefaults Failed] ${msg}`, error);
+    return err(`Error al actualizar parámetros globales de bots: ${msg}`);
   }
 }

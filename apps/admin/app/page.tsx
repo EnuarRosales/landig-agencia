@@ -79,6 +79,12 @@ export default async function AdminHomePage() {
       badge: "Tenencia",
     },
     {
+      title: "Inteligencia Artificial y Prompts",
+      description: "Gobernanza de modelos LLM, fijación de spread comercial y biblioteca de prompts maestros.",
+      href: "/admin/ai",
+      badge: "Inferencia",
+    },
+    {
       title: dict.dashboard.cardCellsTitle || "Células de Datos",
       description: dict.dashboard.cardCellsDesc || "Aprovisionamiento y topes de capacidad de nodos PostgreSQL celulares.",
       href: "/admin/cells",

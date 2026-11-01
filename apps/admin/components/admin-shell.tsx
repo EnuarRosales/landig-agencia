@@ -10,6 +10,7 @@ import {
   MessageSquare,
   CreditCard,
   Store,
+  Bot,
   Server,
   Layers,
   Mail,
@@ -105,6 +106,11 @@ export function AdminShell({ children }: AdminShellProps) {
       href: "/admin/tenants",
       label: dict.navTenants || "Inquilinos y Comercios",
       icon: Store,
+    },
+    {
+      href: "/admin/ai",
+      label: dict.navAi || "Inteligencia y Prompts",
+      icon: Bot,
     },
     {
       href: "/admin/cells",
