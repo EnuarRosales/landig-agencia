@@ -14,6 +14,7 @@ import type {
   TenantBotChannel,
   NewTenantBotChannel,
   Wallet,
+  WalletTransaction,
   AiUsageEvent,
   NewAiUsageEvent,
 } from "../db/schemas/admin/bot-tenancy";
@@ -78,8 +79,35 @@ export interface IBotRepository {
   listTenantBotChannels(botId: string): Promise<TenantBotChannel[]>;
   upsertTenantBotChannel(channel: NewTenantBotChannel): Promise<TenantBotChannel>;
 
-  // Billetera y consumo
+  // Billetera y consumo (BOT-001 T-13, T-14, T-15)
   getWallet(clientId: string): Promise<Wallet | null>;
+  findWalletTransactionByReference(
+    clientId: string,
+    reference: string,
+  ): Promise<WalletTransaction | null>;
+  listWalletTransactions(clientId: string, limit?: number): Promise<WalletTransaction[]>;
+  listUsageEvents(clientId: string, limit?: number): Promise<AiUsageEvent[]>;
+  executeRechargeTransaction(params: {
+    clientId: string;
+    amountUsdCents: number;
+    currency: string;
+    amountLocalCents?: number;
+    fxRate?: string;
+    reference: string;
+    actor: string;
+  }): Promise<{ wallet: Wallet; transaction: WalletTransaction }>;
+  executeConsumptionTransaction(params: {
+    clientId: string;
+    botId?: string;
+    providerId: string;
+    modelId: string;
+    purpose: "bot" | "assist" | "trial";
+    inputTokens: number;
+    outputTokens: number;
+    costUsdCents: number;
+    reference: string;
+    actor: string;
+  }): Promise<{ wallet: Wallet; transaction: WalletTransaction; usageEvent: AiUsageEvent }>;
   recordUsageEvent(event: NewAiUsageEvent): Promise<AiUsageEvent>;
 }
 

@@ -79,15 +79,15 @@
   - `wallet_transactions` con `currency`, `amount_local_cents`, `fx_rate`; `ai_usage_events.purpose` con `bot`/`assist`/`trial`.
   - Verificación: `wallet_transactions` y `ai_usage_events` no admiten UPDATE ni DELETE por el rol de aplicación.
 
-- [ ] **T-13 · Implementar la recarga idempotente**
+- [x] **T-13 · Implementar la recarga idempotente**
   - Reusar Wompi + Stripe de BILL-001; webhook con `reference` único, moneda local y FX registrados; una recarga acredita una sola vez.
   - Verificación: dos notificaciones con la misma referencia producen una sola transacción y un solo aumento de saldo; COP y USD se acreditan en USD.
 
-- [ ] **T-14 · Implementar el consumo con débito atómico**
+- [x] **T-14 · Implementar el consumo con débito atómico**
   - Costo = tokens × retail del modelo (costo + spread, 30% por defecto); débito y ledger en una transacción; el saldo nunca queda negativo.
   - Verificación: 1.000 tokens descuentan el monto exacto; saldo insuficiente rechaza sin debitar ni registrar consumo.
 
-- [ ] **T-15 · Implementar el fallback y el historial**
+- [x] **T-15 · Implementar el fallback y el historial**
   - Prepago estricto: sin saldo, proveedor BYOK habilitado; si no hay, fallback configurado y pausa del modo Mocter. La billetera cubre bot y asistente.
   - Verificación: el inquilino ve recargas, consumos con tokens/costo y el estado de sus modos; el consumo del asistente usa `purpose = assist`.
 

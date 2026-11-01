@@ -15,6 +15,9 @@ import type {
   TenantBot,
   TenantAiProvider,
   TenantBotChannel,
+  Wallet,
+  WalletTransaction,
+  AiUsageEvent,
 } from "../db/schemas/admin/bot-tenancy";
 
 describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", () => {
@@ -224,7 +227,89 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
       listTenantBotChannels: vi.fn().mockResolvedValue([sampleBotChannel]),
       upsertTenantBotChannel: vi.fn().mockImplementation(async (ch) => ({ ...sampleBotChannel, ...ch })),
       getWallet: vi.fn().mockResolvedValue(null),
-      recordUsageEvent: vi.fn().mockResolvedValue({} as any),
+      findWalletTransactionByReference: vi.fn().mockResolvedValue(null),
+      listWalletTransactions: vi.fn().mockResolvedValue([]),
+      listUsageEvents: vi.fn().mockResolvedValue([]),
+      executeRechargeTransaction: vi.fn().mockImplementation(async (params) => {
+        const currentBal = 0;
+        const newBal = currentBal + params.amountUsdCents;
+        return {
+          wallet: {
+            clientId: params.clientId,
+            balanceUsdCents: newBal,
+            version: 1,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            createdBy: params.actor,
+            updatedBy: params.actor,
+          },
+          transaction: {
+            id: "tx-rec-001",
+            clientId: params.clientId,
+            type: "recharge",
+            amountUsdCents: params.amountUsdCents,
+            currency: params.currency,
+            amountLocalCents: params.amountLocalCents ?? null,
+            fxRate: params.fxRate ?? null,
+            inputTokens: null,
+            outputTokens: null,
+            balanceAfterUsdCents: newBal,
+            reference: params.reference,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            createdBy: params.actor,
+            updatedBy: params.actor,
+          },
+        };
+      }),
+      executeConsumptionTransaction: vi.fn().mockImplementation(async (params) => {
+        const newBal = 1000 - params.costUsdCents;
+        return {
+          wallet: {
+            clientId: params.clientId,
+            balanceUsdCents: newBal,
+            version: 2,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            createdBy: params.actor,
+            updatedBy: params.actor,
+          },
+          transaction: {
+            id: "tx-cons-001",
+            clientId: params.clientId,
+            type: "consumption",
+            amountUsdCents: -params.costUsdCents,
+            currency: "USD",
+            inputTokens: params.inputTokens,
+            outputTokens: params.outputTokens,
+            balanceAfterUsdCents: newBal,
+            reference: params.reference,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            createdBy: params.actor,
+            updatedBy: params.actor,
+          },
+          usageEvent: {
+            id: "ev-use-001",
+            clientId: params.clientId,
+            botId: params.botId ?? null,
+            providerId: params.providerId,
+            modelId: params.modelId,
+            mode: "mocter",
+            purpose: params.purpose,
+            inputTokens: params.inputTokens,
+            outputTokens: params.outputTokens,
+            costUsdCents: params.costUsdCents,
+            walletTransactionId: "tx-cons-001",
+            createdAt: new Date(),
+          },
+        };
+      }),
+      recordUsageEvent: vi.fn().mockImplementation(async (ev) => ({
+        id: "ev-rec-001",
+        createdAt: new Date(),
+        ...ev,
+      })),
     };
 
     botService = new BotService(mockBotRepo);
@@ -667,6 +752,331 @@ describe("BOT-001 · BotService (Gobernanza, alta mínima, BYOK y snapshot)", ()
           enabled: false,
         }),
       );
+    });
+  });
+
+  describe("T-13 · Recarga idempotente en billetera (Wompi + Stripe, COP y USD)", () => {
+    it("acredita recarga en USD directamente en centavos de USD", async () => {
+      const result = await botService.rechargeWallet({
+        clientId: sampleTenantBot.clientId,
+        gateway: "stripe",
+        reference: "ch_stripe_12345",
+        currency: "USD",
+        amountLocalCents: 5000, // $50.00 USD
+        actor: "owner-user",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.alreadyProcessed).toBe(false);
+        expect(result.data.newBalanceUsdCents).toBe(5000);
+        expect(result.data.transaction.currency).toBe("USD");
+      }
+    });
+
+    it("convierte recarga en COP a centavos de USD registrando fxRate", async () => {
+      // 210.000 COP a tasa 4.200 COP/USD = 50 USD = 5000 centavos USD
+      const result = await botService.rechargeWallet({
+        clientId: sampleTenantBot.clientId,
+        gateway: "wompi",
+        reference: "trans_wompi_67890",
+        currency: "COP",
+        amountLocalCents: 21000000, // $210.000 COP en centavos COP
+        fxRate: "4200.00",
+        actor: "owner-user",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.alreadyProcessed).toBe(false);
+        expect(result.data.newBalanceUsdCents).toBe(5000);
+        expect(result.data.transaction.fxRate).toBe("4200.00");
+      }
+    });
+
+    it("garantiza idempotencia retornando la transacción previa sin duplicar saldo", async () => {
+      const existingTx: WalletTransaction = {
+        id: "tx-existing-99",
+        clientId: sampleTenantBot.clientId,
+        type: "recharge",
+        amountUsdCents: 2500,
+        currency: "USD",
+        amountLocalCents: 2500,
+        fxRate: "1.00",
+        inputTokens: null,
+        outputTokens: null,
+        balanceAfterUsdCents: 2500,
+        reference: "ref-duplicate-check",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "owner-user",
+        updatedBy: "owner-user",
+      };
+
+      vi.mocked(mockBotRepo.findWalletTransactionByReference).mockResolvedValue(existingTx);
+
+      const result = await botService.rechargeWallet({
+        clientId: sampleTenantBot.clientId,
+        gateway: "stripe",
+        reference: "ref-duplicate-check",
+        currency: "USD",
+        amountLocalCents: 2500,
+        actor: "owner-user",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.alreadyProcessed).toBe(true);
+        expect(result.data.transaction.id).toBe("tx-existing-99");
+        expect(result.data.newBalanceUsdCents).toBe(2500);
+      }
+      expect(mockBotRepo.executeRechargeTransaction).not.toHaveBeenCalled();
+    });
+
+    it("rechaza recargas con monto resultante menor o igual a cero", async () => {
+      const result = await botService.rechargeWallet({
+        clientId: sampleTenantBot.clientId,
+        gateway: "stripe",
+        reference: "ref-zero",
+        currency: "USD",
+        amountLocalCents: 0,
+        actor: "owner-user",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("INVALID_RECHARGE_AMOUNT");
+      }
+    });
+  });
+
+  describe("T-14 · Consumo con débito atómico y prepago estricto", () => {
+    it("en modo BYOK registra el evento de uso con costo 0 sin debitar saldo", async () => {
+      const result = await botService.consumeInferenceTokens({
+        clientId: sampleTenantBot.clientId,
+        botId: sampleTenantBot.id,
+        providerId: sampleProvider.id,
+        modelId: sampleModel.id,
+        purpose: "bot",
+        mode: "byok",
+        inputTokens: 1200,
+        outputTokens: 350,
+        actor: "bot-runtime",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.mode).toBe("byok");
+        expect(result.data.costUsdCents).toBe(0);
+      }
+      expect(mockBotRepo.executeConsumptionTransaction).not.toHaveBeenCalled();
+      expect(mockBotRepo.recordUsageEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "byok",
+          costUsdCents: 0,
+        }),
+      );
+    });
+
+    it("en modo Mocter debita exactamente los tokens usados al precio minorista (spread 30%)", async () => {
+      // sampleModel tiene:
+      // retailInputMtokUsdCents = 325 (3.25 USD por 1M tokens)
+      // retailOutputMtokUsdCents = 1300 (13.00 USD por 1M tokens)
+      // 10.000 tokens de entrada = (10.000 * 325) / 1.000.000 = 3.25 centavos -> Math.round = 3 centavos
+      // 5.000 tokens de salida = (5.000 * 1300) / 1.000.000 = 6.5 centavos -> Math.round = 7 centavos
+      // Total costo esperado: 3 + 7 = 10 centavos USD
+
+      const walletWithBalance: Wallet = {
+        clientId: sampleTenantBot.clientId,
+        balanceUsdCents: 1000, // 10 USD
+        version: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "owner-user",
+        updatedBy: "owner-user",
+      };
+      vi.mocked(mockBotRepo.getWallet).mockResolvedValue(walletWithBalance);
+
+      const result = await botService.consumeInferenceTokens({
+        clientId: sampleTenantBot.clientId,
+        botId: sampleTenantBot.id,
+        providerId: sampleProvider.id,
+        modelId: sampleModel.id,
+        purpose: "bot",
+        mode: "mocter",
+        inputTokens: 10000,
+        outputTokens: 5000,
+        actor: "bot-runtime",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.costUsdCents).toBe(10);
+        expect(result.data.mode).toBe("mocter");
+      }
+      expect(mockBotRepo.executeConsumptionTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          costUsdCents: 10,
+          inputTokens: 10000,
+          outputTokens: 5000,
+        }),
+      );
+    });
+
+    it("rechaza si el saldo es insuficiente sin debitar saldo ni registrar consumo", async () => {
+      const lowBalanceWallet: Wallet = {
+        clientId: sampleTenantBot.clientId,
+        balanceUsdCents: 2, // solo 2 centavos
+        version: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "owner-user",
+        updatedBy: "owner-user",
+      };
+      vi.mocked(mockBotRepo.getWallet).mockResolvedValue(lowBalanceWallet);
+
+      const result = await botService.consumeInferenceTokens({
+        clientId: sampleTenantBot.clientId,
+        botId: sampleTenantBot.id,
+        providerId: sampleProvider.id,
+        modelId: sampleModel.id,
+        purpose: "bot",
+        mode: "mocter",
+        inputTokens: 50000, // costo > 2 centavos
+        outputTokens: 20000,
+        actor: "bot-runtime",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.code).toBe("INSUFFICIENT_FUNDS");
+      }
+      expect(mockBotRepo.executeConsumptionTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("T-15 · Fallback automático e historial de billetera", () => {
+    it("resuelve modo mocter si la billetera tiene saldo disponible", async () => {
+      vi.mocked(mockBotRepo.getWallet).mockResolvedValue({
+        clientId: sampleTenantBot.clientId,
+        balanceUsdCents: 500,
+        version: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "owner-user",
+        updatedBy: "owner-user",
+      });
+
+      const result = await botService.resolveInferenceExecutionMode(sampleTenantBot.clientId);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.mode).toBe("mocter");
+        expect(result.data.canExecute).toBe(true);
+        expect(result.data.shouldPauseMocter).toBe(false);
+      }
+    });
+
+    it("aplica fallback automático a BYOK cuando no hay saldo pero existe proveedor BYOK activo", async () => {
+      vi.mocked(mockBotRepo.getWallet).mockResolvedValue({
+        clientId: sampleTenantBot.clientId,
+        balanceUsdCents: 0,
+        version: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "owner-user",
+        updatedBy: "owner-user",
+      });
+      vi.mocked(mockBotRepo.listTenantAiProviders).mockResolvedValue([sampleByokProvider]);
+
+      const result = await botService.resolveInferenceExecutionMode(sampleTenantBot.clientId);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.mode).toBe("byok");
+        expect(result.data.canExecute).toBe(true);
+        expect(result.data.byokProvider?.id).toBe(sampleByokProvider.id);
+        expect(result.data.shouldPauseMocter).toBe(false);
+      }
+    });
+
+    it("resuelve modo exhausted con fallbackMessage y pausa cuando no hay saldo ni BYOK", async () => {
+      vi.mocked(mockBotRepo.getWallet).mockResolvedValue({
+        clientId: sampleTenantBot.clientId,
+        balanceUsdCents: 0,
+        version: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "owner-user",
+        updatedBy: "owner-user",
+      });
+      vi.mocked(mockBotRepo.listTenantAiProviders).mockResolvedValue([]);
+
+      const result = await botService.resolveInferenceExecutionMode(sampleTenantBot.clientId);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.mode).toBe("exhausted");
+        expect(result.data.canExecute).toBe(false);
+        expect(result.data.shouldPauseMocter).toBe(true);
+        expect(result.data.fallbackMessage).toBe(sampleTenantBot.fallbackMessage);
+      }
+    });
+
+    it("retorna el historial consolidado de billetera y eventos de uso", async () => {
+      const sampleTx: WalletTransaction = {
+        id: "tx-hist-1",
+        clientId: sampleTenantBot.clientId,
+        type: "recharge",
+        amountUsdCents: 3000,
+        currency: "USD",
+        amountLocalCents: 3000,
+        fxRate: "1.00",
+        inputTokens: null,
+        outputTokens: null,
+        balanceAfterUsdCents: 3000,
+        reference: "ref-h1",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "owner-user",
+        updatedBy: "owner-user",
+      };
+
+      const sampleUsage: AiUsageEvent = {
+        id: "ev-hist-1",
+        clientId: sampleTenantBot.clientId,
+        botId: sampleTenantBot.id,
+        providerId: sampleProvider.id,
+        modelId: sampleModel.id,
+        mode: "mocter",
+        purpose: "bot",
+        inputTokens: 1000,
+        outputTokens: 500,
+        costUsdCents: 5,
+        walletTransactionId: "tx-hist-1",
+        createdAt: new Date(),
+      };
+
+      vi.mocked(mockBotRepo.getWallet).mockResolvedValue({
+        clientId: sampleTenantBot.clientId,
+        balanceUsdCents: 3000,
+        version: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "owner-user",
+        updatedBy: "owner-user",
+      });
+      vi.mocked(mockBotRepo.listWalletTransactions).mockResolvedValue([sampleTx]);
+      vi.mocked(mockBotRepo.listUsageEvents).mockResolvedValue([sampleUsage]);
+
+      const result = await botService.listWalletHistory(sampleTenantBot.clientId);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.balanceUsdCents).toBe(3000);
+        expect(result.data.transactions).toHaveLength(1);
+        expect(result.data.usageEvents).toHaveLength(1);
+      }
     });
   });
 });

@@ -21,6 +21,7 @@ import {
   tenantAiProviders,
   tenantBotChannels,
   wallets,
+  walletTransactions,
   aiUsageEvents,
   type TenantBot,
   type NewTenantBot,
@@ -29,6 +30,7 @@ import {
   type TenantBotChannel,
   type NewTenantBotChannel,
   type Wallet,
+  type WalletTransaction,
   type AiUsageEvent,
   type NewAiUsageEvent,
 } from "../db/schemas/admin/bot-tenancy";
@@ -360,6 +362,193 @@ export class DrizzleBotRepository implements IBotRepository {
       .where(eq(wallets.clientId, clientId))
       .limit(1);
     return wallet ?? null;
+  }
+
+  async findWalletTransactionByReference(
+    clientId: string,
+    reference: string,
+  ): Promise<WalletTransaction | null> {
+    const [tx] = await this.db
+      .select()
+      .from(walletTransactions)
+      .where(
+        and(
+          eq(walletTransactions.clientId, clientId),
+          eq(walletTransactions.reference, reference),
+        ),
+      )
+      .limit(1);
+    return tx ?? null;
+  }
+
+  async listWalletTransactions(
+    clientId: string,
+    limit: number = 50,
+  ): Promise<WalletTransaction[]> {
+    return await this.db
+      .select()
+      .from(walletTransactions)
+      .where(eq(walletTransactions.clientId, clientId))
+      .orderBy(desc(walletTransactions.createdAt))
+      .limit(limit);
+  }
+
+  async listUsageEvents(
+    clientId: string,
+    limit: number = 50,
+  ): Promise<AiUsageEvent[]> {
+    return await this.db
+      .select()
+      .from(aiUsageEvents)
+      .where(eq(aiUsageEvents.clientId, clientId))
+      .orderBy(desc(aiUsageEvents.createdAt))
+      .limit(limit);
+  }
+
+  async executeRechargeTransaction(params: {
+    clientId: string;
+    amountUsdCents: number;
+    currency: string;
+    amountLocalCents?: number;
+    fxRate?: string;
+    reference: string;
+    actor: string;
+  }): Promise<{ wallet: Wallet; transaction: WalletTransaction }> {
+    return await this.db.transaction(async (tx) => {
+      const [existingWallet] = await tx
+        .select()
+        .from(wallets)
+        .where(eq(wallets.clientId, params.clientId))
+        .for("update");
+
+      const currentBalance = existingWallet ? existingWallet.balanceUsdCents : 0;
+      const nextVersion = existingWallet ? existingWallet.version + 1 : 1;
+      const newBalance = currentBalance + params.amountUsdCents;
+
+      let updatedWallet: Wallet;
+      if (existingWallet) {
+        const [u] = await tx
+          .update(wallets)
+          .set({
+            balanceUsdCents: newBalance,
+            version: nextVersion,
+            updatedAt: new Date(),
+            updatedBy: params.actor,
+          })
+          .where(eq(wallets.clientId, params.clientId))
+          .returning();
+        updatedWallet = u!;
+      } else {
+        const [i] = await tx
+          .insert(wallets)
+          .values({
+            clientId: params.clientId,
+            balanceUsdCents: newBalance,
+            version: 1,
+            createdBy: params.actor,
+            updatedBy: params.actor,
+          })
+          .returning();
+        updatedWallet = i!;
+      }
+
+      const [insertedTx] = await tx
+        .insert(walletTransactions)
+        .values({
+          clientId: params.clientId,
+          type: "recharge",
+          amountUsdCents: params.amountUsdCents,
+          currency: params.currency,
+          amountLocalCents: params.amountLocalCents,
+          fxRate: params.fxRate,
+          balanceAfterUsdCents: newBalance,
+          reference: params.reference,
+          createdBy: params.actor,
+          updatedBy: params.actor,
+        })
+        .returning();
+
+      return {
+        wallet: updatedWallet,
+        transaction: insertedTx!,
+      };
+    });
+  }
+
+  async executeConsumptionTransaction(params: {
+    clientId: string;
+    botId?: string;
+    providerId: string;
+    modelId: string;
+    purpose: "bot" | "assist" | "trial";
+    inputTokens: number;
+    outputTokens: number;
+    costUsdCents: number;
+    reference: string;
+    actor: string;
+  }): Promise<{ wallet: Wallet; transaction: WalletTransaction; usageEvent: AiUsageEvent }> {
+    return await this.db.transaction(async (tx) => {
+      const [wallet] = await tx
+        .select()
+        .from(wallets)
+        .where(eq(wallets.clientId, params.clientId))
+        .for("update");
+
+      if (!wallet || wallet.balanceUsdCents < params.costUsdCents) {
+        throw new Error("INSUFFICIENT_FUNDS");
+      }
+
+      const newBalance = wallet.balanceUsdCents - params.costUsdCents;
+
+      const [updatedWallet] = await tx
+        .update(wallets)
+        .set({
+          balanceUsdCents: newBalance,
+          version: wallet.version + 1,
+          updatedAt: new Date(),
+          updatedBy: params.actor,
+        })
+        .where(eq(wallets.clientId, params.clientId))
+        .returning();
+
+      const [insertedTx] = await tx
+        .insert(walletTransactions)
+        .values({
+          clientId: params.clientId,
+          type: "consumption",
+          amountUsdCents: -params.costUsdCents,
+          currency: "USD",
+          inputTokens: params.inputTokens,
+          outputTokens: params.outputTokens,
+          balanceAfterUsdCents: newBalance,
+          reference: params.reference,
+          createdBy: params.actor,
+          updatedBy: params.actor,
+        })
+        .returning();
+
+      const [insertedUsage] = await tx
+        .insert(aiUsageEvents)
+        .values({
+          clientId: params.clientId,
+          botId: params.botId,
+          providerId: params.providerId,
+          modelId: params.modelId,
+          mode: "mocter",
+          purpose: params.purpose,
+          inputTokens: params.inputTokens,
+          outputTokens: params.outputTokens,
+          costUsdCents: params.costUsdCents,
+          walletTransactionId: insertedTx!.id,
+        })
+        .returning();
+
+      return {
+        wallet: updatedWallet!,
+        transaction: insertedTx!,
+        usageEvent: insertedUsage!,
+      };
+    });
   }
 
   async recordUsageEvent(event: NewAiUsageEvent): Promise<AiUsageEvent> {

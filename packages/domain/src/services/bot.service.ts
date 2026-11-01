@@ -16,6 +16,9 @@ import type {
   TenantBot,
   TenantAiProvider,
   TenantBotChannel,
+  Wallet,
+  WalletTransaction,
+  AiUsageEvent,
 } from "../db/schemas/admin/bot-tenancy";
 
 /**
@@ -117,6 +120,76 @@ export interface ProvisionChannelResult {
   channel?: TenantBotChannel;
   oauthUrl?: string;
   message: string;
+}
+
+/**
+ * Entrada para recargar saldo de inferencia en la billetera (BOT-001 T-13, RF-06).
+ */
+export interface RechargeWalletInput {
+  clientId: string;
+  gateway: "wompi" | "stripe";
+  reference: string;
+  currency: "COP" | "USD";
+  amountLocalCents: number;
+  fxRate?: string;
+  actor: string;
+}
+
+/**
+ * Resultado de la recarga idempotente de billetera.
+ */
+export interface RechargeWalletResult {
+  transaction: WalletTransaction;
+  newBalanceUsdCents: number;
+  alreadyProcessed: boolean;
+}
+
+/**
+ * Entrada para debitar o registrar consumo de tokens de inferencia (BOT-001 T-14, T-15).
+ */
+export interface ConsumeInferenceTokensInput {
+  clientId: string;
+  botId?: string;
+  providerId: string;
+  modelId: string;
+  purpose: "bot" | "assist" | "trial";
+  mode: "byok" | "mocter";
+  inputTokens: number;
+  outputTokens: number;
+  reference?: string;
+  actor: string;
+}
+
+/**
+ * Resultado del débito atómico y registro de uso de inferencia.
+ */
+export interface ConsumeInferenceTokensResult {
+  costUsdCents: number;
+  mode: "byok" | "mocter";
+  newBalanceUsdCents?: number;
+  transactionId?: string;
+  usageEventId: string;
+}
+
+/**
+ * Resolución del modo de inferencia y fallback automático (BOT-001 T-15).
+ */
+export interface InferenceExecutionModeResult {
+  mode: "mocter" | "byok" | "exhausted";
+  canExecute: boolean;
+  byokProvider?: TenantAiProvider;
+  walletBalanceUsdCents: number;
+  fallbackMessage?: string;
+  shouldPauseMocter: boolean;
+}
+
+/**
+ * Historial consolidado de movimientos financieros y consumos de billetera (BOT-001 T-15).
+ */
+export interface WalletHistoryResult {
+  balanceUsdCents: number;
+  transactions: WalletTransaction[];
+  usageEvents: AiUsageEvent[];
 }
 
 /**
@@ -740,5 +813,246 @@ export class BotService {
 
     appLogger.info("[BotService] Canal de bot desactivado", { botId, channelTypeId, actor });
     return ok(updated);
+  }
+
+  /**
+   * Recarga de saldo en billetera de forma idempotente con soporte de COP y USD (BOT-001 T-13, RF-06.1, RF-06.2).
+   */
+  async rechargeWallet(
+    input: RechargeWalletInput,
+  ): Promise<Result<RechargeWalletResult>> {
+    // 1. Verificación de idempotencia previa por referencia de pasarela
+    const existing = await this.botRepo.findWalletTransactionByReference(
+      input.clientId,
+      input.reference,
+    );
+    if (existing) {
+      appLogger.info("[BotService] Recarga de billetera ya procesada previamente (idempotente)", {
+        clientId: input.clientId,
+        gateway: input.gateway,
+        reference: input.reference,
+        transactionId: existing.id,
+      });
+
+      return ok({
+        transaction: existing,
+        newBalanceUsdCents: existing.balanceAfterUsdCents,
+        alreadyProcessed: true,
+      });
+    }
+
+    // 2. Conversión financiera a centavos de USD (RF-06.1)
+    let amountUsdCents: number;
+    let effectiveFx = input.fxRate;
+
+    if (input.currency === "USD") {
+      amountUsdCents = Math.round(input.amountLocalCents);
+      effectiveFx = effectiveFx ?? "1.00";
+    } else {
+      effectiveFx = effectiveFx ?? "4200.00";
+      const rate = parseFloat(effectiveFx);
+      if (isNaN(rate) || rate <= 0) {
+        return err(
+          "La tasa de cambio (fxRate) suministrada no es válida.",
+          "INVALID_FX_RATE",
+        );
+      }
+      amountUsdCents = Math.round(input.amountLocalCents / rate);
+    }
+
+    if (amountUsdCents <= 0) {
+      return err(
+        "El monto neto a acreditar en la billetera en centavos de USD debe ser superior a cero.",
+        "INVALID_RECHARGE_AMOUNT",
+      );
+    }
+
+    // 3. Ejecutar transacción atómica de recarga y ledger
+    const result = await this.botRepo.executeRechargeTransaction({
+      clientId: input.clientId,
+      amountUsdCents,
+      currency: input.currency,
+      amountLocalCents: input.amountLocalCents,
+      fxRate: effectiveFx,
+      reference: input.reference,
+      actor: input.actor,
+    });
+
+    appLogger.info("[BotService] Recarga acreditada exitosamente en billetera", {
+      clientId: input.clientId,
+      reference: input.reference,
+      amountUsdCents,
+      newBalanceUsdCents: result.wallet.balanceUsdCents,
+    });
+
+    return ok({
+      transaction: result.transaction,
+      newBalanceUsdCents: result.wallet.balanceUsdCents,
+      alreadyProcessed: false,
+    });
+  }
+
+  /**
+   * Débito atómico por consumo de tokens y registro append-only en el ledger (BOT-001 T-14, RF-06.3, RF-06.4).
+   */
+  async consumeInferenceTokens(
+    input: ConsumeInferenceTokensInput,
+  ): Promise<Result<ConsumeInferenceTokensResult>> {
+    // Modo BYOK: no debita saldo, costo 0 (RF-06.6)
+    if (input.mode === "byok") {
+      const usage = await this.botRepo.recordUsageEvent({
+        clientId: input.clientId,
+        botId: input.botId ?? null,
+        providerId: input.providerId,
+        modelId: input.modelId,
+        mode: "byok",
+        purpose: input.purpose,
+        inputTokens: input.inputTokens,
+        outputTokens: input.outputTokens,
+        costUsdCents: 0,
+        walletTransactionId: null,
+      });
+
+      return ok({
+        costUsdCents: 0,
+        mode: "byok",
+        usageEventId: usage.id,
+      });
+    }
+
+    // Modo Mocter: tarifación dinámica con spread y prepago estricto
+    const model = await this.botRepo.findModelById(input.modelId);
+    if (!model) {
+      return err("El modelo de lenguaje especificado no existe en el catálogo.", "MODEL_NOT_FOUND");
+    }
+
+    const spread = model.spreadPercent ?? 30;
+    const retailInputMtok =
+      model.retailInputMtokUsdCents ??
+      (model.costInputMtokUsdCents
+        ? Math.round(model.costInputMtokUsdCents * (1 + spread / 100))
+        : 150);
+    const retailOutputMtok =
+      model.retailOutputMtokUsdCents ??
+      (model.costOutputMtokUsdCents
+        ? Math.round(model.costOutputMtokUsdCents * (1 + spread / 100))
+        : 600);
+
+    const inputCost = Math.round((input.inputTokens * retailInputMtok) / 1_000_000);
+    const outputCost = Math.round((input.outputTokens * retailOutputMtok) / 1_000_000);
+    const costUsdCents = inputCost + outputCost;
+
+    // Verificar prepago estricto antes de intentar debitar
+    const wallet = await this.botRepo.getWallet(input.clientId);
+    if (!wallet || wallet.balanceUsdCents < costUsdCents) {
+      return err(
+        "Saldo insuficiente en la billetera prepago para cubrir la inferencia.",
+        "INSUFFICIENT_FUNDS",
+      );
+    }
+
+    const reference = input.reference ?? `use_${randomBytes(12).toString("hex")}`;
+
+    try {
+      const res = await this.botRepo.executeConsumptionTransaction({
+        clientId: input.clientId,
+        botId: input.botId,
+        providerId: input.providerId,
+        modelId: input.modelId,
+        purpose: input.purpose,
+        inputTokens: input.inputTokens,
+        outputTokens: input.outputTokens,
+        costUsdCents,
+        reference,
+        actor: input.actor,
+      });
+
+      return ok({
+        costUsdCents,
+        mode: "mocter",
+        newBalanceUsdCents: res.wallet.balanceUsdCents,
+        transactionId: res.transaction.id,
+        usageEventId: res.usageEvent.id,
+      });
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message === "INSUFFICIENT_FUNDS") {
+        return err(
+          "Saldo insuficiente en la billetera prepago para cubrir la inferencia.",
+          "INSUFFICIENT_FUNDS",
+        );
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Resuelve el modo de ejecución de inferencia con política de fallback automático (BOT-001 T-15, RF-06.4).
+   */
+  async resolveInferenceExecutionMode(
+    clientId: string,
+    botId?: string,
+  ): Promise<Result<InferenceExecutionModeResult>> {
+    const wallet = await this.botRepo.getWallet(clientId);
+    const balance = wallet ? wallet.balanceUsdCents : 0;
+
+    // 1. Saldo prepago disponible en modo Mocter
+    if (balance > 0) {
+      return ok({
+        mode: "mocter",
+        canExecute: true,
+        walletBalanceUsdCents: balance,
+        shouldPauseMocter: false,
+      });
+    }
+
+    // 2. Sin saldo: comprobar si tiene proveedor BYOK activo (fallback automático)
+    const byokProviders = await this.botRepo.listTenantAiProviders(clientId);
+    const activeByok = byokProviders.find(
+      (p) => p.status === "active" && !p.deletedAt,
+    );
+
+    if (activeByok) {
+      return ok({
+        mode: "byok",
+        canExecute: true,
+        byokProvider: activeByok,
+        walletBalanceUsdCents: balance,
+        shouldPauseMocter: false,
+      });
+    }
+
+    // 3. Sin saldo y sin proveedor BYOK: suspender y emitir mensaje de fallback
+    let fallbackMsg =
+      "El asistente de atención automática se encuentra temporalmente inactivo por saldo insuficiente.";
+    const bot = await this.botRepo.findTenantBot(clientId);
+    if (bot?.fallbackMessage) {
+      fallbackMsg = bot.fallbackMessage;
+    }
+
+    return ok({
+      mode: "exhausted",
+      canExecute: false,
+      walletBalanceUsdCents: balance,
+      fallbackMessage: fallbackMsg,
+      shouldPauseMocter: true,
+    });
+  }
+
+  /**
+   * Retorna el historial consolidado de movimientos financieros y consumos de billetera (BOT-001 T-15, RF-06.5).
+   */
+  async listWalletHistory(
+    clientId: string,
+    limit: number = 50,
+  ): Promise<Result<WalletHistoryResult>> {
+    const wallet = await this.botRepo.getWallet(clientId);
+    const transactions = await this.botRepo.listWalletTransactions(clientId, limit);
+    const usageEvents = await this.botRepo.listUsageEvents(clientId, limit);
+
+    return ok({
+      balanceUsdCents: wallet ? wallet.balanceUsdCents : 0,
+      transactions,
+      usageEvents,
+    });
   }
 }
