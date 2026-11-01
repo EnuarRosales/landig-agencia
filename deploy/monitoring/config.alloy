@@ -18,12 +18,22 @@ prometheus.scrape "node_exporter" {
   scrape_interval = "15s"
 }
 
-// 2. Exportador de PostgreSQL (postgres_exporter para pg-portal)
+// 2. Exportadores de PostgreSQL (Control Plane, Celda Inicial y Chatwoot)
 prometheus.scrape "postgres_exporter" {
-  targets = [{
-    __address__ = "postgres_exporter:9187",
-    instance    = "pg-portal",
-  }]
+  targets = [
+    {
+      __address__ = "postgres_exporter_portal:9187",
+      instance    = "pg-portal",
+    },
+    {
+      __address__ = "postgres_exporter_cell001:9187",
+      instance    = "pg-cell-001",
+    },
+    {
+      __address__ = "postgres_exporter_chatwoot:9187",
+      instance    = "pg-chatwoot",
+    },
+  ]
   forward_to = [prometheus.remote_write.grafana_cloud.receiver]
   scrape_interval = "15s"
 }

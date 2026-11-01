@@ -62,8 +62,11 @@
 | Grafana Cloud | Externo | Dashboards, retención y alertas |
 
 > **Estado de instancias y dependencias (resolución de contradicción):**
-> - **Instancias:** Actualmente en el host de producción opera únicamente la instancia `pg-portal` (Router Global y base de datos activa). Las instancias de celdas (`pg-cell-*`) y la base de datos dedicada de soporte (`pg-chatwoot`) están proyectadas según la evolución de DAT-001 y CHW-001. El diseño de OPS-001 es uniforme y aplica a `pg-portal` hoy y a cada celda en cuanto se aprovisione.
-> - **Dependencia autoritativa:** Se resuelve la contradicción documental entre DAT-001 §9.1 (que delegaba destino y retención a CD-001) y CD-001 (que delimitaba su alcance únicamente al despliegue en VPS excluyendo copias off-host). OPS-001 es la especificación autoritativa que gobierna el archiving WAL continuo, respaldos en Cloudflare R2 y observabilidad externa.
+> - **Instancias activas de la plataforma:**
+>   - **Router Global / Control Plane (`pg-portal`):** Aloja el enrutador de celdas (`client_routing`), usuarios, autenticación, suscripciones, facturación y comunidades.
+>   - **Celda Inicial de Inquilinos (`pg-cell-001`):** Data Plane celular activo para los datos operacionales de los inquilinos (`contacts`, `orders`, `products`, particiones y RLS).
+>   - **Plano de Soporte Aislado (`pg-chatwoot`):** Instancia física activa en producción (`mocter-chatwoot-pg-chatwoot-1`) que soporta el backend Rails (`mocter-chatwoot-rails-1`), Sidekiq y Redis de Chatwoot.
+> - **Dependencia autoritativa:** Se resuelve la contradicción documental histórica entre DAT-001 §9.1 y CD-001. OPS-001 gobierna de forma autoritativa la continuidad operativa, el archiving WAL y los respaldos en Cloudflare R2 tanto para `pg-portal`, la celda inicial `pg-cell-001` (y celdas subsiguientes), como para `pg-chatwoot` y los adjuntos locales de Chatwoot.
 
 ## 3. Repositorio en R2
 
