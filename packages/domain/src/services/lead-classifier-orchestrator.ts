@@ -125,10 +125,15 @@ export class LeadClassifierOrchestrator {
       if (changed && label) {
         // Actualizar estado de conversación
         if (this.stateService) {
-          await this.stateService.saveState(input.cellId, input.clientId, {
+          await this.stateService.applyTurn({
+            cellId: input.cellId,
+            clientId: input.clientId,
             chatwootConversationId: input.chatwootConversationId,
-            lastLabel: label,
-            prospectId: input.prospectId,
+            patch: {
+              lastLabel: label,
+              prospectId: input.prospectId,
+            },
+            actor: "bot.classifier",
           });
         }
 

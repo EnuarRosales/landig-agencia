@@ -73,15 +73,17 @@
 
 ## Fase 5 · Vista de Upgrade en Backoffice del Inquilino
 
-- [ ] **T-08 · Crear vista de suscripción y cambio de plan en mocter-admin**
+- [x] **T-08 · Crear vista de suscripción y cambio de plan en mocter-admin**
   - Implementar en `apps/web/app/[locale]/(admin)/admin/settings/billing/page.tsx` la visualización del plan actual y el comparador para Upgrade.
   - Verificación: El inquilino visualiza su plan vigente y puede pulsar "Mejorar plan".
+  - Evidencia: 2026-10-31 — Vista de suscripción creada en `apps/web/app/[locale]/(admin)/admin/settings/billing/page.tsx` y componente cliente `UpgradePlanView` (`apps/web/components/admin/billing/upgrade-plan-view.tsx`). Soporta alternancia de ciclo mensual/anual, renderizado del plan activo con badge, aviso de prorrateo determinista y CTA hacia `/api/billing/checkout`.
 
 ---
 
 ## Verificación BDD y cierre por compuerta
 
-- [ ] **T-09 · Validar criterios BDD por slice (CA-LND-01 a CA-LND-05)**
+- [x] **T-09 · Validar criterios BDD por slice (CA-LND-01 a CA-LND-05)**
   - Ejecutar en cada fase las pruebas unitarias y de integración de los criterios cubiertos por ese slice, incluidos renderizado condicional, navegación en header, query params del plan y upgrade.
   - Verificación: cada slice pasa sus criterios en su compuerta; T-09 se cierra cuando se validaron todos los criterios, incluido el upgrade de Fase 5.
-  - Evidencia Compuerta 1 (2026-10-30): Validados y aprobados en `packages/domain/src/repositories/plans.repository.test.ts` y `apps/web/lib/design-tokens.test.ts` los criterios del slice de Fase 1 (`CA-LND-01` ocultación automática de `#planes` sin planes públicos activos; `CA-LND-02` botón «Iniciar sesión» en `Nav` hacia `/[locale]/login`; `CA-LND-03` CTA hacia `/[locale]/register?plan_code=<slug>` con resolución a UUID y badge del plan; `CA-LND-04` navegación bidireccional `/[locale]/login` ↔ `/[locale]/register`). Resta únicamente `CA-LND-05` tras implementar `T-08` en Fase 5.
+  - Evidencia Compuerta 1 (2026-10-30): Validados y aprobados en `packages/domain/src/repositories/plans.repository.test.ts` y `apps/web/lib/design-tokens.test.ts` los criterios del slice de Fase 1 (`CA-LND-01` a `CA-LND-04`).
+  - Evidencia Compuerta 5 (2026-10-31): Validado y aprobado `CA-LND-05` (Upgrade de plan desde el backoffice con prorrateo de días restantes y conmutación mensual/anual) en `apps/web/components/admin/billing/upgrade-plan-view.test.tsx`. Build de producción de Next.js 16 (`next build`) verificado con 61 páginas prerenderizadas con éxito. Spec LND-001 completada al 100%.

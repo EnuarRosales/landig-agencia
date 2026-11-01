@@ -94,6 +94,13 @@ export function getValidatedEnv(
   const result = envSchema.safeParse(source);
 
   if (!result.success) {
+    if (process.env.SKIP_ENV_VALIDATION) {
+      return {
+        DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/mocter_dummy",
+        NODE_ENV: (process.env.NODE_ENV as any) || "development",
+        AUTH_RATE_LIMIT_PEPPER: "mocter-dev-pepper",
+      };
+    }
     const issues = result.error.issues.map((issue) => ({
       path: issue.path.join("."),
       message: issue.message,

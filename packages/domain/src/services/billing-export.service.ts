@@ -178,7 +178,7 @@ export class BillingExportService {
         { width: 16 }, // Estado
       ];
 
-      const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
+      const buffer = (await workbook.xlsx.writeBuffer()) as unknown as Buffer;
 
       appLogger.info("[BillingExportService] Exportación Excel generada con éxito", {
         itemsCount: items.length,

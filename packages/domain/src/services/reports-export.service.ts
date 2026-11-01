@@ -281,7 +281,7 @@ export class ReportsExportService {
         { width: 14 },
       ];
 
-      const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
+      const buffer = (await workbook.xlsx.writeBuffer()) as unknown as Buffer;
 
       appLogger.info("[ReportsExportService] Archivo Excel analítico generado exitosamente", {
         tenantName,

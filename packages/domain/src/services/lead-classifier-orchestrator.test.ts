@@ -29,7 +29,7 @@ describe("BOT-002 T-07 · LeadClassifierOrchestrator", () => {
     };
     mockStateService = {
       getState: vi.fn().mockResolvedValue(ok({ lastLabel: "lead-tibio" })),
-      saveState: vi.fn().mockResolvedValue(ok({ id: "cs-1" })),
+      applyTurn: vi.fn().mockResolvedValue(ok({ id: "cs-1" })),
     };
   });
 
@@ -66,13 +66,16 @@ describe("BOT-002 T-07 · LeadClassifierOrchestrator", () => {
     expect(result.data.appliedToCrm).toBe(true);
     expect(result.data.appliedToChatwoot).toBe(true);
 
-    expect(mockStateService.saveState).toHaveBeenCalledWith(
-      "pg-cell-01",
-      "11111111-1111-7111-8111-111111111111",
+    expect(mockStateService.applyTurn).toHaveBeenCalledWith(
       expect.objectContaining({
+        cellId: "pg-cell-01",
+        clientId: "11111111-1111-7111-8111-111111111111",
         chatwootConversationId: 1001,
-        lastLabel: "lead-caliente",
-        prospectId: "p-123",
+        patch: {
+          lastLabel: "lead-caliente",
+          prospectId: "p-123",
+        },
+        actor: "bot.classifier",
       }),
     );
 
@@ -122,7 +125,7 @@ describe("BOT-002 T-07 · LeadClassifierOrchestrator", () => {
     expect(result.data.appliedToCrm).toBe(false);
     expect(result.data.appliedToChatwoot).toBe(false);
 
-    expect(mockStateService.saveState).not.toHaveBeenCalled();
+    expect(mockStateService.applyTurn).not.toHaveBeenCalled();
     expect(mockCrmService.updateProspect).not.toHaveBeenCalled();
     expect(mockConversationGateway.updateConversationLabels).not.toHaveBeenCalled();
   });

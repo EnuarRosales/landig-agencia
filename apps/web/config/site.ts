@@ -11,9 +11,9 @@ export const siteConfig = {
   legalName: "Mocter",
   description:
     "Automatización de atención al cliente, agendamiento y ventas con IA Omnicanal",
-  url: env.NEXT_PUBLIC_SITE_URL,
-  appUrl: env.NEXT_PUBLIC_APP_URL,
-  apiUrl: env.NEXT_PUBLIC_API_URL,
+  url: env.NEXT_PUBLIC_SITE_URL || "https://mocter.co",
+  appUrl: env.NEXT_PUBLIC_APP_URL || "http://localhost:3001",
+  apiUrl: env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api",
   supportEmail: "info@mocter.co",
   areaServed: "Colombia",
   defaultLocale: "es",

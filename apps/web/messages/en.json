@@ -333,5 +333,24 @@
       "googleButton": "Continue with Google",
       "facebookButton": "Continue with Facebook"
     }
+  },
+  "admin": {
+    "billing": {
+      "title": "Subscription & Billing",
+      "subtitle": "Manage your active plan, prorations and payment methods",
+      "currentPlan": "Current Plan",
+      "upgradePlan": "Upgrade Plan",
+      "changePlan": "Change Plan",
+      "currentStatus": "Subscription Status",
+      "active": "Active",
+      "pastDue": "Payment Pending",
+      "canceled": "Canceled",
+      "prorationNotice": "When changing plans, unconsumed credit from remaining days will be automatically applied to your next invoice.",
+      "availablePlans": "Available Upgrade Plans",
+      "selectPlan": "Select Plan",
+      "confirmUpgrade": "Confirm Plan Upgrade",
+      "checkoutButton": "Proceed to Secure Checkout",
+      "backToSettings": "Back to Settings"
+    }
   }
 }

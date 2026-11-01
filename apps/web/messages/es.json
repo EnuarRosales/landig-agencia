@@ -333,5 +333,24 @@
       "googleButton": "Continuar con Google",
       "facebookButton": "Continuar con Facebook"
     }
+  },
+  "admin": {
+    "billing": {
+      "title": "Suscripción y Facturación",
+      "subtitle": "Gestiona tu plan activo, prorrateos y métodos de pago",
+      "currentPlan": "Plan Actual",
+      "upgradePlan": "Mejorar Plan",
+      "changePlan": "Cambiar de Plan",
+      "currentStatus": "Estado de la Suscripción",
+      "active": "Activa",
+      "pastDue": "Pago Pendiente",
+      "canceled": "Cancelada",
+      "prorationNotice": "Al cambiar de plan, el saldo a favor de tus días restantes se aplicará automáticamente como crédito en tu próxima factura.",
+      "availablePlans": "Planes Disponibles para Upgrade",
+      "selectPlan": "Seleccionar Plan",
+      "confirmUpgrade": "Confirmar Upgrade de Plan",
+      "checkoutButton": "Proceder al Pago Seguro",
+      "backToSettings": "Volver a Configuración"
+    }
   }
 }
