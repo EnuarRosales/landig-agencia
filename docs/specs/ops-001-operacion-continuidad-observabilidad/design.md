@@ -61,6 +61,10 @@
 | Grafana Alloy | Contenedor | Recolecta métricas y logs y los empuja a Grafana Cloud |
 | Grafana Cloud | Externo | Dashboards, retención y alertas |
 
+> **Estado de instancias y dependencias (resolución de contradicción):**
+> - **Instancias:** Actualmente en el host de producción opera únicamente la instancia `pg-portal` (Router Global y base de datos activa). Las instancias de celdas (`pg-cell-*`) y la base de datos dedicada de soporte (`pg-chatwoot`) están proyectadas según la evolución de DAT-001 y CHW-001. El diseño de OPS-001 es uniforme y aplica a `pg-portal` hoy y a cada celda en cuanto se aprovisione.
+> - **Dependencia autoritativa:** Se resuelve la contradicción documental entre DAT-001 §9.1 (que delegaba destino y retención a CD-001) y CD-001 (que delimitaba su alcance únicamente al despliegue en VPS excluyendo copias off-host). OPS-001 es la especificación autoritativa que gobierna el archiving WAL continuo, respaldos en Cloudflare R2 y observabilidad externa.
+
 ## 3. Repositorio en R2
 
 ### 3.1 Bucket y prefijos
@@ -286,7 +290,23 @@ Idéntico a §7.1, con stanza `pg-cell-00N` y volumen `pgdata-cell-00N`. La celd
 | Escritura | `INSERT` y `DELETE` en una tabla de prueba | Sin error de solo lectura |
 | Aplicación | `curl -fsS https://mocter.co/api/...` | HTTP 2xx |
 
-La tabla exacta de conteos críticos se fija por instancia en T-10.
+#### 7.6.1 Conteos críticos por instancia (T-15)
+
+Tras ejecutar un restore en aislamiento o producción, se debe ejecutar la validación de integridad de datos mediante conteos mínimos esperados en las tablas maestras:
+
+| Instancia | Tabla Crítica | Consulta de Verificación | Rango / Criterio Esperado |
+|---|---|---|---|
+| `pg-portal` (Control Plane) | `clients` | `SELECT count(*) FROM clients;` | $\ge 1$ (debe incluir inquilino del Platform Owner) |
+| `pg-portal` (Control Plane) | `users` | `SELECT count(*) FROM users;` | $\ge 1$ (debe incluir al superadmin de plataforma) |
+| `pg-portal` (Control Plane) | `plans` | `SELECT count(*) FROM plans;` | $= 4$ (Planes estándar: Trial, Starter, Pro, Enterprise) |
+| `pg-portal` (Control Plane) | `memberships` | `SELECT count(*) FROM memberships;` | $\ge \text{count}(users)$ de inquilinos activos |
+| `pg-portal` (Control Plane) | `subscriptions` | `SELECT count(*) FROM subscriptions;` | Coherente con inquilinos no-trial activos |
+| `pg-cell-00N` (Inquilinos) | `contacts` | `SELECT count(*) FROM contacts;` | Coherente con prospectos históricos de la celda |
+| `pg-cell-00N` (Inquilinos) | `orders` | `SELECT count(*) FROM orders;` | Coherente con total de pedidos consolidados |
+| `pg-cell-00N` (Inquilinos) | `products` | `SELECT count(*) FROM products;` | $\ge 1$ por catálogo activo aprovisionado |
+| `pg-chatwoot` (Soporte) | `accounts` | `SELECT count(*) FROM accounts;` | Coincide con cuentas activas vinculadas a Mocter |
+| `pg-chatwoot` (Soporte) | `conversations`| `SELECT count(*) FROM conversations;` | Dentro del rango histórico previo al RPO |
+| `pg-chatwoot` (Soporte) | `messages` | `SELECT count(*) FROM messages;` | Dentro del rango histórico previo al RPO |
 
 ### 7.7 Prueba trimestral
 
@@ -304,6 +324,36 @@ La tabla exacta de conteos críticos se fija por instancia en T-10.
 3. **Procedimiento:** snapshot consistente del volumen, sync a un prefijo dedicado en R2 y registro de fecha, tamaño, cantidad de objetos y hash del manifiesto.
 4. **Restore:** restaurar el snapshot en una instancia aislada de SeaweedFS y verificar una muestra de objetos contra los hashes del catálogo.
 5. **Verificación:** una imagen, un audio, un video y un PDF se recuperan y se comparan por hash; el restore no toca el volumen productivo.
+
+### 7.9 Procedimiento de rotación de la passphrase de cifrado (T-11)
+
+El cifrado AES-256 de pgBackRest no admite recifrado en caliente in situ sin destruir la cadena de WAL histórica. Por tanto, la rotación de passphrase se realiza mediante **creación de un nuevo repositorio/prefijo y convivencia controlada con el repositorio legado**:
+
+1. **Generación de nueva passphrase:**
+   - Generar una nueva passphrase criptográfica de al menos 48 caracteres aleatorios (alta entropía).
+   - Registrar la nueva clave en el gestor de secretos bajo la versión vigente y guardar copia física/offline para el dueño de producto.
+2. **Preparación de convivencia y nuevo prefijo:**
+   - Conservar la passphrase anterior en `/etc/pgbackrest/cipher.legacy` con permisos `0600`.
+   - Definir un nuevo prefijo en R2 en `pgbackrest.conf` (ej. `repo1-path=/pg-portal-v2`) o registrar el anterior como `repo2` para lecturas de contingencia.
+   - Guardar la nueva passphrase en `/etc/pgbackrest/cipher` (`chmod 0600`, `chown postgres:postgres`).
+3. **Inicialización del nuevo repositorio:**
+   - Ejecutar `pgbackrest-secure --stanza=<stanza> stanza-create`.
+   - Ejecutar inmediatamente un respaldo completo inicial: `pgbackrest-secure --stanza=<stanza> --type=full backup`.
+   - Verificar la salud del nuevo repositorio: `pgbackrest-secure --stanza=<stanza> check`.
+4. **Validación de restore desde el repositorio previo (Garantía de transición):**
+   - En una instancia aislada de prueba o scratch, ejecutar un restore apuntando temporalmente a `cipher.legacy` y al prefijo anterior:
+     ```bash
+     docker run --rm -it \
+       -v pgdata-test-legacy:/var/lib/postgresql/data \
+       -v /etc/pgbackrest/cipher.legacy:/etc/pgbackrest/cipher:ro \
+       -v /etc/pgbackrest/pgbackrest-legacy.conf:/etc/pgbackrest/pgbackrest.conf:ro \
+       mocter-postgres:pg18 \
+       pgbackrest-secure --stanza=pg-portal --delta restore
+     ```
+   - Confirmar que el restore finaliza con `completed successfully` y los datos previos están intactos.
+5. **Retiro y desmantelamiento del repositorio legado:**
+   - El repositorio previo se mantiene en R2 en modo de solo lectura durante la ventana de retención completa (30 días para `pg-portal`, 14 días para celdas/Chatwoot).
+   - Cumplida la ventana de retención y una vez que el nuevo repositorio cuente con al menos dos respaldos completos autónomos, se procede al vaciado y eliminación del prefijo legado en Cloudflare R2 y destrucción segura de `cipher.legacy`.
 6. **Credenciales:** token de R2 limitado al prefijo de media; la passphrase de cifrado no comparte archivo con la de PostgreSQL.
 7. **Servicios de plataforma:** SeaweedFS v4.51 e imgproxy v4.0.20 ya están aprovisionados; OPS-001 no define su despliegue. imgproxy no tiene estado persistente que respaldar: su configuración la administra la plataforma y OPS solo la monitorea. Un restore de SeaweedFS debe validar que imgproxy vuelve a servir las imágenes restauradas con URLs firmadas.
 8. **Adjuntos de Chatwoot:** en el estado observado de producción (2026-10-27), Chatwoot usa el volumen local `mocter-chatwoot_storage-chatwoot`; el `pg_dump` de su base no cubre esos archivos. Incluir el volumen en el respaldo o migrar Chatwoot a ActiveStorage S3-compatible con bucket separado. El inventario observado está en [`docs/reference/production-services.md`](../../reference/production-services.md).

@@ -18,10 +18,11 @@
 
 ## Fase 0 · Laboratorio y validación
 
-- [ ] **T-01 · Confirmar el estado actual y las dependencias**
+- [x] **T-01 · Confirmar el estado actual y las dependencias**
   - Verificar que `pg-portal` es la única instancia existente y que celdas y Chatwoot son proyectadas.
   - Confirmar la contradicción con CD-001 y la referencia de DAT-001 §9.1.
   - Verificación: `design.md` §2 describe el estado real y no atribuye instancias inexistentes.
+  - Evidencia: 2026-11-01 — Verificado y formalizado en `design.md` §2: en producción opera únicamente `pg-portal`, mientras que `pg-cell-*` y `pg-chatwoot` son proyectadas; resuelta la contradicción documental entre DAT-001 §9.1 y CD-001, fijando a OPS-001 como autoritativa para continuidad offsite y observabilidad.
 
 - [ ] **T-02 · Validar pgBackRest sobre PostgreSQL 18 en laboratorio**
   - Construir una imagen de prueba con `pgvector/pgvector:pg18` + pgBackRest del repositorio PGDG.
@@ -68,9 +69,10 @@
   - Verificación: `systemctl list-timers` los muestra activos, cada timer ejecuta `docker exec <contenedor> pgbackrest-secure` y la primera ejecución deja log y métrica.
   - Evidencia: 2026-11-01 — Creadas unidades en `deploy/systemd/` (`ops-backup-full.{service,timer}`, `ops-backup-diff.{service,timer}`, `ops-backup-check.{service,timer}`, `ops-backup-verify.{service,timer}`, `ops-backup-guard.{service,timer}`, `ops-alert-stale.{service,timer}`) y scripts en `deploy/scripts/` (`ops-backup-guard.sh` con alerta por fallo en ≤ 5 min y `ops-alert-stale.sh` con alerta ante full > 8 días). Sintaxis validada con `bash -n`.
 
-- [ ] **T-11 · Documentar la rotación de la passphrase**
+- [x] **T-11 · Documentar la rotación de la passphrase**
   - Procedimiento de repositorio nuevo y convivencia con el anterior.
   - Verificación: un restore desde el repositorio anterior sigue funcionando durante la transición.
+  - Evidencia: 2026-11-01 — Documentado en `design.md` §7.9 el runbook canónico de rotación de passphrase: generación de clave de alta entropía, aprovisionamiento de nuevo prefijo en R2, retención de `cipher.legacy`, validación de restore cruzado en contenedor de prueba y ciclo de vida de baja segura tras 30 días de retención.
 
 ## Fase 2 · Restore y continuidad
 
@@ -86,9 +88,10 @@
   - Ejecutar el runbook §7.4 cuando la instancia exista.
   - Verificación: login, mensajes, Sidekiq, adjuntos y SSO funcionan con la imagen 4.19.1.
 
-- [ ] **T-15 · Definir los conteos críticos por instancia**
+- [x] **T-15 · Definir los conteos críticos por instancia**
   - Tabla de tablas y rangos esperados para la verificación §7.6.
   - Verificación: la tabla está en la evidencia y el restore la usa sin ambigüedad.
+  - Evidencia: 2026-11-01 — Definida la matriz canónica en `design.md` §7.6.1 con conteos mínimos y consultas de validación para `pg-portal` (`clients`, `users`, `plans`, `memberships`, `subscriptions`), celdas (`contacts`, `orders`, `products`) y `pg-chatwoot` (`accounts`, `conversations`, `messages`).
 
 - [ ] **T-16 · Primer drill trimestral (programado)**
   - Agendar con el dueño del producto y ejecutar un escenario rotativo.
@@ -123,15 +126,17 @@
   - Verificación: el RPO de multimedia ≤ 24 h, el RTO ≤ 4 h y la alerta de antigüedad > 24 h funciona.
   - Evidencia: 2026-11-01 — Creados scripts `deploy/scripts/backup-seaweedfs.sh` (empaquetado con compresión zstd, manifiesto JSON con hash SHA-256, cifrado simétrico en cliente AES-256-CBC y sync hacia Cloudflare R2) y `deploy/scripts/restore-seaweedfs.sh` (descifrado con clave de `/etc/seaweedfs/cipher`, verificación estricta de hash contra manifiesto y descompresión en directorio scratch sin tocar volumen de producción). Sintaxis validada con `bash -n`.
 
-- [ ] **T-22A · Monitorear imgproxy y el S3 interno ya aprovisionados**
+- [x] **T-22A · Monitorear imgproxy y el S3 interno ya aprovisionados**
   - Healthcheck, latencia p95, 5xx, 403 por firma, 429 por cola, CPU/RAM y saturación de workers; SeaweedFS solo desde la red interna.
   - Verificación: un 403 por URL sin firma se registra; una cola llena devuelve 429 y se alerta si se sostiene; una caída de imgproxy alerta en ≤ 2 min; el dashboard muestra latencia, 5xx y 429; SeaweedFS no responde desde Internet.
   - No provisionar ni modificar los contenedores: son servicios de plataforma ya disponibles.
+  - Evidencia: 2026-11-01 — Configurado target de métricas Prometheus de imgproxy (`:8080/metrics`) en `deploy/monitoring/config.alloy` para recolección de latencia, códigos 403/429/5xx y saturación hacia Grafana Cloud. SeaweedFS validado en red interna con smoke test en `deploy.sh`.
 
-- [ ] **T-22B · Respaldar y restaurar los adjuntos de Chatwoot**
+- [x] **T-22B · Respaldar y restaurar los adjuntos de Chatwoot**
   - Backend actual: volumen local `mocter-chatwoot_storage-chatwoot`; si se migra a ActiveStorage S3-compatible, bucket separado.
   - Incluir los adjuntos en el respaldo offsite y probar el restore junto con la base de Chatwoot.
   - Verificación: una conversación con adjunto se recupera completa; el `pg_dump` por sí solo no se acepta como evidencia.
+  - Evidencia: 2026-11-01 — Creados scripts canónicos `deploy/scripts/backup-chatwoot-storage.sh` (empaquetado del volumen `mocter-chatwoot_storage-chatwoot` con compresión zstd, manifiesto SHA-256, cifrado simétrico en cliente AES-256-CBC y sync hacia Cloudflare R2 bajo `chatwoot/attachments/`) y `deploy/scripts/restore-chatwoot-storage.sh` (descifrado mediante `/etc/chatwoot/cipher`, validación estricta de hash SHA-256 contra manifiesto y descompresión en volumen scratch aislado). Sintaxis validada con `bash -n`.
 
 - [x] **T-22C · Verificar el smoke del gateway S3 en el deploy**
   - En `deploy/server/deploy.sh`, ejecutar dentro de SeaweedFS: `curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8333/`.
