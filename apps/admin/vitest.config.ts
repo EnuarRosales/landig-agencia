@@ -3,7 +3,13 @@ import path from "node:path";
 
 export default defineConfig({
   test: {
-    include: ["app/**/*.test.ts", "app/**/*.test.tsx", "lib/**/*.test.ts"],
+    include: [
+      "app/**/*.test.ts",
+      "app/**/*.test.tsx",
+      "lib/**/*.test.ts",
+      "components/**/*.test.ts",
+      "components/**/*.test.tsx",
+    ],
     environmentMatchGlobs: [
       ["**/*.test.tsx", "jsdom"],
       ["**/*.test.ts", "node"],

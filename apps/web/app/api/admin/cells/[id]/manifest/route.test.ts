@@ -110,3 +110,4 @@ describe("GET /api/admin/cells/[id]/manifest", () => {
     expect(body.data.code).toBe("cell-02");
   });
 });
+

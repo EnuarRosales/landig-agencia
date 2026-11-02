@@ -16,6 +16,7 @@ import {
   Search,
 } from "lucide-react";
 import type { AdminBrandingSettingsDto } from "@mocter/domain";
+import { ConfirmationModal } from "@/components/confirmation-modal";
 
 interface AdminBrandingViewProps {
   initialData: AdminBrandingSettingsDto;
@@ -136,39 +137,53 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
     }
   };
 
-  const handleResetTenant = async (clientId: string) => {
-    if (!confirm("¿Desea restaurar la identidad visual del comercio a los valores predeterminados de Mocter?")) {
-      return;
-    }
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [tenantToReset, setTenantToReset] = useState<(typeof tenants)[0] | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  const handleOpenResetModal = (tenant: (typeof tenants)[0]) => {
+    setTenantToReset(tenant);
+    setResetError(null);
+    setResetModalOpen(true);
+  };
+
+  const handleConfirmResetTenant = async () => {
+    if (!tenantToReset) return;
+    setResetLoading(true);
+    setResetError(null);
 
     try {
       const res = await fetch("/api/admin/branding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "reset", clientId }),
+        body: JSON.stringify({ action: "reset", clientId: tenantToReset.clientId }),
       });
 
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        alert(data.error || "No se pudo restaurar la marca del comercio.");
-      } else {
-        setTenants((prev) =>
-          prev.map((t) =>
-            t.clientId === clientId
-              ? {
-                  ...t,
-                  brandName: null,
-                  logoUrl: null,
-                  primaryColor: "#2F6BFF",
-                  customDomain: null,
-                  hasCustomBranding: false,
-                }
-              : t,
-          ),
-        );
+        throw new Error(data.error || "No se pudo restaurar la marca del comercio.");
       }
+
+      setTenants((prev) =>
+        prev.map((t) =>
+          t.clientId === tenantToReset.clientId
+            ? {
+                ...t,
+                brandName: null,
+                logoUrl: null,
+                primaryColor: "#2F6BFF",
+                customDomain: null,
+                hasCustomBranding: false,
+              }
+            : t,
+        ),
+      );
+      setResetModalOpen(false);
     } catch (err) {
-      alert("Error de conexión al restaurar marca.");
+      setResetError(err instanceof Error ? err.message : "Error de conexión al restaurar marca.");
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -664,7 +679,7 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
                         {tenant.hasCustomBranding ? (
                           <button
                             type="button"
-                            onClick={() => handleResetTenant(tenant.clientId)}
+                            onClick={() => handleOpenResetModal(tenant)}
                             className="inline-flex items-center gap-1 rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1 text-[11px] font-semibold text-amber-400 hover:bg-amber-500/10 transition-colors"
                           >
                             <RotateCcw className="h-3 w-3" />
@@ -682,6 +697,49 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
           )}
         </div>
       )}
+
+      {/* Modal de Confirmación de Restauración de Marca (Regla 4.17) */}
+      <ConfirmationModal
+        isOpen={resetModalOpen}
+        onClose={() => {
+          setResetModalOpen(false);
+          setResetError(null);
+        }}
+        onConfirm={handleConfirmResetTenant}
+        title="Restauración De Marca Visual"
+        subtitle="Reversión a los valores predeterminados de Mocter."
+        variant="warning"
+        icon={<RotateCcw className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+        details={
+          tenantToReset
+            ? [
+                {
+                  label: "Comercio / Inquilino",
+                  value: tenantToReset.clientName || tenantToReset.clientId,
+                },
+                {
+                  label: "Identificador Slug",
+                  value: tenantToReset.clientSlug,
+                  mono: true,
+                },
+                {
+                  label: "Dominio Personalizado",
+                  value: tenantToReset.customDomain || "Sin dominio propio",
+                },
+              ]
+            : []
+        }
+        warningTitle="Reversión A Identidad Canónica Mocter"
+        warningMessage={
+          <p>
+            Esta acción restablecerá el logo corporativo, favicon, paleta personalizada y tipografía del comercio a los valores oficiales de la plataforma Mocter.
+          </p>
+        }
+        confirmText="Restaurar Valores Predeterminados"
+        confirmLoadingText="Restaurando Marca..."
+        loading={resetLoading}
+        error={resetError}
+      />
     </div>
   );
 }

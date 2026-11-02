@@ -51,7 +51,7 @@ describe("DAT-001 §3.6.3 · CellHandshakeService", () => {
       expect(res.ok).toBe(true);
       expect(res.latencyMs).toBeGreaterThanOrEqual(0);
       expect(res.details?.pgAlive).toBe(true);
-      expect(mockClient.end).toHaveBeenCalled();
+      expect((mockClient as any).end).toHaveBeenCalled();
     });
 
     it("retorna ok: false cuando la conexión a la base falla", async () => {

@@ -256,6 +256,13 @@ La vista `/login` y el endpoint `POST /auth/login` son **100% universales** para
 5. Si `totp_enabled_at` no es nulo, crea un challenge de 2FA y no emite sesión todavía. Si no, crea la sesión.
 6. La sesión toma `client_id = users.active_client_id` y el `routing_version` vigente de `client_routing`; si es un operador de Mocter sin membresía de inquilino, `client_id` y `routing_version` quedan nulos.
 7. Crea la sesión opaca en `sessions` del Router Global y la cachea en Redis con `reauth_at = now()`; devuelve `200` con `user`, `emailVerified`, `clientId` y `expiresAt`, y setea la cookie de sesión `__Host-mocter_sid` y la cookie CSRF.
+8. **Enrutamiento y Redirección Post-Login (AUTH-D-09):**
+   - Si la solicitud incluye un parámetro `return_to` o `returnUrl` verificado contra orígenes autorizados, se respeta prioritariamente.
+   - En ausencia de `return_to`, la interfaz cliente bifurca según el rol y pertenencia del usuario:
+     - **Operador SaaS (`platform_*`):** Redirección hacia el Backoffice corporativo (`mocter-admin`, puerto 3003 o `admin.mocter.co`).
+     - **Prospecto Pre-Onboarding (`active_client_id IS NULL`):** Redirección hacia el onboarding de alta comercial (`/[locale]/onboarding`).
+     - **Usuario de Inquilino (`tenant_*` con `active_client_id`):** Redirección hacia la aplicación celular del inquilino (`tenant-admin`, puerto 3004 / subdominio de inquilino).
+   - La cookie de sesión `mocter_sid` utiliza `SameSite=Lax` para permitir navegaciones cross-subdomain/cross-port legítimas hacia el backoffice y celdas sin pérdida de sesión. En producción define `Domain=.mocter.co`.
 
 Mensaje de credenciales inválidas: «Correo o contraseña incorrectos.» No se distingue correo inexistente, contraseña incorrecta, cuenta federada o cuenta deshabilitada.
 

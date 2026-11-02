@@ -6,6 +6,7 @@ import { locales } from "@/i18n/routing";
 import { FloatingBackground } from "@/components/sections/floating-background";
 import { LoginView } from "@/components/auth";
 import { authService } from "@mocter/domain";
+import { AlertTriangle } from "lucide-react";
 
 export const instant = false;
 
@@ -38,7 +39,12 @@ export default async function LoginPage({ params, searchParams }: Props) {
   const { locale } = await params;
   const sParams = await searchParams;
   const returnTo =
-    typeof sParams?.return_to === "string" ? sParams.return_to : undefined;
+    typeof sParams?.return_to === "string"
+      ? sParams.return_to
+      : typeof sParams?.returnUrl === "string"
+        ? sParams.returnUrl
+        : undefined;
+  const reason = typeof sParams?.reason === "string" ? sParams.reason : undefined;
   const t = await getTranslations({ locale, namespace: "auth.login" });
   const tOauth = await getTranslations({ locale, namespace: "auth.oauth" });
   const enabledProviders = (await authService.getEnabledOAuthProviders())
@@ -81,6 +87,26 @@ export default async function LoginPage({ params, searchParams }: Props) {
             </h1>
             <p className="mt-1.5 text-sm text-muted">{t("subtitle")}</p>
           </header>
+
+          {/* Banner HUD de sesión expirada */}
+          {reason === "expired" && (
+            <div
+              role="alert"
+              className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-amber-200 backdrop-blur-sm"
+            >
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+              <div className="text-xs leading-relaxed">
+                <p className="font-semibold text-amber-300">
+                  {locale === "es" ? "Sesión Expirada" : "Session Expired"}
+                </p>
+                <p className="mt-0.5 text-amber-200/80">
+                  {locale === "es"
+                    ? "Tu sesión ha expirado por inactividad. Por favor, ingresa tus credenciales para continuar."
+                    : "Your session has expired due to inactivity. Please sign in again to continue."}
+                </p>
+              </div>
+            </div>
+          )}
 
           <LoginView
             locale={locale}

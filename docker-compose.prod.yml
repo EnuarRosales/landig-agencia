@@ -55,7 +55,7 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-mocter_rabbit}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}"
     networks: [ backend ]
     healthcheck:
@@ -90,6 +90,7 @@ services:
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://mocter.co}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://mocter.co}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://mocter.co/api}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://mocter.co/auth/google/callback}
@@ -106,7 +107,7 @@ services:
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
-      SMTP_FROM: 
+      SMTP_FROM:
       SETUP_OWNER_TOKEN: ${SMTP_FROM:-soporte@mocter.co}
     networks: [ backend, traefik_network ]
     labels:
@@ -133,6 +134,8 @@ services:
       pg-portal:
         condition: service_healthy
       redis-control:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   admin-portal:
@@ -164,6 +167,8 @@ services:
       pg-portal:
         condition: service_healthy
       redis-control:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
 networks:

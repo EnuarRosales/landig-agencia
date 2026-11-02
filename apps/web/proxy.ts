@@ -24,10 +24,47 @@ export function proxy(request: NextRequest) {
   // Reenviar encabezado x-request-id hacia el contexto de la aplicación
   request.headers.set("x-request-id", requestId);
 
-  // Redirección inmediata del backoffice hacia mocter-admin (puerto 3003)
+  // Redirección inmediata del backoffice hacia mocter-admin (puerto 3003) con control de sesión
   const pathname = request.nextUrl.pathname;
   if (pathname === "/admin" || pathname.startsWith("/es/admin") || pathname.startsWith("/en/admin")) {
-    const adminBase = process.env.NEXT_PUBLIC_ADMIN_URL || "http://localhost:3003";
+    const isProduction = process.env.NODE_ENV === "production";
+    const sidCookieName = isProduction ? "__Host-mocter_sid" : "mocter_sid";
+    const sid = request.cookies.get(sidCookieName)?.value || request.cookies.get("mocter_sid")?.value;
+
+    if (!sid) {
+      let loginBase = process.env.NEXT_PUBLIC_APP_URL || (isProduction ? "https://mocter.co" : "http://localhost:3001");
+      if (
+        !isProduction &&
+        request.nextUrl.hostname !== "localhost" &&
+        request.nextUrl.hostname !== "127.0.0.1" &&
+        !request.nextUrl.hostname.endsWith(".mocter.co") &&
+        request.nextUrl.hostname !== "mocter.co"
+      ) {
+        loginBase = `${request.nextUrl.protocol}//${request.nextUrl.hostname}:3001`;
+      }
+      const returnUrl = encodeURIComponent(request.nextUrl.href);
+      const targetLogin = new URL(`/es/login?return_to=${returnUrl}`, loginBase);
+
+      logger.warn({
+        event: "proxy.admin_unauthorized_redirect",
+        requestId,
+        from: pathname,
+        to: targetLogin.toString(),
+      });
+
+      return NextResponse.redirect(targetLogin, 307);
+    }
+
+    let adminBase = process.env.NEXT_PUBLIC_ADMIN_URL || (isProduction ? "https://admin.mocter.co" : "http://localhost:3003");
+    if (
+      !isProduction &&
+      request.nextUrl.hostname !== "localhost" &&
+      request.nextUrl.hostname !== "127.0.0.1" &&
+      !request.nextUrl.hostname.endsWith(".mocter.co") &&
+      request.nextUrl.hostname !== "mocter.co"
+    ) {
+      adminBase = `${request.nextUrl.protocol}//${request.nextUrl.hostname}:3003`;
+    }
     const subPath = pathname.replace(/^(\/(es|en))?\/admin/, "") || "/";
     const targetUrl = new URL(subPath, adminBase);
 

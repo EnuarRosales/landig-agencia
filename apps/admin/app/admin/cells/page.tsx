@@ -5,22 +5,51 @@ import { Server, Database, Activity, ShieldCheck } from "lucide-react";
 import type { AdminCellDto } from "@mocter/domain";
 import { CreateCellForm } from "./create-cell-form";
 import { CellActions } from "./cell-actions";
+import { adminFetch } from "@/lib/api-client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001/api";
+function getApiUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
+  }
+  if (typeof window !== "undefined") {
+    const hostname = window.location.hostname;
+    const isProduction = process.env.NODE_ENV === "production";
+    if (
+      !isProduction &&
+      (hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        hostname.startsWith("192.168.") ||
+        hostname.startsWith("10.") ||
+        hostname.startsWith("172."))
+    ) {
+      return `${window.location.protocol}//${hostname}:3001/api`;
+    }
+  }
+  return "https://mocter.co/api";
+}
 
 async function fetchCells(): Promise<{ ok: boolean; data?: AdminCellDto[]; error?: string }> {
-  const res = await fetch(`${API_URL}/admin/cells`, {
-    method: "GET",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-  });
+  try {
+    const res = await adminFetch(`${getApiUrl()}/admin/cells`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
 
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    return { ok: false, error: data.error || "Error al listar celdas" };
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, error: data.error || "Error al listar celdas" };
+    }
+
+    return await res.json();
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Error de conexión con el plano de control",
+    };
   }
-
-  return res.json();
 }
 
 /**
@@ -29,7 +58,7 @@ async function fetchCells(): Promise<{ ok: boolean; data?: AdminCellDto[]; error
  * Cliente que consume la API protegida de apps/web con sesión y origen admin.
  * El listado y registro se delegan a `/api/admin/cells` en el origen de autenticación.
  */
-export default function AdminCellsPage() {
+export default function AdminCellsPage(): React.JSX.Element {
   const [cellsList, setCellsList] = useState<AdminCellDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,13 +66,18 @@ export default function AdminCellsPage() {
   const refresh = async () => {
     setLoading(true);
     setError(null);
-    const result = await fetchCells();
-    if (!result.ok) {
-      setError(result.error || "Error desconocido");
-    } else {
-      setCellsList(result.data || []);
+    try {
+      const result = await fetchCells();
+      if (!result.ok) {
+        setError(result.error || "Error desconocido");
+      } else {
+        setCellsList(result.data || []);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error inesperado");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -51,22 +85,37 @@ export default function AdminCellsPage() {
     (async () => {
       setLoading(true);
       setError(null);
-      const result = await fetchCells();
-      if (cancelled) return;
-      if (!result.ok) {
-        setError(result.error || "Error desconocido");
-      } else {
-        setCellsList(result.data || []);
+      try {
+        const result = await fetchCells();
+        if (cancelled) return;
+        if (!result.ok) {
+          setError(result.error || "Error desconocido");
+        } else {
+          setCellsList(result.data || []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Error inesperado");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const totalCapacity = cellsList.reduce((acc, c) => acc + c.maxClients, 0);
-  const totalOccupied = cellsList.reduce((acc, c) => acc + c.currentClients, 0);
+  const totalCapacity = cellsList.reduce<number>(
+    (acc: number, c: AdminCellDto) => acc + (c.maxClients ?? 0),
+    0,
+  );
+  const totalOccupied = cellsList.reduce<number>(
+    (acc: number, c: AdminCellDto) => acc + (c.currentClients ?? 0),
+    0,
+  );
 
   return (
     <div className="space-y-6 p-4 md:p-8 max-w-7xl mx-auto">
@@ -86,7 +135,7 @@ export default function AdminCellsPage() {
           </p>
         </div>
 
-        <CreateCellForm apiUrl={API_URL} onSuccess={refresh} />
+        <CreateCellForm apiUrl={getApiUrl()} onSuccess={refresh} />
       </header>
 
       {/* Métricas rápidas de infraestructura */}
@@ -186,7 +235,7 @@ export default function AdminCellsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--dsn-border)]">
-                {cellsList.map((c) => {
+                {cellsList.map((c: AdminCellDto) => {
                   const percent = Math.round((c.currentClients / c.maxClients) * 100);
                   
                   const getStatusBadge = (status: string) => {
@@ -255,7 +304,7 @@ export default function AdminCellsPage() {
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <CellActions cell={c} apiUrl={API_URL} onRefresh={refresh} />
+                        <CellActions cell={c} apiUrl={getApiUrl()} onRefresh={refresh} />
                       </td>
                     </tr>
                   );

@@ -102,6 +102,30 @@ export class DrizzleAuthRepository implements IAuthRepository {
   }
 
   /**
+   * Obtiene el rol activo de plataforma asignado al usuario en `admin.platform_user_roles` (ADM-001 D-31, AUTH-D-09).
+   */
+  async findUserPlatformRole(userId: string): Promise<string | null> {
+    try {
+      const rows = await this.db
+        .select({ role: schema.platformUserRoles.role })
+        .from(schema.platformUserRoles)
+        .where(
+          and(
+            eq(schema.platformUserRoles.userId, userId),
+            sql`${schema.platformUserRoles.revokedAt} IS NULL`,
+          ),
+        )
+        .limit(1);
+
+      return rows[0]?.role || null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthRepository.findUserPlatformRole Failed] ${msg}`, error, { userId });
+      return null;
+    }
+  }
+
+  /**
    * Crea un usuario y registra su consentimiento de tratamiento de datos en una sola transacción atómica.
    */
   async createUserWithConsent(

@@ -81,6 +81,14 @@ export interface IAuthRepository {
   findUserById(id: string): Promise<User | null>;
 
   /**
+   * Obtiene el rol activo de plataforma asignado al usuario en `admin.platform_user_roles` (ADM-001 D-31, AUTH-D-09).
+   *
+   * @param userId - Identificador UUID del usuario.
+   * @returns El identificador del rol (ej. `platform_owner`) o `null` si no tiene rol de plataforma asignado.
+   */
+  findUserPlatformRole?(userId: string): Promise<string | null>;
+
+  /**
    * Crea un nuevo usuario y su consentimiento de tratamiento de datos en una transacción atómica.
    *
    * @param params - Parámetros de creación del usuario y consentimiento.

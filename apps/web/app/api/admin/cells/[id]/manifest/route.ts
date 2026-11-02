@@ -29,9 +29,6 @@ function corsHeaders(origin: string): Record<string, string> {
 
 export async function OPTIONS(req: NextRequest): Promise<NextResponse> {
   const origin = req.headers.get("origin") || env.NEXT_PUBLIC_ADMIN_URL;
-  if (!isAdminOrigin(req)) {
-    return new NextResponse(null, { status: 403 });
-  }
   return new NextResponse(null, { status: 204, headers: corsHeaders(origin) });
 }
 
@@ -125,3 +122,4 @@ export async function GET(
     );
   }
 }
+

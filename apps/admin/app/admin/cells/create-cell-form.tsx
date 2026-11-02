@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Server, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { adminFetch } from "@/lib/api-client";
 
 interface CreateCellFormProps {
   apiUrl: string;
@@ -14,10 +15,9 @@ interface CreateCellFormProps {
  * Requiere que la cookie de sesión esté presente en el origen de autenticación.
  */
 async function fetchCsrfToken(apiUrl: string): Promise<string> {
-  const res = await fetch(`${apiUrl}/auth/csrf`, {
+  const res = await adminFetch(`${apiUrl}/auth/csrf`, {
     method: "GET",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: { Accept: "application/json" },
   });
 
   if (!res.ok) {
@@ -36,7 +36,7 @@ async function fetchCsrfToken(apiUrl: string): Promise<string> {
  * Formulario interactivo para registrar una nueva célula de datos en Mocter (DAT-001 §3.3).
  * Ahora consume la API protegida de apps/web con sesión, CSRF y validación de origen admin.
  */
-export function CreateCellForm({ apiUrl, onSuccess }: CreateCellFormProps) {
+export function CreateCellForm({ apiUrl, onSuccess }: CreateCellFormProps): React.JSX.Element {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -85,16 +85,15 @@ export function CreateCellForm({ apiUrl, onSuccess }: CreateCellFormProps) {
         pgbouncerHost: formData.pgbouncerHost.trim(),
         pgbouncerPort: Number(formData.pgbouncerPort),
         databaseName: formData.databaseName.trim(),
-        appUrl: formData.appUrl.trim() || undefined,
+        appUrl: formData.appUrl.trim(),
         privateIp: formData.privateIp.trim() || undefined,
         publicIp: formData.publicIp.trim() || undefined,
         maxClients: Number(formData.maxClients),
         region: formData.region.trim(),
       };
 
-      const res = await fetch(`${apiUrl}/admin/cells`, {
+      const res = await adminFetch(`${apiUrl}/admin/cells`, {
         method: "POST",
-        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           "x-csrf-token": csrfToken,
@@ -256,12 +255,13 @@ export function CreateCellForm({ apiUrl, onSuccess }: CreateCellFormProps) {
                     htmlFor="cell-app-url"
                     className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
                   >
-                    URL De La Aplicación Celular (Opcional)
+                    URL De La Aplicación Celular
                   </label>
                   <input
                     id="cell-app-url"
                     type="text"
-                    placeholder="ej. http://10.0.0.2:3004"
+                    required
+                    placeholder="ej. http://10.0.0.2:3004 o http://localhost:3004"
                     value={formData.appUrl}
                     onChange={(e) => setFormData({ ...formData, appUrl: e.target.value })}
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"

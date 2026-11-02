@@ -279,8 +279,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       durationMs,
     });
 
-    const sidCookieName = isProduction ? "__Host-mocter_sid" : "mocter_sid";
-    const csrfCookieName = isProduction ? "__Host-mocter_csrf" : "mocter_csrf";
+    const sidCookieName = "mocter_sid";
+    const csrfCookieName = "mocter_csrf";
 
     const response = NextResponse.json(
       {
@@ -295,22 +295,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 200 },
     );
 
-    // Cookie opaca de sesión (HttpOnly, SameSite=Strict, 12 horas máx absoluto)
+    // Cookie opaca de sesión (HttpOnly, SameSite=Lax para permitir navegación cross-subdomain AUTH-D-09)
     response.cookies.set(sidCookieName, result.data.sid, {
       httpOnly: true,
       secure: isProduction,
-      sameSite: "strict",
+      sameSite: "lax",
       path: "/",
       maxAge: 43200, // 12 horas
+      ...(isProduction && { domain: ".mocter.co" }),
     });
 
     // Cookie CSRF (legible por el cliente para el encabezado X-CSRF-Token)
     response.cookies.set(csrfCookieName, result.data.csrfToken, {
       httpOnly: false,
       secure: isProduction,
-      sameSite: "strict",
+      sameSite: "lax",
       path: "/",
       maxAge: 43200,
+      ...(isProduction && { domain: ".mocter.co" }),
     });
 
     return response;

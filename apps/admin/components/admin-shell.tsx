@@ -200,10 +200,10 @@ export function AdminShell({ children }: AdminShellProps) {
           />
 
           {/* Panel deslizante desde la izquierda */}
-          <div className="relative flex w-[280px] max-w-[85vw] flex-col justify-between border-r border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-2xl animate-in slide-in-from-left duration-200">
-            <div>
+          <div className="relative z-10 flex w-[280px] max-w-[85vw] h-dvh flex-col justify-between border-r border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-2xl animate-in slide-in-from-left duration-200">
+            <div className="flex flex-col flex-1 min-h-0">
               {/* Encabezado del Drawer */}
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--dsn-border)]">
+              <div className="flex items-center justify-between pb-3 border-b border-[var(--dsn-border)] shrink-0">
                 <BrandLogo size="md" badgeText="Core" />
                 <button
                   type="button"
@@ -215,8 +215,8 @@ export function AdminShell({ children }: AdminShellProps) {
                 </button>
               </div>
 
-              {/* Lista de navegación vertical con iconos y touch target >= 44px */}
-              <nav className="mt-4 space-y-1.5" aria-label="Navegación principal móvil">
+              {/* Lista de navegación vertical con scroll independiente */}
+              <nav className="mt-4 space-y-1.5 overflow-y-auto flex-1 pr-1 overscroll-contain" aria-label="Navegación principal móvil">
                 {navItems.map((item) => {
                   const Icon = item.icon;
                   const active = isLinkActive(item.href);
@@ -253,7 +253,7 @@ export function AdminShell({ children }: AdminShellProps) {
             </div>
 
             {/* Pie del drawer móvil */}
-            <div className="border-t border-[var(--dsn-border)] pt-4 space-y-3">
+            <div className="border-t border-[var(--dsn-border)] pt-4 space-y-3 shrink-0">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-[var(--dsn-text-secondary)]">Tema visual</span>
                 <ThemeToggle />

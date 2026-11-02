@@ -2,6 +2,14 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  allowedDevOrigins: [
+    "localhost",
+    "127.0.0.1",
+    "192.168.*.*",
+    "10.*.*.*",
+    "172.*.*.*",
+    ...(process.env.ALLOWED_DEV_ORIGINS ? process.env.ALLOWED_DEV_ORIGINS.split(",").map((s) => s.trim()) : []),
+  ],
   async headers() {
     return [
       {

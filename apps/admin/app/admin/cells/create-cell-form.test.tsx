@@ -48,6 +48,7 @@ describe("DAT-001 / ADM-001 · CreateCellForm Component", () => {
     expect(screen.getByLabelText(/Código De La Célula/i)).toBeDefined();
     expect(screen.getByLabelText(/Nivel De Servicio/i)).toBeDefined();
     expect(screen.getByLabelText(/Topología De Despliegue/i)).toBeDefined();
+    expect(screen.getByLabelText(/^URL De La Aplicación Celular$/i)).toBeDefined();
     expect(screen.getByLabelText(/Host De PgBouncer O PostgreSQL/i)).toBeDefined();
     expect(screen.getByLabelText(/Puerto De Conexión/i)).toBeDefined();
     expect(screen.getByLabelText(/Nombre De La Base De Datos/i)).toBeDefined();
@@ -99,6 +100,9 @@ describe("DAT-001 / ADM-001 · CreateCellForm Component", () => {
     });
     fireEvent.change(screen.getByLabelText(/Nombre De La Base De Datos/i), {
       target: { value: "mocter_cell_custom" },
+    });
+    fireEvent.change(screen.getByLabelText(/^URL De La Aplicación Celular$/i), {
+      target: { value: "http://10.0.0.2:3004" },
     });
 
     const submitButton = screen.getByRole("button", { name: /^registrar célula$/i });

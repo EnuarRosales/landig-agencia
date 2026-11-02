@@ -166,9 +166,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const input = body as Partial<CreateAdminCellInput>;
-    if (!input.code || !input.pgbouncerHost || !input.databaseName) {
+    if (!input.code || !input.pgbouncerHost || !input.databaseName || !input.appUrl) {
       return NextResponse.json(
-        { ok: false, error: "Código, host de PgBouncer y nombre de base de datos son obligatorios.", code: "VALIDATION_ERROR" },
+        {
+          ok: false,
+          error:
+            "Código, host de PgBouncer, nombre de base de datos y URL de la aplicación celular son obligatorios.",
+          code: "VALIDATION_ERROR",
+        },
         { status: 400, headers: corsHeaders(origin) },
       );
     }

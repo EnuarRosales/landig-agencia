@@ -5,7 +5,14 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   output: "standalone",
-  allowedDevOrigins: ["localhost:3000", "127.0.0.1:3000", "172.18.5.*", "172.18.5.19:3000"],
+  allowedDevOrigins: [
+    "localhost",
+    "127.0.0.1",
+    "192.168.*.*",
+    "10.*.*.*",
+    "172.*.*.*",
+    ...(process.env.ALLOWED_DEV_ORIGINS ? process.env.ALLOWED_DEV_ORIGINS.split(",").map((s) => s.trim()) : []),
+  ],
   async headers() {
     return [
       {

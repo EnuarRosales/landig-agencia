@@ -140,6 +140,14 @@ Todo error en el proyecto pertenece estrictamente a una de tres categorías inmu
 
 Queda terminantemente prohibido exponer códigos, identificadores o siglas de especificaciones técnicas y requisitos de ingeniería (`ADM-001`, `CHW-001`, `DAT-001`, `BILL-001`, `NTF-001`, `DSN-001`, `RF-XX`, `D-XX`, etc.) en cualquier elemento visible de la interfaz de usuario final (badges, pills, encabezados, botones o textos). Dicha información pertenece exclusivamente a la trazabilidad interna de ingeniería y solo puede residir en comentarios de código (TSDoc/JSDoc), documentación en `docs/specs/` y commits. Todos los textos visibles deben formularse en lenguaje semántico y comprensible para el usuario u operador. Consulte la directiva completa en [rules/rules-for-no-spec-codes-in-ui.md](rules/rules-for-no-spec-codes-in-ui.md).
 
+### 4.16 Compatibilidad de entorno, resolución DNS y producción con Traefik (Zero Hardcoded Ports)
+
+Queda estrictamente prohibido proponer o implementar soluciones o heurísticas acopladas al ambiente de desarrollo local (como manipular puertos específicos `3000`, `3001`, `3003` mediante strings en proxies, redirecciones o lógica de componentes). Toda solución debe ser arquitectónicamente agnóstica de infraestructura y 100% compatible con el ambiente de producción gobernado por Docker y Traefik v2.11, donde todo el tráfico entra por resolución de nombres DNS (`mocter.co`, `admin.mocter.co`, `*.mocter.co`), TLS en puerto estándar 443 y redes internas sin puertos publicados en el host. En desarrollo local, rige el Principio de Paridad de Puertos (`PORT=3003` interno mapeado `3003:3003` externo) para eliminar desfasajes de socket sin parches en código. Consulte la directiva completa en [rules/rules-for-environment-and-traefik-compatibility.md](rules/rules-for-environment-and-traefik-compatibility.md).
+
+### 4.17 Modales de confirmación del sistema de diseño (Zero Native Dialogs)
+
+Queda estrictamente prohibido el uso de diálogos nativos del navegador (`window.alert()`, `window.confirm()`, `window.prompt()`) para cualquier interacción o confirmación destructiva en el sistema. Toda confirmación (eliminación, retiro, drenado de células, cambios de estado operativo o restauración de configuración) debe implementarse como diálogo modal accesible (`role="dialog"`, `aria-modal="true"`), estilizado con tokens del sistema de diseño Mocter (`--dsn-*`), tarjeta de resumen de metadatos del recurso, banner contextual de salvaguarda/advertencia y botones en Title Case con feedback de carga. Consulte la directiva completa en [rules/rules-for-custom-confirmation-modals-no-native-dialogs.md](rules/rules-for-custom-confirmation-modals-no-native-dialogs.md).
+
 ## 5. Formato del reporte del agente
 
 Al terminar una especificación, entrega:

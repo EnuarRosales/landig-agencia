@@ -94,7 +94,7 @@ export function RegisterView({
           <button
             type="button"
             onClick={() => setShowEmailForm(true)}
-            className="group flex min-h-[48px] w-full items-center justify-center gap-3 rounded-xl border border-stroke bg-bg2/80 px-4 py-3 text-sm font-semibold text-txt shadow-xs transition-all hover:border-a1/60 hover:bg-a1/10 hover:shadow-md active:scale-98"
+            className="group flex min-h-[48px] w-full cursor-pointer touch-manipulation items-center justify-center gap-3 rounded-xl border border-stroke bg-bg2/80 px-4 py-3 text-sm font-semibold text-txt shadow-xs transition-all hover:border-a1/60 hover:bg-a1/10 hover:shadow-md active:scale-98"
           >
             <Mail className="h-5 w-5 shrink-0 text-muted transition-colors group-hover:text-a2" />
             <span>{tOauth.emailButton || "Correo Electrónico"}</span>
@@ -107,7 +107,7 @@ export function RegisterView({
             <button
               type="button"
               onClick={() => setShowEmailForm(false)}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted transition-colors hover:text-a2"
+              className="inline-flex cursor-pointer touch-manipulation items-center gap-1.5 text-xs font-semibold text-muted transition-colors hover:text-a2"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               <span>{tOauth.backToOptions || "Volver a opciones de registro"}</span>

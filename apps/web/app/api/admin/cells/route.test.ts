@@ -157,6 +157,7 @@ describe("DAT-001 T1 · /api/admin/cells", () => {
       code: "cell-02",
       pgbouncerHost: "pgbouncer-cell-02",
       databaseName: "mocter_cell_02",
+      appUrl: "http://10.0.1.20:3004",
     };
 
     it("rechaza origen distinto al subdominio admin (403)", async () => {

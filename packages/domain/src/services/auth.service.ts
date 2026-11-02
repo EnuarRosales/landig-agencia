@@ -298,6 +298,7 @@ export interface LoginSuccessData {
     email: string;
     fullName: string | null;
     status: string;
+    role?: string;
   };
   emailVerified: boolean;
   clientId: string | null;
@@ -1329,12 +1330,16 @@ export class AuthService {
     // Poblar caché de Redis con TTL de inactividad (AUTH-001 §5.6, T-21)
     await this.sessionCache.cacheSession(session, sidHash.toString("hex"));
 
+    const platformRole = await this.authRepo.findUserPlatformRole?.(user.id);
+    const resolvedRole = platformRole || (user.activeClientId ? "tenant_user" : "prospect");
+
     return ok({
       user: {
         id: user.id,
         email: user.email,
         fullName: user.displayName,
         status: user.status,
+        role: resolvedRole,
       },
       emailVerified: Boolean(user.emailVerifiedAt),
       clientId: user.activeClientId,

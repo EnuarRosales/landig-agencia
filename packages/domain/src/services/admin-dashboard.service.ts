@@ -59,7 +59,7 @@ export interface CreateAdminCellInput {
   pgbouncerHost: string;
   pgbouncerPort?: number;
   databaseName: string;
-  appUrl?: string;
+  appUrl: string;
   privateIp?: string;
   publicIp?: string;
   workingDir?: string;
@@ -203,9 +203,13 @@ export async function createAdminCell(input: CreateAdminCellInput): Promise<Resu
     const code = input.code.trim().toLowerCase();
     const pgbouncerHost = input.pgbouncerHost.trim();
     const databaseName = input.databaseName.trim();
+    const appUrl = (input.appUrl || "").trim();
 
-    if (!code || !pgbouncerHost || !databaseName) {
-      return err("Código, host de PgBouncer y nombre de base de datos son obligatorios.", "VALIDATION_ERROR");
+    if (!code || !pgbouncerHost || !databaseName || !appUrl) {
+      return err(
+        "Código, host de PgBouncer, nombre de base de datos y URL de la aplicación celular son obligatorios.",
+        "VALIDATION_ERROR",
+      );
     }
 
     const authz = await authorizeCellProvision(input.actorUserId);
@@ -280,6 +284,147 @@ export async function updateCellStatus(
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[updateCellStatus Failed] ${msg}`, error);
     return err(`Error al actualizar estado de la celda: ${msg}`, "CELL_ERROR");
+  }
+}
+
+export interface UpdateAdminCellInput {
+  tier?: "standard" | "dedicated";
+  topologyType?: "remote_vps" | "local_compose";
+  pgbouncerHost?: string;
+  pgbouncerPort?: number;
+  databaseName?: string;
+  appUrl?: string;
+  privateIp?: string | null;
+  publicIp?: string | null;
+  workingDir?: string;
+  deployUser?: string;
+  maxClients?: number;
+  region?: string;
+  status?: "draft" | "provisioning" | "verifying" | "active" | "draining" | "readonly" | "maintenance" | "error_connection";
+  actorUserId?: string;
+}
+
+/**
+ * Modifica los atributos de configuración de una célula de datos existente (DAT-001 §3.3).
+ * Requiere autorización con permiso `cells.provision`.
+ */
+export async function updateAdminCell(
+  cellId: string,
+  input: UpdateAdminCellInput,
+): Promise<Result<AdminCellDto>> {
+  try {
+    if (!input.actorUserId) {
+      return err("Identificador de usuario actor requerido.", "UNAUTHORIZED");
+    }
+    const authz = await authorizeCellProvision(input.actorUserId);
+    if (!authz.ok) {
+      return err(authz.error, "FORBIDDEN");
+    }
+
+    const db = getDb();
+    const [existing] = await db.select().from(cells).where(eq(cells.id, cellId)).limit(1);
+
+    if (!existing) {
+      return err(`Célula de datos con id "${cellId}" no encontrada.`, "NOT_FOUND");
+    }
+
+    if (input.maxClients !== undefined && input.maxClients < existing.currentClients) {
+      return err(
+        `La capacidad máxima (${input.maxClients}) no puede ser menor a los inquilinos actuales (${existing.currentClients}).`,
+        "VALIDATION_ERROR",
+      );
+    }
+
+    const operator = input.actorUserId || existing.updatedBy;
+    const updateValues: Partial<typeof cells.$inferInsert> = {
+      updatedAt: new Date(),
+      updatedBy: operator,
+    };
+
+    if (input.tier !== undefined) updateValues.tier = input.tier;
+    if (input.topologyType !== undefined) updateValues.topologyType = input.topologyType;
+    if (input.pgbouncerHost !== undefined) updateValues.pgbouncerHost = input.pgbouncerHost.trim();
+    if (input.pgbouncerPort !== undefined) updateValues.pgbouncerPort = input.pgbouncerPort;
+    if (input.databaseName !== undefined) updateValues.databaseName = input.databaseName.trim();
+    if (input.appUrl !== undefined) updateValues.appUrl = input.appUrl.trim();
+    if (input.privateIp !== undefined) updateValues.privateIp = input.privateIp ? input.privateIp.trim() : null;
+    if (input.publicIp !== undefined) updateValues.publicIp = input.publicIp ? input.publicIp.trim() : null;
+    if (input.workingDir !== undefined) updateValues.workingDir = input.workingDir.trim();
+    if (input.deployUser !== undefined) updateValues.deployUser = input.deployUser.trim();
+    if (input.maxClients !== undefined) updateValues.maxClients = input.maxClients;
+    if (input.region !== undefined) updateValues.region = input.region.trim();
+    if (input.status !== undefined) updateValues.status = input.status;
+
+    const [updated] = await db
+      .update(cells)
+      .set(updateValues)
+      .where(eq(cells.id, cellId))
+      .returning();
+
+    if (!updated) {
+      return err("No se pudo actualizar la célula de datos.", "CELL_UPDATE_FAILED");
+    }
+
+    return ok(toAdminCellDto(updated));
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminCell Failed] ${msg}`, error);
+    return err(`Error al modificar la celda: ${msg}`, "CELL_ERROR");
+  }
+}
+
+/**
+ * Elimina de forma segura una célula de datos si no tiene inquilinos asignados (DAT-001 §3.3).
+ * Requiere autorización con permiso `cells.provision`.
+ */
+export async function deleteAdminCell(
+  cellId: string,
+  actorUserId?: string,
+): Promise<Result<{ success: boolean; code: string }>> {
+  try {
+    if (!actorUserId) {
+      return err("Identificador de usuario actor requerido.", "UNAUTHORIZED");
+    }
+    const authz = await authorizeCellProvision(actorUserId);
+    if (!authz.ok) {
+      return err(authz.error, "FORBIDDEN");
+    }
+
+    const db = getDb();
+    const [existing] = await db.select().from(cells).where(eq(cells.id, cellId)).limit(1);
+
+    if (!existing) {
+      return err(`Célula de datos con id "${cellId}" no encontrada.`, "NOT_FOUND");
+    }
+
+    if (existing.currentClients > 0) {
+      return err(
+        `No es posible eliminar la célula "${existing.code}" porque tiene ${existing.currentClients} inquilino(s) activo(s). Drene o migre los inquilinos primero.`,
+        "CELL_HAS_CLIENTS",
+      );
+    }
+
+    // Validar integridad referencial en client_routing
+    const routingRefs = await db
+      .select({ id: clientRouting.id })
+      .from(clientRouting)
+      .where(eq(clientRouting.cellId, cellId))
+      .limit(1);
+
+    if (routingRefs.length > 0) {
+      return err(
+        `No es posible eliminar la célula "${existing.code}" porque tiene rutas registradas en el Router Global.`,
+        "CELL_HAS_ROUTING_REFS",
+      );
+    }
+
+    await db.delete(cells).where(eq(cells.id, cellId));
+
+    return ok({ success: true, code: existing.code });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[deleteAdminCell Failed] ${msg}`, error);
+    return err(`Error al eliminar la célula: ${msg}`, "CELL_ERROR");
   }
 }
 

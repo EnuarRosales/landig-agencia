@@ -75,9 +75,35 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
         return;
       }
 
-      // Redirección exitosa hacia el panel administrativo o return_to
-      const target = returnTo || process.env.NEXT_PUBLIC_ADMIN_URL || "http://localhost:3003";
-      // Utilizar location.href para asegurar la inicialización completa de la sesión
+      // Redirección inteligente post-login según AUTH-D-09
+      let target = returnTo;
+      if (!target) {
+        const userRole = data.data?.user?.role || "";
+        const clientId = data.data?.clientId;
+
+        if (userRole.startsWith("platform_")) {
+          // (1) Operador de plataforma -> Backoffice corporativo (mocter-admin)
+          if (
+            typeof window !== "undefined" &&
+            window.location.hostname !== "localhost" &&
+            window.location.hostname !== "127.0.0.1" &&
+            !window.location.hostname.endsWith(".mocter.co") &&
+            window.location.hostname !== "mocter.co"
+          ) {
+            target = `${window.location.protocol}//${window.location.hostname}:3003`;
+          } else {
+            target = process.env.NEXT_PUBLIC_ADMIN_URL || "https://admin.mocter.co";
+          }
+        } else if (!clientId) {
+          // (3) Prospecto sin membresía activa -> Onboarding guiado
+          target = `/${locale}/onboarding`;
+        } else {
+          // (2) Inquilino activo -> Aplicación celular del inquilino / portal cliente
+          target = `/${locale}/admin`;
+        }
+      }
+
+      // Utilizar location.href para asegurar la navegación inter-origen/puerto con cookies activas
       window.location.href = target;
     } catch (err: unknown) {
       clientLog("error", "auth.client_login_network_error", { err: serializeError(err) });

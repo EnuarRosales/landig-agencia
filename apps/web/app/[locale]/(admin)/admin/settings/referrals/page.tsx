@@ -13,7 +13,7 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { locale: _locale } = await params;
+  const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "admin.referralSettings" });
 
   return {

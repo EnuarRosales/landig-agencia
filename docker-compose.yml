@@ -52,8 +52,8 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-mocter_rabbit}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-mocter_rabbit_dev}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     healthcheck:
       test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
       interval: 10s
@@ -70,11 +70,12 @@ services:
       REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-control:6379/0"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       AUTH_RATE_LIMIT_PEPPER: ${AUTH_RATE_LIMIT_PEPPER:-mocter-dev-pepper}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3001,http://127.0.0.1:3001,http://localhost:3000,http://127.0.0.1:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3001,http://127.0.0.1:3001,http://localhost:3000,http://127.0.0.1:3000,http://localhost:3003,http://127.0.0.1:3003}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3001}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3001}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
       NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-http://localhost:3003}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       CELL_SECRETS_ACTIVE_KEY_ID: ${CELL_SECRETS_ACTIVE_KEY_ID}
       CELL_SECRETS_DIR: ${CELL_SECRETS_DIR}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
@@ -93,10 +94,11 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM}
       SETUP_OWNER_TOKEN: ${SETUP_OWNER_TOKEN}
+      PORT: 3001
       # File watching over a Windows bind mount requires polling.
       WATCHPACK_POLLING: "true"
     ports:
-      - "3001:3000"
+      - "3001:3001"
     volumes:
       - .:/app
       # Named volumes keep container-installed node_modules and .next out of the host.
@@ -109,6 +111,8 @@ services:
         condition: service_healthy
       redis-control:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
   admin-portal:
@@ -119,6 +123,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-control:6379/0"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      PORT: 3003
       NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-http://localhost:3003}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
       CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:-http://localhost:3000}
@@ -126,7 +131,7 @@ services:
       # File watching over a Windows bind mount requires polling.
       WATCHPACK_POLLING: "true"
     ports:
-      - "3003:3000"
+      - "3003:3003"
     volumes:
       - .:/app
       # Named volumes keep container-installed node_modules and .next out of the host.
@@ -139,6 +144,8 @@ services:
       pg-portal:
         condition: service_healthy
       redis-control:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     restart: unless-stopped
 

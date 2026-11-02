@@ -7,7 +7,9 @@ import { appLogger } from "../utils/logger";
 /**
  * Resultado de autorización para operaciones de aprovisionamiento de celdas.
  */
-export type CellAuthorizationResult = Result<void, string>;
+export type CellAuthorizationResult =
+  | { ok: true; data?: void }
+  | { ok: false; error: string; code?: string };
 
 /**
  * Evaluación pura de autorización: requiere autoridad de Platform Owner y permiso `cells.provision`.
@@ -112,3 +114,8 @@ export async function authorizeCellProvision(userId: string): Promise<CellAuthor
     return err("Error al verificar autorización.", "AUTHZ_ERROR");
   }
 }
+
+/**
+ * Alias canónico para verificaciones de autorización de aprovisionamiento de celdas.
+ */
+export const assertCellProvisionAuthorization = authorizeCellProvision;

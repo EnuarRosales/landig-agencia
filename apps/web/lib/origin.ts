@@ -98,7 +98,33 @@ export function isAdminOrigin(req: NextRequest): boolean {
   try {
     const originUrl = new URL(trimmed);
     const adminUrl = new URL(env.NEXT_PUBLIC_ADMIN_URL);
-    return originUrl.origin === adminUrl.origin;
+    if (originUrl.origin === adminUrl.origin) {
+      return true;
+    }
+
+    // En desarrollo local o LAN, permitir conexiones al panel administrativo en puerto 3003
+    if (env.NODE_ENV !== "production") {
+      if (
+        (originUrl.hostname === "localhost" ||
+          originUrl.hostname === "127.0.0.1" ||
+          originUrl.hostname.startsWith("192.168.") ||
+          originUrl.hostname.startsWith("10.") ||
+          originUrl.hostname.startsWith("172.")) &&
+        (originUrl.port === "3003" || originUrl.port === "3000")
+      ) {
+        return true;
+      }
+    }
+
+    // En producción, autorizar subdominios canónicos de admin
+    if (
+      originUrl.hostname === "admin.mocter.co" ||
+      originUrl.hostname.endsWith(".admin.mocter.co")
+    ) {
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }
