@@ -197,7 +197,7 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
             onClick={() => setActiveTab("platform")}
             className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
               activeTab === "platform"
-                ? "bg-[var(--dsn-accent)] text-white shadow-xs"
+                ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
                 : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
             }`}
           >
@@ -209,7 +209,7 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
             onClick={() => setActiveTab("tenants")}
             className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
               activeTab === "tenants"
-                ? "bg-[var(--dsn-accent)] text-white shadow-xs"
+                ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
                 : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
             }`}
           >

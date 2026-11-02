@@ -81,7 +81,7 @@ export default async function AdminConversationsPage({
               href="/admin/conversations?view=admin"
               className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-all ${
                 currentView === "admin"
-                  ? "bg-[var(--dsn-accent)] text-white shadow-xs"
+                  ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
                   : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
               }`}
             >
@@ -93,7 +93,7 @@ export default async function AdminConversationsPage({
               href="/admin/conversations?view=inbox"
               className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-all ${
                 currentView === "inbox"
-                  ? "bg-[var(--dsn-accent)] text-white shadow-xs"
+                  ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
                   : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
               }`}
             >
@@ -105,7 +105,7 @@ export default async function AdminConversationsPage({
               href="/admin/conversations?view=super_admin"
               className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-md px-3 py-1 text-xs font-semibold transition-all ${
                 currentView === "super_admin"
-                  ? "bg-[var(--dsn-accent)] text-white shadow-xs"
+                  ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
                   : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
               }`}
             >

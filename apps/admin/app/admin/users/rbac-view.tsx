@@ -512,13 +512,19 @@ export function RbacView({ initialData }: RbacViewProps) {
                 onClick={() => setSelectedRoleKey(r.key)}
                 className={`inline-flex min-h-[38px] items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
                   selectedRoleKey === r.key
-                    ? "bg-[var(--dsn-accent)] text-white shadow-xs"
+                    ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
                     : "bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
                 }`}
               >
                 <ShieldCheck className="h-3.5 w-3.5" />
                 <span>{r.name}</span>
-                <span className="ml-1 rounded bg-black/20 px-1.5 py-0.2 text-[10px] font-mono">
+                <span
+                  className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-mono ${
+                    selectedRoleKey === r.key
+                      ? "bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] font-bold"
+                      : "bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)]"
+                  }`}
+                >
                   {r.permissions.length}
                 </span>
               </button>

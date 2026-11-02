@@ -99,15 +99,21 @@ export function BillingTabsView({
         <button
           type="button"
           onClick={() => handleTabChange("subscriptions")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
             activeTab === "subscriptions"
-              ? "bg-[var(--dsn-accent)] text-black shadow-md shadow-[var(--dsn-accent)]/20"
-              : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
+              : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
           }`}
         >
           <Users className="h-4 w-4" />
           <span>Suscripciones De Inquilinos</span>
-          <span className="ml-1 rounded-full bg-black/20 px-1.5 py-0.2 text-[10px] font-mono">
+          <span
+            className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-mono ${
+              activeTab === "subscriptions"
+                ? "bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] font-bold"
+                : "bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]"
+            }`}
+          >
             {overview.subscriptions.length}
           </span>
         </button>
@@ -115,15 +121,21 @@ export function BillingTabsView({
         <button
           type="button"
           onClick={() => handleTabChange("plans")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
             activeTab === "plans"
-              ? "bg-[var(--dsn-accent)] text-black shadow-md shadow-[var(--dsn-accent)]/20"
-              : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
+              : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
           }`}
         >
           <Layers className="h-4 w-4" />
           <span>Catálogo De Planes</span>
-          <span className="ml-1 rounded-full bg-black/20 px-1.5 py-0.2 text-[10px] font-mono">
+          <span
+            className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-mono ${
+              activeTab === "plans"
+                ? "bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] font-bold"
+                : "bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]"
+            }`}
+          >
             {plansList.length}
           </span>
         </button>
@@ -131,10 +143,10 @@ export function BillingTabsView({
         <button
           type="button"
           onClick={() => handleTabChange("receipts")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
             activeTab === "receipts"
-              ? "bg-[var(--dsn-accent)] text-black shadow-md shadow-[var(--dsn-accent)]/20"
-              : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
+              : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
           }`}
         >
           <FileText className="h-4 w-4" />
@@ -144,10 +156,10 @@ export function BillingTabsView({
         <button
           type="button"
           onClick={() => handleTabChange("gateways")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
             activeTab === "gateways"
-              ? "bg-[var(--dsn-accent)] text-black shadow-md shadow-[var(--dsn-accent)]/20"
-              : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
+              : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
           }`}
         >
           <CreditCard className="h-4 w-4" />

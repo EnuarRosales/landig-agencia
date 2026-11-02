@@ -165,9 +165,9 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
         <button
           type="button"
           onClick={() => { setActiveTab("models"); setFeedback(null); }}
-          className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all ${
             activeTab === "models"
-              ? "bg-[var(--dsn-accent)] text-black shadow-xs"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
               : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
           }`}
         >
@@ -178,9 +178,9 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
         <button
           type="button"
           onClick={() => { setActiveTab("prompts"); setFeedback(null); }}
-          className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all ${
             activeTab === "prompts"
-              ? "bg-[var(--dsn-accent)] text-black shadow-xs"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
               : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
           }`}
         >
@@ -191,9 +191,9 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
         <button
           type="button"
           onClick={() => { setActiveTab("guardrails"); setFeedback(null); }}
-          className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all ${
             activeTab === "guardrails"
-              ? "bg-[var(--dsn-accent)] text-black shadow-xs"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
               : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
           }`}
         >
