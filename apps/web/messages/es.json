@@ -292,7 +292,7 @@
     },
     "register": {
       "title": "Crea la cuenta de tu empresa",
-      "subtitle": "Automatiza la atención por WhatsApp en minutos",
+      "subtitle": "Automatiza la atención de ventas en minutos",
       "nameLabel": "Nombre Completo",
       "namePlaceholder": "Carlos Gómez",
       "emailLabel": "Correo Corporativo",
@@ -304,14 +304,14 @@
       "ruleUppercase": "Al menos una mayúscula (A-Z)",
       "ruleNumber": "Al menos un número (0-9)",
       "ruleSpecial": "Al menos un carácter especial (!@#$%...)",
-      "selectedPlan": "Plan seleccionado",
+      "selectedPlan": "Plan Seleccionado",
       "termsPrefix": "Autorizo el ",
       "termsLink": "tratamiento de datos personales",
       "termsSuffix": " conforme a la Ley 1581 de 2012 y la política de privacidad.",
       "genericSuccessTitle": "¡Solicitud recibida!",
       "genericSuccessMessage": "Si la cuenta existe, enviamos un correo con instrucciones para verificar tu dirección o continuar.",
       "checkEmailPrompt": "Revisa tu bandeja de entrada o carpeta de spam.",
-      "submit": "Crear cuenta y comenzar",
+      "submit": "Crear Cuenta Y Comenzar",
       "submitting": "Creando cuenta...",
       "hasAccount": "¿Ya tienes una cuenta?",
       "loginLink": "Inicia sesión",
@@ -329,9 +329,11 @@
       "backToHome": "Volver al inicio"
     },
     "oauth": {
-      "orDivider": "o continúa con",
-      "googleButton": "Continuar con Google",
-      "facebookButton": "Continuar con Facebook"
+      "orDivider": "O Continúa Con",
+      "googleButton": "Google",
+      "facebookButton": "Facebook",
+      "emailButton": "Correo Electrónico",
+      "backToOptions": "Volver a opciones de registro"
     }
   },
   "admin": {

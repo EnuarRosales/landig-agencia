@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 import { locales } from "@/i18n/routing";
-import { Logo } from "@/components/logo";
 import { FloatingBackground } from "@/components/sections/floating-background";
-import { RegisterForm, OAuthButtons } from "@/components/auth";
+import { RegisterView } from "@/components/auth";
 import { authService, getPlanByCode, type Plan } from "@mocter/domain";
 
 export const instant = false;
@@ -55,8 +55,7 @@ export default async function RegisterPage({ params, searchParams }: Props) {
   const t = await getTranslations({ locale, namespace: "auth.register" });
   const tOauth = await getTranslations({ locale, namespace: "auth.oauth" });
   const enabledProviders = (await authService.getEnabledOAuthProviders())
-    .map((provider) => provider.id)
-    .filter((id): id is "google" | "facebook" => id === "google" || id === "facebook");
+    .map((provider) => provider.id);
   const lang = locale === "en" ? "en" : "es";
   const planName = selectedPlan
     ? selectedPlan.name?.[lang] || selectedPlan.name?.es || selectedPlan.code
@@ -67,16 +66,33 @@ export default async function RegisterPage({ params, searchParams }: Props) {
       <FloatingBackground />
 
       <div className="relative z-10 w-full max-w-[440px]">
-        {/* Logo superior */}
-        <div className="mb-8 flex justify-center">
-          <Link href={`/${locale}`} className="transition-transform hover:scale-105">
-            <Logo />
-          </Link>
-        </div>
-
         {/* Tarjeta HUD de Registro */}
         <div className="rounded-2xl border border-stroke bg-surface/80 p-8 shadow-[0_8px_32px_rgba(0,0,0,0.36)] backdrop-blur-xl">
           <header className="mb-6 text-center">
+            {/* Logo de Mocter en círculo prominente */}
+            <div className="mb-6 flex justify-center">
+              <Link
+                href={`/${locale}`}
+                aria-label="Mocter"
+                className="group relative flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+              >
+                {/* Halo de luz ambiental con el gradiente de Mocter */}
+                <div className="absolute -inset-2 rounded-full bg-gradient-to-tr from-[#2f6bff] via-[#22d3ee] to-[#2f6bff] opacity-50 blur-xl transition-all duration-300 group-hover:opacity-85" />
+
+                {/* Medallón circular blanco con borde de contraste y relieve */}
+                <div className="relative flex h-24 w-24 items-center justify-center rounded-full border-2 border-white/60 bg-white p-3 shadow-[0_10px_35px_rgba(34,211,238,0.35),0_2px_10px_rgba(0,0,0,0.4)] ring-4 ring-white/15">
+                  <Image
+                    src="/images/mocter-logo.png"
+                    alt="Mocter Logo"
+                    width={64}
+                    height={64}
+                    className="h-14 w-14 object-contain transition-transform duration-200 group-hover:scale-110"
+                    priority
+                  />
+                </div>
+              </Link>
+            </div>
+
             <h1 className="text-2xl font-bold tracking-tight text-txt">{t("title")}</h1>
             <p className="mt-1.5 text-sm text-muted">{t("subtitle")}</p>
 
@@ -89,9 +105,11 @@ export default async function RegisterPage({ params, searchParams }: Props) {
             )}
           </header>
 
-          <RegisterForm
+          {/* Opciones de registro vertical y formulario por revelación progresiva */}
+          <RegisterView
             locale={locale}
             selectedPlan={selectedPlan}
+            enabledProviders={enabledProviders}
             t={{
               nameLabel: t("nameLabel"),
               namePlaceholder: t("namePlaceholder"),
@@ -113,14 +131,11 @@ export default async function RegisterPage({ params, searchParams }: Props) {
               genericSuccessMessage: t("genericSuccessMessage"),
               checkEmailPrompt: t("checkEmailPrompt"),
             }}
-          />
-
-          <OAuthButtons
-            enabledProviders={enabledProviders}
-            t={{
-              orDivider: tOauth("orDivider"),
+            tOauth={{
               googleButton: tOauth("googleButton"),
               facebookButton: tOauth("facebookButton"),
+              emailButton: tOauth("emailButton"),
+              backToOptions: tOauth("backToOptions"),
             }}
           />
 

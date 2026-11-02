@@ -59,7 +59,7 @@ const defaultTranslations: Record<string, string> = {
   buttonPause: "Pausar Secuencia",
   emptyStateTitle: "No Hay Secuencias Configuradas",
   emptyStateDesc: "Crea una secuencia propia o adopta la plantilla de reactivación predeterminada.",
-  maxStepsAlert: "Has alcanzado el límite máximo de 10 pasos por secuencia (RF-11.7).",
+  maxStepsAlert: "Has alcanzado el límite máximo de 10 pasos por secuencia.",
   aiImprovedNotice: "Texto del recordatorio optimizado con Inteligencia Artificial.",
 };
 

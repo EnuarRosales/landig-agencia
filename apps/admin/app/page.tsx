@@ -61,12 +61,6 @@ export default async function AdminHomePage() {
       badge: "Bandeja",
     },
     {
-      title: dict.dashboard.cardCrmTitle,
-      description: dict.dashboard.cardCrmDesc,
-      href: "/admin/crm/contacts",
-      badge: "Habeas Data",
-    },
-    {
       title: dict.dashboard.cardChatwootTitle,
       description: dict.dashboard.cardChatwootDesc,
       href: "/admin/conversations",

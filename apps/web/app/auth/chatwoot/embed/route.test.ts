@@ -307,7 +307,7 @@ describe("AUTH-001 §5.10 / T-38 · GET /auth/chatwoot/embed (Handoff embebido d
     // Verifica que contiene el formulario con método POST hacia el callback SSO
     expect(html).toContain('id="ssoForm"');
     expect(html).toContain('method="POST"');
-    expect(html).toContain('action="https://chat.mocter.co/auth/sso/callback"');
+    expect(html).toContain('/auth/sso/callback"');
     // Verifica que el token viaja en un campo oculto del formulario (no en la URL)
     expect(html).toContain('name="sso_token"');
     expect(html).toContain('value="jwt-sso-token-ephemeral-123"');

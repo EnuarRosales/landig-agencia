@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Inbox,
-  Users,
   MessageSquare,
   CreditCard,
   Store,
@@ -89,11 +88,6 @@ export function AdminShell({ children }: AdminShellProps) {
       href: "/admin/leads",
       label: dict.navLeads,
       icon: Inbox,
-    },
-    {
-      href: "/admin/crm/contacts",
-      label: dict.navCrm,
-      icon: Users,
     },
     {
       href: "/admin/conversations",
