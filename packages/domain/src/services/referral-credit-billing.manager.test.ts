@@ -33,6 +33,14 @@ describe("BILL-001 T-10 · ReferralCreditBillingManager", () => {
       getReceiptByPaymentId: vi.fn(),
       updateReceiptEmailStatus: vi.fn(),
       recordSubscriptionChange: vi.fn(),
+      updateSubscriptionTrial: vi.fn(),
+      listAllSubscriptions: vi.fn(),
+      getBillingOverviewMetrics: vi.fn(),
+      listAllInvoices: vi.fn(),
+      listAllReceipts: vi.fn(),
+      listPaymentGatewaysConfig: vi.fn(),
+      getPaymentGatewayConfig: vi.fn(),
+      upsertPaymentGatewayConfig: vi.fn(),
     };
 
     mockReferralProvider = {

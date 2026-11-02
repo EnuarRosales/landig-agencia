@@ -98,3 +98,4 @@ describe("BILL-001 · Facturación Y Suscripciones SaaS (Backoffice)", () => {
     expect(page.props.overview.metrics.activeCount).toBe(1);
   });
 });
+

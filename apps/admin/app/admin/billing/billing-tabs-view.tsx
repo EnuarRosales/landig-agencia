@@ -10,6 +10,9 @@ import {
   Eye,
   Lock,
   Sparkles,
+  Plus,
+  Edit2,
+  Trash2,
 } from "lucide-react";
 import type {
   Plan,
@@ -19,14 +22,15 @@ import type {
   PaymentReceipt,
   PaymentGatewayPublicView,
 } from "@mocter/domain";
-import { CreatePlanForm } from "../plans/create-plan-form";
+import { PlanModalDialog } from "../plans/plan-modal-dialog";
+import { PlanDeleteModal } from "../plans/plan-delete-modal";
 import { SubscriptionsTable } from "./subscriptions-table";
 import { ReceiptsTable } from "./receipts-table";
 import { GatewaysConfigForm } from "./gateways-config-form";
 
 interface BillingTabsViewProps {
   initialTab?: string;
-  plansList: Plan[];
+  plansList: (Plan & { activeTenantsCount?: number })[];
   overview: {
     metrics: BillingOverviewMetrics;
     subscriptions: SubscriptionDetail[];
@@ -46,6 +50,11 @@ export function BillingTabsView({
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<string>(tabParam || initialTab);
+
+  // Estados de modales para CRUD completo de planes
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [deletingPlan, setDeletingPlan] = useState<(Plan & { activeTenantsCount?: number }) | null>(null);
 
   function handleTabChange(tab: string) {
     setActiveTab(tab);
@@ -73,7 +82,16 @@ export function BillingTabsView({
           </p>
         </div>
 
-        {activeTab === "plans" && <CreatePlanForm />}
+        {activeTab === "plans" && (
+          <button
+            type="button"
+            onClick={() => setIsCreateOpen(true)}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Crear Plan Comercial / VIP</span>
+          </button>
+        )}
       </header>
 
       {/* Selector de Pestañas HUD */}
@@ -205,7 +223,9 @@ export function BillingTabsView({
                       <th className="py-3 px-4 font-semibold">Precio Anual</th>
                       <th className="py-3 px-4 font-semibold">Días De Prueba</th>
                       <th className="py-3 px-4 font-semibold">Visibilidad</th>
+                      <th className="py-3 px-4 font-semibold">Inquilinos</th>
                       <th className="py-3 px-4 font-semibold">Estado</th>
+                      <th className="py-3 px-4 font-semibold text-right">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--dsn-border)]">
@@ -262,16 +282,45 @@ export function BillingTabsView({
                               </span>
                             )}
                           </td>
+                          <td className="py-3.5 px-4 font-mono text-xs">
+                            <span className="inline-flex items-center justify-center rounded-full bg-[var(--dsn-surface-secondary)] px-2.5 py-0.5 font-semibold text-[var(--dsn-text)] border border-[var(--dsn-border)]">
+                              {p.activeTenantsCount ?? 0}
+                            </span>
+                          </td>
                           <td className="py-3.5 px-4">
                             <span
                               className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-medium ${
                                 p.status === "active"
                                   ? "bg-emerald-500/10 text-emerald-400"
+                                  : p.status === "retired"
+                                  ? "bg-rose-500/10 text-rose-400"
                                   : "bg-zinc-500/10 text-zinc-400"
                               }`}
                             >
                               {p.status}
                             </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setEditingPlan(p)}
+                                className="inline-flex items-center gap-1 rounded border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors min-h-[32px]"
+                                title="Editar plan comercial"
+                              >
+                                <Edit2 className="h-3 w-3 text-[var(--dsn-accent)]" />
+                                <span>Editar</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingPlan(p)}
+                                className="inline-flex items-center gap-1 rounded border border-rose-500/20 bg-rose-500/5 px-2.5 py-1 text-[11px] font-medium text-rose-400 hover:bg-rose-500/15 transition-colors min-h-[32px]"
+                                title="Eliminar o retirar plan"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                <span>Eliminar</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -294,6 +343,25 @@ export function BillingTabsView({
       {activeTab === "gateways" && (
         <GatewaysConfigForm initialGateways={gateways} />
       )}
+
+      {/* Modales estandarizados para operaciones CRUD de Planes */}
+      <PlanModalDialog
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+      />
+
+      <PlanModalDialog
+        isOpen={Boolean(editingPlan)}
+        onClose={() => setEditingPlan(null)}
+        plan={editingPlan}
+      />
+
+      <PlanDeleteModal
+        isOpen={Boolean(deletingPlan)}
+        onClose={() => setDeletingPlan(null)}
+        plan={deletingPlan}
+      />
     </div>
   );
 }
+

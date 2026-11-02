@@ -178,13 +178,57 @@ export async function createAdminCell(input: CreateAdminCellInput): Promise<Resu
   }
 }
 
+export interface AdminPlanWithMetrics extends Plan {
+  activeTenantsCount: number;
+}
+
+export interface UpdateAdminPlanInput {
+  id: string;
+  nameEs: string;
+  nameEn?: string;
+  descriptionEs?: string;
+  descriptionEn?: string;
+  priceMonthlyCop: number;
+  priceAnnualCop?: number;
+  currency?: "COP" | "USD";
+  billingCycles?: ("monthly" | "annual")[];
+  trialDays?: number;
+  graceDays?: number;
+  isPublic?: boolean;
+  isPopular?: boolean;
+  status?: "draft" | "active" | "retired";
+  marketingFeaturesEs?: string[];
+  updatedBy?: string;
+}
+
+export interface DeleteAdminPlanResult {
+  action: "deleted" | "retired";
+  planId: string;
+  planCode: string;
+  activeReferencesCount: number;
+}
+
 /**
  * Consulta el catálogo completo de planes comerciales y privados para administración (ADM-001, DAT-001).
+ * Incluye el conteo de inquilinos asignados a cada plan para auditar dependencias.
  */
-export async function fetchAdminPlans(): Promise<Plan[]> {
+export async function fetchAdminPlans(): Promise<AdminPlanWithMetrics[]> {
   try {
     const db = getDb();
-    return await db.select().from(plans).orderBy(asc(plans.sortOrder), asc(plans.code));
+    const rows = await db
+      .select({
+        plan: plans,
+        clientsCount: sql<number>`count(${clients.id})::int`,
+      })
+      .from(plans)
+      .leftJoin(clients, eq(clients.planId, plans.id))
+      .groupBy(plans.id)
+      .orderBy(asc(plans.sortOrder), asc(plans.code));
+
+    return rows.map((r) => ({
+      ...r.plan,
+      activeTenantsCount: r.clientsCount ?? 0,
+    }));
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[fetchAdminPlans Failed] ${msg}`, error);
@@ -243,6 +287,121 @@ export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Resu
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[createAdminPlan Failed] ${msg}`, error);
     return err(`Error al registrar plan: ${msg}`, "PLAN_ERROR");
+  }
+}
+
+/**
+ * Actualiza los parámetros comerciales de un plan existente (`admin.plans`).
+ * El código slug se preserva inmutable para proteger contratos y enlaces públicos.
+ */
+export async function updateAdminPlan(input: UpdateAdminPlanInput): Promise<Result<Plan>> {
+  try {
+    const db = getDb();
+    const operator = input.updatedBy || "01a19874-1077-744c-8514-d4c990cd7259";
+    const priceMonthlyCents = Math.round(input.priceMonthlyCop * 100);
+    const priceAnnualCents = input.priceAnnualCop
+      ? Math.round(input.priceAnnualCop * 100)
+      : priceMonthlyCents * 10;
+
+    const [row] = await db
+      .update(plans)
+      .set({
+        name: {
+          es: input.nameEs.trim(),
+          en: input.nameEn?.trim() || input.nameEs.trim(),
+        },
+        description: {
+          es: input.descriptionEs?.trim() || "",
+          en: input.descriptionEn?.trim() || input.descriptionEs?.trim() || "",
+        },
+        status: input.status || "active",
+        isPublic: input.isPublic ?? false,
+        isPopular: input.isPopular ?? false,
+        trialDays: input.trialDays ?? 14,
+        graceDays: input.graceDays ?? 7,
+        billingCycles: input.billingCycles || ["monthly", "annual"],
+        priceMonthlyCents,
+        priceAnnualCents,
+        currency: input.currency || "COP",
+        marketingFeatures: {
+          es: input.marketingFeaturesEs || [],
+          en: [],
+        },
+        updatedAt: new Date(),
+        updatedBy: operator,
+      })
+      .where(eq(plans.id, input.id))
+      .returning();
+
+    if (!row) {
+      return err("No se encontró el plan especificado para actualizar", "PLAN_NOT_FOUND");
+    }
+    return ok(row);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminPlan Failed] ${msg}`, error);
+    return err(`Error al actualizar plan: ${msg}`, "PLAN_UPDATE_ERROR");
+  }
+}
+
+/**
+ * Elimina o retira un plan comercial aplicando la política híbrida de integridad referencial.
+ * - Si no tiene inquilinos ni suscripciones vinculadas: HARD DELETE físico.
+ * - Si tiene inquilinos vinculados: SOFT DELETE pasando el estado a 'retired' y ocultándolo de la venta pública.
+ */
+export async function deleteAdminPlan(planId: string, operator?: string): Promise<Result<DeleteAdminPlanResult>> {
+  try {
+    const db = getDb();
+    const op = operator || "01a19874-1077-744c-8514-d4c990cd7259";
+
+    const [existing] = await db.select().from(plans).where(eq(plans.id, planId)).limit(1);
+    if (!existing) {
+      return err("El plan especificado no existe", "PLAN_NOT_FOUND");
+    }
+
+    const [clientCountRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(clients)
+      .where(eq(clients.planId, planId));
+
+    const [subCountRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(subscriptions)
+      .where(eq(subscriptions.planId, planId));
+
+    const activeReferencesCount = (clientCountRow?.count ?? 0) + (subCountRow?.count ?? 0);
+
+    if (activeReferencesCount > 0) {
+      await db
+        .update(plans)
+        .set({
+          status: "retired",
+          isPublic: false,
+          updatedAt: new Date(),
+          updatedBy: op,
+        })
+        .where(eq(plans.id, planId));
+
+      return ok({
+        action: "retired",
+        planId: existing.id,
+        planCode: existing.code,
+        activeReferencesCount,
+      });
+    } else {
+      await db.delete(plans).where(eq(plans.id, planId));
+
+      return ok({
+        action: "deleted",
+        planId: existing.id,
+        planCode: existing.code,
+        activeReferencesCount: 0,
+      });
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[deleteAdminPlan Failed] ${msg}`, error);
+    return err(`Error al eliminar o retirar plan: ${msg}`, "PLAN_DELETE_ERROR");
   }
 }
 
@@ -2273,7 +2432,7 @@ export async function fetchAdminPlatformReports(): Promise<AdminPlatformReportsO
 
     let activeTenants = 0;
     let totalMrrCop = 0;
-    const planMap = new Map<string, { code: string; name: string; count: number; mrrCop: number }>();
+    const planMap = new Map<string, { planCode: string; planName: string; count: number; mrrCop: number }>();
     const statusMap = new Map<string, number>();
 
     for (const r of clientRows) {
@@ -2291,8 +2450,8 @@ export async function fetchAdminPlatformReports(): Promise<AdminPlatformReportsO
       const planName = pObj?.es || r.planCode;
 
       const currentPlan = planMap.get(r.planCode) || {
-        code: r.planCode,
-        name: planName,
+        planCode: r.planCode,
+        planName: planName,
         count: 0,
         mrrCop: 0,
       };
@@ -2574,6 +2733,7 @@ export async function saveAdminBrandingSettings(
       .limit(1);
 
     const now = new Date();
+    const operator = "01a19874-1077-744c-8514-d4c990cd7259";
 
     if (existing.length > 0) {
       await db
@@ -2587,6 +2747,7 @@ export async function saveAdminBrandingSettings(
           customFont: input.customFont !== undefined ? input.customFont : undefined,
           removeMocterBranding: input.removeMocterBranding !== undefined ? input.removeMocterBranding : undefined,
           updatedAt: now,
+          updatedBy: operator,
         })
         .where(eq(clientBrandings.clientId, targetClientId));
     } else {
@@ -2601,6 +2762,8 @@ export async function saveAdminBrandingSettings(
         removeMocterBranding: input.removeMocterBranding ?? false,
         createdAt: now,
         updatedAt: now,
+        createdBy: operator,
+        updatedBy: operator,
       });
     }
 

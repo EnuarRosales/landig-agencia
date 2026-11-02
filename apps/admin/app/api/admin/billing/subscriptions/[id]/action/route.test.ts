@@ -46,3 +46,4 @@ describe("BILL-001 · Acciones de Suscripción (/api/admin/billing/subscriptions
     expect(mockManageAction).toHaveBeenCalledWith("sub-1", "extend_trial", expect.objectContaining({ days: 30 }));
   });
 });
+

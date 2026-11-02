@@ -411,3 +411,4 @@ export function SubscriptionsTable({ initialSubscriptions, metrics }: Subscripti
     </div>
   );
 }
+

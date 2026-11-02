@@ -258,7 +258,7 @@ export class DrizzleBillingRepository implements IBillingRepository {
       .select({
         id: subscriptions.id,
         clientId: subscriptions.clientId,
-        clientName: clients.name,
+        clientName: clients.displayName,
         clientSlug: clients.slug,
         planId: subscriptions.planId,
         planCode: plans.code,

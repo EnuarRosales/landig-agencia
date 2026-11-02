@@ -345,3 +345,4 @@ export function GatewaysConfigForm({ initialGateways }: GatewaysConfigFormProps)
     </div>
   );
 }
+

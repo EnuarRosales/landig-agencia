@@ -104,6 +104,14 @@ describe("BILL-001 · BillingService", () => {
         Promise.resolve({ ...mockReceipt, id, emailedTo, emailedAt }),
       ),
       recordSubscriptionChange: vi.fn(),
+      updateSubscriptionTrial: vi.fn(),
+      listAllSubscriptions: vi.fn(),
+      getBillingOverviewMetrics: vi.fn(),
+      listAllInvoices: vi.fn(),
+      listAllReceipts: vi.fn(),
+      listPaymentGatewaysConfig: vi.fn(),
+      getPaymentGatewayConfig: vi.fn(),
+      upsertPaymentGatewayConfig: vi.fn(),
     };
 
     mockDispatcher = {

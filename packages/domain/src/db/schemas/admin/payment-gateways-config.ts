@@ -48,3 +48,4 @@ export const paymentGatewaysConfig = adminSchema.table(
 
 export type PaymentGatewayConfigRow = typeof paymentGatewaysConfig.$inferSelect;
 export type NewPaymentGatewayConfigRow = typeof paymentGatewaysConfig.$inferInsert;
+

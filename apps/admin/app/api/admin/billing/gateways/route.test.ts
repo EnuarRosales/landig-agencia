@@ -80,3 +80,4 @@ describe("BILL-001 · Pasarelas de Pago (/api/admin/billing/gateways)", () => {
     expect(json.data.environment).toBe("production");
   });
 });
+

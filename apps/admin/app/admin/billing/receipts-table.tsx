@@ -179,3 +179,4 @@ export function ReceiptsTable({ invoices, receipts }: ReceiptsTableProps) {
     </div>
   );
 }
+
