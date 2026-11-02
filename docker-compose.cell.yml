@@ -1,0 +1,97 @@
+# Docker Compose para Emulación de Célula de Datos Local (DAT-001 §3.6.2 / OPS-001 RF-06.7)
+#
+# Permite levantar un entorno completamente aislado que emula un nodo celular PostgreSQL 18
+# con PgBouncer, inicializador de migraciones (cell-migrator) y servicio de salud/aplicación.
+#
+# Uso:
+#   pnpm cell:up    # Inicia la célula local
+#   pnpm cell:down  # Detiene la célula local
+
+name: mocter-cell-local
+
+services:
+  pg-cell:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_DB: ${CELL_POSTGRES_DB:-mocter_cell_local}
+      POSTGRES_USER: ${CELL_POSTGRES_USER:-mocter_app}
+      POSTGRES_PASSWORD: ${CELL_POSTGRES_PASSWORD:-mocter_cell_dev_pass}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - mocter-cell-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - mocter-cell-net
+
+  cell-migrator:
+    image: node:24-alpine
+    working_dir: /app
+    command: sh -c "corepack enable && corepack pnpm install && node packages/domain/scripts/migrate.mjs"
+    volumes:
+      - .:/app
+      - cell_node_modules:/app/node_modules
+    environment:
+      DATABASE_URL: postgres://${CELL_POSTGRES_USER:-mocter_app}:${CELL_POSTGRES_PASSWORD:-mocter_cell_dev_pass}@pg-cell:5432/${CELL_POSTGRES_DB:-mocter_cell_local}
+    depends_on:
+      pg-cell:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - mocter-cell-net
+
+  pgbouncer-cell:
+    image: edoburu/pgbouncer:v1.21.0
+    environment:
+      DB_HOST: pg-cell
+      DB_PORT: 5432
+      DB_NAME: ${CELL_POSTGRES_DB:-mocter_cell_local}
+      DB_USER: ${CELL_POSTGRES_USER:-mocter_app}
+      DB_PASSWORD: ${CELL_POSTGRES_PASSWORD:-mocter_cell_dev_pass}
+      LISTEN_PORT: 6432
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 20
+      AUTH_TYPE: any
+    ports:
+      - "127.0.0.1:6432:6432"
+    depends_on:
+      pg-cell:
+        condition: service_healthy
+      cell-migrator:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - mocter-cell-net
+
+  tenant-app:
+    image: node:24-alpine
+    working_dir: /app
+    command: sh -c "corepack enable && corepack pnpm --filter @mocter/web dev"
+    environment:
+      CELL_CODE: local-cell
+      DATABASE_URL: postgres://${CELL_POSTGRES_USER:-mocter_app}:${CELL_POSTGRES_PASSWORD:-mocter_cell_dev_pass}@pgbouncer-cell:6432/${CELL_POSTGRES_DB:-mocter_cell_local}
+      HANDSHAKE_SECRET: ${HANDSHAKE_SECRET:-mocter-dev-handshake-secret}
+      NEXT_PUBLIC_APP_URL: http://localhost:3004
+      PORT: 3004
+    ports:
+      - "127.0.0.1:3004:3004"
+    depends_on:
+      pgbouncer-cell:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - mocter-cell-net
+
+volumes:
+  mocter-cell-db-data:
+  cell_node_modules:
+
+networks:
+  mocter-cell-net:
+    driver: bridge

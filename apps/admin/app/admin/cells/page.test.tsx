@@ -70,12 +70,28 @@ describe("DAT-001 T1 · AdminCellsPage cliente", () => {
 
     await waitFor(() => {
       expect(container.textContent).toContain("cell-01");
+      expect(container.textContent).toContain("Handshake");
+      expect(container.textContent).toContain("Manifiesto");
     });
 
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/admin/cells"),
       expect.objectContaining({ credentials: "include" }),
     );
+  });
+
+  it("renderiza botón Drenar cuando la célula se encuentra en estado active", async () => {
+    const activeCells = [{ ...mockCells[0], status: "active" }];
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, data: activeCells }), { status: 200 }),
+    );
+
+    const { container } = render(<AdminCellsPage />);
+
+    await waitFor(() => {
+      expect(container.textContent).toContain("cell-01");
+      expect(container.textContent).toContain("Drenar");
+    });
   });
 
   it("muestra mensaje de error cuando la API protegida responde con fallo", async () => {

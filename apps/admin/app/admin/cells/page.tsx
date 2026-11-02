@@ -2,34 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import { Server, Database, Activity, ShieldCheck } from "lucide-react";
+import type { AdminCellDto } from "@mocter/domain";
 import { CreateCellForm } from "./create-cell-form";
+import { CellActions } from "./cell-actions";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001/api";
-
-interface AdminCellDto {
-  id: string;
-  code: string;
-  tier: string;
-  status: string;
-  topologyType: string;
-  pgbouncerHost: string;
-  pgbouncerPort: number;
-  databaseName: string;
-  appUrl: string | null;
-  privateIp: string | null;
-  publicIp: string | null;
-  workingDir: string;
-  deployUser: string;
-  maxClients: number;
-  currentClients: number;
-  region: string;
-  healthStatus: Record<string, unknown> | null;
-  lastHealthCheckAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  updatedBy: string;
-}
 
 async function fetchCells(): Promise<{ ok: boolean; data?: AdminCellDto[]; error?: string }> {
   const res = await fetch(`${API_URL}/admin/cells`, {
@@ -205,11 +182,34 @@ export default function AdminCellsPage() {
                   <th className="py-3 px-4 font-semibold">Capacidad</th>
                   <th className="py-3 px-4 font-semibold">Región</th>
                   <th className="py-3 px-4 font-semibold">Estado</th>
+                  <th className="py-3 px-4 font-semibold text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--dsn-border)]">
                 {cellsList.map((c) => {
                   const percent = Math.round((c.currentClients / c.maxClients) * 100);
+                  
+                  const getStatusBadge = (status: string) => {
+                    switch (status) {
+                      case "active":
+                        return "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                      case "draft":
+                        return "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20";
+                      case "provisioning":
+                        return "bg-blue-500/10 text-blue-400 border border-blue-500/20 animate-pulse";
+                      case "verifying":
+                        return "bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse";
+                      case "draining":
+                        return "bg-orange-500/10 text-orange-400 border border-orange-500/20";
+                      case "maintenance":
+                        return "bg-purple-500/10 text-purple-400 border border-purple-500/20";
+                      case "error_connection":
+                        return "bg-red-500/10 text-red-400 border border-red-500/20";
+                      default:
+                        return "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20";
+                    }
+                  };
+
                   return (
                     <tr
                       key={c.id}
@@ -250,9 +250,12 @@ export default function AdminCellsPage() {
                         {c.region}
                       </td>
                       <td className="py-3.5 px-4">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-mono font-medium text-emerald-400">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-mono font-medium ${getStatusBadge(c.status)}`}>
                           <Activity className="h-3 w-3" /> {c.status}
                         </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <CellActions cell={c} apiUrl={API_URL} onRefresh={refresh} />
                       </td>
                     </tr>
                   );

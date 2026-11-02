@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import {
-  Activity,
   FileCode2,
   RefreshCw,
   AlertTriangle,
@@ -28,6 +27,15 @@ interface ManifestData {
   envContent: string;
   dockerComposeContent: string;
   instructions: string[];
+}
+
+interface HandshakeResponseData {
+  ok: boolean;
+  status?: string;
+  diagnostic?: {
+    db?: { ok: boolean; latencyMs?: number; error?: string };
+    http?: { ok: boolean; latencyMs?: number; statusCode?: number; error?: string };
+  };
 }
 
 /**
@@ -57,7 +65,7 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps) {
   const [manifestModalOpen, setManifestModalOpen] = useState(false);
   const [handshakeModalOpen, setHandshakeModalOpen] = useState(false);
   const [manifestData, setManifestData] = useState<ManifestData | null>(null);
-  const [handshakeResult, setHandshakeResult] = useState<any | null>(null);
+  const [handshakeResult, setHandshakeResult] = useState<HandshakeResponseData | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"compose" | "env" | "instructions">("compose");
   const [copied, setCopied] = useState<string | null>(null);
