@@ -113,7 +113,7 @@ Todas las tablas siguen la directiva: nombre plural, PK `id`, FK `<entidad>_id`,
 
 | Tabla | Propósito | Columnas clave |
 |---|---|---|
-| `cells` | Catálogo de celdas | `id`, `code`, `tier`, `status`, `pgbouncer_host`, `pgbouncer_port`, `database_name`, `max_clients`, `current_clients`, `region` |
+| `cells` | Catálogo de celdas | `id`, `code`, `tier`, `status`, `topology_type`, `pgbouncer_host`, `pgbouncer_port`, `database_name`, `app_url`, `private_ip`, `public_ip`, `working_dir`, `deploy_user`, `handshake_secret`, `max_clients`, `current_clients`, `region`, `health_status`, `last_health_check_at` |
 | `clients` | Inquilinos | `id` (UUIDv7), `slug`, `display_name`, `lifecycle_status`, `plan_id`, `quota_version`, `created_at`, `updated_at` |
 | `client_routing` | Enrutamiento vigente | `id`, `client_id`, `cell_id`, `routing_status`, `routing_version`, `updated_at` |
 | `client_migrations` | Auditoría de migraciones | `id`, `client_id`, `source_cell_id`, `target_cell_id`, `state`, `started_at`, `completed_at` |
@@ -144,19 +144,29 @@ Reglas:
 
 ```sql
 CREATE TABLE cells (
-    id                uuid PRIMARY KEY DEFAULT uuidv7(),
-    code              text NOT NULL UNIQUE,
-    tier              text NOT NULL DEFAULT 'standard',
-    status            text NOT NULL DEFAULT 'active',
-    pgbouncer_host    text NOT NULL,
-    pgbouncer_port    integer NOT NULL DEFAULT 6432,
-    database_name     text NOT NULL,
-    max_clients       integer NOT NULL DEFAULT 100,
-    current_clients   integer NOT NULL DEFAULT 0,
-    region            text NOT NULL DEFAULT 'us-east-1',
-    created_at        timestamptz NOT NULL DEFAULT now(),
-    updated_at        timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT cells_status_check CHECK (status IN ('active', 'draining', 'readonly', 'maintenance')),
+    id                    uuid PRIMARY KEY DEFAULT uuidv7(),
+    code                  text NOT NULL UNIQUE,
+    tier                  text NOT NULL DEFAULT 'standard',
+    status                text NOT NULL DEFAULT 'draft',
+    topology_type         text NOT NULL DEFAULT 'remote_vps',
+    pgbouncer_host        text NOT NULL,
+    pgbouncer_port        integer NOT NULL DEFAULT 6432,
+    database_name         text NOT NULL,
+    app_url               text,
+    private_ip            text,
+    public_ip             text,
+    working_dir           text NOT NULL DEFAULT '/opt',
+    deploy_user           text NOT NULL DEFAULT 'deploy:1000',
+    handshake_secret      text NOT NULL,
+    max_clients           integer NOT NULL DEFAULT 100,
+    current_clients       integer NOT NULL DEFAULT 0,
+    region                text NOT NULL DEFAULT 'us-east-1',
+    health_status         jsonb,
+    last_health_check_at  timestamptz,
+    created_at            timestamptz NOT NULL DEFAULT now(),
+    updated_at            timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT cells_status_check CHECK (status IN ('draft', 'provisioning', 'verifying', 'active', 'draining', 'readonly', 'maintenance', 'error_connection')),
+    CONSTRAINT cells_topology_check CHECK (topology_type IN ('local_compose', 'remote_vps', 'kubernetes')),
     CONSTRAINT cells_max_clients_check CHECK (max_clients > 0),
     CONSTRAINT cells_capacity_check CHECK (current_clients <= max_clients)
 );
@@ -321,7 +331,54 @@ WHERE c.current_clients <> (
 
 La reconciliación se ejecuta periódicamente y deja auditoría del delta. Un contador que deriva hacia abajo libera capacidad inexistente; uno que deriva hacia arriba bloquea altas.
 
-### 3.6 Separación futura del control plane
+### 3.6 Ciclo de vida y orquestación declarativa de celdas por Handshake (Modelo A)
+
+Para garantizar la autonomía, aislamiento y seguridad de las celdas sin introducir dependencias frágiles de automatización externa en fase temprana ni comprometer credenciales SSH dentro del portal web (R-01/R-05), el ciclo de vida de una celda opera bajo el **Modelo A: Orquestación Declarativa por Handshake**:
+
+```
+[ draft ] ──────► [ Generación Manifiesto ] ──────► [ Despliegue en /opt/<name-cell> ]
+                         (Mocter Admin)                       (deploy:1000)
+                                                                    │
+                                                                    ▼
+[ active ] ◄──── [ Handshake Dual 360° ] ◄───── [ docker compose up (cell-migrator) ]
+    │            (PgBouncer + HTTP Health)
+    ▼
+[ draining ] ──► [ maintenance / retired ]
+```
+
+#### 3.6.1 Máquina de Estados de la Célula (`cells.status`)
+
+1. **`draft` (Parametrizada / Borrador):** El Platform Owner registra el código (`code`), topología (`topology_type`: `remote_vps`, `local_compose`, `kubernetes`), endpoints (`pgbouncer_host`, `pgbouncer_port`, `database_name`, `app_url`), IPs (`private_ip`, `public_ip`), directorio de trabajo (`/opt/<name-cell>`) y usuario (`deploy:1000`). La celda no participa en el algoritmo de enrutamiento ni recibe inquilinos.
+2. **`provisioning` (En Despliegue):** El manifiesto `docker-compose.cell.yml` y el archivo de entorno `.env.cell` están generados. El operador o SRE ejecuta el despliegue en el nodo.
+3. **`verifying` (Verificación en Curso):** El Router Global ejecuta la validación técnica previa a la activación a petición del operador (botón «Verificar y Activar Célula»).
+4. **`active` (Activa y Enrutando):** El Handshake Dual pasó al 100%. La celda está disponible para el algoritmo de alta y asignación de inquilinos.
+5. **`draining` (Drenando):** La celda alcanzó su límite de capacidad (RF-10.5) o se prepara para mantenimiento. Los inquilinos alojados operan con normalidad, pero el Router Global no le asigna nuevas altas.
+6. **`maintenance` (Mantenimiento):** Modo de solo lectura o desconexión temporal para tareas de mantenimiento, upgrades o snapshot de volúmenes.
+7. **`error_connection` (Fallo de Enlace):** El Handshake Dual o un healthcheck programado falló. No admite nuevas altas y genera alertas inmediatas en el panel administrativo.
+
+#### 3.6.2 Despliegue Físico y Estándar de Host
+
+- **Directorio Canónico:** Toda celda autónoma reside físicamente en `/opt/<name-cell>` (por ejemplo `/opt/cell-01`, `/opt/cell-02`).
+- **Usuario de Ejecución:** En producción, el único usuario del sistema operativo autorizado para desplegar e iniciar los contenedores es `deploy:1000` (`UID:GID 1000:1000`). Queda terminantemente prohibido ejecutar servicios de celda como `root`.
+- **Plantilla Canónica `docker-compose.cell.yml`:** Contiene:
+  - `pg-cell`: PostgreSQL 18 con extensión pgvector (`pgvector/pgvector:pg18`).
+  - `pgbouncer-cell`: PgBouncer en modo `transaction` (puerto 6432) con autenticación aislada.
+  - `cell-migrator`: Contenedor efímero con perfil de inicialización que aplica automáticamente las migraciones Drizzle celulares (`packages/domain/drizzle.cell.config.ts`) antes de exponer el servicio.
+  - `tenant-service`: Capa de aplicación del inquilino exponiendo `/api/health`.
+
+#### 3.6.3 Handshake de Verificación Dual 360°
+
+El Router Global ejecuta una verificación obligatoria de dos vías antes de transicionar a `active`:
+1. **Verificación de Datos (PgBouncer / PostgreSQL):** Conexión TCP directa mediante credenciales `mocter_app` hacia `pgbouncer_host:pgbouncer_port`. Comprueba que la base `database_name` exista, que las tablas celulares (`contacts`, `orders`, `products`) estén creadas, que las particiones iniciales respondan y que `FORCE ROW LEVEL SECURITY` esté activo.
+2. **Verificación de Aplicación (HTTP Handshake):** Petición `GET https://<app_url>/api/health` enviando la cabecera `X-Mocter-Handshake-Secret: <handshake_secret>`. El servicio celular debe validar el token y responder con código HTTP `200 OK` y diagnóstico interno de sus dependencias.
+
+#### 3.6.4 Paridad y Emulación en Desarrollo Local
+
+Para emular fielmente la topología de múltiples celdas aisladas en entornos de desarrollo sin mezclar datos con `pg-portal`:
+- Se versiona el archivo canónico `docker-compose.cell.yml` en la raíz de infraestructura.
+- Se implementa el comando de desarrollo `pnpm cell:up` que levanta una celda local aislada (ej. `cell-01`) en una red Docker propia (`mocter-cell-net`) mapeando puertos locales libres (ej. PgBouncer en 6433, app en 3004), permitiendo simular el Handshake 360° de forma exacta a producción.
+
+### 3.7 Separación futura del control plane
 
 El Router Global se mantiene como plano de control mientras comparta instancia con la landing. La separación de `pg-control-plane` se evalúa cuando ocurra alguno de estos disparadores:
 

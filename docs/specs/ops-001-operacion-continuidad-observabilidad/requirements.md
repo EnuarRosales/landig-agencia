@@ -131,6 +131,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-06.4 | La passphrase de cifrado se guarda en un gestor de secretos y en una copia offsite; sin ella el respaldo es irrecuperable. |
 | RF-06.5 | Restaurar exige dos secretos distintos: acceso a R2 y passphrase. Cada uno vive en un archivo separado con permisos `0600` en el VPS; ninguno se guarda en el repositorio ni en el mismo archivo. |
 | RF-06.6 | Las claves HMAC de imgproxy y las credenciales S3 de SeaweedFS las provee la plataforma y viven en su gestor de secretos, separadas de las credenciales R2. La rotación conserva el par anterior al menos hasta que las URLs emitidas con él expiren o se regeneren; la ventana se documenta y ninguna clave se expone al navegador ni al repositorio. |
+| RF-06.7 | **Estándar de Despliegue de Celdas en Host (`/opt/<name-cell>`):** En producción, toda celda autónoma reside en la ruta canónica `/opt/<name-cell>` (ej. `/opt/cell-01`) y es desplegada y operada estrictamente bajo el usuario no privilegiado `deploy:1000` (`UID:GID 1000:1000`). Ningún proceso o contenedor celular se ejecuta como `root` en el host ni expone puertos fuera de la red privada controlada. |
 
 ### RF-07 · Costos
 
@@ -149,6 +150,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-08.3 | Los runbooks se pueden ejecutar sin contexto previo y sin decisiones implícitas. |
 | RF-08.4 | La spec distingue explícitamente **verificado**, **supuesto** y **no verificado**. Un agente no convierte un supuesto en hecho. |
 | RF-08.5 | Los procedimientos destructivos declaran su efecto, su reversión y la confirmación que exigen. |
+| RF-08.6 | **Emulación Local y Paridad Celular:** Se documenta el runbook de ejecución de celdas aisladas en local con `docker-compose.cell.yml` vía `pnpm cell:up`, replicando la estructura de red, PgBouncer y migraciones efímeras (`cell-migrator`) de producción. |
 
 ## 5. Criterios de aceptación
 

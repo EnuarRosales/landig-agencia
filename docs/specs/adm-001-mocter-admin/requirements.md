@@ -211,6 +211,9 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | RF-10.14 | El Router Global tiene un Redis 7+ dedicado para caché de enrutamiento, Pub/Sub, rate limiting y revocación de sesión; no comparte instancia con Chatwoot. |
 | RF-10.15 | La capacidad nominal de una celda es 100 inquilinos; la efectiva es el primer disparador de DAT-001 (inquilinos, relaciones, HNSW o CPU). |
 | RF-10.16 | La separación de `pg-control-plane` es una decisión diferida; mientras tanto, la landing y `mocter-admin` usan esquemas y roles separados en el Router Global. |
+| RF-10.17 | **Gestión Modal y Parámetros Celulares (`/admin/cells`):** La creación y edición de celdas se ejecuta exclusivamente mediante vistas modales. Captura código, topología (`remote_vps`, `local_compose`, `kubernetes`), endpoints (`pgbouncer_host`, `pgbouncer_port`, `database_name`, `app_url`), IPs pública/privada, capacidad máxima y genera automáticamente secretos criptográficos (`handshake_secret` y credenciales de BD). |
+| RF-10.18 | **Acciones de Ciclo de Vida y Handshake en UI:** La tabla de celdas expone las acciones operativas por celda: (1) «Verificar y Activar Handshake» (ejecuta la validación dual 360° y actualiza a `active` o `error_connection` con diagnóstico visual en modal), (2) «Drenar Célula» (marca `draining` para no admitir altas nuevas) y (3) «Modo Mantenimiento» (`maintenance`). |
+| RF-10.19 | **Exportación de Manifiesto Declarativo:** El modal de celda permite copiar el snippet de bootstrap o descargar el manifiesto canónico `docker-compose.cell.yml` y `.env.cell` para su ejecución en `/opt/<name-cell>` bajo el usuario autorizado `deploy:1000` (DAT-001 D-19). |
 
 ### RF-11 · Internacionalización
 
