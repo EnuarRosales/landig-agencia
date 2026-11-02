@@ -254,6 +254,35 @@ export async function createAdminCell(input: CreateAdminCellInput): Promise<Resu
   }
 }
 
+/**
+ * Actualiza el estado del ciclo de vida de una célula de datos (DAT-001 §3.6.1).
+ */
+export async function updateCellStatus(
+  cellId: string,
+  targetStatus: "draft" | "draining" | "maintenance" | "active",
+): Promise<Result<AdminCellDto>> {
+  try {
+    const db = getDb();
+    const [existing] = await db.select().from(cells).where(eq(cells.id, cellId)).limit(1);
+
+    if (!existing) {
+      return err(`Célula de datos con id "${cellId}" no encontrada.`, "NOT_FOUND");
+    }
+
+    const [updated] = await db
+      .update(cells)
+      .set({ status: targetStatus, updatedAt: new Date() })
+      .where(eq(cells.id, cellId))
+      .returning();
+
+    return ok(toAdminCellDto(updated));
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateCellStatus Failed] ${msg}`, error);
+    return err(`Error al actualizar estado de la celda: ${msg}`, "CELL_ERROR");
+  }
+}
+
 export interface AdminPlanWithMetrics extends Plan {
   activeTenantsCount: number;
 }

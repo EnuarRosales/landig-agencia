@@ -96,3 +96,5 @@ export * from "./services/admin-dashboard.service";
 export * from "./services/rbac.service";
 export * from "./services/cell-secrets.service";
 export * from "./services/cell-authorization.service";
+export * from "./services/cell-manifest.service";
+export * from "./services/cell-handshake.service";
