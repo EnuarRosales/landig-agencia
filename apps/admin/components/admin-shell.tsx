@@ -125,9 +125,9 @@ export function AdminShell({ children }: AdminShellProps) {
       icon: Server,
     },
     {
-      href: "/admin/plans",
-      label: dict.navPlans || "Planes y Cuotas",
-      icon: Layers,
+      href: "/admin/billing",
+      label: dict.navBilling || "Facturación y Planes",
+      icon: CreditCard,
     },
     {
       href: "/admin/users",

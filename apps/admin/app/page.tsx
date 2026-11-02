@@ -97,10 +97,10 @@ export default async function AdminHomePage() {
       badge: "PostgreSQL",
     },
     {
-      title: dict.dashboard.cardPlansTitle || "Catálogo de Planes",
-      description: dict.dashboard.cardPlansDesc || "Parametrización dinámica de cuotas, precios y planes VIP a medida.",
-      href: "/admin/plans",
-      badge: "Cuotas",
+      title: "Facturación y Planes SaaS",
+      description: "Catálogo comercial, suscripciones de inquilinos, comprobantes contables y pasarelas Wompi/Stripe.",
+      href: "/admin/billing",
+      badge: "Finanzas",
     },
     {
       title: "Control De Acceso y Roles (RBAC)",

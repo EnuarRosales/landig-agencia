@@ -169,6 +169,13 @@
       "when": 1793568358860,
       "tag": "0023_perpetual_wolfsbane",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793583629474,
+      "tag": "0024_next_squirrel_girl",
+      "breakpoints": true
     }
   ]
 }

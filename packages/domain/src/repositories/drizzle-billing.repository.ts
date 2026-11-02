@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc, desc, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
   clientBillingProfiles,
@@ -23,7 +23,18 @@ import {
   type SubscriptionChange,
   type NewSubscriptionChange,
 } from "../db/schemas/admin/billing";
-import type { IBillingRepository } from "./billing.repository.interface";
+import {
+  paymentGatewaysConfig,
+  type PaymentGatewayConfigRow,
+  type NewPaymentGatewayConfigRow,
+} from "../db/schemas/admin/payment-gateways-config";
+import { clients } from "../db/schemas/admin/clients";
+import { plans } from "../db/schemas/admin/plans";
+import type {
+  IBillingRepository,
+  SubscriptionDetail,
+  BillingOverviewMetrics,
+} from "./billing.repository.interface";
 
 /**
  * Implementación Drizzle del repositorio de facturación SaaS (BILL-001).
@@ -222,6 +233,174 @@ export class DrizzleBillingRepository implements IBillingRepository {
   async recordSubscriptionChange(change: NewSubscriptionChange): Promise<SubscriptionChange> {
     const rows = await this.db.insert(subscriptionChanges).values(change).returning();
     return rows[0] as unknown as SubscriptionChange;
+  }
+
+  async updateSubscriptionTrial(
+    subscriptionId: string,
+    trialEndsAt: Date,
+    updatedBy: string,
+  ): Promise<Subscription> {
+    const rows = await this.db
+      .update(subscriptions)
+      .set({
+        trialEndsAt,
+        status: "trialing",
+        updatedAt: new Date(),
+        updatedBy,
+      })
+      .where(eq(subscriptions.id, subscriptionId))
+      .returning();
+    return rows[0] as unknown as Subscription;
+  }
+
+  async listAllSubscriptions(): Promise<SubscriptionDetail[]> {
+    const rows = await this.db
+      .select({
+        id: subscriptions.id,
+        clientId: subscriptions.clientId,
+        clientName: clients.name,
+        clientSlug: clients.slug,
+        planId: subscriptions.planId,
+        planCode: plans.code,
+        planName: plans.name,
+        planPriceMonthlyCents: plans.priceMonthlyCents,
+        planPriceAnnualCents: plans.priceAnnualCents,
+        currency: plans.currency,
+        status: subscriptions.status,
+        cycle: subscriptions.cycle,
+        trialEndsAt: subscriptions.trialEndsAt,
+        currentPeriodStart: subscriptions.currentPeriodStart,
+        currentPeriodEnd: subscriptions.currentPeriodEnd,
+        createdAt: subscriptions.createdAt,
+        billingCompanyName: clientBillingProfiles.companyName,
+        billingDni: clientBillingProfiles.dni,
+        billingEmail: clientBillingProfiles.email,
+      })
+      .from(subscriptions)
+      .innerJoin(clients, eq(subscriptions.clientId, clients.id))
+      .innerJoin(plans, eq(subscriptions.planId, plans.id))
+      .leftJoin(clientBillingProfiles, eq(subscriptions.clientId, clientBillingProfiles.clientId))
+      .orderBy(desc(subscriptions.createdAt));
+
+    return rows.map((r) => ({
+      id: r.id,
+      clientId: r.clientId,
+      clientName: r.clientName,
+      clientSlug: r.clientSlug,
+      planId: r.planId,
+      planCode: r.planCode,
+      planName: r.planName,
+      planPriceMonthlyCents: Number(r.planPriceMonthlyCents),
+      planPriceAnnualCents: Number(r.planPriceAnnualCents),
+      currency: r.currency,
+      status: r.status,
+      cycle: r.cycle,
+      trialEndsAt: r.trialEndsAt,
+      currentPeriodStart: r.currentPeriodStart,
+      currentPeriodEnd: r.currentPeriodEnd,
+      createdAt: r.createdAt,
+      billingProfile: r.billingCompanyName
+        ? {
+            companyName: r.billingCompanyName,
+            dni: r.billingDni!,
+            email: r.billingEmail!,
+          }
+        : null,
+    }));
+  }
+
+  async getBillingOverviewMetrics(): Promise<BillingOverviewMetrics> {
+    const allSubs = await this.listAllSubscriptions();
+    let mrrCents = 0;
+    let activeCount = 0;
+    let trialingCount = 0;
+    let pastDueCount = 0;
+
+    for (const sub of allSubs) {
+      if (sub.status === "active") {
+        activeCount++;
+        // Si el ciclo es mensual suma el mensual, si es anual prorratea / 12
+        mrrCents += sub.cycle === "annual"
+          ? Math.round(sub.planPriceAnnualCents / 12)
+          : sub.planPriceMonthlyCents;
+      } else if (sub.status === "trialing") {
+        trialingCount++;
+      } else if (sub.status === "past_due") {
+        pastDueCount++;
+      }
+    }
+
+    const [invoicesCountRow] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(invoices);
+
+    return {
+      mrrCents,
+      activeCount,
+      trialingCount,
+      pastDueCount,
+      totalInvoicesCount: invoicesCountRow?.count ?? 0,
+    };
+  }
+
+  async listAllInvoices(limit: number = 50): Promise<Invoice[]> {
+    const rows = await this.db
+      .select()
+      .from(invoices)
+      .orderBy(desc(invoices.createdAt))
+      .limit(limit);
+    return rows as unknown as Invoice[];
+  }
+
+  async listAllReceipts(limit: number = 50): Promise<PaymentReceipt[]> {
+    const rows = await this.db
+      .select()
+      .from(paymentReceipts)
+      .orderBy(desc(paymentReceipts.createdAt))
+      .limit(limit);
+    return rows as unknown as PaymentReceipt[];
+  }
+
+  async listPaymentGatewaysConfig(): Promise<PaymentGatewayConfigRow[]> {
+    const rows = await this.db
+      .select()
+      .from(paymentGatewaysConfig)
+      .orderBy(asc(paymentGatewaysConfig.id));
+    return rows as unknown as PaymentGatewayConfigRow[];
+  }
+
+  async getPaymentGatewayConfig(id: "wompi" | "stripe"): Promise<PaymentGatewayConfigRow | null> {
+    const rows = await this.db
+      .select()
+      .from(paymentGatewaysConfig)
+      .where(eq(paymentGatewaysConfig.id, id))
+      .limit(1);
+    return (rows[0] as unknown as PaymentGatewayConfigRow) ?? null;
+  }
+
+  async upsertPaymentGatewayConfig(
+    config: NewPaymentGatewayConfigRow,
+  ): Promise<PaymentGatewayConfigRow> {
+    const rows = await this.db
+      .insert(paymentGatewaysConfig)
+      .values(config)
+      .onConflictDoUpdate({
+        target: paymentGatewaysConfig.id,
+        set: {
+          displayName: config.displayName,
+          isEnabled: config.isEnabled,
+          environment: config.environment,
+          publicKey: config.publicKey,
+          secretKeyEncrypted: config.secretKeyEncrypted,
+          webhookSecretEncrypted: config.webhookSecretEncrypted,
+          secretKeyId: config.secretKeyId,
+          webhookUrl: config.webhookUrl,
+          updatedAt: new Date(),
+          updatedBy: config.updatedBy,
+        },
+      })
+      .returning();
+    return rows[0] as unknown as PaymentGatewayConfigRow;
   }
 }
 

@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | BILL-001 |
-| Versión | 1.3 (Aprobada — payment_methods, prorrateo y créditos) |
-| Fecha | 2026-10-25 |
+| Versión | 1.4 (Aprobada — Módulo unificado /admin/billing y payment_gateways_config) |
+| Fecha | 2026-11-01 |
 | Depende de | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md). REP-001 consume su facturación; no es una dependencia de BILL-001. |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` · `.agents/rules/rules-for-i18n.md` |
 | Estado | Aprobada |
@@ -40,6 +40,7 @@ Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pag
 | RF-02.3 | **Cero almacenamiento de PAN:** Mocter **nunca almacena números de tarjeta ni CVV** en sus bases de datos ni logs; únicamente almacena tokens de cliente/método (`gateway_customer_id`, `gateway_payment_method_id`, marca y últimos 4 dígitos). |
 | RF-02.4 | **Webhooks idempotentes:** Los eventos de cobro (`transaction.updated` en Wompi, `payment_intent.succeeded` en Stripe) se procesan verificando la firma criptográfica del webhook y garantizando idempotencia por `gateway_reference` único. |
 | RF-02.5 | **Métodos tokenizados:** los tokens de cliente/método (`gateway_customer_id`, `gateway_payment_method_id`), marca y últimos 4 dígitos viven en `payment_methods`, con `is_default` y estado. Nunca se almacenan PAN ni CVV. |
+| RF-02.6 | **Configuración dinámica de pasarelas:** Las credenciales operativas de Wompi y Stripe (llaves públicas, secretos cifrados con AES-256-GCM, estado activo y entorno sandbox/producción) se gestionan dinámicamente en `admin.payment_gateways_config`, permitiendo al Platform Owner alternar entornos y gestionar credenciales desde la UI sin modificar variables de entorno en el servidor. |
 
 ### RF-03 · Ciclo de facturación interna y dunning
 | ID | Requisito |
@@ -65,6 +66,7 @@ Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pag
 | RF-05.1 | `platform_owner` y `platform_admin` tienen control total de cobros, planes y reportes de la SaaS; el `tenant_owner` accede exclusivamente a sus propios comprobantes y métodos de pago. |
 | RF-05.2 | Todo intento de cobro, webhook y cambio de estado se audita cumpliendo `DAT-001` RF-10.9. |
 | RF-05.3 | Todas las vistas de facturación y comprobantes están internacionalizadas (es/en, Español por defecto). |
+| RF-05.4 | **Módulo unificado en backoffice (`/admin/billing`):** El Platform Owner gestiona de forma centralizada planes comerciales (precios mensual/anual independientes en COP/USD), suscripciones de inquilinos con métricas de MRR y acciones de soporte (extender días de prueba, pausar/suspender, reactivar), historial de comprobantes/invoices con exportación contable en Excel/PDF, y configuración de pasarelas Wompi y Stripe. |
 
 ---
 
@@ -137,6 +139,9 @@ Gestionar el ciclo de cobro de la suscripción SaaS: registro de pasarela de pag
 | D-07 | Los créditos de referidos se aplican a la próxima factura, por orden de vencimiento y sin reembolso en efectivo. | Reduce el total a pagar y evita payout; el remanente se conserva hasta vencer. |
 | D-08 | Los tokens de pago viven en `payment_methods`; el gateway custodia PAN/CVV. | Cumple PCI-DSS SAQ A y RF-02.3. |
 | D-09 | El cambio de plan usa prorrateo por días restantes y se registra en `subscription_changes`. | Coherente con RF-01.3 y con la vista de upgrade de LND-001. |
+| D-10 | Unificación en `/admin/billing` ("Facturación y Planes") con navegación HUD por pestañas (Planes y Precios, Suscripciones e Invoices, Comprobantes y Exportación, Pasarelas Wompi/Stripe). | Centraliza la administración comercial y financiera para el Platform Owner, consolidando la ruta previa `/admin/plans`. |
+| D-11 | Configuración dinámica de pasarelas en base de datos (`admin.payment_gateways_config`) con cifrado AES-256-GCM. | Permite al Platform Owner alternar entornos (Sandbox/Live) y actualizar credenciales operativas de Wompi y Stripe sin modificar archivos de entorno ni reiniciar contenedores. |
+| D-12 | Precios y ciclos flexibles en catálogo: definición independiente de precios mensuales y anuales en COP y USD con habilitación explícita de ciclos. | Otorga máxima flexibilidad comercial permitiendo planes solo mensuales, solo anuales o mixtos con descuentos sugeridos. |
 
 ## 7. Decisiones abiertas
 

@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | BILL-001 |
-| Versión | 1.3 (Aprobada — payment_methods, prorrateo y créditos) |
-| Fecha | 2026-10-25 |
+| Versión | 1.4 (Aprobada — Módulo unificado /admin/billing y payment_gateways_config) |
+| Fecha | 2026-11-01 |
 | Depende de | [`requirements.md`](requirements.md) · [`design.md`](design.md) |
 | Estado | Aprobada |
 
@@ -117,5 +117,37 @@
   - Validar CA-BILL-07 (Prorrateo).
   - Verificación: Suite de tests automatizados pasa al 100%.
 
-- [ ] **T-12 · [HUMANO] Aprobación final y pase a codificación**
-  - Certificación de especificación lista para desarrollo.
+- [x] **T-12 · [HUMANO] Aprobación final y pase a codificación** (2026-11-01)
+  - Certificación de especificación lista para desarrollo aprobada tras alineación /grill-me.
+
+---
+
+## Fase 5 · Módulo Administrativo y Configuración Dinámica de Pasarelas (D-10, D-11, D-12)
+
+- [x] **T-13 · Crear entidad payment_gateways_config y migración SQL**
+  - Implementar en `packages/domain/src/db/schemas/admin/` la tabla `payment_gateways_config` con cifrado bytea AES-256-GCM.
+  - Generar migración con `pnpm db:generate` y verificar sin advertencias destructivas.
+  - Verificación: `drizzle-kit check` pasa exitosamente.
+
+- [x] **T-14 · Implementar servicio de gestión segura de pasarelas en domain**
+  - Métodos para consultar pasarelas activas (desencriptando credenciales) y actualizar parámetros (cifrando secretos).
+  - Seed / Upsert inicial para registros canónicos `wompi` y `stripe`.
+  - Verificación: Test unitario de cifrado/descifrado y rotación de llaves.
+
+- [x] **T-15 · Implementar endpoints de administración de facturación en apps/admin**
+  - `GET /api/admin/billing/overview` (métricas MRR, conteos, historial).
+  - `GET/PUT /api/admin/billing/gateways` (gestión de Wompi y Stripe).
+  - `POST /api/admin/billing/subscriptions/[id]/action` (acciones de soporte).
+  - Verificación: Tests de integración con Vitest para cada endpoint.
+
+- [x] **T-16 · Implementar vista integral /admin/billing y navegación en apps/admin**
+  - Crear página con pestañas HUD: `plans`, `subscriptions`, `receipts`, `gateways`.
+  - Formulario de planes con precios mensual/anual y moneda COP/USD.
+  - Tabla de suscripciones con acciones operativas y datos fiscales Matías API.
+  - Centro de comprobantes y exportación contable en Excel y PDF.
+  - Actualizar `admin-shell.tsx` con acceso a `/admin/billing` y redirección en `/admin/plans`.
+  - Verificación: Navegación fluida y render 200 OK en navegador/curl.
+
+- [x] **T-17 · Suite completa de verificación y tests de regresión**
+  - Ejecución de suite de tests en `@mocter/domain` y `@mocter/admin`.
+  - Verificación de lint y build.

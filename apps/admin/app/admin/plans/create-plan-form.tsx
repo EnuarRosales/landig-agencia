@@ -26,7 +26,11 @@ export function CreatePlanForm({ onSuccess }: CreatePlanFormProps) {
     nameEs: "",
     nameEn: "",
     descriptionEs: "",
+    currency: "COP",
     priceMonthlyCop: 149000,
+    priceAnnualCop: 1490000,
+    cycleMonthly: true,
+    cycleAnnual: true,
     trialDays: 14,
     isPublic: true,
     isPopular: false,
@@ -46,6 +50,15 @@ export function CreatePlanForm({ onSuccess }: CreatePlanFormProps) {
         .map((f) => f.trim())
         .filter(Boolean);
 
+      const billingCycles = [
+        formData.cycleMonthly ? "monthly" : null,
+        formData.cycleAnnual ? "annual" : null,
+      ].filter(Boolean);
+
+      if (billingCycles.length === 0) {
+        throw new Error("Debes habilitar al menos un ciclo de facturación (mensual o anual)");
+      }
+
       const res = await fetch("/api/admin/plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -54,7 +67,10 @@ export function CreatePlanForm({ onSuccess }: CreatePlanFormProps) {
           nameEs: formData.nameEs,
           nameEn: formData.nameEn || formData.nameEs,
           descriptionEs: formData.descriptionEs,
+          currency: formData.currency,
           priceMonthlyCop: Number(formData.priceMonthlyCop),
+          priceAnnualCop: Number(formData.priceAnnualCop),
+          billingCycles,
           trialDays: Number(formData.trialDays),
           isPublic: formData.isPublic,
           isPopular: formData.isPopular,
@@ -74,7 +90,11 @@ export function CreatePlanForm({ onSuccess }: CreatePlanFormProps) {
         nameEs: "",
         nameEn: "",
         descriptionEs: "",
+        currency: "COP",
         priceMonthlyCop: 149000,
+        priceAnnualCop: 1490000,
+        cycleMonthly: true,
+        cycleAnnual: true,
         trialDays: 14,
         isPublic: true,
         isPopular: false,
@@ -212,13 +232,31 @@ export function CreatePlanForm({ onSuccess }: CreatePlanFormProps) {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <div>
+            <label
+              htmlFor="plan-currency"
+              className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+            >
+              Moneda Del Plan
+            </label>
+            <select
+              id="plan-currency"
+              value={formData.currency}
+              onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            >
+              <option value="COP">COP (Pesos Colombianos)</option>
+              <option value="USD">USD (Dólares Americanos)</option>
+            </select>
+          </div>
+
           <div>
             <label
               htmlFor="plan-price"
               className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
             >
-              Precio Mensual (COP)
+              Precio Mensual ({formData.currency})
             </label>
             <input
               id="plan-price"
@@ -226,7 +264,32 @@ export function CreatePlanForm({ onSuccess }: CreatePlanFormProps) {
               min="0"
               required
               value={formData.priceMonthlyCop}
-              onChange={(e) => setFormData({ ...formData, priceMonthlyCop: Number(e.target.value) })}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setFormData({
+                  ...formData,
+                  priceMonthlyCop: val,
+                  priceAnnualCop: val * 10, // Sugerencia automática 2 meses gratis
+                });
+              }}
+              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="plan-price-annual"
+              className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+            >
+              Precio Anual ({formData.currency})
+            </label>
+            <input
+              id="plan-price-annual"
+              type="number"
+              min="0"
+              required
+              value={formData.priceAnnualCop}
+              onChange={(e) => setFormData({ ...formData, priceAnnualCop: Number(e.target.value) })}
               className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
             />
           </div>
@@ -248,6 +311,36 @@ export function CreatePlanForm({ onSuccess }: CreatePlanFormProps) {
               onChange={(e) => setFormData({ ...formData, trialDays: Number(e.target.value) })}
               className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
             />
+          </div>
+        </div>
+
+        {/* Ciclos Habilitados y Estado */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-3">
+            <span className="block text-xs font-semibold text-[var(--dsn-text)] mb-2">
+              Ciclos De Facturación Habilitados
+            </span>
+            <div className="flex items-center gap-5">
+              <label className="flex items-center gap-2 text-xs text-[var(--dsn-text)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.cycleMonthly}
+                  onChange={(e) => setFormData({ ...formData, cycleMonthly: e.target.checked })}
+                  className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
+                />
+                <span>Ciclo Mensual</span>
+              </label>
+
+              <label className="flex items-center gap-2 text-xs text-[var(--dsn-text)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.cycleAnnual}
+                  onChange={(e) => setFormData({ ...formData, cycleAnnual: e.target.checked })}
+                  className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
+                />
+                <span>Ciclo Anual</span>
+              </label>
+            </div>
           </div>
 
           <div>

@@ -26,6 +26,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       descriptionEs: body.descriptionEs,
       priceMonthlyCop: Number(body.priceMonthlyCop),
       priceAnnualCop: body.priceAnnualCop ? Number(body.priceAnnualCop) : undefined,
+      currency: body.currency === "USD" ? "USD" : "COP",
+      billingCycles: Array.isArray(body.billingCycles) && body.billingCycles.length > 0 ? body.billingCycles : ["monthly", "annual"],
       trialDays: body.trialDays ? Number(body.trialDays) : 14,
       isPublic: Boolean(body.isPublic),
       isPopular: Boolean(body.isPopular),

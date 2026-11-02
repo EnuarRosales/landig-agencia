@@ -1,6 +1,13 @@
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
-import type { IBillingRepository } from "../repositories/billing.repository.interface";
+import { getDb } from "../db/client";
+import { DrizzleBillingRepository } from "../repositories/drizzle-billing.repository";
+import type {
+  IBillingRepository,
+  SubscriptionDetail,
+  BillingOverviewMetrics,
+} from "../repositories/billing.repository.interface";
+import { defaultTotpCryptoService, type TotpCryptoService } from "../auth/totp-crypto";
 import type {
   ClientBillingProfile,
   NewClientBillingProfile,
@@ -11,6 +18,31 @@ import type {
   Payment,
   PaymentReceipt,
 } from "../db/schemas/admin/billing";
+import type { PaymentGatewayConfigRow } from "../db/schemas/admin/payment-gateways-config";
+
+export interface PaymentGatewayPublicView {
+  id: "wompi" | "stripe";
+  displayName: string;
+  isEnabled: boolean;
+  environment: "sandbox" | "production";
+  publicKey: string | null;
+  hasSecretKey: boolean;
+  hasWebhookSecret: boolean;
+  webhookUrl: string;
+  updatedAt: Date;
+}
+
+export interface UpdatePaymentGatewayInput {
+  id: "wompi" | "stripe";
+  displayName?: string;
+  isEnabled: boolean;
+  environment: "sandbox" | "production";
+  publicKey?: string;
+  secretKey?: string;
+  webhookSecret?: string;
+  webhookUrl?: string;
+  actor: string;
+}
 
 export interface RegisterPaymentInput {
   clientId: string;
@@ -67,6 +99,7 @@ export class BillingService {
   constructor(
     private readonly repository: IBillingRepository,
     private readonly notificationDispatcher?: IBillingNotificationDispatcher,
+    private readonly totpCrypto: TotpCryptoService = defaultTotpCryptoService,
   ) {}
 
   /**
@@ -237,5 +270,201 @@ export class BillingService {
       return err(msg, "BILLING_PROFILE_ERROR");
     }
   }
+
+  /**
+   * Obtiene la vista consolidada de facturación para el Platform Owner (D-10).
+   */
+  async getAdminBillingOverview(): Promise<Result<{
+    metrics: BillingOverviewMetrics;
+    subscriptions: SubscriptionDetail[];
+    recentInvoices: Invoice[];
+    recentReceipts: PaymentReceipt[];
+  }>> {
+    try {
+      const [metrics, subscriptions, recentInvoices, recentReceipts] = await Promise.all([
+        this.repository.getBillingOverviewMetrics(),
+        this.repository.listAllSubscriptions(),
+        this.repository.listAllInvoices(30),
+        this.repository.listAllReceipts(30),
+      ]);
+      return ok({ metrics, subscriptions, recentInvoices, recentReceipts });
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[BillingService.getAdminBillingOverview] Error: ${msg}`, error);
+      return err(msg, "BILLING_OVERVIEW_ERROR");
+    }
+  }
+
+  /**
+   * Ejecuta una acción de soporte sobre una suscripción (extender trial, suspender, reactivar).
+   */
+  async manageSubscriptionAction(
+    subscriptionId: string,
+    action: "extend_trial" | "suspend" | "activate",
+    params: { days?: number; actor: string },
+  ): Promise<Result<Subscription>> {
+    try {
+      if (action === "extend_trial") {
+        const days = params.days && params.days > 0 ? params.days : 14;
+        const newTrialEndsAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+        const updated = await this.repository.updateSubscriptionTrial(
+          subscriptionId,
+          newTrialEndsAt,
+          params.actor,
+        );
+        return ok(updated);
+      } else if (action === "suspend") {
+        const updated = await this.repository.updateSubscriptionStatus(
+          subscriptionId,
+          "suspended",
+          params.actor,
+        );
+        return ok(updated);
+      } else if (action === "activate") {
+        const updated = await this.repository.updateSubscriptionStatus(
+          subscriptionId,
+          "active",
+          params.actor,
+        );
+        return ok(updated);
+      }
+      return err("Acción de suscripción inválida", "INVALID_ACTION");
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[BillingService.manageSubscriptionAction] Error: ${msg}`, error);
+      return err(msg, "SUBSCRIPTION_ACTION_ERROR");
+    }
+  }
+
+  /**
+   * Obtiene la configuración pública de pasarelas registradas para el backoffice.
+   */
+  async listPaymentGatewaysPublicConfig(): Promise<Result<PaymentGatewayPublicView[]>> {
+    try {
+      const rows = await this.repository.listPaymentGatewaysConfig();
+      const views: PaymentGatewayPublicView[] = [
+        {
+          id: "wompi",
+          displayName: "Wompi (Colombia / COP)",
+          isEnabled: false,
+          environment: "sandbox",
+          publicKey: null,
+          hasSecretKey: false,
+          hasWebhookSecret: false,
+          webhookUrl: "/api/webhooks/wompi",
+          updatedAt: new Date(),
+        },
+        {
+          id: "stripe",
+          displayName: "Stripe (Internacional / USD)",
+          isEnabled: false,
+          environment: "sandbox",
+          publicKey: null,
+          hasSecretKey: false,
+          hasWebhookSecret: false,
+          webhookUrl: "/api/webhooks/stripe",
+          updatedAt: new Date(),
+        },
+      ];
+
+      for (const row of rows) {
+        const idx = views.findIndex((v) => v.id === row.id);
+        if (idx !== -1) {
+          views[idx] = {
+            id: row.id as "wompi" | "stripe",
+            displayName: row.displayName || views[idx].displayName,
+            isEnabled: row.isEnabled,
+            environment: (row.environment as "sandbox" | "production") || "sandbox",
+            publicKey: row.publicKey ?? null,
+            hasSecretKey: Boolean(row.secretKeyEncrypted && row.secretKeyId),
+            hasWebhookSecret: Boolean(row.webhookSecretEncrypted && row.secretKeyId),
+            webhookUrl: row.webhookUrl || views[idx].webhookUrl,
+            updatedAt: row.updatedAt,
+          };
+        }
+      }
+
+      return ok(views);
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[BillingService.listPaymentGatewaysPublicConfig] Error: ${msg}`, error);
+      return err(msg, "GATEWAYS_CONFIG_ERROR");
+    }
+  }
+
+  /**
+   * Actualiza o crea la configuración de una pasarela con cifrado AES-256-GCM.
+   */
+  async upsertPaymentGatewayConfig(
+    input: UpdatePaymentGatewayInput,
+  ): Promise<Result<PaymentGatewayPublicView>> {
+    try {
+      const existing = await this.repository.getPaymentGatewayConfig(input.id);
+      let secretKeyEncrypted = existing?.secretKeyEncrypted ?? null;
+      let webhookSecretEncrypted = existing?.webhookSecretEncrypted ?? null;
+      let secretKeyId = existing?.secretKeyId ?? null;
+
+      if (input.secretKey && input.secretKey.trim()) {
+        const encrypted = this.totpCrypto.encrypt(
+          input.secretKey.trim(),
+          `gateway_config:${input.id}:secret_key`,
+        );
+        secretKeyEncrypted = encrypted.ciphertext;
+        secretKeyId = encrypted.keyId;
+      }
+
+      if (input.webhookSecret && input.webhookSecret.trim()) {
+        const encrypted = this.totpCrypto.encrypt(
+          input.webhookSecret.trim(),
+          `gateway_config:${input.id}:webhook_secret`,
+        );
+        webhookSecretEncrypted = encrypted.ciphertext;
+        secretKeyId = encrypted.keyId;
+      }
+
+      const now = new Date();
+      const saved = await this.repository.upsertPaymentGatewayConfig({
+        id: input.id,
+        displayName: input.displayName || (input.id === "wompi" ? "Wompi (Colombia / COP)" : "Stripe (Internacional / USD)"),
+        isEnabled: input.isEnabled,
+        environment: input.environment,
+        publicKey: input.publicKey !== undefined ? input.publicKey : existing?.publicKey ?? null,
+        secretKeyEncrypted,
+        webhookSecretEncrypted,
+        secretKeyId,
+        webhookUrl: input.webhookUrl || (input.id === "wompi" ? "/api/webhooks/wompi" : "/api/webhooks/stripe"),
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        createdBy: existing?.createdBy ?? input.actor,
+        updatedBy: input.actor,
+      });
+
+      return ok({
+        id: saved.id as "wompi" | "stripe",
+        displayName: saved.displayName,
+        isEnabled: saved.isEnabled,
+        environment: saved.environment as "sandbox" | "production",
+        publicKey: saved.publicKey ?? null,
+        hasSecretKey: Boolean(saved.secretKeyEncrypted && saved.secretKeyId),
+        hasWebhookSecret: Boolean(saved.webhookSecretEncrypted && saved.secretKeyId),
+        webhookUrl: saved.webhookUrl || (input.id === "wompi" ? "/api/webhooks/wompi" : "/api/webhooks/stripe"),
+        updatedAt: saved.updatedAt,
+      });
+    } catch (error: any) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[BillingService.upsertPaymentGatewayConfig] Error: ${msg}`, error);
+      return err(msg, "GATEWAYS_UPDATE_ERROR");
+    }
+  }
+}
+
+let defaultBillingServiceInstance: BillingService | null = null;
+
+export function getBillingService(): BillingService {
+  if (!defaultBillingServiceInstance) {
+    const repo = new DrizzleBillingRepository(getDb());
+    defaultBillingServiceInstance = new BillingService(repo);
+  }
+  return defaultBillingServiceInstance;
 }
 

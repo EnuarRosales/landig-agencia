@@ -22,6 +22,7 @@ export * from "./bot-tenancy";
 export * from "./bot-prompt-blocks";
 export * from "./ai-assist";
 export * from "./billing";
+export * from "./payment-gateways-config";
 export * from "./referrals";
 export * from "./communities-and-cloning";
 export * from "./client-brandings";

@@ -69,6 +69,8 @@ export interface CreateAdminPlanInput {
   descriptionEn?: string;
   priceMonthlyCop: number;
   priceAnnualCop?: number;
+  currency?: "COP" | "USD";
+  billingCycles?: ("monthly" | "annual")[];
   trialDays?: number;
   graceDays?: number;
   isPublic?: boolean;
@@ -220,10 +222,10 @@ export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Resu
         sortOrder: 10,
         trialDays: input.trialDays ?? 14,
         graceDays: input.graceDays ?? 7,
-        billingCycles: ["monthly", "annual"],
+        billingCycles: input.billingCycles || ["monthly", "annual"],
         priceMonthlyCents,
         priceAnnualCents,
-        currency: "COP",
+        currency: input.currency || "COP",
         marketingFeatures: {
           es: input.marketingFeaturesEs || [],
           en: [],

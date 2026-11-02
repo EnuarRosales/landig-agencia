@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | BILL-001 |
-| Versión | 1.3 (Aprobada — payment_methods, prorrateo y créditos) |
-| Fecha | 2026-10-25 |
+| Versión | 1.4 (Aprobada — Módulo unificado /admin/billing y payment_gateways_config) |
+| Fecha | 2026-11-01 |
 | Depende de | [`requirements.md`](requirements.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/design.md) · [REP-001](../rep-001-informes-dashboards/design.md) |
 | Estado | Aprobada |
 
@@ -145,6 +145,20 @@ flowchart TD
 | `status` | `varchar(16)` | `pending`/`applied`/`void` |
 | Auditoría | — | `created_at`, `created_by` |
 
+### 3.8 `payment_gateways_config` (Configuración dinámica de pasarelas, D-11)
+| Columna | Tipo | Regla |
+|---|---|---|
+| `id` | `text` PK | Identificador canónico (`wompi`, `stripe`) |
+| `display_name` | `text` | Nombre descriptivo de la pasarela |
+| `is_enabled` | `boolean` | Flag de activación en runtime |
+| `environment` | `text` | `sandbox` o `production` |
+| `public_key` | `text` | Llave pública para frontend / checkout widget |
+| `secret_key_encrypted` | `bytea` | Llave privada cifrada con AES-256-GCM |
+| `webhook_secret_encrypted` | `bytea` | Secreto de eventos webhook cifrado con AES-256-GCM |
+| `secret_key_id` | `text` | Identificador de clave maestra en `/run/secrets/` |
+| `webhook_url` | `text` | URL canónica generada para recepción de eventos |
+| Auditoría | — | `created_at`, `updated_at`, `created_by`, `updated_by` |
+
 ---
 
 ## 4. Protocolos de Webhooks e Idempotencia
@@ -213,3 +227,27 @@ flowchart TD
 | Prorrateo negativo | Un downgrade con neto negativo deja crédito a favor y `total_cents >= 0`. |
 | Exportación Excel | Endpoint `/api/billing/export?format=xlsx&period=monthly` descarga un archivo `.xlsx` válido y legible. |
 | Exportación PDF | Endpoint `/api/billing/export?format=pdf&period=monthly` descarga un documento `.pdf` con tabla estructurada. |
+
+---
+
+## 7. Módulo Administrativo de Facturación y Planes (`/admin/billing`, D-10)
+
+### 7.1 Estructura del Layout y Pestañas HUD
+El módulo `/admin/billing` se organiza en un cascarón HUD con selector dinámico de pestañas y preservación de estado vía query param (`?tab=...`):
+
+1. **Pestaña `plans` (Planes y Precios):**
+   - Catálogo comercial con visibilidad (Público Landing vs Privado VIP).
+   - Formulario `CreatePlanForm` ampliado: precios independientes mensual y anual, selector de moneda (COP/USD), selector de ciclos habilitados y días de prueba/gracia.
+2. **Pestaña `subscriptions` (Suscripciones de Inquilinos):**
+   - Métricas en tiempo real: MRR estimado, suscripciones activas, en trial y en dunning (`past_due`).
+   - Tabla interactiva con búsqueda por inquilino y filtrado por estado.
+   - Acciones de soporte: extender período de prueba, suspender y reactivar servicio.
+   - Inspección de datos fiscales bajo estándar Matías API (`client_billing_profiles`).
+3. **Pestaña `receipts` (Comprobantes y Facturas):**
+   - Historial paginado de invoices y receipts emitidos.
+   - Centro de descarga contable conectando con `/api/billing/export` (Excel `.xlsx` y PDF `.pdf`) con selectores de período.
+4. **Pestaña `gateways` (Pasarelas Duales Wompi y Stripe):**
+   - Panel de control dinámico alimentado por `admin.payment_gateways_config`.
+   - Toggle de activación y alternador de entorno Sandbox / Producción.
+   - Edición de llaves públicas y secretos (cifrados con AES-256-GCM).
+   - Visualización de URLs canónicas de Webhook listas para copiar.
