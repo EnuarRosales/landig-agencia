@@ -197,15 +197,15 @@ export function PlanModalDialog({
         </div>
 
         {error && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/30 p-3 text-xs text-red-400">
-            <AlertCircle className="h-4 w-4 shrink-0" />
+          <div className="mb-4 flex items-center gap-2 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 p-3 text-xs text-rose-800 dark:text-rose-300">
+            <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
             <span>{error}</span>
           </div>
         )}
 
         {success && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-400">
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 p-3 text-xs text-emerald-800 dark:text-emerald-300">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
             <span>
               {isEdit
                 ? "Plan comercial actualizado exitosamente."
@@ -504,3 +504,4 @@ export function PlanModalDialog({
     </div>
   );
 }
+

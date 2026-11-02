@@ -87,9 +87,9 @@ export function PlanDeleteModal({
         <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3 mb-4">
           <div className="flex items-center gap-2">
             {willRetire ? (
-              <Archive className="h-5 w-5 text-amber-400" />
+              <Archive className="h-5 w-5 text-amber-600 dark:text-amber-400" />
             ) : (
-              <Trash2 className="h-5 w-5 text-rose-400" />
+              <Trash2 className="h-5 w-5 text-rose-600 dark:text-rose-400" />
             )}
             <h2 id="delete-plan-modal-title" className="text-base font-bold text-[var(--dsn-text)]">
               {willRetire ? "Retiro De Plan Comercial" : "Eliminación De Plan Comercial"}
@@ -105,15 +105,15 @@ export function PlanDeleteModal({
         </div>
 
         {error && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/30 p-3 text-xs text-red-400">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
+          <div className="mb-4 flex items-center gap-2 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 p-3 text-xs text-rose-800 dark:text-rose-300">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
             <span>{error}</span>
           </div>
         )}
 
         {success && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-400">
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
+          <div className="mb-4 flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 p-3 text-xs text-emerald-800 dark:text-emerald-300">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
             <span>
               {willRetire
                 ? "Plan retirado y archivado exitosamente. Suscripciones existentes preservadas."
@@ -139,24 +139,28 @@ export function PlanDeleteModal({
           </div>
 
           {willRetire ? (
-            <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-amber-300">
-              <ShieldAlert className="h-5 w-5 shrink-0 mt-0.5 text-amber-400" />
+            <div className="flex items-start gap-2.5 rounded-lg border border-amber-300 dark:border-amber-500/30 bg-amber-50/80 dark:bg-amber-500/10 p-3.5 text-amber-900 dark:text-amber-300">
+              <ShieldAlert className="h-5 w-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
               <div className="space-y-1">
-                <p className="font-semibold">Salvaguarda De Integridad Comercial</p>
-                <p className="text-[11px] leading-relaxed text-amber-200/80">
-                  Este plan cuenta con <strong>{tenantsCount} inquilino(s)</strong> activo(s).
-                  Para no invalidar suscripciones ni el histórico contable, el plan <strong>no se borrará físicamente</strong>,
-                  sino que pasará a estado <strong>Retirado (retired)</strong>, ocultándose de la landing page y nuevos registros.
+                <p className="font-semibold text-amber-900 dark:text-amber-200">
+                  Salvaguarda De Integridad Comercial
+                </p>
+                <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-200/90">
+                  Este plan cuenta con <strong className="font-bold text-amber-950 dark:text-amber-100">{tenantsCount} inquilino(s)</strong> activo(s).
+                  Para no invalidar suscripciones ni el histórico contable, el plan <strong className="font-bold text-amber-950 dark:text-amber-100">no se borrará físicamente</strong>,
+                  sino que pasará a estado <strong className="font-bold text-amber-950 dark:text-amber-100">Retirado (retired)</strong>, ocultándose de la landing page y nuevos registros.
                 </p>
               </div>
             </div>
           ) : (
-            <div className="flex items-start gap-2.5 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3.5 text-rose-300">
-              <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-rose-400" />
+            <div className="flex items-start gap-2.5 rounded-lg border border-rose-300 dark:border-rose-500/30 bg-rose-50/80 dark:bg-rose-500/10 p-3.5 text-rose-900 dark:text-rose-300">
+              <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
               <div className="space-y-1">
-                <p className="font-semibold">Eliminación Física Definitiva</p>
-                <p className="text-[11px] leading-relaxed text-rose-200/80">
-                  Este plan <strong>no tiene ningún inquilino vinculado</strong>. Se eliminará físicamente
+                <p className="font-semibold text-rose-900 dark:text-rose-200">
+                  Eliminación Física Definitiva
+                </p>
+                <p className="text-[11px] leading-relaxed text-rose-800 dark:text-rose-200/90">
+                  Este plan <strong className="font-bold text-rose-950 dark:text-rose-100">no tiene ningún inquilino vinculado</strong>. Se eliminará físicamente
                   de la base de datos de manera irreversible.
                 </p>
               </div>
@@ -201,3 +205,4 @@ export function PlanDeleteModal({
     </div>
   );
 }
+

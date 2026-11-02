@@ -133,3 +133,4 @@ describe("BILL-001 / ADM-001 · Plans Route Handler (/api/admin/plans)", () => {
     expect(domain.deleteAdminPlan).toHaveBeenCalledWith("plan-1");
   });
 });
+
