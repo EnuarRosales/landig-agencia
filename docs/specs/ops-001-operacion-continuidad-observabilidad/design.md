@@ -3,8 +3,8 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.6 |
-| Fecha | 2026-10-21 · actualizado 2026-10-27 |
+| Versión | 1.7 |
+| Fecha | 2026-10-21 · actualizado 2026-11-02 |
 | Depende de | [`requirements.md`](requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) |
 | Estado | Aprobada |
 
@@ -61,12 +61,12 @@
 | Grafana Alloy | Contenedor | Recolecta métricas y logs y los empuja a Grafana Cloud |
 | Grafana Cloud | Externo | Dashboards, retención y alertas |
 
-> **Estado de instancias y dependencias (resolución de contradicción):**
+> **Estado de instancias y dependencias (revisión 2026-11-02):**
 > - **Instancias activas de la plataforma:**
 >   - **Router Global / Control Plane (`pg-portal`):** Aloja el enrutador de celdas (`client_routing`), usuarios, autenticación, suscripciones, facturación y comunidades.
->   - **Celda Inicial de Inquilinos (`pg-cell-001`):** Data Plane celular activo para los datos operacionales de los inquilinos (`contacts`, `orders`, `products`, particiones y RLS).
 >   - **Plano de Soporte Aislado (`pg-chatwoot`):** Instancia física activa en producción (`mocter-chatwoot-pg-chatwoot-1`) que soporta el backend Rails (`mocter-chatwoot-rails-1`), Sidekiq y Redis de Chatwoot.
-> - **Dependencia autoritativa:** Se resuelve la contradicción documental histórica entre DAT-001 §9.1 y CD-001. OPS-001 gobierna de forma autoritativa la continuidad operativa, el archiving WAL y los respaldos en Cloudflare R2 tanto para `pg-portal`, la celda inicial `pg-cell-001` (y celdas subsiguientes), como para `pg-chatwoot` y los adjuntos locales de Chatwoot.
+> - **Celdas:** No hay celdas desplegadas actualmente. `pg-cell-<cell-id>` es un nombre de plantilla para futuras instancias; `pg-cell-001` no representa una instancia activa.
+> - **Dependencia autoritativa:** OPS-001 gobierna la continuidad, el archiving WAL y los respaldos en Cloudflare R2 para `pg-portal` y `pg-chatwoot`. Los requisitos de backup/restore de las celdas se aplican cuando cada instancia se aprovisione; esta spec no afirma que existan datos celulares ni repositorios de backup celulares hoy.
 
 ## 3. Repositorio en R2
 
@@ -76,10 +76,9 @@ Un solo bucket, un prefijo por instancia. El bucket tiene **versionado habilitad
 
 ```text
 mocter-backups/
-├── pg-portal/          # Router Global (hoy pg-portal)
-├── pg-cell-001/        # una por celda
-├── pg-cell-002/
-└── pg-chatwoot/        # plano de soporte
+├── pg-portal/             # Router Global
+├── pg-cell-<cell-id>/     # plantilla; crear al desplegar cada celda
+└── pg-chatwoot/            # plano de soporte
 ```
 
 Cada prefijo es un repositorio pgBackRest independiente. Nunca se comparte stanza entre instancias.
@@ -89,7 +88,7 @@ Cada prefijo es un repositorio pgBackRest independiente. Nunca se comparte stanz
 | Instancia | Stanza | Retención full |
 |---|---|---|
 | Router Global | `pg-portal` | 30 días |
-| Celda N | `pg-cell-00N` | 14 días |
+| Celda futura (`<cell-id>`) | `pg-cell-<cell-id>` | 14 días |
 | Chatwoot | `pg-chatwoot` | 14 días |
 
 La stanza debe coincidir con el nombre del servicio Compose. Si cambia el nombre del servicio, cambia la stanza y se abre un repositorio nuevo.
@@ -257,7 +256,7 @@ pgbackrest-secure --stanza=pg-portal \
 
 ### 7.3 Restore de una celda
 
-Idéntico a §7.1, con stanza `pg-cell-00N` y volumen `pgdata-cell-00N`. La celda no contiene el catálogo global: después del restore, el enrutamiento del Router Global sigue siendo la autoridad. No se restaura el catálogo desde una celda.
+Este procedimiento aplica a una celda desplegada. Usa la stanza `pg-cell-<cell-id>` y volumen `pgdata-cell-<cell-id>`. La celda no contiene el catálogo global: después del restore, el enrutamiento del Router Global sigue siendo la autoridad. No se restaura el catálogo desde una celda. Si la celda aún no existe o no contiene datos de inquilinos, no se simula un restore de datos; se valida su esquema y migraciones según DAT-001.
 
 ### 7.4 Restore de Chatwoot
 
@@ -295,7 +294,7 @@ Idéntico a §7.1, con stanza `pg-cell-00N` y volumen `pgdata-cell-00N`. La celd
 
 #### 7.6.1 Conteos críticos por instancia (T-15)
 
-Tras ejecutar un restore en aislamiento o producción, se debe ejecutar la validación de integridad de datos mediante conteos mínimos esperados en las tablas maestras:
+Tras ejecutar un restore en aislamiento o producción, se debe ejecutar la validación de integridad de datos mediante conteos mínimos esperados en las tablas maestras. Las filas de `pg-cell-<cell-id>` son plantillas que solo aplican después de desplegar una celda con datos de inquilinos; no describen una instancia actual. Para una celda nueva/vacía se validan esquema y migraciones, sin exigir conteos de negocio mayores que cero:
 
 | Instancia | Tabla Crítica | Consulta de Verificación | Rango / Criterio Esperado |
 |---|---|---|---|
@@ -304,9 +303,9 @@ Tras ejecutar un restore en aislamiento o producción, se debe ejecutar la valid
 | `pg-portal` (Control Plane) | `plans` | `SELECT count(*) FROM plans;` | $= 4$ (Planes estándar: Trial, Starter, Pro, Enterprise) |
 | `pg-portal` (Control Plane) | `memberships` | `SELECT count(*) FROM memberships;` | $\ge \text{count}(users)$ de inquilinos activos |
 | `pg-portal` (Control Plane) | `subscriptions` | `SELECT count(*) FROM subscriptions;` | Coherente con inquilinos no-trial activos |
-| `pg-cell-00N` (Inquilinos) | `contacts` | `SELECT count(*) FROM contacts;` | Coherente con prospectos históricos de la celda |
-| `pg-cell-00N` (Inquilinos) | `orders` | `SELECT count(*) FROM orders;` | Coherente con total de pedidos consolidados |
-| `pg-cell-00N` (Inquilinos) | `products` | `SELECT count(*) FROM products;` | $\ge 1$ por catálogo activo aprovisionado |
+| `pg-cell-<cell-id>` (Inquilinos) | `contacts` | `SELECT count(*) FROM contacts;` | Coherente con prospectos históricos de la celda, cuando existan |
+| `pg-cell-<cell-id>` (Inquilinos) | `orders` | `SELECT count(*) FROM orders;` | Coherente con total de pedidos consolidados, cuando existan |
+| `pg-cell-<cell-id>` (Inquilinos) | `products` | `SELECT count(*) FROM products;` | Coherente con el catálogo activo aprovisionado, cuando exista |
 | `pg-chatwoot` (Soporte) | `accounts` | `SELECT count(*) FROM accounts;` | Coincide con cuentas activas vinculadas a Mocter |
 | `pg-chatwoot` (Soporte) | `conversations`| `SELECT count(*) FROM conversations;` | Dentro del rango histórico previo al RPO |
 | `pg-chatwoot` (Soporte) | `messages` | `SELECT count(*) FROM messages;` | Dentro del rango histórico previo al RPO |
@@ -551,3 +550,4 @@ Como control preventivo obligatorio en el pipeline de integración continua (`.g
 3. Toda prueba trimestral agrega su evidencia y, si cambió el RTO real, se ajusta la decisión.
 4. Las preguntas abiertas se cierran con su decisión y su entrada en §8 de `requirements.md`.
 5. Lo que no se pueda verificar se marca como **no verificado** y no se publica como hecho.
+6. 2026-11-02: Por confirmación del usuario, no hay celdas desplegadas; se corrige la referencia a `pg-cell-001` activo y los prefijos de backup celulares quedan expresados como plantillas futuras.

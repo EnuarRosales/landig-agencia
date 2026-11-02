@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | DAT-001 |
-| Versión | 1.2 |
+| Versión | 1.5 |
 | Estado | Aprobada |
-| Fecha | 2026-10-20 · actualizado 2026-10-27 |
+| Fecha | 2026-10-20 · actualizado 2026-11-02 |
 | Depende de | [`requirements.md`](requirements.md) |
 | Relacionado | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 
@@ -113,7 +113,7 @@ Todas las tablas siguen la directiva: nombre plural, PK `id`, FK `<entidad>_id`,
 
 | Tabla | Propósito | Columnas clave |
 |---|---|---|
-| `cells` | Catálogo de celdas | `id`, `code`, `tier`, `status`, `topology_type`, `pgbouncer_host`, `pgbouncer_port`, `database_name`, `app_url`, `private_ip`, `public_ip`, `working_dir`, `deploy_user`, `handshake_secret`, `max_clients`, `current_clients`, `region`, `health_status`, `last_health_check_at` |
+| `cells` | Catálogo y ciclo de vida de celdas | `id`, `code`, `tier`, `status`, `topology_type`, `pgbouncer_host`, `pgbouncer_port`, `database_name`, `app_url`, `private_ip`, `public_ip` (inventario; nunca destino del handshake), `working_dir`, `deploy_user`, `cell_secrets_ciphertext`, `cell_secrets_key_id`, `max_clients`, `current_clients`, `region`, `health_status` (diagnóstico saneado), `last_health_check_at` |
 | `clients` | Inquilinos | `id` (UUIDv7), `slug`, `display_name`, `lifecycle_status`, `plan_id`, `quota_version`, `created_at`, `updated_at` |
 | `client_routing` | Enrutamiento vigente | `id`, `client_id`, `cell_id`, `routing_status`, `routing_version`, `updated_at` |
 | `client_migrations` | Auditoría de migraciones | `id`, `client_id`, `source_cell_id`, `target_cell_id`, `state`, `started_at`, `completed_at` |
@@ -144,29 +144,33 @@ Reglas:
 
 ```sql
 CREATE TABLE cells (
-    id                    uuid PRIMARY KEY DEFAULT uuidv7(),
-    code                  text NOT NULL UNIQUE,
-    tier                  text NOT NULL DEFAULT 'standard',
-    status                text NOT NULL DEFAULT 'draft',
-    topology_type         text NOT NULL DEFAULT 'remote_vps',
-    pgbouncer_host        text NOT NULL,
-    pgbouncer_port        integer NOT NULL DEFAULT 6432,
-    database_name         text NOT NULL,
-    app_url               text,
-    private_ip            text,
-    public_ip             text,
-    working_dir           text NOT NULL DEFAULT '/opt',
-    deploy_user           text NOT NULL DEFAULT 'deploy:1000',
-    handshake_secret      text NOT NULL,
-    max_clients           integer NOT NULL DEFAULT 100,
-    current_clients       integer NOT NULL DEFAULT 0,
-    region                text NOT NULL DEFAULT 'us-east-1',
-    health_status         jsonb,
-    last_health_check_at  timestamptz,
-    created_at            timestamptz NOT NULL DEFAULT now(),
-    updated_at            timestamptz NOT NULL DEFAULT now(),
+    id                       uuid PRIMARY KEY DEFAULT uuidv7(),
+    code                     text NOT NULL UNIQUE,
+    tier                     text NOT NULL DEFAULT 'standard',
+    status                   text NOT NULL DEFAULT 'draft',
+    topology_type            text NOT NULL DEFAULT 'remote_vps',
+    pgbouncer_host           text NOT NULL,
+    pgbouncer_port           integer NOT NULL DEFAULT 6432,
+    database_name            text NOT NULL,
+    app_url                  text NOT NULL,
+    private_ip               text,
+    public_ip                text,
+    working_dir              text NOT NULL,
+    deploy_user              text NOT NULL DEFAULT 'deploy:1000',
+    cell_secrets_ciphertext  bytea NOT NULL,
+    cell_secrets_key_id      text NOT NULL,
+    max_clients              integer NOT NULL DEFAULT 100,
+    current_clients          integer NOT NULL DEFAULT 0,
+    region                   text NOT NULL DEFAULT 'us-east-1',
+    health_status            jsonb,
+    last_health_check_at     timestamptz,
+    created_at               timestamptz NOT NULL DEFAULT now(),
+    updated_at               timestamptz NOT NULL DEFAULT now(),
+    created_by               text NOT NULL,
+    updated_by               text NOT NULL,
     CONSTRAINT cells_status_check CHECK (status IN ('draft', 'provisioning', 'verifying', 'active', 'draining', 'readonly', 'maintenance', 'error_connection')),
-    CONSTRAINT cells_topology_check CHECK (topology_type IN ('local_compose', 'remote_vps', 'kubernetes')),
+    CONSTRAINT cells_topology_check CHECK (topology_type IN ('local_compose', 'remote_vps')),
+    CONSTRAINT cells_secrets_payload_check CHECK (octet_length(cell_secrets_ciphertext) > 0 AND length(cell_secrets_key_id) > 0),
     CONSTRAINT cells_max_clients_check CHECK (max_clients > 0),
     CONSTRAINT cells_capacity_check CHECK (current_clients <= max_clients)
 );
@@ -333,50 +337,59 @@ La reconciliación se ejecuta periódicamente y deja auditoría del delta. Un co
 
 ### 3.6 Ciclo de vida y orquestación declarativa de celdas por Handshake (Modelo A)
 
-Para garantizar la autonomía, aislamiento y seguridad de las celdas sin introducir dependencias frágiles de automatización externa en fase temprana ni comprometer credenciales SSH dentro del portal web (R-01/R-05), el ciclo de vida de una celda opera bajo el **Modelo A: Orquestación Declarativa por Handshake**:
+La celda se registra primero como `draft`; solo una verificación satisfactoria permite que entre al conjunto de celdas elegibles para nuevas asignaciones. En v1, la provisión física queda a cargo del operador y no requiere SSH ni despliegue remoto desde el portal. El catálogo `cells` comienza vacío: no hay filas existentes que deban conservarse o convertirse durante la primera migración de esta especificación.
 
-```
-[ draft ] ──────► [ Generación Manifiesto ] ──────► [ Despliegue en /opt/<name-cell> ]
-                         (Mocter Admin)                       (deploy:1000)
-                                                                    │
-                                                                    ▼
-[ active ] ◄──── [ Handshake Dual 360° ] ◄───── [ docker compose up (cell-migrator) ]
-    │            (PgBouncer + HTTP Health)
-    ▼
-[ draining ] ──► [ maintenance / retired ]
+V1 admite `remote_vps` y `local_compose` con Docker Compose. Kubernetes y CloudNativePG permanecen fuera de este alcance, de acuerdo con §2.
+
+```text
+ draft → provisioning → verifying ──aprobado──→ active
+                              └──fallido──→ error_connection ──reintento manual──→ verifying
+ active → draining | readonly | maintenance | error_connection
+ draining | readonly | maintenance ──revalidación manual──→ verifying
 ```
 
-#### 3.6.1 Máquina de Estados de la Célula (`cells.status`)
+#### 3.6.1 Máquina de estados de la célula (`cells.status`)
 
-1. **`draft` (Parametrizada / Borrador):** El Platform Owner registra el código (`code`), topología (`topology_type`: `remote_vps`, `local_compose`, `kubernetes`), endpoints (`pgbouncer_host`, `pgbouncer_port`, `database_name`, `app_url`), IPs (`private_ip`, `public_ip`), directorio de trabajo (`/opt/<name-cell>`) y usuario (`deploy:1000`). La celda no participa en el algoritmo de enrutamiento ni recibe inquilinos.
-2. **`provisioning` (En Despliegue):** El manifiesto `docker-compose.cell.yml` y el archivo de entorno `.env.cell` están generados. El operador o SRE ejecuta el despliegue en el nodo.
-3. **`verifying` (Verificación en Curso):** El Router Global ejecuta la validación técnica previa a la activación a petición del operador (botón «Verificar y Activar Célula»).
-4. **`active` (Activa y Enrutando):** El Handshake Dual pasó al 100%. La celda está disponible para el algoritmo de alta y asignación de inquilinos.
-5. **`draining` (Drenando):** La celda alcanzó su límite de capacidad (RF-10.5) o se prepara para mantenimiento. Los inquilinos alojados operan con normalidad, pero el Router Global no le asigna nuevas altas.
-6. **`maintenance` (Mantenimiento):** Modo de solo lectura o desconexión temporal para tareas de mantenimiento, upgrades o snapshot de volúmenes.
-7. **`error_connection` (Fallo de Enlace):** El Handshake Dual o un healthcheck programado falló. No admite nuevas altas y genera alertas inmediatas en el panel administrativo.
+`cells.status` describe el ciclo de vida y la elegibilidad de la celda; no es el estado de enrutamiento de cada inquilino. `client_routing.routing_status` sigue siendo la fuente de verdad por inquilino. Cambiar el estado de la celda no reescribe ni mueve filas de `client_routing` automáticamente.
 
-#### 3.6.2 Despliegue Físico y Estándar de Host
+| Estado | Significado y transición permitida | Nuevas asignaciones | Rutas existentes |
+|---|---|---:|---|
+| `draft` | Celda registrada y parametrizada. Pasa a `provisioning` al generar el paquete de despliegue. | No | No debe tener inquilinos asignados. |
+| `provisioning` | Paquete generado; el operador/SRE ejecuta Compose en el host. Pasa a `verifying` cuando el operador solicita la prueba. | No | No debe tener inquilinos asignados. |
+| `verifying` | Prueba manual en curso. Termina en `active` si pasan ambas verificaciones o en `error_connection` si falla alguna. | No | No se modifican. |
+| `active` | Verificación satisfactoria y elegible para asignación si `current_clients < max_clients`. Puede pasar a `draining`, `readonly`, `maintenance` o `error_connection`. | Sí, con capacidad disponible | Continúan según `client_routing`. |
+| `draining` | Retirada planificada de nuevas asignaciones. La capacidad agotada no cambia por sí sola este estado. Reanudar exige pasar por `verifying`. | No | Se conservan; siguen su ruta vigente hasta migración o intervención explícita. |
+| `readonly` | Estado operativo de solo lectura. No admite nuevas asignaciones; la capa de datos debe rechazar escrituras para las rutas existentes. Reanudar escrituras exige pasar por `verifying`. | No | Se conservan; el modo de solo lectura debe ser efectivo en la celda, no solo una etiqueta del Router. |
+| `maintenance` | Intervención operativa planificada. No admite nuevas asignaciones. Para volver a `active` se requiere `verifying`. | No | No se mueven ni cambian automáticamente; la intervención debe declarar su impacto y coordinar la disponibilidad. |
+| `error_connection` | Falló una verificación solicitada o una sonda operativa. Reintentar lleva a `verifying`; si cambian los parámetros o el manifiesto, vuelve a `provisioning`. | No | Se conservan; no se reasignan automáticamente a otra celda. |
 
-- **Directorio Canónico:** Toda celda autónoma reside físicamente en `/opt/<name-cell>` (por ejemplo `/opt/cell-01`, `/opt/cell-02`).
-- **Usuario de Ejecución:** En producción, el único usuario del sistema operativo autorizado para desplegar e iniciar los contenedores es `deploy:1000` (`UID:GID 1000:1000`). Queda terminantemente prohibido ejecutar servicios de celda como `root`.
-- **Plantilla Canónica `docker-compose.cell.yml`:** Contiene:
-  - `pg-cell`: PostgreSQL 18 con extensión pgvector (`pgvector/pgvector:pg18`).
-  - `pgbouncer-cell`: PgBouncer en modo `transaction` (puerto 6432) con autenticación aislada.
-  - `cell-migrator`: Contenedor efímero con perfil de inicialización que aplica automáticamente las migraciones Drizzle celulares (`packages/domain/drizzle.cell.config.ts`) antes de exponer el servicio.
-  - `tenant-service`: Capa de aplicación del inquilino exponiendo `/api/health`.
+La única transición que habilita nuevas asignaciones es `verifying → active` con resultado satisfactorio. Toda reactivación desde `draining`, `readonly` o `maintenance` requiere volver a verificar; ningún healthcheck reactiva una celda automáticamente. `retired` y el borrado/retirada definitiva no forman parte de v1. La lista permitida por `cells_status_check` y `RF-03.1` debe ser idéntica a los estados de esta tabla.
 
-#### 3.6.3 Handshake de Verificación Dual 360°
+#### 3.6.2 Despliegue físico, secretos y estándar de host
 
-El Router Global ejecuta una verificación obligatoria de dos vías antes de transicionar a `active`:
-1. **Verificación de Datos (PgBouncer / PostgreSQL):** Conexión TCP directa mediante credenciales `mocter_app` hacia `pgbouncer_host:pgbouncer_port`. Comprueba que la base `database_name` exista, que las tablas celulares (`contacts`, `orders`, `products`) estén creadas, que las particiones iniciales respondan y que `FORCE ROW LEVEL SECURITY` esté activo.
-2. **Verificación de Aplicación (HTTP Handshake):** Petición `GET https://<app_url>/api/health` enviando la cabecera `X-Mocter-Handshake-Secret: <handshake_secret>`. El servicio celular debe validar el token y responder con código HTTP `200 OK` y diagnóstico interno de sus dependencias.
+- **Directorio y operador:** En producción cada celda reside en `/opt/<name-cell>` derivado del código normalizado de la celda; el valor no es una ruta libre ejecutable ingresada por el usuario. El único usuario de host autorizado para Compose es `deploy:1000` (`UID:GID 1000:1000`); ningún servicio de celda se ejecuta como `root`.
+- **Servicios y orden de inicio:** `pg-cell` usa PostgreSQL 18 con pgvector. Cuando su healthcheck local confirma que acepta conexiones, `cell-migrator` conecta directamente a PostgreSQL y aplica `packages/domain/drizzle.cell.config.ts`; PgBouncer y `tenant-service` dependen de que el migrador termine exitosamente. Si falla, ambos servicios permanecen sin iniciar y Compose informa el fallo.
+- **Roles separados:** `mocter_migrator` es el único rol de migración/DDL; `mocter_app` atiende tráfico de la aplicación; `mocter_healthcheck` solo conecta y lee el journal de migraciones/metadatos necesarios para la verificación, sin leer filas de negocio, sin DDL y sin `BYPASSRLS`.
+- **Paquete de secretos:** Mocter genera secretos con CSPRNG (32 bytes como mínimo para cada contraseña/token). Si el operador provee un valor personalizado, se exige la misma longitud mínima. El paquete contiene los secretos de `mocter_app`, `mocter_migrator`, `mocter_healthcheck` y `handshake_secret`; la base del Router conserva únicamente el paquete cifrado en `cell_secrets_ciphertext` y su `cell_secrets_key_id`. Se cifra con AES-256-GCM usando una clave activa montada desde `/run/secrets/`; el AAD vincula el cifrado al `cell_id` y al propósito `cell-secrets`. No se almacenan valores en claro ni se incluyen en listados, errores o logs.
+- **Entrega del manifiesto:** La descarga de `.env.cell` es una acción explícita y auditada, solo para Platform Owner, con respuesta `Cache-Control: no-store`. El archivo contiene secretos en claro para el operador, no se persiste en el servidor, debe instalarse con permisos `0600` y no debe versionarse. El Router descifra el paquete solo en memoria para ejecutar el handshake.
+- **Red de producción:** La plantilla canónica `docker-compose.cell.yml` contiene `pg-cell`, `pgbouncer-cell` en modo `transaction` (6432), `cell-migrator` y `tenant-service` exponiendo `/api/health`. La base y la aplicación solo aceptan conexiones por la red privada aprobada; el firewall permite el origen del Router, nunca acceso público a PostgreSQL. `public_ip` es inventario, no un destino permitido para probes.
 
-#### 3.6.4 Paridad y Emulación en Desarrollo Local
+#### 3.6.3 Handshake Dual 360° y monitoreo
 
-Para emular fielmente la topología de múltiples celdas aisladas en entornos de desarrollo sin mezclar datos con `pg-portal`:
-- Se versiona el archivo canónico `docker-compose.cell.yml` en la raíz de infraestructura.
-- Se implementa el comando de desarrollo `pnpm cell:up` que levanta una celda local aislada (ej. `cell-01`) en una red Docker propia (`mocter-cell-net`) mapeando puertos locales libres (ej. PgBouncer en 6433, app en 3004), permitiendo simular el Handshake 360° de forma exacta a producción.
+El Router Global es el iniciador del handshake y solo usa rutas privadas aprobadas. La configuración `CELL_PRIVATE_ALLOWED_CIDRS` contiene los CIDR autorizados por infraestructura para las celdas; antes de cada conexión, el destino DNS se resuelve y se valida contra esos CIDR. Se rechazan destinos públicos, loopback, link-local/metadata, multicast, destinos fuera de los CIDR y respuestas DNS fuera del conjunto autorizado. En el stack local se admite loopback solo para desarrollo y el Router local corre en el host o se conecta explícitamente a `mocter-cell-net`. No hay fallback a IP pública. Para `remote_vps`, PostgreSQL usa TLS con verificación de certificado y el endpoint HTTP usa HTTPS con validación TLS; se fijan timeouts de 5 segundos y no se siguen redirecciones.
+
+La verificación de activación ejecuta ambas pruebas:
+
+1. **Datos:** conexión a `pgbouncer_host:pgbouncer_port` con `mocter_healthcheck`; `SELECT 1`; comparación del journal `drizzle.__drizzle_migrations` con la versión esperada; comprobación de existencia de las tablas base y los padres particionados `contacts`, `product_embeddings` y `contact_memories`; y comprobación en catálogos de que todas las tablas celulares de tenencia tienen RLS habilitado, forzado y políticas instaladas. No exige particiones por inquilino en una celda vacía y no consulta filas de negocio.
+2. **Aplicación:** `GET <app_url>/api/health` con `X-Mocter-Handshake-Secret`. El servicio compara el token en tiempo constante y responde `200` solo si aplicación, base y esquema están saludables; token inválido responde `401`, dependencia no saludable responde `503`. El cuerpo solo expone estado y códigos de diagnóstico saneados, nunca secretos, URLs de conexión ni datos de inquilinos.
+
+Ambas pruebas satisfactorias producen `verifying → active`; cualquier fallo deja `error_connection`, guarda fecha y códigos saneados en `health_status`/`last_health_check_at` y genera una alerta al Platform Owner. El botón de activación ejecuta la prueba completa. Una sonda periódica liviana ejecuta `SELECT 1` y el healthcheck HTTP cada 60 segundos; tres fallos consecutivos marcan `active → error_connection`. Recuperar una celda siempre requiere verificación manual completa. Ningún probe cambia `client_routing` ni mueve inquilinos automáticamente.
+
+#### 3.6.4 Paridad y emulación en desarrollo local
+
+- Se versiona `docker-compose.cell.yml` en la raíz de infraestructura y se implementa `pnpm cell:up`; ambos usan la misma secuencia de migración y servicios que producción.
+- El stack local usa la red Docker aislada `mocter-cell-net`. Si el Router corre en el host, los puertos locales (por ejemplo PgBouncer `6433` y app `3004`) se enlazan a `127.0.0.1`; si corre en contenedor, se conecta explícitamente a la red celular. No se publican en `0.0.0.0`.
+- La paridad v1 significa mismos artefactos, migraciones, roles, probes y transiciones. Direcciones, certificados y puertos de desarrollo pueden diferir de producción.
 
 ### 3.7 Separación futura del control plane
 

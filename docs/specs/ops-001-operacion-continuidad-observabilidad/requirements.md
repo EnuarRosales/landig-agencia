@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.6 |
+| Versión | 1.7 |
 | Estado | Aprobada |
-| Fecha | 2026-10-21 · actualizado 2026-10-27 |
+| Fecha | 2026-10-21 · actualizado 2026-11-02 |
 | Documentos | `requirements.md` (este) · [`design.md`](design.md) · [`tasks.md`](tasks.md) |
 | Depende de | [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) · [CD-001](../cd-001-despliegue-continuo/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
 | Directivas | `.agents/AGENTS.md` |
@@ -90,7 +90,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 
 | ID | Requisito |
 |---|---|
-| RF-03.1 | RPO ≤ 15 minutos en las tres instancias. RTO ≤ 2 horas para el Router Global y ≤ 4 horas para celdas y Chatwoot. |
+| RF-03.1 | RPO ≤ 15 minutos en cada instancia PostgreSQL desplegada; actualmente aplica a `pg-portal` y `pg-chatwoot`. Antes de que una celda futura reciba datos de inquilinos, se habilitan y prueban su archiving y respaldo con el mismo RPO. RTO ≤ 2 horas para el Router Global y ≤ 4 horas para Chatwoot y cada celda una vez desplegada. |
 | RF-03.2 | Se documentan y ensayan cinco escenarios: pérdida total del VPS, corrupción lógica, borrado accidental, ransomware y indisponibilidad de R2. |
 | RF-03.3 | El orden de recuperación es: Router Global → celdas → Chatwoot. Sin control plane no hay enrutamiento ni autenticación. |
 | RF-03.4 | Se documentan las dependencias externas del restore: DNS, Traefik, credenciales de GHCR y acceso a R2. |
@@ -150,11 +150,23 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-08.3 | Los runbooks se pueden ejecutar sin contexto previo y sin decisiones implícitas. |
 | RF-08.4 | La spec distingue explícitamente **verificado**, **supuesto** y **no verificado**. Un agente no convierte un supuesto en hecho. |
 | RF-08.5 | Los procedimientos destructivos declaran su efecto, su reversión y la confirmación que exigen. |
-| RF-08.6 | **Emulación Local y Paridad Celular:** Se documenta el runbook de ejecución de celdas aisladas en local con `docker-compose.cell.yml` vía `pnpm cell:up`, replicando la estructura de red, PgBouncer y migraciones efímeras (`cell-migrator`) de producción. |
+| RF-08.6 | **Emulación Local y Paridad Celular:** Se documenta el runbook de ejecución de celdas aisladas en local con `docker-compose.cell.yml` vía `pnpm cell:up`, replicando la estructura de red privada `mocter-cell-net`, PgBouncer y migraciones efímeras (`cell-migrator`) de producción. Los puertos de desarrollo se publican solo en `127.0.0.1`; no se expone la celda fuera del host local. |
+
+### RF-09 · Despliegue y conectividad celular
+
+| ID | Requisito |
+|---|---|
+| RF-09.1 | **Conectividad privada Router→celda:** Solo el Router Global inicia las pruebas desde una ruta privada controlada hacia `pgbouncer_host:pgbouncer_port` y `app_url`; cada destino debe resolver dentro de `CELL_PRIVATE_ALLOWED_CIDRS`. Nunca se conecta a `public_ip` ni se publica PostgreSQL/PgBouncer en Internet. En `remote_vps` se valida TLS; en `local_compose` solo se permite loopback o la red Docker celular explícitamente conectada. |
+| RF-09.2 | **Rol de healthcheck con mínimo privilegio:** La verificación de base usa una credencial dedicada `mocter_healthcheck` que solo conecta y lee catálogos/metadatos de migraciones; no lee filas de negocio, no ejecuta DDL y no tiene `BYPASSRLS`. |
+| RF-09.3 | **Handshake dual 360°:** La verificación de datos confirma conectividad, migraciones requeridas, tablas base y RLS habilitado/forzado; la verificación HTTP llama `GET /api/health` con `X-Mocter-Handshake-Secret` y valida el token en tiempo constante. Ambas pruebas deben pasar para `verifying → active`; el fallo deja `error_connection` con diagnóstico saneado y no reasigna rutas existentes. |
+| RF-09.4 | **Sonda operativa y recuperación manual:** Una sonda liviana posterior ejecuta `SELECT 1` y el healthcheck HTTP cada 60 segundos; tres fallos consecutivos cambian `active` a `error_connection`. La recuperación a `active` requiere una verificación manual completa; ningún healthcheck reactiva una celda automáticamente. |
+| RF-09.5 | **Migración antes de exponer servicios:** En el compose de celda, `cell-migrator` aplica `packages/domain/drizzle.cell.config.ts` conectándose directamente a PostgreSQL; `pg-cell` debe estar saludable antes de iniciar el migrador, y PgBouncer y `tenant-service` solo inician si el migrador termina exitosamente (`service_completed_successfully`). El mismo `docker-compose.cell.yml` se usa en `remote_vps` y `local_compose`. |
+| RF-09.6 | **Manejo seguro de `.env.cell`:** El portal conserva el paquete cifrado; un Platform Owner puede solicitar su exportación explícita y auditada. El portal descifra los secretos solo en memoria y devuelve `.env.cell` con `Cache-Control: no-store`; no persiste el archivo ni registra valores secretos. El operador lo almacena en el host con permisos `0600`, fuera del repositorio, y lo consume únicamente al ejecutar Compose en `/opt/<name-cell>`. |
+| RF-09.7 | **Red local aislada:** `pnpm cell:up` levanta la celda en una red bridge aislada (`mocter-cell-net`); los puertos de desarrollo se enlazan solo a `127.0.0.1` y ningún servicio celular se expone fuera del host. |
 
 ## 5. Criterios de aceptación
 
-1. Existe un respaldo offsite, cifrado y versionado de las tres instancias, y su ausencia genera alerta.
+1. Cada instancia PostgreSQL actualmente desplegada (`pg-portal` y `pg-chatwoot`) tiene respaldo offsite, cifrado y versionado, y su ausencia genera alerta. Antes de admitir datos de inquilinos en una celda nueva, debe existir y haberse probado su propio respaldo offsite.
 2. El RPO medido en una prueba es ≤ 15 minutos.
 3. Un restore completo se ejecuta dentro del RTO y deja evidencia con duración y resultado.
 4. La prueba trimestral está agendada, tiene dueño y su primera ejecución quedó registrada.
@@ -168,6 +180,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 12. SeaweedFS tiene respaldo en R2 y restore probado; la pérdida del VPS no deja la multimedia de los inquilinos sin recuperación.
 13. imgproxy entrega imágenes solo con URL firmada, rechaza solicitudes sin firma con 403, no expone SeaweedFS a Internet y se mantiene dentro de los límites de CPU/RAM acordados. Un `GET` anónimo al gateway S3 responde 403; el deploy falla si responde 200 o no responde.
 14. Los adjuntos de Chatwoot tienen respaldo y restore probado, sea desde su volumen local o desde su bucket S3-compatible; el respaldo de PostgreSQL por sí solo no satisface este criterio.
+15. El despliegue de celdas sigue el estándar `/opt/<name-cell>` bajo `deploy:1000`, con migración antes de exponer PgBouncer/tenant-service, conectividad privada Router→celda, `.env.cell` con permisos `0600` y red local aislada en `127.0.0.1`.
 
 ## 6. Decisiones
 
@@ -206,3 +219,4 @@ No quedan decisiones abiertas en OPS-001.
 - 2026-10-26: **OPS-001 1.4.** Se incorporan **SeaweedFS v4.51** e **imgproxy v4.0.20** como servicios de plataforma ya aprovisionados en los tres ambientes. OPS-001 monitorea y respalda; no documenta su despliegue ni compose. imgproxy publica solo `media.mocter.co` con URLs firmadas y SeaweedFS queda interno. Se agregan RF-04.7 (métricas de imgproxy), RF-06.6 (secretos/rotación) y el criterio 13.
 - 2026-10-27: inventario observado de producción en `docs/reference/production-services.md`. Se agrega RF-01.12 y el criterio 14: los adjuntos de Chatwoot (volumen local o bucket S3-compatible) requieren respaldo y restore propios; el `pg_dump` de la base no los cubre. T-22B agrega la verificación.
 - 2026-10-27: límites de imgproxy documentados (bucket `media`, 100 MB de origen, 4096 px de resultado, cola 100 con 429, 1 frame de animación) y smoke de deploy del gateway S3: 403 sin credenciales. RF-04.7, criterio 13 y T-22A/T-22C actualizados.
+- 2026-11-02: **OPS-001 1.7.** Alineación con DAT-001 1.5 para el handshake de celdas: se agrega RF-09 con conectividad privada Router→celda, rol `mocter_healthcheck`, handshake dual, sonda operativa, migración antes de servicios, manejo seguro de `.env.cell` y red local aislada; RF-08.6 y criterio 15 actualizados.

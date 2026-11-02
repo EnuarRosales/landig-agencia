@@ -19,10 +19,10 @@
 ## Fase 0 · Laboratorio y validación
 
 - [x] **T-01 · Confirmar el estado actual y las dependencias**
-  - Verificar las instancias de producción (`pg-portal`, celda inicial `pg-cell-001` y `pg-chatwoot`).
-  - Confirmar la contradicción con CD-001 y la referencia de DAT-001 §9.1.
-  - Verificación: `design.md` §2 describe el estado real y no atribuye instancias inexistentes.
-  - Evidencia: 2026-11-01 — Verificado y formalizado en `design.md` §2 y `docs/reference/production-services.md`: `pg-chatwoot` opera físicamente en el host (`mocter-chatwoot-pg-chatwoot-1`), `pg-portal` gestiona el control plane y la celda inicial `pg-cell-001` aloja el data plane de inquilinos; resuelta la contradicción documental entre DAT-001 §9.1 y CD-001, fijando a OPS-001 como autoritativa para continuidad offsite y observabilidad de todas las instancias.
+  - Verificar las instancias de producción (`pg-portal` y `pg-chatwoot`) y registrar el estado de despliegue celular.
+  - Confirmar la contradicción documental con CD-001 y la referencia de DAT-001 §9.1.
+  - Verificación: `design.md` §2 separa instancias activas de las celdas futuras y no atribuye despliegues inexistentes.
+  - Evidencia: 2026-11-02 — El usuario confirma que no hay celdas desplegadas. La afirmación previa del 2026-11-01 sobre una celda inicial activa `pg-cell-001` era obsoleta; `design.md` §2 y §3 usan ahora nombres de plantilla y aclaran que backup/restore celular se aplica al aprovisionar una celda.
 
 - [ ] **T-02 · Validar pgBackRest sobre PostgreSQL 18 en laboratorio**
   - Construir una imagen de prueba con `pgvector/pgvector:pg18` + pgBackRest del repositorio PGDG.

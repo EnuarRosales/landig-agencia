@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | ADM-001 |
-| Versión | 1.5 |
+| Versión | 1.6 |
 | Estado | Aprobada |
-| Fecha | 2026-10-21 · actualizado 2026-10-27 |
+| Fecha | 2026-10-21 · actualizado 2026-11-02 |
 | Documentos | `requirements.md` (este) · `design.md` · `tasks.md` |
 | Depende de | CHW-001 (inventario técnico de Chatwoot) · DAT-001 (arquitectura de datos) · AUTH-001 (autenticación) |
 | Directivas | `.agents/AGENTS.md` · `.agents/rules/rules-for-database-postgres-drizzle.md` · `.agents/rules/rules-for-i18n.md` |
@@ -198,7 +198,7 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | RF-10.1 | Existe una base PostgreSQL principal (Router Global) que es la base actual de la landing y conserva los datos del formulario de solicitud de contacto. |
 | RF-10.2 | El Router Global es el plano de control: información base del inquilino, tabla de planes y los objetos de dominio global del negocio SaaS. |
 | RF-10.3 | El Router Global mantiene la tabla de enrutamiento que indica en qué celda residen los datos de cada inquilino y dónde reside su identidad. |
-| RF-10.4 | El plano de datos son celdas: instancias PostgreSQL independientes (`pg-celda1`, `pg-celda2`, …) que contienen los datos puntuales del inquilino, incluidos la proyección de usuarios, los productos y los vínculos de archivos multimedia. |
+| RF-10.4 | El plano de datos son celdas: instancias PostgreSQL independientes (`pg-cell-01`, `pg-cell-02`, …) que contienen los datos puntuales del inquilino, incluidos la proyección de usuarios, los productos y los vínculos de archivos multimedia. |
 | RF-10.5 | Cada celda admite como máximo 100 inquilinos. Al alcanzar el límite se aprovisiona una celda nueva y las altas siguientes se enrutan a ella. |
 | RF-10.6 | Un inquilino con requisito normativo de aislamiento puede recibir una celda dedicada y exclusiva. |
 | RF-10.7 | Toda consulta de datos de inquilino resuelve primero su celda en el Router Global. |
@@ -206,14 +206,14 @@ La landing page no forma parte de esta aplicación: permanece pública, sin aute
 | RF-10.9 | Todas las celdas comparten el mismo esquema, versionado por una única línea de migraciones. |
 | RF-10.10 | El Router Global y las celdas tienen líneas de migración separadas: una por base, no una por aplicación. |
 | RF-10.11 | Cada celda usa RLS habilitado y forzado (`FORCE ROW LEVEL SECURITY`) con `SET LOCAL app.current_client_id`; el rol de aplicación no tiene DDL ni `BYPASSRLS`. |
-| RF-10.12 | `products` y `product_embeddings` se particionan por `client_id` con `PARTITION BY LIST`; el resto de las tablas de inquilino no se particiona y usa RLS. |
+| RF-10.12 | Se particionan exactamente 3 tablas por `client_id` con `PARTITION BY LIST`: `contacts`, `product_embeddings` y `contact_memories`; el resto de las tablas de inquilino (incluido `products`) residen en esquema compartido con RLS forzado e índices B-Tree liderados por `client_id`. |
 | RF-10.13 | La identidad global vive en el Router Global, salvo la celda dedicada por aislamiento (RF-10.6), y no usa RLS por `client_id`; las tablas de tenencia y la proyección `users` de cada celda sí. El rol de autenticación es dedicado. |
 | RF-10.14 | El Router Global tiene un Redis 7+ dedicado para caché de enrutamiento, Pub/Sub, rate limiting y revocación de sesión; no comparte instancia con Chatwoot. |
 | RF-10.15 | La capacidad nominal de una celda es 100 inquilinos; la efectiva es el primer disparador de DAT-001 (inquilinos, relaciones, HNSW o CPU). |
 | RF-10.16 | La separación de `pg-control-plane` es una decisión diferida; mientras tanto, la landing y `mocter-admin` usan esquemas y roles separados en el Router Global. |
-| RF-10.17 | **Gestión Modal y Parámetros Celulares (`/admin/cells`):** La creación y edición de celdas se ejecuta exclusivamente mediante vistas modales. Captura código, topología (`remote_vps`, `local_compose`, `kubernetes`), endpoints (`pgbouncer_host`, `pgbouncer_port`, `database_name`, `app_url`), IPs pública/privada, capacidad máxima y genera automáticamente secretos criptográficos (`handshake_secret` y credenciales de BD). |
-| RF-10.18 | **Acciones de Ciclo de Vida y Handshake en UI:** La tabla de celdas expone las acciones operativas por celda: (1) «Verificar y Activar Handshake» (ejecuta la validación dual 360° y actualiza a `active` o `error_connection` con diagnóstico visual en modal), (2) «Drenar Célula» (marca `draining` para no admitir altas nuevas) y (3) «Modo Mantenimiento» (`maintenance`). |
-| RF-10.19 | **Exportación de Manifiesto Declarativo:** El modal de celda permite copiar el snippet de bootstrap o descargar el manifiesto canónico `docker-compose.cell.yml` y `.env.cell` para su ejecución en `/opt/<name-cell>` bajo el usuario autorizado `deploy:1000` (DAT-001 D-19). |
+| RF-10.17 | **Gestión Modal y Parámetros Celulares (`/admin/cells`):** La creación y edición de celdas se ejecuta exclusivamente mediante vistas modales. Captura código, topología v1 (`remote_vps`, `local_compose`), endpoints privados (`pgbouncer_host`, `pgbouncer_port`, `database_name`, `app_url`), IPs pública/privada (la pública es inventario, nunca destino del handshake), directorio canónico, capacidad máxima y genera automáticamente el paquete de secretos cifrado (`cell_secrets_ciphertext`). El portal no despliega la celda remotamente ni ejecuta SSH; solo materializa el manifiesto para que el operador lo ejecute en el host. |
+| RF-10.18 | **Acciones de Ciclo de Vida y Handshake en UI:** La tabla de celdas refleja los estados canónicos `draft`, `provisioning`, `verifying`, `active`, `draining`, `readonly`, `maintenance` y `error_connection`, y expone las acciones explícitas permitidas: (1) «Generar paquete de despliegue» (`draft` → `provisioning`), (2) «Solicitar verificación» (`provisioning` → `verifying`), (3) «Verificar y Activar Handshake» (`verifying` → `active` o `error_connection` con diagnóstico visual en modal), (4) «Drenar Célula» (`active` → `draining`), (5) «Modo Solo Lectura» (`active` → `readonly`), (6) «Modo Mantenimiento» (`active` → `maintenance`) y (7) «Reintentar verificación» desde `error_connection`. Toda reactivación desde `draining`, `readonly` o `maintenance` requiere volver a `verifying`; ningún healthcheck reactiva una celda automáticamente. |
+| RF-10.19 | **Exportación de Manifiesto Declarativo:** El modal de celda permite copiar el snippet de bootstrap o descargar el manifiesto canónico `docker-compose.cell.yml` y `.env.cell` para su ejecución en `/opt/<name-cell>` bajo el usuario autorizado `deploy:1000` (DAT-001 D-19). El portal no ejecuta Compose ni SSH en el host; el operador descarga `.env.cell`, lo protege con permisos `0600` y lo consume únicamente en el host destino. |
 
 ### RF-11 · Internacionalización
 
@@ -290,7 +290,7 @@ Primera ley para el desarrollo de componentes visuales.
 2. Existe la tabla de correlación con estado, idempotencia y marca de sincronización.
 3. Un archivo compartido por varios productos, incluso de celdas distintas, se elimina del almacenamiento solo después de desvincularse del último.
 4. Los límites de plan definidos en RF-04.1 se validan antes de persistir y su exceso se rechaza.
-5. `products` y `product_embeddings` están particionadas por `client_id`; el resto de las tablas de inquilino no se particiona y usa RLS; toda tabla de inquilino tiene `client_id` no nulo.
+5. `contacts`, `product_embeddings` y `contact_memories` están particionadas por `client_id`; `products` y el resto de las tablas de inquilino no se particionan y usan RLS; toda tabla de inquilino tiene `client_id` no nulo.
 6. Toda tabla y toda columna no evidente tienen comentario en la base.
 7. Un clon sin referencia sobrevive a la baja del origen.
 8. La clonación puede realizarse con y sin archivos multimedia.
@@ -410,3 +410,4 @@ Cerradas:
 - 2026-10-24: acceso a Chatwoot en iframe (D-32, RF-02.4/RF-02.5). El usuario nunca abandona la shell; Chatwoot se publica en un subdominio same-site y se embebe. Se prohíben la pestaña nueva, el redirect de nivel superior y la reimplementación de la bandeja. La validación de framing, cookies y SSO en 4.19 queda como condición de aceptación en CHW-001 y AUTH-001.
 - 2026-10-26: revisión del subsistema de multimedia. Se adopta **SeaweedFS S3 interno + imgproxy con URLs firmadas** para imágenes: se conserva el original validado (sin recodificación) y se generan resize/WebP/AVIF al vuelo; el video mantiene su canónico WebM y `mp4_compat`. Se fijan **SeaweedFS v4.51** e **imgproxy v4.0.20** como servicios de plataforma ya aprovisionados en desarrollo, pruebas y producción; ADM-001 solo define su uso y no documenta contenedores, compose ni variables de despliegue. SeaweedFS queda interno; solo `media.mocter.co` publica imágenes firmadas. RF-07.14, RF-07.15, RF-07.18 y RF-07.9 se ajustan; se agregan RF-07.19 a RF-07.21. La conservación de animaciones y los límites de transformación quedan como verificación de laboratorio; su configuración es responsabilidad de la plataforma.
 - 2026-10-27: **ADM-001 1.4.** Se fija el bucket de producción `media` y se documentan los límites vigentes de imgproxy: origen 100 MB, resultado máximo 4096 px, cola 100 con 429 y 1 frame de animación. Con 1 frame, las animaciones se entregan como primer frame; el límite de subida de imágenes sigue en 10 MB. RF-07.20 y RF-07.21 actualizados; contexto completo en `docs/reference/production-services.md`.
+- 2026-11-02: **ADM-001 1.6.** Alineación con DAT-001 1.5 para el handshake de celdas: topologías v1 limitadas a `remote_vps`/`local_compose`, estados canónicos de celda y acciones explícitas en UI, manifiesto descargado por el operador (sin despliegue remoto del portal), particionado exacto de `contacts`/`product_embeddings`/`contact_memories`, y manejo seguro de `.env.cell`. RF-10.4, RF-10.12, RF-10.17, RF-10.18, RF-10.19 y criterio 5 actualizados.
