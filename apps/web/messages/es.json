@@ -277,18 +277,18 @@
   },
   "auth": {
     "login": {
-      "title": "Inicia sesión en tu cuenta",
+      "title": "Inicia Sesión En Tu Cuenta",
       "subtitle": "Accede al panel de administración de tu empresa",
       "emailLabel": "Correo Electrónico",
       "emailPlaceholder": "tunombre@empresa.com",
       "passwordLabel": "Contraseña",
       "passwordPlaceholder": "••••••••",
-      "submit": "Iniciar sesión",
-      "submitting": "Iniciando sesión...",
+      "submit": "Iniciar Sesión",
+      "submitting": "Iniciando Sesión...",
       "unverifiedNotice": "Tu correo electrónico no ha sido verificado aún. Por favor revisa tu bandeja de entrada.",
       "noAccount": "¿Aún no tienes una cuenta?",
-      "registerLink": "Regístrate gratis",
-      "backToHome": "Volver al inicio"
+      "registerLink": "Regístrate Gratis",
+      "backToHome": "Volver Al Inicio"
     },
     "register": {
       "title": "Crea la cuenta de tu empresa",
@@ -333,7 +333,8 @@
       "googleButton": "Google",
       "facebookButton": "Facebook",
       "emailButton": "Correo Electrónico",
-      "backToOptions": "Volver a opciones de registro"
+      "backToOptions": "Volver a opciones de registro",
+      "backToLoginOptions": "Volver A Opciones De Acceso"
     }
   },
   "admin": {

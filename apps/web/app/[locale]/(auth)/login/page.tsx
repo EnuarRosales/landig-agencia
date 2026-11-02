@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 import { locales } from "@/i18n/routing";
-import { Logo } from "@/components/logo";
 import { FloatingBackground } from "@/components/sections/floating-background";
-import { LoginForm, OAuthButtons } from "@/components/auth";
+import { LoginView } from "@/components/auth";
 import { authService } from "@mocter/domain";
 
 export const instant = false;
@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /**
- * Página de inicio de sesión para administradores y agentes de inquilinos en Mocter (AUTH-001 T-10).
+ * Página de inicio de sesión para administradores y agentes de inquilinos en Mocter.
  *
  * Implementa la interfaz de acceso por credenciales con enlace cruzado directo hacia
  * la pantalla de registro (`/[locale]/register`), respetando el sistema de diseño HUD.
@@ -42,36 +42,50 @@ export default async function LoginPage({ params, searchParams }: Props) {
   const t = await getTranslations({ locale, namespace: "auth.login" });
   const tOauth = await getTranslations({ locale, namespace: "auth.oauth" });
   const enabledProviders = (await authService.getEnabledOAuthProviders())
-    .map((provider) => provider.id)
-    .filter((id): id is "google" | "facebook" => id === "google" || id === "facebook");
+    .map((provider) => provider.id);
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center px-[clamp(18px,4vw,32px)] py-12">
       <FloatingBackground />
 
-      <div className="relative z-10 w-full max-w-[420px]">
-        {/* Logo superior */}
-        <div className="mb-8 flex justify-center">
-          <Link
-            href={`/${locale}`}
-            className="transition-transform hover:scale-105"
-          >
-            <Logo />
-          </Link>
-        </div>
-
+      <div className="relative z-10 w-full max-w-[440px]">
         {/* Tarjeta HUD de Login */}
         <div className="rounded-2xl border border-stroke bg-surface/80 p-8 shadow-[0_8px_32px_rgba(0,0,0,0.36)] backdrop-blur-xl">
           <header className="mb-6 text-center">
+            {/* Logo de Mocter en círculo prominente */}
+            <div className="mb-6 flex justify-center">
+              <Link
+                href={`/${locale}`}
+                aria-label="Mocter"
+                className="group relative flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+              >
+                {/* Halo de luz ambiental con el gradiente de Mocter */}
+                <div className="absolute -inset-2 rounded-full bg-gradient-to-tr from-[#2f6bff] via-[#22d3ee] to-[#2f6bff] opacity-50 blur-xl transition-all duration-300 group-hover:opacity-85" />
+
+                {/* Medallón circular blanco con borde de contraste y relieve */}
+                <div className="relative flex h-24 w-24 items-center justify-center rounded-full border-2 border-white/60 bg-white p-3 shadow-[0_10px_35px_rgba(34,211,238,0.35),0_2px_10px_rgba(0,0,0,0.4)] ring-4 ring-white/15">
+                  <Image
+                    src="/images/mocter-logo.png"
+                    alt="Mocter Logo"
+                    width={64}
+                    height={64}
+                    className="h-14 w-14 object-contain transition-transform duration-200 group-hover:scale-110"
+                    priority
+                  />
+                </div>
+              </Link>
+            </div>
+
             <h1 className="text-2xl font-bold tracking-tight text-txt">
               {t("title")}
             </h1>
             <p className="mt-1.5 text-sm text-muted">{t("subtitle")}</p>
           </header>
 
-          <LoginForm
+          <LoginView
             locale={locale}
             returnTo={returnTo}
+            enabledProviders={enabledProviders}
             t={{
               emailLabel: t("emailLabel"),
               emailPlaceholder: t("emailPlaceholder"),
@@ -81,15 +95,11 @@ export default async function LoginPage({ params, searchParams }: Props) {
               submitting: t("submitting"),
               unverifiedNotice: t("unverifiedNotice"),
             }}
-          />
-
-          <OAuthButtons
-            returnTo={returnTo}
-            enabledProviders={enabledProviders}
-            t={{
-              orDivider: tOauth("orDivider"),
+            tOauth={{
               googleButton: tOauth("googleButton"),
               facebookButton: tOauth("facebookButton"),
+              emailButton: tOauth("emailButton"),
+              backToOptions: tOauth("backToLoginOptions") || tOauth("backToOptions"),
             }}
           />
 

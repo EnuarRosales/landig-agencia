@@ -277,18 +277,18 @@
   },
   "auth": {
     "login": {
-      "title": "Sign in to your account",
+      "title": "Sign In To Your Account",
       "subtitle": "Access your company's administration dashboard",
       "emailLabel": "Email Address",
       "emailPlaceholder": "yourname@company.com",
       "passwordLabel": "Password",
       "passwordPlaceholder": "••••••••",
-      "submit": "Sign in",
-      "submitting": "Signing in...",
+      "submit": "Sign In",
+      "submitting": "Signing In...",
       "unverifiedNotice": "Your email address has not been verified yet. Please check your inbox.",
       "noAccount": "Don't have an account yet?",
-      "registerLink": "Register for free",
-      "backToHome": "Back to home"
+      "registerLink": "Register For Free",
+      "backToHome": "Back To Home"
     },
     "register": {
       "title": "Create your company account",
@@ -333,7 +333,8 @@
       "googleButton": "Google",
       "facebookButton": "Facebook",
       "emailButton": "Email",
-      "backToOptions": "Back to registration options"
+      "backToOptions": "Back to registration options",
+      "backToLoginOptions": "Back To Sign In Options"
     }
   },
   "admin": {
