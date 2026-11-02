@@ -9,9 +9,9 @@ Scope: no cell is deployed; OPS-001 §3.1 production-cell references are stale. 
 - S4: “Acceso privado Router→celda (Recomendado)”
 
 ## Tasks
-- T1 — S1-S2 — Route: inline — Status: done — Commit: pending — Define one canonical cell lifecycle and schema contract; account for the confirmed empty-cell starting state.
-- T2 — S1,S3-S4 — Route: inline — Status: done — Commit: pending — Define the v1 deployment and private dual-handshake contract, including secret handling and failure behavior.
-- T3 — S1-S4 — Route: inline — Status: in progress — Commit: pending — Correct stale OPS-001 production-cell claims in requirements, design, and task evidence; align ADM-001/OPS-001 with DAT-001 and verify cross-spec consistency.
+- T1 — S1-S2 — Route: inline — Status: done — Commit: `d2c8d2bb76c34fb2594b75142af7e50b6ba37cfd` — Define one canonical cell lifecycle and schema contract; account for the confirmed empty-cell starting state.
+- T2 — S1,S3-S4 — Route: inline — Status: done — Commit: `d2c8d2bb76c34fb2594b75142af7e50b6ba37cfd` — Define the v1 deployment and private dual-handshake contract, including secret handling and failure behavior.
+- T3 — S1-S4 — Route: inline — Status: done — Commit: `d2c8d2bb76c34fb2594b75142af7e50b6ba37cfd` — Correct stale OPS-001 production-cell claims in requirements, design, and task evidence; align ADM-001/OPS-001 with DAT-001 and verify cross-spec consistency.
 
 ## Log
 - L1: “analiza los cambios del commit c6209f584de0578a6068b4e9223aa570ae7605ff se requiere tomar concepto sobre los especificado y emitir un concepto para avanzar o no con su implementacion”
@@ -23,3 +23,4 @@ Scope: no cell is deployed; OPS-001 §3.1 production-cell references are stale. 
 - L7: Review found additional stale production-cell claims in OPS-001 `tasks.md` T-01 evidence and `requirements.md` RF-03.1/acceptance criterion 1; these must distinguish current instances from future cells.
 - L8: Cross-spec verification passed: `git diff --check` and targeted Node assertions confirmed consistent cell states, v1 topologies, empty-cell starting state, and backup prerequisites. Documentation-only work; no runnable behavior tests apply.
 - L9: The staged diff check found trailing whitespace in the S4 quote in this task file; it was removed, and the complete staged `git diff --cached --check` passed across all seven files.
+- L10: Delivery boundary: one specification work-unit commit, `d2c8d2bb76c34fb2594b75142af7e50b6ba37cfd`, contains all six spec/task documents and this feature ledger. No code implementation is included; the only follow-up commit is the ledger closeout.
