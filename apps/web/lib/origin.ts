@@ -81,3 +81,25 @@ export function isValidOrigin(
 
   return false;
 }
+
+/**
+ * Valida que el origen de la petición sea exactamente el subdominio admin autorizado.
+ *
+ * Usa `NEXT_PUBLIC_ADMIN_URL` como único origen permitido para operaciones de
+ * aprovisionamiento de celdas (DAT-001 T1, ADM-001 RF-10.17).
+ */
+export function isAdminOrigin(req: NextRequest): boolean {
+  const origin = req.headers.get("origin");
+  if (!origin) return false;
+
+  const trimmed = origin.trim();
+  if (!trimmed || trimmed === "null" || trimmed === "*") return false;
+
+  try {
+    const originUrl = new URL(trimmed);
+    const adminUrl = new URL(env.NEXT_PUBLIC_ADMIN_URL);
+    return originUrl.origin === adminUrl.origin;
+  } catch {
+    return false;
+  }
+}

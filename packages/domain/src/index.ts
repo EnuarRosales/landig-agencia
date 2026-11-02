@@ -94,3 +94,5 @@ export * from "./services/chat-retention.service";
 export * from "./services/white-label.service";
 export * from "./services/admin-dashboard.service";
 export * from "./services/rbac.service";
+export * from "./services/cell-secrets.service";
+export * from "./services/cell-authorization.service";

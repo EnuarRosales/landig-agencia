@@ -22,6 +22,10 @@ export const env = createEnv({
       .string()
       .url()
       .default("http://localhost:3003"),
+    NEXT_PUBLIC_API_URL: z
+      .string()
+      .url()
+      .default("http://localhost:3001/api"),
     NEXT_PUBLIC_CHATWOOT_URL: z
       .string()
       .url()
@@ -40,6 +44,7 @@ export const env = createEnv({
     REDIS_PASSWORD: process.env.REDIS_PASSWORD,
     CHATWOOT_BASE_URL: process.env.CHATWOOT_BASE_URL,
     NEXT_PUBLIC_ADMIN_URL: process.env.NEXT_PUBLIC_ADMIN_URL,
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_CHATWOOT_URL: process.env.NEXT_PUBLIC_CHATWOOT_URL,
     NEXT_PUBLIC_SAAS_BRAND_NAME: process.env.NEXT_PUBLIC_SAAS_BRAND_NAME,
     NEXT_PUBLIC_SAAS_LOGO_URL: process.env.NEXT_PUBLIC_SAAS_LOGO_URL,

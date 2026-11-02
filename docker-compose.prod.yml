@@ -99,6 +99,9 @@ services:
       CHATWOOT_SSO_SECRET: ${CHATWOOT_SSO_SECRET}
       TOTP_ACTIVE_KEY_ID: ${TOTP_ACTIVE_KEY_ID:-k1}
       TOTP_SECRETS_DIR: ${TOTP_SECRETS_DIR:-/run/secrets}
+      CELL_SECRETS_ACTIVE_KEY_ID: ${CELL_SECRETS_ACTIVE_KEY_ID:-k1}
+      CELL_SECRETS_DIR: ${CELL_SECRETS_DIR:-/run/secrets}
+      NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-https://admin.mocter.co}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER}
@@ -139,6 +142,7 @@ services:
       REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-control:6379/0"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-https://admin.mocter.co}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://mocter.co/api}
     networks: [ backend, traefik_network ]
     labels:
       - "traefik.enable=true"

@@ -1,21 +1,92 @@
-import React from "react";
-import { fetchAdminCells } from "@mocter/domain";
+"use client";
+
+import React, { useEffect, useState } from "react";
 import { Server, Database, Activity, ShieldCheck } from "lucide-react";
 import { CreateCellForm } from "./create-cell-form";
 
-export const metadata = {
-  title: "Células De Datos · mocter-admin",
-  description: "Aprovisionamiento y topes de capacidad de nodos PostgreSQL celulares.",
-};
+const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:3001/api";
+
+interface AdminCellDto {
+  id: string;
+  code: string;
+  tier: string;
+  status: string;
+  topologyType: string;
+  pgbouncerHost: string;
+  pgbouncerPort: number;
+  databaseName: string;
+  appUrl: string | null;
+  privateIp: string | null;
+  publicIp: string | null;
+  workingDir: string;
+  deployUser: string;
+  maxClients: number;
+  currentClients: number;
+  region: string;
+  healthStatus: Record<string, unknown> | null;
+  lastHealthCheckAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  updatedBy: string;
+}
+
+async function fetchCells(): Promise<{ ok: boolean; data?: AdminCellDto[]; error?: string }> {
+  const res = await fetch(`${API_URL}/admin/cells`, {
+    method: "GET",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false, error: data.error || "Error al listar celdas" };
+  }
+
+  return res.json();
+}
 
 /**
  * Vista de administración de celdas de datos multi-inquilino (DAT-001 §3.3).
  *
- * Muestra el catálogo de celdas celulares activas en el Router Global y permite
- * el aprovisionamiento de nuevas células compartidas o dedicadas.
+ * Cliente que consume la API protegida de apps/web con sesión y origen admin.
+ * El listado y registro se delegan a `/api/admin/cells` en el origen de autenticación.
  */
-export default async function AdminCellsPage() {
-  const cellsList = await fetchAdminCells();
+export default function AdminCellsPage() {
+  const [cellsList, setCellsList] = useState<AdminCellDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = async () => {
+    setLoading(true);
+    setError(null);
+    const result = await fetchCells();
+    if (!result.ok) {
+      setError(result.error || "Error desconocido");
+    } else {
+      setCellsList(result.data || []);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      const result = await fetchCells();
+      if (cancelled) return;
+      if (!result.ok) {
+        setError(result.error || "Error desconocido");
+      } else {
+        setCellsList(result.data || []);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const totalCapacity = cellsList.reduce((acc, c) => acc + c.maxClients, 0);
   const totalOccupied = cellsList.reduce((acc, c) => acc + c.currentClients, 0);
@@ -38,7 +109,7 @@ export default async function AdminCellsPage() {
           </p>
         </div>
 
-        <CreateCellForm />
+        <CreateCellForm apiUrl={API_URL} onSuccess={refresh} />
       </header>
 
       {/* Métricas rápidas de infraestructura */}
@@ -87,14 +158,31 @@ export default async function AdminCellsPage() {
       <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden shadow-xs">
         <div className="px-5 py-4 border-b border-[var(--dsn-border)] flex items-center justify-between">
           <h2 className="text-sm font-semibold text-[var(--dsn-text)]">
-            Inventario De Células Activas
+            Inventario De Células
           </h2>
           <span className="text-xs text-[var(--dsn-text-secondary)] font-mono">
             {cellsList.length} {cellsList.length === 1 ? "registro" : "registros"}
           </span>
         </div>
 
-        {cellsList.length === 0 ? (
+        {loading ? (
+          <div className="p-12 text-center">
+            <Activity className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto mb-3 animate-spin" />
+            <h3 className="text-sm font-semibold text-[var(--dsn-text)]">
+              Cargando células...
+            </h3>
+          </div>
+        ) : error ? (
+          <div className="p-12 text-center">
+            <Server className="h-10 w-10 text-red-400/50 mx-auto mb-3" />
+            <h3 className="text-sm font-semibold text-[var(--dsn-text)]">
+              Error al cargar celdas
+            </h3>
+            <p className="text-xs text-[var(--dsn-text-secondary)] mt-1 max-w-sm mx-auto">
+              {error}
+            </p>
+          </div>
+        ) : cellsList.length === 0 ? (
           <div className="p-12 text-center">
             <Server className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto mb-3" />
             <h3 className="text-sm font-semibold text-[var(--dsn-text)]">
@@ -111,6 +199,7 @@ export default async function AdminCellsPage() {
                 <tr>
                   <th className="py-3 px-4 font-semibold">Código</th>
                   <th className="py-3 px-4 font-semibold">Nivel</th>
+                  <th className="py-3 px-4 font-semibold">Topología</th>
                   <th className="py-3 px-4 font-semibold">Host / PgBouncer</th>
                   <th className="py-3 px-4 font-semibold">Base De Datos</th>
                   <th className="py-3 px-4 font-semibold">Capacidad</th>
@@ -137,6 +226,9 @@ export default async function AdminCellsPage() {
                         }`}>
                           {c.tier}
                         </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-[var(--dsn-text-secondary)]">
+                        {c.topologyType}
                       </td>
                       <td className="py-3.5 px-4 font-mono text-[var(--dsn-text)]">
                         {c.pgbouncerHost}:{c.pgbouncerPort}
@@ -173,4 +265,3 @@ export default async function AdminCellsPage() {
     </div>
   );
 }
-

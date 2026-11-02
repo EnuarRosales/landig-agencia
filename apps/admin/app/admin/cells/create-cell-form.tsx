@@ -5,28 +5,62 @@ import { useRouter } from "next/navigation";
 import { Plus, Server, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 interface CreateCellFormProps {
+  apiUrl: string;
   onSuccess?: () => void;
 }
 
 /**
- * Formulario interactivo para registrar una nueva célula de datos en Mocter (DAT-001 §3.3).
- *
- * Cumple estrictamente con la directiva AGENTS.md §4.8:
- * Todos los labels utilizan formato Title Case sin mayúsculas sostenidas ni clases uppercase.
+ * Obtiene el token CSRF desde la API protegida de apps/web.
+ * Requiere que la cookie de sesión esté presente en el origen de autenticación.
  */
-export function CreateCellForm({ onSuccess }: CreateCellFormProps) {
+async function fetchCsrfToken(apiUrl: string): Promise<string> {
+  const res = await fetch(`${apiUrl}/auth/csrf`, {
+    method: "GET",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "No se pudo obtener el token CSRF");
+  }
+
+  const data = await res.json();
+  if (!data.ok || !data.csrfToken) {
+    throw new Error("Respuesta CSRF inválida");
+  }
+  return data.csrfToken;
+}
+
+/**
+ * Formulario interactivo para registrar una nueva célula de datos en Mocter (DAT-001 §3.3).
+ * Ahora consume la API protegida de apps/web con sesión, CSRF y validación de origen admin.
+ */
+export function CreateCellForm({ apiUrl, onSuccess }: CreateCellFormProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    code: string;
+    tier: string;
+    topologyType: "remote_vps" | "local_compose";
+    pgbouncerHost: string;
+    pgbouncerPort: number;
+    databaseName: string;
+    appUrl: string;
+    maxClients: number;
+    region: string;
+  }>({
     code: "",
     tier: "standard",
-    pgbouncerHost: "pg-portal",
-    pgbouncerPort: 5432,
+    topologyType: "remote_vps",
+    pgbouncerHost: "pgbouncer-cell-01",
+    pgbouncerPort: 6432,
     databaseName: "",
+    appUrl: "",
     maxClients: 100,
     region: "us-east-1",
   });
@@ -38,9 +72,15 @@ export function CreateCellForm({ onSuccess }: CreateCellFormProps) {
     setSuccess(false);
 
     try {
-      const res = await fetch("/api/admin/cells", {
+      const csrfToken = await fetchCsrfToken(apiUrl);
+
+      const res = await fetch(`${apiUrl}/admin/cells`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
         body: JSON.stringify(formData),
       });
 
@@ -53,9 +93,11 @@ export function CreateCellForm({ onSuccess }: CreateCellFormProps) {
       setFormData({
         code: "",
         tier: "standard",
-        pgbouncerHost: "pg-portal",
-        pgbouncerPort: 5432,
+        topologyType: "remote_vps",
+        pgbouncerHost: "pgbouncer-cell-01",
+        pgbouncerPort: 6432,
         databaseName: "",
+        appUrl: "",
         maxClients: 100,
         region: "us-east-1",
       });
@@ -153,6 +195,45 @@ export function CreateCellForm({ onSuccess }: CreateCellFormProps) {
               <option value="standard">Estándar (Multi-Inquilino Compartido)</option>
               <option value="dedicated">Dedicado (Inquilino Enterprise VIP)</option>
             </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="cell-topology"
+              className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+            >
+              Topología De Despliegue
+            </label>
+            <select
+              id="cell-topology"
+              value={formData.topologyType}
+              onChange={(e) =>
+                setFormData({ ...formData, topologyType: e.target.value as "remote_vps" | "local_compose" })
+              }
+              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            >
+              <option value="remote_vps">VPS Remoto</option>
+              <option value="local_compose">Docker Compose Local</option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="cell-app-url"
+              className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+            >
+              URL De La Aplicación Celular
+            </label>
+            <input
+              id="cell-app-url"
+              type="text"
+              placeholder="ej. http://localhost:3004"
+              value={formData.appUrl}
+              onChange={(e) => setFormData({ ...formData, appUrl: e.target.value })}
+              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            />
           </div>
         </div>
 
@@ -271,4 +352,3 @@ export function CreateCellForm({ onSuccess }: CreateCellFormProps) {
     </div>
   );
 }
-

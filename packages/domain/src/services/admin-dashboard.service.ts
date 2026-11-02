@@ -42,6 +42,8 @@ import { INITIAL_AI_PROVIDERS, INITIAL_BOT_DEFAULTS } from "./bot-catalog.seed";
 import { INITIAL_PROMPT_BLOCKS } from "./prompt-blocks.seed";
 import { INITIAL_AI_ASSIST_FIELDS, INITIAL_AI_ASSIST_PROMPTS } from "./ai-assist-catalog.seed";
 import { createCipheriv, randomBytes, createHash } from "node:crypto";
+import { cellSecretsCryptoService } from "./cell-secrets.service";
+import { authorizeCellProvision } from "./cell-authorization.service";
 
 export interface ControlPlaneMetricsDto {
   tenants: number;
@@ -52,14 +54,27 @@ export interface ControlPlaneMetricsDto {
 
 export interface CreateAdminCellInput {
   code: string;
-  tier?: string;
+  tier?: "standard" | "dedicated";
+  topologyType?: "remote_vps" | "local_compose";
   pgbouncerHost: string;
   pgbouncerPort?: number;
   databaseName: string;
+  appUrl?: string;
+  privateIp?: string;
+  publicIp?: string;
+  workingDir?: string;
+  deployUser?: string;
   maxClients?: number;
   region?: string;
-  createdBy?: string;
+  /** Identificador del actor autenticado; nunca se toma del cuerpo JSON sin validar. */
+  actorUserId: string;
 }
+
+/**
+ * DTO de salida para listados y registro de celdas.
+ * Nunca expone el ciphertext ni secretos en claro (DAT-001 §3.6.2).
+ */
+export type AdminCellDto = Omit<Cell, "cellSecretsCiphertext" | "cellSecretsKeyId">;
 
 export interface CreateAdminPlanInput {
   code: string;
@@ -131,11 +146,39 @@ export async function fetchAdminLeads(limit = 100): Promise<Lead[]> {
 
 /**
  * Consulta la lista de celdas de datos desplegadas en el plano de control (DAT-001 §3.3).
+ * No expone el paquete de secretos cifrado ni el identificador de clave.
  */
-export async function fetchAdminCells(): Promise<Cell[]> {
+export async function fetchAdminCells(): Promise<AdminCellDto[]> {
   try {
     const db = getDb();
-    return await db.select().from(cells).orderBy(asc(cells.code));
+    const rows = await db
+      .select({
+        id: cells.id,
+        code: cells.code,
+        tier: cells.tier,
+        status: cells.status,
+        topologyType: cells.topologyType,
+        pgbouncerHost: cells.pgbouncerHost,
+        pgbouncerPort: cells.pgbouncerPort,
+        databaseName: cells.databaseName,
+        appUrl: cells.appUrl,
+        privateIp: cells.privateIp,
+        publicIp: cells.publicIp,
+        workingDir: cells.workingDir,
+        deployUser: cells.deployUser,
+        maxClients: cells.maxClients,
+        currentClients: cells.currentClients,
+        region: cells.region,
+        healthStatus: cells.healthStatus,
+        lastHealthCheckAt: cells.lastHealthCheckAt,
+        createdAt: cells.createdAt,
+        updatedAt: cells.updatedAt,
+        createdBy: cells.createdBy,
+        updatedBy: cells.updatedBy,
+      })
+      .from(cells)
+      .orderBy(asc(cells.code));
+    return rows as AdminCellDto[];
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[fetchAdminCells Failed] ${msg}`, error);
@@ -143,22 +186,55 @@ export async function fetchAdminCells(): Promise<Cell[]> {
   }
 }
 
+function toAdminCellDto(row: Cell): AdminCellDto {
+  const { cellSecretsCiphertext: _c, cellSecretsKeyId: _k, ...dto } = row;
+  return dto;
+}
+
 /**
  * Registra una nueva célula de datos en el Router Global (`admin.cells`, DAT-001).
+ * - Requiere autoridad de Platform Owner y permiso `cells.provision`.
+ * - Genera el paquete de secretos con CSPRNG y lo cifra con AES-256-GCM.
+ * - La celda se crea siempre en estado `draft`.
+ * - Nunca confía en un actor o rol suministrado en JSON.
  */
-export async function createAdminCell(input: CreateAdminCellInput): Promise<Result<Cell>> {
+export async function createAdminCell(input: CreateAdminCellInput): Promise<Result<AdminCellDto>> {
   try {
+    const code = input.code.trim().toLowerCase();
+    const pgbouncerHost = input.pgbouncerHost.trim();
+    const databaseName = input.databaseName.trim();
+
+    if (!code || !pgbouncerHost || !databaseName) {
+      return err("Código, host de PgBouncer y nombre de base de datos son obligatorios.", "VALIDATION_ERROR");
+    }
+
+    const authz = await authorizeCellProvision(input.actorUserId);
+    if (!authz.ok) {
+      return err(authz.error, "FORBIDDEN");
+    }
+
     const db = getDb();
-    const operator = input.createdBy || "01a19874-1077-744c-8514-d4c990cd7259";
+    const operator = input.actorUserId;
+
+    const payload = cellSecretsCryptoService.generateAndEncrypt(code);
+
     const [row] = await db
       .insert(cells)
       .values({
-        code: input.code.trim().toLowerCase(),
+        code,
         tier: input.tier || "standard",
-        status: "active",
-        pgbouncerHost: input.pgbouncerHost.trim(),
+        topologyType: input.topologyType || "remote_vps",
+        status: "draft",
+        pgbouncerHost,
         pgbouncerPort: input.pgbouncerPort || 6432,
-        databaseName: input.databaseName.trim(),
+        databaseName,
+        appUrl: (input.appUrl || "").trim(),
+        privateIp: input.privateIp || null,
+        publicIp: input.publicIp || null,
+        workingDir: (input.workingDir || `/opt/${code}`).trim(),
+        deployUser: input.deployUser || "deploy:1000",
+        cellSecretsCiphertext: payload.ciphertext,
+        cellSecretsKeyId: payload.keyId,
         maxClients: input.maxClients || 100,
         currentClients: 0,
         region: input.region || "us-east-1",
@@ -170,7 +246,7 @@ export async function createAdminCell(input: CreateAdminCellInput): Promise<Resu
     if (!row) {
       return err("No se pudo registrar la célula de datos", "CELL_INSERT_FAILED");
     }
-    return ok(row);
+    return ok(toAdminCellDto(row));
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[createAdminCell Failed] ${msg}`, error);

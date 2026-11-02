@@ -176,6 +176,13 @@
       "when": 1793583629474,
       "tag": "0024_next_squirrel_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793635192839,
+      "tag": "0025_cell_lifecycle",
+      "breakpoints": true
     }
   ]
 }

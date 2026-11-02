@@ -29,6 +29,8 @@ export const envSchema = z.object({
   SETUP_OWNER_TOKEN: z.string().optional(),
   TOTP_SECRETS_DIR: z.string().optional(),
   TOTP_ACTIVE_KEY_ID: z.string().optional(),
+  CELL_SECRETS_DIR: z.string().optional(),
+  CELL_SECRETS_ACTIVE_KEY_ID: z.string().optional(),
   NEXT_PUBLIC_APP_URL: z.string().optional(),
 });
 
@@ -60,6 +62,8 @@ export const env = createEnv({
     SETUP_OWNER_TOKEN: z.string().optional(),
     TOTP_SECRETS_DIR: z.string().optional(),
     TOTP_ACTIVE_KEY_ID: z.string().optional(),
+    CELL_SECRETS_DIR: z.string().optional(),
+    CELL_SECRETS_ACTIVE_KEY_ID: z.string().optional(),
     NEXT_PUBLIC_APP_URL: z.string().optional(),
   },
   runtimeEnv: process.env,
