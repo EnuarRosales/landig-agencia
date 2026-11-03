@@ -54,6 +54,11 @@ services:
       cell-migrator:
         condition: service_completed_successfully
     restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432" ]
+      interval:   5s
+      timeout    : 3s
+      retries: 10
 
   tenant-app:
     image: ghcr.io/enuarrosales/mocter-web:${TAG:-latest}

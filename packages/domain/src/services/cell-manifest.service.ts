@@ -116,7 +116,7 @@ export class CellManifestService {
       `    restart: "no"`,
       ``,
       `  pgbouncer-cell:`,
-      `    image: edoburu/pgbouncer:v1.21.0`,
+      `    image: edoburu/pgbouncer:v1.26.1-p0`,
       `    environment:`,
       `      DB_HOST: pg-cell`,
       `      DB_PORT: 5432`,
