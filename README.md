@@ -11,7 +11,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Licencia](https://img.shields.io/badge/Licencia-Propiedad_de_Mocter-emerald)](#12-propiedad-intelectual-marca-y-copyright)
 
-Sistema de información web de alta disponibilidad y arquitectura empresarial para **Mocter**, diseñado para centralizar la prospección, automatizar la atención al cliente 24/7 y orquestar el agendamiento inteligente de citas y ventas asistidas por Inteligencia Artificial.
+Sistema de información empresarial multi-inquilino de alta disponibilidad para **Mocter**, diseñado para centralizar la prospección, automatizar la atención omnicanal 24/7 con LLMs y orquestar el agendamiento inteligente y ventas asistidas por IA mediante una **arquitectura distribuida basada en celdas de datos autónomas**.
 
 ---
 
@@ -19,18 +19,19 @@ Sistema de información web de alta disponibilidad y arquitectura empresarial pa
 
 | Atributo | Detalle del Sistema |
 | :--- | :--- |
-| **Nombre Comercial:** | Plataforma Web Mocter (Portal Público & Captura de Leads) |
-| **Identificador del Proyecto:** | `mocter-portal` / Monorepo `landig-agencia` |
-| **Versión Actual:** | `1.2.0` (SemVer) |
-| **Tipo de Sistema:** | Web Application & Progressive Web App (PWA) de Alto Desempeño |
+| **Nombre Comercial:** | Plataforma SaaS Mocter (Portal Público, Consola Administrativa & Plano Celular) |
+| **Identificador del Proyecto:** | Monorepo `landig-agencia` (`@mocter/web`, `@mocter/admin`, `@mocter/domain`) |
+| **Versión Actual:** | `1.5.0` (SemVer) |
+| **Tipo de Sistema:** | Plataforma SaaS Multi-Inquilino con Arquitectura Celular Distribuida |
 | **Propiedad Intelectual:** | © 2026 Mocter. Todos los derechos reservados. |
 | **Contacto Oficial:** | [info@mocter.co](mailto:info@mocter.co) · WhatsApp: +57 322 275 2524 |
-| **Soberanía de Datos:** | Datos alojados y procesados conforme a la normativa colombiana e internacional. |
+| **Soberanía de Datos:** | Datos alojados y procesados conforme a la normativa colombiana (Ley 1581/2012) e internacional. |
 
-### 1.1 Objetivos de Negocio
-- **Conversión Acelerada:** Captación inmediata de prospectos calificados a través de un canal unificado y responsivo.
-- **Demostración Interactiva en Vivo:** Simulación visual del pipeline de IA (recepción, análisis semántico, consulta de agenda y confirmación automática).
-- **Omnicanalidad y Alta Fidelidad:** Experiencia fluida con conmutación dinámica de tema (Modo Claro / Modo Oscuro), animaciones de bajo costo computacional y soporte multilingüe nativo (`es` / `en`).
+### 1.1 Objetivos de Negocio y Arquitectura
+- **Plataforma Única (Single Pane of Glass):** Consola administrativa unificada (`mocter-admin`) para el Platform Owner (gobernanza, infraestructura celular, facturación) y para los inquilinos (pedidos, productos, CRM, Chatwoot embebido).
+- **Arquitectura de Celdas Autónomas (DAT-001):** Particionamiento físico y lógico donde cada célula (50-100 inquilinos) opera como un nodo completo (PostgreSQL 18 + pgvector + PgBouncer transaccional + capa celular HTTP `tenant-app`), garantizando aislamiento y zero blast radius.
+- **Orquestación Declarativa (Modelo A):** Aprovisionamiento seguro con paquetes de secretos cifrados en AES-256-GCM, Handshake Dual 360° (probes TCP y HTTP con secretos de tiempo constante) y manifiestos canónicos.
+- **Gobernanza RBAC y Seguridad Híbrida (AUTH-001):** Control granular de acceso por roles de plataforma e inquilino, TOTP 2FA cifrado, tokens CSRF, validación estricta de origen administrativo y SSO transparente hacia Chatwoot.
 - **Despliegue Continuo Seguro:** Automatización integral de pruebas, compilación de imágenes y despliegue idempotente con rollback automático y sin caídas de servicio.
 
 ---
@@ -57,87 +58,94 @@ La solución implementa una **Arquitectura Limpia y Modular (Clean Architecture 
 ```mermaid
 flowchart TD
     subgraph Ingress["Perímetro & Proxy Inverso"]
-        Traefik["Traefik v2.11 (TLS Let's Encrypt + Redirección 301 www)"]
+        Traefik["Traefik v2.11 (TLS Let's Encrypt · mocter.co, admin.mocter.co)"]
     end
 
-    subgraph Client["Cliente / Navegador (PWA & Web)"]
-        UI["Interfaz Web (Next.js 16 + Tailwind CSS v4)"]
-        Theme["Gestor de Temas (Dark / Light Tokens)"]
-        i18n["Internacionalización (next-intl /es, /en)"]
+    subgraph SupportPlane["Plano de Soporte Aislado (Singleton Global)"]
+        ChatwootApp["Chatwoot v4.19.1 (Atención Omnicanal Embebida)"]
+        PGChatwoot[("PostgreSQL Chatwoot (pg-chatwoot)")]
+        N8nApp["n8n Automation Engine"]
+        PGN8n[("PostgreSQL n8n (pg-n8n)")]
+        ChatwootApp --> PGChatwoot
+        N8nApp --> PGN8n
     end
 
-    subgraph AppLayer["Capa de Aplicación (apps/web)"]
-        ServerAction["Server Actions (demo-request.ts)"]
-        ValidationZod["Validación de Entrada (Zod v4)"]
+    subgraph ControlPlane["Plano de Control Global (Control Plane)"]
+        direction TB
+        WebPortal["apps/web (Landing Pública · Next.js 16)"]
+        AdminPortal["apps/admin (Consola Administrativa Unificada · Next.js 16)"]
+        DomainCore["@mocter/domain (Servicios, Repositorios, RBAC & Outbox)"]
+        PGControl[("pg-control-plane: PG18 + pgvector (leads, cells, plans, clients, users)")]
+        RedisControl[("Redis 7+ (Sesiones, Rate Limit, Caché)")]
+        RabbitMQ["RabbitMQ 3.13 (Relay de Notificaciones Outbox)"]
+        MediaS3["SeaweedFS S3 + imgproxy (Entrega Multimedia Cifrada)"]
+
+        WebPortal --> DomainCore
+        AdminPortal --> DomainCore
+        DomainCore --> PGControl
+        DomainCore --> RedisControl
+        DomainCore --> RabbitMQ
+        DomainCore --> MediaS3
     end
 
-    subgraph DomainLayer["Capa de Dominio (@mocter/domain)"]
-        DBModule["Módulo de Conexión y Consultas (src/db/index.ts)"]
-        Schema["Esquema Tipado Drizzle (src/db/schema.ts)"]
-        Migrator["Script de Migraciones Standalone (scripts/migrate.mjs)"]
+    subgraph DataPlane["Plano de Datos Distribuido (Celdas Autónomas · DAT-001)"]
+        direction TB
+        subgraph Cell01["Célula Autónoma cell-01 (50-100 Inquilinos)"]
+            TenantApp["tenant-app: Cómputo HTTP Celular (mocter-web standalone)"]
+            PgBouncer["pgbouncer-cell-01 (Pooling Transaccional · Puerto 6432)"]
+            PGCell[("pg-cell-01: PG18 + pgvector (mocter_cell schema)")]
+            TenantApp --> PgBouncer
+            PgBouncer --> PGCell
+        end
     end
 
-    subgraph DataLayer["Capa de Datos y Persistencia"]
-        Postgres[(PostgreSQL 18 + pgvector: pg-portal)]
-    end
-
-    Traefik --> UI
-    UI --> ServerAction
-    ServerAction --> ValidationZod
-    ValidationZod --> DBModule
-    DBModule --> Schema
-    Schema --> Postgres
-    Migrator -.->|Pre-despliegue| Postgres
+    Traefik --> WebPortal
+    Traefik --> AdminPortal
+    Traefik --> ChatwootApp
+    AdminPortal -.->|Handshake Dual 360° & Secretos AES-256-GCM| Cell01
+    AdminPortal -.->|SSO JWT & Iframe Same-Site| ChatwootApp
 ```
 
 ### 3.1 Estructura del Monorepo
 
 ```text
 landig-agencia/
-├── .agents/                          # Constitución permanente de directivas del repositorio
-│   └── AGENTS.md                     # Reglas de desarrollo, metodología SDD y restricciones
+├── .agents/                          # Constitución permanente y directivas de ingeniería
+│   ├── AGENTS.md                     # Reglas de desarrollo, metodología SDD y restricciones
+│   ├── rules/                        # Directivas vinculantes (TSDoc, DB, i18n, Logs, Modales)
+│   └── skills/                       # Habilidades especializadas del proyecto
 ├── .github/
 │   └── workflows/                    # Automatización CI/CD
-│       ├── ci.yml                    # CI: Lint, tests, build y drizzle-kit check en PRs
-│       ├── cd.yml                    # CD: Construcción y publicación de imágenes en GHCR
+│       ├── ci.yml                    # CI: Lint, pruebas unitarias, build y drizzle-kit check
+│       ├── cd.yml                    # CD: Compilación y publicación de imágenes en GHCR
 │       └── deploy.yml                # Despliegue automatizado por SSH a VPS Hostinger
 ├── apps/
-│   └── web/                         # Aplicación pública Next.js 16 (App Router)
-│       ├── app/
-│       │   ├── [locale]/             # Rutas dinámicas localizadas (/es, /en)
-│       │   │   ├── layout.tsx        # Layout raíz (SEO, JSON-LD estructurado, ThemeProvider)
-│       │   │   ├── page.tsx          # Landing page modular de alta fidelidad
-│       │   │   ├── cookies/          # Página de configuración de cookies
-│       │   │   ├── privacidad/       # Página de política de privacidad (Ley 1581/2012)
-│       │   │   └── terminos/         # Página de términos y condiciones
-│       │   ├── actions/              # Server Actions con validación y mutaciones seguras
-│       │   │   ├── demo-request.ts   # Acción de captura y persistencia de leads
-│       │   │   └── types.ts          # Contratos de estado del formulario
-│       │   └── globals.css           # Tokens de diseño Tailwind v4 (soporte dark/light nativo)
-│       ├── components/               # Componentes atómicos y modulares
-│       │   ├── sections/             # Secciones (Hero, Features, Sectores, Pipeline, FAQ, Footer)
-│       │   ├── demo-form.tsx         # Formulario reactivo y accesible para solicitud de demo
-│       │   ├── chatwoot-widget.tsx   # Widget oficial de soporte en vivo Chatwoot
-│       │   ├── theme-toggle.tsx      # Conmutador accesible de Modo Claro / Modo Oscuro
-│       │   └── nav.tsx               # Barra de navegación en cápsula flotante adaptable
-│       ├── messages/                 # Diccionarios de internacionalización (es.json, en.json)
-│       ├── public/                   # PWA Manifest, iconos adaptativos, llms.txt, robots.txt
-│       └── next.config.ts            # Configuración de compilador, orígenes dev e imágenes
+│   ├── admin/                        # Consola administrativa unificada (@mocter/admin)
+│   │   ├── app/                      # App Router Next.js 16 (Single Pane of Glass)
+│   │   │   ├── admin/                # Vistas de gobernanza (cells, tenants, users, plans, billing, ai)
+│   │   │   ├── api/                  # Route Handlers administrativos (RFC 9457 Problem Details)
+│   │   │   └── globals.css           # Tokens de diseño del sistema DSN-001 (Title Case estricto)
+│   │   ├── components/               # Componentes atómicos (AdminShell, ConfirmationModal, AiEnhance)
+│   │   └── proxy.ts                  # Inyector de x-request-id y AsyncLocalStorage para trazas
+│   └── web/                          # Portal público y landing page (@mocter/web)
+│       ├── app/                      # Rutas localizadas (/es, /en) en App Router Next.js 16
+│       ├── components/               # Componentes de presentación, dock flotante y widgets
+│       └── messages/                 # Diccionarios de internacionalización (next-intl)
 ├── packages/
-│   └── domain/                       # Capa de dominio agnóstica de frameworks
-│       ├── drizzle/                  # Migraciones SQL versionadas
-│       ├── scripts/
-│       │   └── migrate.mjs           # Ejecutor standalone de migraciones para Docker/CI
+│   └── domain/                       # Capa de dominio, reglas de negocio y persistencia (@mocter/domain)
+│       ├── drizzle/                  # Migraciones SQL del Plano de Control (schema admin & public)
+│       ├── drizzle-cell/             # Migraciones SQL del Plano Celular de Datos (schema mocter_cell)
 │       ├── src/
-│       │   ├── db/
-│       │   │   ├── index.ts          # Pool postgres-js perezoso, proxy db y funciones de datos
-│       │   │   └── schema.ts         # Definición tipada de la entidad PostgreSQL 'leads'
-│       │   ├── validation.ts         # Contratos de validación de negocio Zod (leadSchema)
-│       │   ├── validation.test.ts    # Pruebas unitarias de validación (Vitest)
-│       │   └── index.ts              # API pública reexportada
-│       ├── drizzle.config.ts         # Configuración oficial de Drizzle Kit
-│       ├── tsconfig.json             # Configuración TypeScript del paquete
-│       └── package.json              # Exports modulares (., ./schema, ./validation, ./db)
+│       │   ├── auth/                 # Motor de autenticación híbrida (Argon2id, TOTP, CSRF, SSO)
+│       │   ├── db/                   # Esquema relacional del Control Plane (users, cells, plans, audit)
+│       │   ├── db-cell/              # Esquema relacional celular (tenants, leads, orders, products)
+│       │   ├── repositories/         # Repositorios de persistencia desacoplados de infraestructura
+│       │   └── services/             # Servicios de dominio (cell-secrets, admin-dashboard, outbox, bot)
+│       ├── scripts/                  # Ejecutores standalone de migraciones para Docker/CI
+│       └── package.json              # Configuración y dependencias de la capa de dominio
+├── data-cell-dev/                    # Entorno local de emulación de célula de datos (DAT-001)
+│   ├── docker-compose.yml            # Orquestación de pg-cell-01, pgbouncer-cell-01 y tenant-app
+│   └── pgbouncer/                    # Configuración de PgBouncer transaccional y userlist
 ├── deploy/
 │   └── server/                       # Artefactos y scripts de aprovisionamiento en servidor
 │       ├── deploy.sh                 # Script de despliegue con pre-deploy hook, healthcheck y rollback
@@ -146,11 +154,11 @@ landig-agencia/
 │       └── env.test.example          # Plantilla de variables de entorno para staging/test
 ├── docs/
 │   ├── deployment.md                 # Manual operativo de despliegue y administración
+│   ├── reference/                    # Inventarios técnicos de servicios de producción
 │   └── specs/                        # Especificaciones Spec-Driven Development (SDD)
-│       ├── mig-001-nextjs-migration/ # Especificación técnica de migración a Next.js 16
-│       └── cd-001-despliegue-continuo/ # Especificación técnica de CI/CD y despliegue
-├── k8s/                              # Manifiestos de Kubernetes para producción enterprise
-├── docker-compose.yml                # Orquestación de desarrollo con HMR y volúmenes aislados
+├── k8s/                              # Manifiestos de Kubernetes para despliegues enterprise
+├── docker-compose.yml                # Orquestación de desarrollo del Control Plane (apps/admin, apps/web, PG, Redis, RabbitMQ)
+├── docker-compose.cell.yml           # Orquestación de emulación de célula de datos autónoma
 ├── docker-compose.test.yml           # Orquestación de pruebas aisladas y validación de calidad
 ├── docker-compose.prod.yml           # Orquestación de producción con Traefik v2.11 y servicio migrate
 ├── Dockerfile                        # Multi-stage build optimizado (Node 24 Alpine, standalone + migrator)
@@ -163,30 +171,38 @@ landig-agencia/
 
 ## 4. Pila Tecnológica Detallada
 
-### 4.1 Frontend & Aplicación Web (`apps/web`)
-- **Framework Principal:** [Next.js 16](https://nextjs.org/) con React 19 y compilador Turbopack.
-- **Paradigma de Enrutamiento (App Router Exclusivo):** Implementado 100% bajo **Next.js App Router** (`apps/web/app/`). Queda expresamente **prohibido el uso de Pages Router** (`pages/`), así como métodos legados (`getServerSideProps`, `getStaticProps`). La arquitectura aprovecha React Server Components (RSC), Route Handlers nativos (`app/api/`) y Server Actions para mutaciones de datos.
-- **Sistema de Estilos:** [Tailwind CSS v4](https://tailwindcss.com/) configurado con variables CSS dinámicas para cambio de tema instantáneo.
-- **Tipografía:** Sora (Display) & Inter (Sans) optimizadas con precarga nativa `next/font`.
-- **Internacionalización:** [next-intl](https://next-intl-docs.vercel.app/) con detección y resolución limpia de rutas (`/es` y `/en`).
-- **Soporte PWA:** Manifiesto web progresivo (`manifest.webmanifest`), `sw.js` y metadatos para instalación en dispositivos móviles y de escritorio.
-- **SEO & Descubrimiento:** Metadatos OpenGraph, Twitter Cards, Canonical URLs, Schema.org JSON-LD estructurado y archivos `llms.txt` / `llms-full.txt` para motores de búsqueda de IA.
-- **Documentación de APIs (OpenAPI / Swagger):** Documentación OpenAPI 3.1 tipada y autogenerada desde esquemas Zod con `@asteasolutions/zod-to-openapi`. Expuesta vía endpoint JSON canónico (`/api/openapi.json`) y visor interactivo moderno en tiempo real con Scalar (`/api-docs`).
+### 4.1 Consola Administrativa & Frontend Web (`apps/admin` y `apps/web`)
+- **Framework Principal:** [Next.js 16](https://nextjs.org/) con React 19 y compilador Turbopack en modo `standalone`.
+- **Paradigma de Enrutamiento (App Router Exclusivo):** Implementado 100% bajo **Next.js App Router** (`app/`). Queda expresamente **prohibido el uso de Pages Router** (`pages/`). React Server Components (RSC), Route Handlers (`app/api/`) con formato estándar RFC 9457 Problem Details (`application/problem+json`), y Server Actions.
+- **Sistema de Diseño (DSN-001):** Tailwind CSS v4 con variables CSS dinámicas. Cumplimiento estricto de accesibilidad WCAG 2.2 AA, labels de formularios en Title Case (cero uppercase) y modales de confirmación accesibles (cero diálogos nativos `window.confirm`).
+- **Asistencia AI en Formularios (AI-001):** Integración «Mejorar con AI» en textareas mediante biblioteca versionada de prompts maestros y revisión humana obligatoria antes de persistir.
+- **Trazabilidad y Observabilidad:** Logging estructurado JSON tipado (`LogEvent`) sin `console.*`, correlacionado por `requestId` (`x-request-id` propagado por `proxy.ts` vía `AsyncLocalStorage`).
 
-### 4.2 Capa de Datos & Persistencia (`packages/domain`)
-- **Motor de Base de Datos:** [PostgreSQL 18+](https://www.postgresql.org/) con extensión `pgvector` para soporte de búsquedas semánticas.
-- **ORM & Migraciones:** [Drizzle ORM](https://orm.drizzle.team/) con arquitectura canónica:
-  - `src/db/schema.ts`: Definición de esquema relacional y tipado (`Lead`, `NewLead`).
-  - `src/db/index.ts`: Inicialización perezosa de conexión `postgres-js`, pool administrado y operaciones (`insertLead`).
-  - `scripts/migrate.mjs`: Script autónomo de migraciones que corre de forma segura antes de iniciar el tráfico web.
-- **Aislamiento de Schemas:** Tablas de negocio en schema `public`; historial de migraciones en schema dedicado `drizzle` (`drizzle.__drizzle_migrations`). Cero impacto en rendimiento.
-- **Validación de Datos:** [Zod v4](https://zod.dev/) para validación estricta en servidor antes de persistir en base de datos.
+### 4.2 Capa de Dominio & Persistencia (`packages/domain`)
+- **Motor de Base de Datos:** [PostgreSQL 18+](https://www.postgresql.org/) con extensión `pgvector` para soporte de búsquedas vectoriales e indexación semántica.
+- **Arquitectura de Celdas Autónomas (DAT-001):** Particionamiento celular donde cada célula aloja de 50 a 100 inquilinos con su propio PostgreSQL 18, esquema celular `mocter_cell` y PgBouncer transaccional (`port 6432`).
+- **ORM & Migraciones Duales:** [Drizzle ORM](https://orm.drizzle.team/) con dos grafos de migración completamente independientes:
+  - `drizzle/`: Migraciones del Plano de Control Global (`schema.ts`: usuarios, células, clientes, membresías, planes, auditoría).
+  - `drizzle-cell/`: Migraciones del Plano Celular de Datos (`src/db-cell/schema.ts`: inquilinos, leads, pedidos, productos).
+- **Criptografía de Secretos Celulares:** Cifrado autenticado AES-256-GCM con rotación de claves (`CELL_SECRETS_KEY`) y validación de Datos Asociados Autenticados (AAD) vinculados al UUID/código de la célula (`${cellId}:cell-secrets`).
+- **Verificación de Conexión Celular (Dual Handshake 360°):** Probes no invasivos TCP y HTTP sobre la URL de la aplicación celular con secretos efímeros de tiempo constante, validando la salud y accesibilidad antes del despliegue.
 
-### 4.3 Herramientas, Infraestructura & DevOps
+### 4.3 Seguridad, Autenticación y Autorización (AUTH-001)
+- **Roles Canónicos RBAC:** 5 roles inmutables (`platform_owner`, `platform_support`, `tenant_owner`, `tenant_admin`, `tenant_agent`) con permisos granulares por scopes (`cells:provision`, `cells:read`, `users:manage`, etc.).
+- **Hashing de Contraseñas:** Algoritmo Argon2id con parámetros de alta seguridad (memoria 64 MiB, 3 iteraciones, paralelismo 1).
+- **Segundo Factor TOTP (2FA):** Claves maestras cifradas en base de datos con AES-256-GCM y verificación con ventana de tolerancia de 1 paso.
+- **Sesiones & CSRF:** Sesiones revocables en base de datos sincronizadas con Redis 7+, cookies HTTP-only `mocter_session` (`SameSite=Lax`, `Secure`), tokens CSRF criptográficos de un solo uso y verificación estricta de origen (`Origin` / `Referer`).
+- **SSO Transparente a Chatwoot:** Emisión de tokens JWT HS256 firmados con secreto compartido (`CHATWOOT_SSO_SECRET`) para embedding seguro en iframe same-site.
+
+### 4.4 Mensajería Asíncrona & Notificaciones (NTF-001)
+- **Patrón Outbox Transaccional:** Registro de eventos en la misma transacción de base de datos para garantizar consistencia eventual libre de pérdidas.
+- **Broker RabbitMQ:** Cola desacoplada con relay de reintentos exponenciales, Dead Letter Queue (DLQ) para anomalías y despacho de correo SMTP.
+
+### 4.5 DevOps, Infraestructura & Contenedores
 - **Monorepo Manager:** [Turborepo v2](https://turbo.build/repo) + [pnpm v12+](https://pnpm.io/) (`corepack`).
-- **Contenedores:** [Docker](https://www.docker.com/) con imágenes multi-stage basadas en `node:24-alpine` que albergan la aplicación Next.js standalone y el migrador (`/app/migrator`).
-- **Proxy Perimetral y Redes:** [Traefik v2.11](https://traefik.io/) con TLS Let's Encrypt automático (`mytlschallenge`) y redirección 301 permanente de `www.mocter.co` a `mocter.co`.
-- **CI/CD:** [GitHub Actions](https://github.com/features/actions) con publicación de imágenes en **GHCR** (`ghcr.io/enuarrosales/mocter-web`) y despliegue por SSH a VPS Hostinger con `deploy.sh`.
+- **Contenedores Docker:** Multi-stage build optimizado (`node:24-alpine`) con imagen única para portal web, consola admin y ejecutor de migraciones.
+- **Proxy Perimetral:** [Traefik v2.11](https://traefik.io/) con TLS Let's Encrypt automático y resolución DNS (`mocter.co`, `admin.mocter.co`). Cero puertos expuestos en el host en entornos de staging y producción.
+- **CI/CD:** [GitHub Actions](https://github.com/features/actions) con publicación de imágenes en **GHCR** (`ghcr.io/enuarrosales/mocter-web`) y despliegue idempotente con rollback automático mediante `deploy.sh`.
 
 ---
 
@@ -194,8 +210,8 @@ landig-agencia/
 
 ### 5.1 Requisitos de Hardware (Recomendados)
 - **CPU:** 4 núcleos o superior (x86_64 o ARM64).
-- **Memoria RAM:** Mínimo 4 GB (8 GB recomendados para ejecución simultánea de contenedores y compilación).
-- **Almacenamiento:** Mínimo 10 GB de espacio libre en disco.
+- **Memoria RAM:** Mínimo 8 GB (16 GB recomendados para ejecución simultánea del Control Plane, Célula local y Chatwoot).
+- **Almacenamiento:** Mínimo 20 GB de espacio libre en disco.
 
 ### 5.2 Requisitos de Software
 - **Node.js:** Versión `24.x` o superior.
@@ -207,21 +223,29 @@ landig-agencia/
 
 ## 6. Variables de Entorno y Configuración
 
-El proyecto utiliza un **único archivo `.env` en la raíz** del repositorio como fuente de verdad (basado en la plantilla [.env.example](.env.example)). No deben crearse archivos `.env` duplicados en subdirectorios.
+El proyecto utiliza un **único archivo `.env` en la raíz** del repositorio como fuente de verdad (basado en [.env.example](.env.example)).
 
 | Variable | Tipo | Descripción | Valor por Defecto (Dev) | Obligatoria en Prod |
 | :--- | :---: | :--- | :--- | :---: |
-| `DATABASE_URL` | String | Cadena de conexión URI hacia PostgreSQL | `postgres://mocter:M0ct3rP0rt4LDev2026@localhost:54321/db-portal` | **Sí** |
+| `DATABASE_URL` | String | URI de conexión a PostgreSQL del Control Plane | `postgres://mocter:M0ct3rP0rt4LDev2026@localhost:54321/db-portal` | **Sí** |
 | `NODE_ENV` | Enum | Entorno de ejecución (`development`, `test`, `production`) | `development` | **Sí** |
-| `POSTGRES_USER` | String | Usuario de administración de PostgreSQL | `mocter` | **Sí** |
-| `POSTGRES_PASSWORD` | String | Clave de acceso a la base de datos | `M0ct3rP0rt4LDev2026` | **Sí** |
-| `POSTGRES_DB` | String | Nombre de la base de datos relacional | `db-portal` | **Sí** |
-| `POSTGRES_PORT` | Integer | Puerto expuesto en el host para la base de datos local | `54321` | Solo Dev |
+| `POSTGRES_USER` | String | Usuario administrativo de PostgreSQL Control Plane | `mocter` | **Sí** |
+| `POSTGRES_PASSWORD` | String | Clave de acceso a PostgreSQL Control Plane | `M0ct3rP0rt4LDev2026` | **Sí** |
+| `POSTGRES_DB` | String | Nombre de base de datos del Control Plane | `db-portal` | **Sí** |
 | `REDIS_PASSWORD` | String | Contraseña de autenticación de Redis plano de control | — | **Sí** |
+| `RABBITMQ_URL` | String | URI de conexión al broker RabbitMQ (Outbox relay) | `amqp://mocter_rabbit:${RABBITMQ_PASSWORD}@rabbitmq:5672` | **Sí** |
 | `AUTH_RATE_LIMIT_PEPPER` | String | Sal secreta para cálculo de hashes de IP en rate limiting | `mocter-dev-pepper` | **Sí** |
-| `ALLOWED_ORIGINS` | String | Orígenes autorizados separados por coma para CORS/Origin | `http://localhost:3001,http://127.0.0.1:3001` | **Sí** |
-| `CHATWOOT_SSO_SECRET` | String | Secreto compartido HMAC-SHA256 para emisión de tokens JWT de SSO | — | **Sí** |
-| `TAG` | String | Etiqueta / versión de la imagen Docker en GHCR | — | **Sí** (en prod/test) |
+| `ALLOWED_ORIGINS` | String | Orígenes autorizados separados por coma para CORS/Origin | `http://localhost:3001,http://localhost:3003` | **Sí** |
+| `CHATWOOT_SSO_SECRET` | String | Secreto compartido HMAC-SHA256 (`SECRET_KEY_BASE` de Chatwoot) | — | **Sí** |
+| `CHATWOOT_BASE_URL` | String | URL base de la instancia oficial de Chatwoot | `https://chat.mocter.co` | **Sí** |
+| `TOTP_ACTIVE_KEY_ID` | String | Identificador activo de la clave de cifrado TOTP | `k1` | **Sí** |
+| `TOTP_KEY` | String | Clave maestra AES-256 de cifrado TOTP (64 hex o 44 base64) | — | **Sí** |
+| `CELL_SECRETS_ACTIVE_KEY_ID` | String | Identificador activo de clave para secretos celulares | `k1` | **Sí** |
+| `CELL_SECRETS_KEY` | String | Clave maestra AES-256 para secretos celulares (DAT-001) | — | **Sí** |
+| `CELL_SECRETS_DIR` | String | Directorio de lectura de secretos de producción | `/run/secrets` | En Prod |
+| `SETUP_OWNER_TOKEN` | String | Token de un solo uso para bootstrap de Platform Owner | — | Inicial |
+| `NEXT_PUBLIC_ADMIN_URL`| String | URL pública de la consola administrativa unificada | `http://localhost:3003` | **Sí** |
+| `TAG` | String | Etiqueta de versión de la imagen Docker en GHCR | — | **Sí** (Prod/CI) |
 
 ### 6.1 Obtención y Sincronización de `CHATWOOT_SSO_SECRET`
 
@@ -274,30 +298,45 @@ Turborepo gestiona la caché y el grafo de dependencias entre paquetes:
 # Compilar todos los paquetes y aplicaciones del monorepo
 pnpm build
 
-# O compilar de forma aislada un paquete específico:
+# O compilar de forma aislada una aplicación o paquete específico:
 pnpm --filter @mocter/domain build
+pnpm --filter @mocter/admin build
 pnpm --filter @mocter/web build
 ```
 
 ### 7.3 Ejecución de Pruebas y Control de Calidad
 ```bash
-# Ejecutar todas las pruebas unitarias y de integración (39 pruebas pasando)
+# Ejecutar la suite completa de pruebas unitarias e integración (1,048 pruebas pasando / 135 suites)
+# Distribución: 679 en @mocter/domain, 259 en @mocter/web, 110 en @mocter/admin
 pnpm test
 
-# Verificación estricta de linting y reglas de tipos TypeScript
+# Verificación estricta de linting y reglas de tipos TypeScript (tsc --noEmit)
 pnpm lint
 
-# Verificación de consistencia del esquema Drizzle
+# Verificación de consistencia del esquema Drizzle en Control Plane y Plano Celular
 pnpm --filter @mocter/domain exec drizzle-kit check
 ```
 
 ### 7.4 Migraciones de Base de Datos
 ```bash
-# Generar nuevas migraciones SQL a partir de cambios en src/db/schema.ts
+# Control Plane (admin & public):
 pnpm --filter @mocter/domain db:generate
-
-# Aplicar las migraciones directamente en la base de datos local
 pnpm --filter @mocter/domain db:migrate
+
+# Plano Celular (mocter_cell):
+pnpm --filter @mocter/domain exec drizzle-kit generate --config=drizzle.cell.config.ts
+```
+
+### 7.5 Orquestación y Emulación Celular (DAT-001)
+```bash
+# Levantar el entorno de emulación de célula de datos (pg-cell-01, pgbouncer, tenant-app)
+pnpm cell:up
+
+# Ver registros de la célula de datos en tiempo real
+pnpm cell:logs
+
+# Detener el entorno celular
+pnpm cell:down
 ```
 
 ---
@@ -307,23 +346,39 @@ pnpm --filter @mocter/domain db:migrate
 ```text
 ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
 │  1. Desarrollo  │  ───> │  2. Pruebas/CI  │  ───> │  3. Producción  │  ───> │  4. Enterprise  │
-│  (Compose Dev)  │       │  (Compose Test) │       │ (Compose Prod)  │       │  (Kubernetes)   │
+│  (Control+Cell) │       │  (Compose Test) │       │ (Compose Prod)  │       │  (Kubernetes)   │
 └─────────────────┘       └─────────────────┘       └─────────────────┘       └─────────────────┘
 ```
 
-### Ambiente 1: Desarrollo Local (`docker-compose.yml`)
+### Ambiente 1: Desarrollo Local Control Plane (`docker-compose.yml`)
 Diseñado para velocidad con **Hot Module Reloading (HMR)** mediante Turbopack. Aísla `node_modules` en volúmenes Docker y ejecuta las migraciones pendientes automáticamente al iniciar:
 
 ```bash
-# 1. Levantar el stack de desarrollo (Next.js 16 + PostgreSQL 18)
-docker compose up
+# 1. Levantar el stack de desarrollo del Control Plane
+docker compose up -d
 
 # 2. Puntos de acceso:
-#    - Aplicación Web: http://localhost:3001/es
-#    - PostgreSQL: localhost:54321 (Usuario: mocter | BD: db-portal)
+#    - Portal Web Público: http://localhost:3001/es
+#    - Consola Administrativa Unificada: http://localhost:3003/admin
+#    - PostgreSQL Control Plane: localhost:54321 (Usuario: mocter | BD: db-portal)
+#    - RabbitMQ Management Console: http://localhost:15672 (mocter_rabbit)
+#    - Redis Control Plane: localhost:6379
 
 # 3. Detener los servicios:
 docker compose down
+```
+
+### Ambiente 1.B: Emulación de Célula de Datos Local (`docker-compose.cell.yml`)
+Permite validar el ciclo de vida completo de células de datos (DAT-001 Modelo A) en el entorno de desarrollo:
+
+```bash
+# 1. Levantar el nodo celular cell-01
+pnpm cell:up
+
+# 2. Puntos de acceso celular:
+#    - Aplicación Celular (HTTP Probes): http://localhost:3004
+#    - PgBouncer Celular (Pooling Transaccional): localhost:6432
+#    - PostgreSQL Celular Directo: localhost:54322 (BD: pg-cell-01)
 ```
 
 ### Ambiente 2: Pruebas y Validación CI (`docker-compose.test.yml`)

@@ -18,6 +18,7 @@ import {
   Paintbrush,
   Menu,
   X,
+  ShieldCheck,
   Activity,
   User as UserIcon,
   LogOut,
@@ -150,6 +151,11 @@ export function AdminShell({ children, currentUser }: AdminShellProps) {
       href: "/admin/tenants",
       label: dict.navTenants || "Inquilinos y Comercios",
       icon: Store,
+    },
+    {
+      href: "/admin/users",
+      label: dict.navUsersRoles || "Usuarios y Roles",
+      icon: ShieldCheck,
     },
     {
       href: "/admin/ai",
