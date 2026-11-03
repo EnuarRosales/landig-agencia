@@ -7,6 +7,7 @@ import { Logo } from "@/components/logo";
 import { FloatingBackground } from "@/components/sections/floating-background";
 import { SetupOwnerForm } from "@/components/auth";
 
+export const instant = false;
 
 type Props = {
   params: Promise<{ locale: string }>;

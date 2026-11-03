@@ -17,17 +17,18 @@ Sistema de información empresarial multi-inquilino de alta disponibilidad para 
 
 ## 1. Ficha Técnica y Resumen Ejecutivo
 
-| Atributo | Detalle del Sistema |
-| :--- | :--- |
-| **Nombre Comercial:** | Plataforma SaaS Mocter (Portal Público, Consola Administrativa & Plano Celular) |
-| **Identificador del Proyecto:** | Monorepo `landig-agencia` (`@mocter/web`, `@mocter/admin`, `@mocter/domain`) |
-| **Versión Actual:** | `1.5.0` (SemVer) |
-| **Tipo de Sistema:** | Plataforma SaaS Multi-Inquilino con Arquitectura Celular Distribuida |
-| **Propiedad Intelectual:** | © 2026 Mocter. Todos los derechos reservados. |
-| **Contacto Oficial:** | [info@mocter.co](mailto:info@mocter.co) · WhatsApp: +57 322 275 2524 |
-| **Soberanía de Datos:** | Datos alojados y procesados conforme a la normativa colombiana (Ley 1581/2012) e internacional. |
+| Atributo                        | Detalle del Sistema                                                                             |
+| :------------------------------ | :---------------------------------------------------------------------------------------------- |
+| **Nombre Comercial:**           | Plataforma SaaS Mocter (Portal Público, Consola Administrativa & Plano Celular)                 |
+| **Identificador del Proyecto:** | Monorepo `landig-agencia` (`@mocter/web`, `@mocter/admin`, `@mocter/domain`)                    |
+| **Versión Actual:**             | `1.5.0` (SemVer)                                                                                |
+| **Tipo de Sistema:**            | Plataforma SaaS Multi-Inquilino con Arquitectura Celular Distribuida                            |
+| **Propiedad Intelectual:**      | © 2026 Mocter. Todos los derechos reservados.                                                   |
+| **Contacto Oficial:**           | [info@mocter.co](mailto:info@mocter.co) · WhatsApp: +57 322 275 2524                            |
+| **Soberanía de Datos:**         | Datos alojados y procesados conforme a la normativa colombiana (Ley 1581/2012) e internacional. |
 
 ### 1.1 Objetivos de Negocio y Arquitectura
+
 - **Plataforma Única (Single Pane of Glass):** Consola administrativa unificada (`mocter-admin`) para el Platform Owner (gobernanza, infraestructura celular, facturación) y para los inquilinos (pedidos, productos, CRM, Chatwoot embebido).
 - **Arquitectura de Celdas Autónomas (DAT-001):** Particionamiento físico y lógico donde cada célula (50-100 inquilinos) opera como un nodo completo (PostgreSQL 18 + pgvector + PgBouncer transaccional + capa celular HTTP `tenant-app`), garantizando aislamiento y zero blast radius.
 - **Orquestación Declarativa (Modelo A):** Aprovisionamiento seguro con paquetes de secretos cifrados en AES-256-GCM, Handshake Dual 360° (probes TCP y HTTP con secretos de tiempo constante) y manifiestos canónicos.
@@ -40,14 +41,14 @@ Sistema de información empresarial multi-inquilino de alta disponibilidad para 
 
 El proyecto está estructurado bajo las mejores prácticas de la ingeniería de software moderna y la metodología **Spec-Driven Development (SDD)** definida en `.agents/AGENTS.md`:
 
-| Rol | Responsabilidad Principal |
-| :--- | :--- |
-| **Tech Lead & Senior Architect** | Diseño de la arquitectura de software (Clean Architecture), gobernanza técnica, seguridad y patrones de concurrencia. |
-| **Frontend Engineer (Next.js / React)** | Desarrollo de la interfaz, componentes de alta fidelidad, accesibilidad (a11y), PWA y animaciones CSS nativas. |
-| **Backend & Data Engineer** | Modelado de datos en PostgreSQL 18, contratos de persistencia con Drizzle ORM y validaciones con Zod. |
-| **DevOps & Cloud Architect** | Pipeline CI/CD en GitHub Actions, orquestación Docker multi-stage, Traefik v2.11 y despliegue seguro en VPS. |
-| **QA Automation Engineer** | Mantenimiento de suite de pruebas unitarias, integración (Vitest) y compuertas de calidad automatizadas. |
-| **Product Designer (UI/UX)** | Sistema de diseño (Design Tokens), coherencia visual corporativa y experiencia de usuario optimizada para conversión. |
+| Rol                                     | Responsabilidad Principal                                                                                             |
+| :-------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| **Tech Lead & Senior Architect**        | Diseño de la arquitectura de software (Clean Architecture), gobernanza técnica, seguridad y patrones de concurrencia. |
+| **Frontend Engineer (Next.js / React)** | Desarrollo de la interfaz, componentes de alta fidelidad, accesibilidad (a11y), PWA y animaciones CSS nativas.        |
+| **Backend & Data Engineer**             | Modelado de datos en PostgreSQL 18, contratos de persistencia con Drizzle ORM y validaciones con Zod.                 |
+| **DevOps & Cloud Architect**            | Pipeline CI/CD en GitHub Actions, orquestación Docker multi-stage, Traefik v2.11 y despliegue seguro en VPS.          |
+| **QA Automation Engineer**              | Mantenimiento de suite de pruebas unitarias, integración (Vitest) y compuertas de calidad automatizadas.              |
+| **Product Designer (UI/UX)**            | Sistema de diseño (Design Tokens), coherencia visual corporativa y experiencia de usuario optimizada para conversión. |
 
 ---
 
@@ -172,6 +173,7 @@ landig-agencia/
 ## 4. Pila Tecnológica Detallada
 
 ### 4.1 Consola Administrativa & Frontend Web (`apps/admin` y `apps/web`)
+
 - **Framework Principal:** [Next.js 16](https://nextjs.org/) con React 19 y compilador Turbopack en modo `standalone`.
 - **Paradigma de Enrutamiento (App Router Exclusivo):** Implementado 100% bajo **Next.js App Router** (`app/`). Queda expresamente **prohibido el uso de Pages Router** (`pages/`). React Server Components (RSC), Route Handlers (`app/api/`) con formato estándar RFC 9457 Problem Details (`application/problem+json`), y Server Actions.
 - **Sistema de Diseño (DSN-001):** Tailwind CSS v4 con variables CSS dinámicas. Cumplimiento estricto de accesibilidad WCAG 2.2 AA, labels de formularios en Title Case (cero uppercase) y modales de confirmación accesibles (cero diálogos nativos `window.confirm`).
@@ -179,6 +181,7 @@ landig-agencia/
 - **Trazabilidad y Observabilidad:** Logging estructurado JSON tipado (`LogEvent`) sin `console.*`, correlacionado por `requestId` (`x-request-id` propagado por `proxy.ts` vía `AsyncLocalStorage`).
 
 ### 4.2 Capa de Dominio & Persistencia (`packages/domain`)
+
 - **Motor de Base de Datos:** [PostgreSQL 18+](https://www.postgresql.org/) con extensión `pgvector` para soporte de búsquedas vectoriales e indexación semántica.
 - **Arquitectura de Celdas Autónomas (DAT-001):** Particionamiento celular donde cada célula aloja de 50 a 100 inquilinos con su propio PostgreSQL 18, esquema celular `mocter_cell` y PgBouncer transaccional (`port 6432`).
 - **ORM & Migraciones Duales:** [Drizzle ORM](https://orm.drizzle.team/) con dos grafos de migración completamente independientes:
@@ -188,6 +191,7 @@ landig-agencia/
 - **Verificación de Conexión Celular (Dual Handshake 360°):** Probes no invasivos TCP y HTTP sobre la URL de la aplicación celular con secretos efímeros de tiempo constante, validando la salud y accesibilidad antes del despliegue.
 
 ### 4.3 Seguridad, Autenticación y Autorización (AUTH-001)
+
 - **Roles Canónicos RBAC:** 5 roles inmutables (`platform_owner`, `platform_support`, `tenant_owner`, `tenant_admin`, `tenant_agent`) con permisos granulares por scopes (`cells:provision`, `cells:read`, `users:manage`, etc.).
 - **Hashing de Contraseñas:** Algoritmo Argon2id con parámetros de alta seguridad (memoria 64 MiB, 3 iteraciones, paralelismo 1).
 - **Segundo Factor TOTP (2FA):** Claves maestras cifradas en base de datos con AES-256-GCM y verificación con ventana de tolerancia de 1 paso.
@@ -195,10 +199,12 @@ landig-agencia/
 - **SSO Transparente a Chatwoot:** Emisión de tokens JWT HS256 firmados con secreto compartido (`CHATWOOT_SSO_SECRET`) para embedding seguro en iframe same-site.
 
 ### 4.4 Mensajería Asíncrona & Notificaciones (NTF-001)
+
 - **Patrón Outbox Transaccional:** Registro de eventos en la misma transacción de base de datos para garantizar consistencia eventual libre de pérdidas.
 - **Broker RabbitMQ:** Cola desacoplada con relay de reintentos exponenciales, Dead Letter Queue (DLQ) para anomalías y despacho de correo SMTP.
 
 ### 4.5 DevOps, Infraestructura & Contenedores
+
 - **Monorepo Manager:** [Turborepo v2](https://turbo.build/repo) + [pnpm v12+](https://pnpm.io/) (`corepack`).
 - **Contenedores Docker:** Multi-stage build optimizado (`node:24-alpine`) con imagen única para portal web, consola admin y ejecutor de migraciones.
 - **Proxy Perimetral:** [Traefik v2.11](https://traefik.io/) con TLS Let's Encrypt automático y resolución DNS (`mocter.co`, `admin.mocter.co`). Cero puertos expuestos en el host en entornos de staging y producción.
@@ -209,11 +215,13 @@ landig-agencia/
 ## 5. Requisitos Previos del Sistema
 
 ### 5.1 Requisitos de Hardware (Recomendados)
+
 - **CPU:** 4 núcleos o superior (x86_64 o ARM64).
 - **Memoria RAM:** Mínimo 8 GB (16 GB recomendados para ejecución simultánea del Control Plane, Célula local y Chatwoot).
 - **Almacenamiento:** Mínimo 20 GB de espacio libre en disco.
 
 ### 5.2 Requisitos de Software
+
 - **Node.js:** Versión `24.x` o superior.
 - **Gestor de Paquetes:** `pnpm 12.x` (`corepack enable`).
 - **Docker & Docker Compose:** Docker Engine `24.x+` con Docker Compose v2.
@@ -225,27 +233,27 @@ landig-agencia/
 
 El proyecto utiliza un **único archivo `.env` en la raíz** del repositorio como fuente de verdad (basado en [.env.example](.env.example)).
 
-| Variable | Tipo | Descripción | Valor por Defecto (Dev) | Obligatoria en Prod |
-| :--- | :---: | :--- | :--- | :---: |
-| `DATABASE_URL` | String | URI de conexión a PostgreSQL del Control Plane | `postgres://mocter:M0ct3rP0rt4LDev2026@localhost:54321/db-portal` | **Sí** |
-| `NODE_ENV` | Enum | Entorno de ejecución (`development`, `test`, `production`) | `development` | **Sí** |
-| `POSTGRES_USER` | String | Usuario administrativo de PostgreSQL Control Plane | `mocter` | **Sí** |
-| `POSTGRES_PASSWORD` | String | Clave de acceso a PostgreSQL Control Plane | `M0ct3rP0rt4LDev2026` | **Sí** |
-| `POSTGRES_DB` | String | Nombre de base de datos del Control Plane | `db-portal` | **Sí** |
-| `REDIS_PASSWORD` | String | Contraseña de autenticación de Redis plano de control | — | **Sí** |
-| `RABBITMQ_URL` | String | URI de conexión al broker RabbitMQ (Outbox relay) | `amqp://mocter_rabbit:${RABBITMQ_PASSWORD}@rabbitmq:5672` | **Sí** |
-| `AUTH_RATE_LIMIT_PEPPER` | String | Sal secreta para cálculo de hashes de IP en rate limiting | `mocter-dev-pepper` | **Sí** |
-| `ALLOWED_ORIGINS` | String | Orígenes autorizados separados por coma para CORS/Origin | `http://localhost:3001,http://localhost:3003` | **Sí** |
-| `CHATWOOT_SSO_SECRET` | String | Secreto compartido HMAC-SHA256 (`SECRET_KEY_BASE` de Chatwoot) | — | **Sí** |
-| `CHATWOOT_BASE_URL` | String | URL base de la instancia oficial de Chatwoot | `https://chat.mocter.co` | **Sí** |
-| `TOTP_ACTIVE_KEY_ID` | String | Identificador activo de la clave de cifrado TOTP | `k1` | **Sí** |
-| `TOTP_KEY` | String | Clave maestra AES-256 de cifrado TOTP (64 hex o 44 base64) | — | **Sí** |
-| `CELL_SECRETS_ACTIVE_KEY_ID` | String | Identificador activo de clave para secretos celulares | `k1` | **Sí** |
-| `CELL_SECRETS_KEY` | String | Clave maestra AES-256 para secretos celulares (DAT-001) | — | **Sí** |
-| `CELL_SECRETS_DIR` | String | Directorio de lectura de secretos de producción | `/run/secrets` | En Prod |
-| `SETUP_OWNER_TOKEN` | String | Token de un solo uso para bootstrap de Platform Owner | — | Inicial |
-| `NEXT_PUBLIC_ADMIN_URL`| String | URL pública de la consola administrativa unificada | `http://localhost:3003` | **Sí** |
-| `TAG` | String | Etiqueta de versión de la imagen Docker en GHCR | — | **Sí** (Prod/CI) |
+| Variable                     |  Tipo  | Descripción                                                    | Valor por Defecto (Dev)                                           | Obligatoria en Prod |
+| :--------------------------- | :----: | :------------------------------------------------------------- | :---------------------------------------------------------------- | :-----------------: |
+| `DATABASE_URL`               | String | URI de conexión a PostgreSQL del Control Plane                 | `postgres://mocter:M0ct3rP0rt4LDev2026@localhost:54321/db-portal` |       **Sí**        |
+| `NODE_ENV`                   |  Enum  | Entorno de ejecución (`development`, `test`, `production`)     | `development`                                                     |       **Sí**        |
+| `POSTGRES_USER`              | String | Usuario administrativo de PostgreSQL Control Plane             | `mocter`                                                          |       **Sí**        |
+| `POSTGRES_PASSWORD`          | String | Clave de acceso a PostgreSQL Control Plane                     | `M0ct3rP0rt4LDev2026`                                             |       **Sí**        |
+| `POSTGRES_DB`                | String | Nombre de base de datos del Control Plane                      | `db-portal`                                                       |       **Sí**        |
+| `REDIS_PASSWORD`             | String | Contraseña de autenticación de Redis plano de control          | —                                                                 |       **Sí**        |
+| `RABBITMQ_URL`               | String | URI de conexión al broker RabbitMQ (Outbox relay)              | `amqp://mocter_rabbit:${RABBITMQ_PASSWORD}@rabbitmq:5672`         |       **Sí**        |
+| `AUTH_RATE_LIMIT_PEPPER`     | String | Sal secreta para cálculo de hashes de IP en rate limiting      | `mocter-dev-pepper`                                               |       **Sí**        |
+| `ALLOWED_ORIGINS`            | String | Orígenes autorizados separados por coma para CORS/Origin       | `http://localhost:3001,http://localhost:3003`                     |       **Sí**        |
+| `CHATWOOT_SSO_SECRET`        | String | Secreto compartido HMAC-SHA256 (`SECRET_KEY_BASE` de Chatwoot) | —                                                                 |       **Sí**        |
+| `CHATWOOT_BASE_URL`          | String | URL base de la instancia oficial de Chatwoot                   | `https://chat.mocter.co`                                          |       **Sí**        |
+| `TOTP_ACTIVE_KEY_ID`         | String | Identificador activo de la clave de cifrado TOTP               | `k1`                                                              |       **Sí**        |
+| `TOTP_KEY`                   | String | Clave maestra AES-256 de cifrado TOTP (64 hex o 44 base64)     | —                                                                 |       **Sí**        |
+| `CELL_SECRETS_ACTIVE_KEY_ID` | String | Identificador activo de clave para secretos celulares          | `k1`                                                              |       **Sí**        |
+| `CELL_SECRETS_KEY`           | String | Clave maestra AES-256 para secretos celulares (DAT-001)        | —                                                                 |       **Sí**        |
+| `CELL_SECRETS_DIR`           | String | Directorio de lectura de secretos de producción                | `/run/secrets`                                                    |       En Prod       |
+| `SETUP_OWNER_TOKEN`          | String | Token de un solo uso para bootstrap de Platform Owner          | —                                                                 |       Inicial       |
+| `NEXT_PUBLIC_ADMIN_URL`      | String | URL pública de la consola administrativa unificada             | `http://localhost:3003`                                           |       **Sí**        |
+| `TAG`                        | String | Etiqueta de versión de la imagen Docker en GHCR                | —                                                                 |  **Sí** (Prod/CI)   |
 
 ### 6.1 Obtención y Sincronización de `CHATWOOT_SSO_SECRET`
 
@@ -254,6 +262,7 @@ En la arquitectura de Mocter ([AUTH-001 §5.10](docs/specs/auth-001-autenticacio
 Al ser Chatwoot una aplicación basada en Ruby on Rails, su clave simétrica de firma y validación criptográfica es su variable maestra **`SECRET_KEY_BASE`**. Por consiguiente, `CHATWOOT_SSO_SECRET` en Mocter debe coincidir exactamente con el valor de `SECRET_KEY_BASE` configurado en el contenedor de Chatwoot del ambiente correspondiente.
 
 #### A. Ambiente de Desarrollo Local (Docker)
+
 Con el stack local en ejecución, ejecutar en la terminal para extraer el valor configurado en el contenedor `mocter-chatwoot-rails-1`:
 
 ```powershell
@@ -263,9 +272,11 @@ docker inspect mocter-chatwoot-rails-1 --format '{{range .Config.Env}}{{println 
 # En Bash / WSL:
 docker inspect mocter-chatwoot-rails-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep SECRET_KEY_BASE
 ```
-*(Alternativamente, consultar el archivo `.env` del compose local de Chatwoot).*
+
+_(Alternativamente, consultar el archivo `.env` del compose local de Chatwoot)._
 
 #### B. Ambientes de Pruebas y Producción (Docker + Traefik en VPS Hostinger)
+
 En los servidores de producción y pruebas (donde Chatwoot reside bajo `/opt/mocter-chatwoot/`, documentado en [docs/reference/production-services.md](docs/reference/production-services.md)), conectarse por SSH y extraer el valor por cualquiera de las siguientes vías:
 
 ```bash
@@ -278,12 +289,12 @@ grep SECRET_KEY_BASE /opt/mocter-chatwoot/.env
 
 El valor obtenido se asigna a la variable `CHATWOOT_SSO_SECRET` en el archivo `.env` de Mocter en dicho entorno.
 
-
 ---
 
 ## 7. Compilación y Desarrollo Local
 
 ### 7.1 Preparación Inicial
+
 ```bash
 # 1. Habilitar Corepack para asegurar la versión estricta de pnpm
 corepack enable
@@ -293,7 +304,9 @@ corepack pnpm install --frozen-lockfile
 ```
 
 ### 7.2 Compilación del Proyecto (Build)
+
 Turborepo gestiona la caché y el grafo de dependencias entre paquetes:
+
 ```bash
 # Compilar todos los paquetes y aplicaciones del monorepo
 pnpm build
@@ -305,6 +318,7 @@ pnpm --filter @mocter/web build
 ```
 
 ### 7.3 Ejecución de Pruebas y Control de Calidad
+
 ```bash
 # Ejecutar la suite completa de pruebas unitarias e integración (1,048 pruebas pasando / 135 suites)
 # Distribución: 679 en @mocter/domain, 259 en @mocter/web, 110 en @mocter/admin
@@ -318,6 +332,7 @@ pnpm --filter @mocter/domain exec drizzle-kit check
 ```
 
 ### 7.4 Migraciones de Base de Datos
+
 ```bash
 # Control Plane (admin & public):
 pnpm --filter @mocter/domain db:generate
@@ -328,6 +343,7 @@ pnpm --filter @mocter/domain exec drizzle-kit generate --config=drizzle.cell.con
 ```
 
 ### 7.5 Orquestación y Emulación Celular (DAT-001)
+
 ```bash
 # Levantar el entorno de emulación de célula de datos (pg-cell-01, pgbouncer, tenant-app)
 pnpm cell:up
@@ -338,6 +354,39 @@ pnpm cell:logs
 # Detener el entorno celular
 pnpm cell:down
 ```
+
+### 7.6 Inicialización del Platform Owner (primer arranque)
+
+En una instalación nueva, el Router Global no tiene operadores corporativos. El primer `platform_owner` se crea mediante el bootstrap protegido por `SETUP_OWNER_TOKEN` (AUTH-001 T-27). Tras el alta, la ruta queda sellada permanentemente con `404 Not Found`.
+
+1. Definir un token de un solo uso en el archivo `.env` de la raíz:
+   ```bash
+   SETUP_OWNER_TOKEN=<token-secreto-de-un-solo-uso>
+   ```
+2. Levantar el Control Plane (sección 7.1 / Ambiente 1) y abrir la pantalla de primer arranque:
+   Desarrollo
+   ```text
+   http://localhost:3001/<locale>/setup-owner
+   ```
+   Producción
+   ```text
+   https://mocter.co/<locale>/setup-owner
+   ```
+   (o consumir directamente el endpoint `POST /api/auth/setup-owner`)
+3. Completar el formulario con el token, correo, contraseña y nombre del Platform Owner.
+   - Carga útil del endpoint:
+     ```json
+     {
+       "token": "<SETUP_OWNER_TOKEN>",
+       "email": "owner@mocter.co",
+       "password": "...",
+       "name": "Nombre del Owner"
+     }
+     ```
+4. Tras crear el primer operador, la ruta `/setup-owner` deja de estar disponible (responde `404`).
+5. En producción, repetir el paso con el `SETUP_OWNER_TOKEN` configurado en el entorno de producción y revocar/eliminar el token una vez completado el bootstrap.
+
+> Nota: el token se valida en tiempo constante (`crypto.timingSafeEqual`) y la ruta se sella si `countPlatformOperators() > 0`.
 
 ---
 
@@ -351,6 +400,7 @@ pnpm cell:down
 ```
 
 ### Ambiente 1: Desarrollo Local Control Plane (`docker-compose.yml`)
+
 Diseñado para velocidad con **Hot Module Reloading (HMR)** mediante Turbopack. Aísla `node_modules` en volúmenes Docker y ejecuta las migraciones pendientes automáticamente al iniciar:
 
 ```bash
@@ -369,6 +419,7 @@ docker compose down
 ```
 
 ### Ambiente 1.B: Emulación de Célula de Datos Local (`docker-compose.cell.yml`)
+
 Permite validar el ciclo de vida completo de células de datos (DAT-001 Modelo A) en el entorno de desarrollo:
 
 ```bash
@@ -382,6 +433,7 @@ pnpm cell:up
 ```
 
 ### Ambiente 2: Pruebas y Validación CI (`docker-compose.test.yml`)
+
 Entorno de staging aislado para validación de imágenes productivas previas al despliegue final.
 
 ```bash
@@ -390,6 +442,7 @@ TAG=sha-xxxxxxx docker compose -f docker-compose.test.yml up -d
 ```
 
 ### Ambiente 3: Producción en VPS Hostinger (`docker-compose.prod.yml`)
+
 En producción, el sistema opera detrás de **Traefik v2.11** con cero puertos expuestos en el host:
 
 1. **Flujo de Entrega Continua:**
@@ -408,11 +461,13 @@ En producción, el sistema opera detrás de **Traefik v2.11** con cero puertos e
 ## 9. Seguridad y Administración Remota de la Base de Datos
 
 ### 9.1 Políticas de Seguridad y Redes
+
 - **Sin Puertos Expuestos:** En producción y pruebas, el servicio `pg-portal` no expone el puerto `5432` al host ni a internet; reside exclusivamente en la red interna de Docker `backend`.
 - **Tráfico Perimetral Seguro:** Todo el tráfico HTTP/HTTPS ingresa exclusivamente por el puerto 443 a través de Traefik con TLS gestionado por Let's Encrypt.
 - **Sanitización y Tipado Estricto:** Toda entrada del formulario `demo-request` es validada con Zod en el servidor. Drizzle ORM previene inyecciones SQL mediante consultas 100% parametrizadas.
 
 ### 9.2 Administración Remota Segura (Túnel SSH)
+
 Para conectar herramientas de administración GUI (DBeaver, TablePlus, DataGrip) o CLI (`psql`) a la base de datos de producción:
 
 1. **Vía Cliente GUI con SSH Tunnel (Recomendado):**
@@ -434,6 +489,7 @@ Para conectar herramientas de administración GUI (DBeaver, TablePlus, DataGrip)
 
 - **Verificación de Base de Datos:** La función `checkDatabaseConnection()` en `packages/domain/src/db/index.ts` ejecuta `SELECT 1` y reporta con claridad cualquier inalcanzabilidad.
 - **Inspección de Logs en Servidor:**
+
   ```bash
   # Ver logs de la aplicación web en producción
   docker compose -f /opt/mocter-admin/compose.yml logs -f web-portal
@@ -441,6 +497,7 @@ Para conectar herramientas de administración GUI (DBeaver, TablePlus, DataGrip)
   # Ver logs del migrador
   docker compose -f /opt/mocter-admin/compose.yml logs migrate
   ```
+
 - **Inspección de Estado y Despliegues:**
   ```bash
   /opt/mocter-admin/deploy.sh status
@@ -463,13 +520,16 @@ Para conectar herramientas de administración GUI (DBeaver, TablePlus, DataGrip)
 ## 12. Propiedad Intelectual, Marca y Copyright
 
 ### Declaración de Marca
+
 **Mocter** es una plataforma y marca registrada dedicada a la automatización inteligente de flujos comerciales, atención omnicanal y agendamiento de citas asistido por IA para empresas y profesionales.
 
 ### Copy Green e Identidad Institucional
+
 > **Tecnología consciente, eficiente y sostenible.**  
 > En Mocter construimos arquitecturas de software de alto rendimiento con optimización de consumo computacional, minimizando la huella de carbono digital mediante compilaciones standalone ultraligeras, código tipado libre de sobrecarga y soberanía tecnológica local.
 
 ### Derechos Reservados
+
 ```text
 Copyright © 2026 Mocter. Todos los derechos reservados.
 Hecho con orgullo y precisión en Colombia.
