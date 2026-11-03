@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { err, ok, type Result } from "../types/result";
+import { getActiveSmtpConfig } from "./admin-dashboard.service";
 
 /**
  * Catálogo inicial de remitentes aprobados en `NTF-001 T-01`.
@@ -636,6 +637,33 @@ export class TransactionalNotificationsAndLeadsService {
 
     this.deliveriesByIdempotency.set(params.idempotencyKey, delivery);
     this.deliveriesById.set(delivery.id, delivery);
+
+    // Envío best-effort no bloqueante usando la config SMTP de la BD (sin env vars)
+    void (async () => {
+      try {
+        const cfg = await getActiveSmtpConfig();
+        if (!cfg || !cfg.host || !cfg.user) return;
+        const nodemailer = await import("nodemailer");
+        const transporter = nodemailer.createTransport({
+          host: cfg.host,
+          port: cfg.port,
+          secure: cfg.secure || cfg.port === 465,
+          auth: { user: cfg.user, pass: cfg.password },
+        });
+        await transporter.sendMail({
+          from: `"${delivery.senderKey}" <${delivery.fromEmail || cfg.from}>`,
+          to: delivery.recipient,
+          subject: delivery.renderedSubject,
+          html: delivery.renderedHtml,
+        });
+        delivery.status = "sent";
+        delivery.attempts = 1;
+      } catch (e) {
+        delivery.status = "failed";
+        delivery.lastError = e instanceof Error ? e.message : String(e);
+      }
+    })();
+
     return ok(delivery);
   }
 

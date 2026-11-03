@@ -53,10 +53,18 @@ describe("DAT-001 T1 · CellSecretsCryptoService", () => {
     });
 
     it("rechaza cifrar si no hay clave activa", () => {
-      const svc = new CellSecretsCryptoService();
-      expect(() => svc.encryptBundle(service.generateSecretsBundle(), "cell-001")).toThrow(
-        CellSecretsEncryptionError,
-      );
+      const prevActiveId = process.env.CELL_SECRETS_ACTIVE_KEY_ID;
+      delete process.env.CELL_SECRETS_ACTIVE_KEY_ID;
+      try {
+        const svc = new CellSecretsCryptoService();
+        expect(() => svc.encryptBundle(service.generateSecretsBundle(), "cell-001")).toThrow(
+          CellSecretsEncryptionError,
+        );
+      } finally {
+        if (prevActiveId !== undefined) {
+          process.env.CELL_SECRETS_ACTIVE_KEY_ID = prevActiveId;
+        }
+      }
     });
 
     it("rechaza cifrar si la clave activa no está registrada", () => {
@@ -64,6 +72,46 @@ describe("DAT-001 T1 · CellSecretsCryptoService", () => {
       expect(() => svc.encryptBundle(service.generateSecretsBundle(), "cell-001")).toThrow(
         CellSecretsKeyNotFoundError,
       );
+    });
+
+    it("carga la clave desde la variable de entorno CELL_SECRETS_KEY", () => {
+      const prevKey = process.env.CELL_SECRETS_KEY;
+      const prevActive = process.env.CELL_SECRETS_ACTIVE_KEY_ID;
+      const testHexKey = crypto.randomBytes(32).toString("hex");
+      process.env.CELL_SECRETS_KEY = testHexKey;
+      process.env.CELL_SECRETS_ACTIVE_KEY_ID = "k_env";
+      try {
+        const svc = new CellSecretsCryptoService({ activeKeyId: "k_env" });
+        const bundle = svc.generateSecretsBundle();
+        const encrypted = svc.encryptBundle(bundle, "cell-env-test");
+        const decrypted = svc.decryptBundle(encrypted.ciphertext, "cell-env-test", "k_env");
+        expect(decrypted).toEqual(bundle);
+      } finally {
+        if (prevKey !== undefined) {
+          process.env.CELL_SECRETS_KEY = prevKey;
+        } else {
+          delete process.env.CELL_SECRETS_KEY;
+        }
+        if (prevActive !== undefined) {
+          process.env.CELL_SECRETS_ACTIVE_KEY_ID = prevActive;
+        } else {
+          delete process.env.CELL_SECRETS_ACTIVE_KEY_ID;
+        }
+      }
+    });
+
+    it("carga la clave específica desde CELL_SECRETS_KEY_<KEY_ID>", () => {
+      const testHexKey = crypto.randomBytes(32).toString("hex");
+      process.env.CELL_SECRETS_KEY_CUSTOM_ID = testHexKey;
+      try {
+        const svc = new CellSecretsCryptoService({ activeKeyId: "custom_id" });
+        const bundle = svc.generateSecretsBundle();
+        const encrypted = svc.encryptBundle(bundle, "cell-env-specific");
+        const decrypted = svc.decryptBundle(encrypted.ciphertext, "cell-env-specific", "custom_id");
+        expect(decrypted).toEqual(bundle);
+      } finally {
+        delete process.env.CELL_SECRETS_KEY_CUSTOM_ID;
+      }
     });
   });
 
@@ -76,13 +124,26 @@ describe("DAT-001 T1 · CellSecretsCryptoService", () => {
       expect(decrypted).toEqual(bundle);
     });
 
-    it("falla si el cell_id del AAD no coincide", () => {
+    it("falla si el cell_id del AAD no coincide y no hay fallback", () => {
       const bundle = service.generateSecretsBundle();
       const encrypted = service.encryptBundle(bundle, "cell-001");
 
       expect(() => service.decryptBundle(encrypted.ciphertext, "cell-002", encrypted.keyId)).toThrow(
         CellSecretsDecryptionError,
       );
+    });
+
+    it("descifra con fallbackCellId si el cellId primario no coincide", () => {
+      const bundle = service.generateSecretsBundle();
+      const encrypted = service.encryptBundle(bundle, "cell-001");
+      const decrypted = service.decryptBundle(
+        encrypted.ciphertext,
+        "uuid-distinto",
+        encrypted.keyId,
+        "cell-001",
+      );
+
+      expect(decrypted).toEqual(bundle);
     });
 
     it("falla si el ciphertext fue alterado", () => {

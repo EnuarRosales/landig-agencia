@@ -136,6 +136,18 @@ export class TotpCryptoService {
       appLogger.error(`[TotpCryptoService.getKey] Error al leer archivo de secreto: ${secretPath}`, err);
     }
 
+    // 3. Variable de entorno directa (TOTP_KEY_<ID> o TOTP_KEY)
+    const envKeyName = `TOTP_KEY_${keyId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+    const defaultKeyId = process.env.TOTP_ACTIVE_KEY_ID || "k1";
+    const envKeyValue =
+      process.env[envKeyName] ||
+      (keyId === defaultKeyId ? process.env.TOTP_KEY : undefined);
+    if (envKeyValue && envKeyValue.trim().length > 0) {
+      const parsedKey = this.parseKey(envKeyValue.trim());
+      this.keys.set(keyId, parsedKey);
+      return parsedKey;
+    }
+
     throw new TotpKeyNotFoundError(keyId);
   }
 

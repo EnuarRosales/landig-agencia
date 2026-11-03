@@ -1,4 +1,4 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, inArray, isNull } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { platformUserRoles, rolePermissions } from "../db/schemas";
 import { ok, err, type Result } from "../types/result";
@@ -50,7 +50,7 @@ export async function fetchUserActivePlatformRoles(userId: string): Promise<stri
       .where(
         and(
           eq(platformUserRoles.userId, userId),
-          sql`${platformUserRoles.revokedAt} IS NULL`,
+          isNull(platformUserRoles.revokedAt),
         ),
       );
     return rows.map((r) => r.role);
@@ -77,7 +77,12 @@ export async function fetchRolePermissionsForUser(
     const rows = await db
       .select({ roleKey: rolePermissions.roleKey, permissionKey: rolePermissions.permissionKey })
       .from(rolePermissions)
-      .where(and(eq(rolePermissions.granted, true), sql`${rolePermissions.roleKey} IN (${roles.map((r) => `'${r}'`).join(", ")})`));
+      .where(
+        and(
+          eq(rolePermissions.granted, true),
+          inArray(rolePermissions.roleKey, roles),
+        ),
+      );
 
     const map = new Map<string, Set<string>>();
     for (const row of rows) {

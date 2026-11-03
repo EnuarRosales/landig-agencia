@@ -68,6 +68,7 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
   const [testForm, setTestForm] = useState({
     recipient: "soporte@mocter.co",
   });
+  const [testError, setTestError] = useState<string | null>(null);
 
   async function reloadData() {
     try {
@@ -283,7 +284,7 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => setTestModalOpen(true)}
+                onClick={() => { setTestError(null); setTestModalOpen(true); }}
                 className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] transition-colors hover:bg-[var(--dsn-surface-secondary)]"
               >
                 <Send className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
@@ -1168,6 +1169,12 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
                 </p>
               </div>
 
+              {testError && (
+                <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-3 text-red-400 text-xs mb-2">
+                  {testError}
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-2 border-t border-[var(--dsn-border)] pt-4">
                 <button
                   type="button"
@@ -1178,14 +1185,34 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setFeedback({
-                      type: "success",
-                      message: `Prueba de conexión exitosa con ${data.provider?.host}:${data.provider?.port}. Correo de prueba enrutado a ${testForm.recipient}.`,
-                    });
-                    setTestModalOpen(false);
+                  disabled={loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    setFeedback(null);
+                    setTestError(null);
+                    try {
+                      const res = await fetch("/api/admin/notifications/test-send", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ to: testForm.recipient }),
+                      });
+                      const json = await res.json();
+                      if (!res.ok || !json.ok) {
+                        throw new Error(json.error || "Fallo el envío de prueba");
+                      }
+                      setFeedback({
+                        type: "success",
+                        message: `Correo de prueba enviado a ${testForm.recipient} (id: ${json.messageId}).`,
+                      });
+                      setTestModalOpen(false);
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : String(e);
+                      setTestError(msg);
+                    } finally {
+                      setLoading(false);
+                    }
                   }}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] active:scale-95 shadow-xs"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] active:scale-95 shadow-xs disabled:opacity-50"
                 >
                   <Send className="h-3.5 w-3.5" />
                   <span>Enviar Correo De Prueba</span>

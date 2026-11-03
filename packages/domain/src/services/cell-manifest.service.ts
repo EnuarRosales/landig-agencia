@@ -42,6 +42,7 @@ export class CellManifestService {
         cell.cellSecretsCiphertext,
         cell.id,
         cell.cellSecretsKeyId,
+        cell.code,
       );
     } catch (err) {
       appLogger.error(`[CellManifestService.generateManifest] Error al descifrar secretos para celda ${cell.code}`, err);

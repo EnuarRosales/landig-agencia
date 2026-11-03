@@ -13,6 +13,7 @@ import {
   emailSenders,
   emailEvents,
   emailTemplates,
+  emailDeliveries,
   aiProviders,
   aiModels,
   botTones,
@@ -41,7 +42,7 @@ import { WhiteLabelService } from "./white-label.service";
 import { INITIAL_AI_PROVIDERS, INITIAL_BOT_DEFAULTS } from "./bot-catalog.seed";
 import { INITIAL_PROMPT_BLOCKS } from "./prompt-blocks.seed";
 import { INITIAL_AI_ASSIST_FIELDS, INITIAL_AI_ASSIST_PROMPTS } from "./ai-assist-catalog.seed";
-import { createCipheriv, randomBytes, createHash } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, createHash, randomUUID } from "node:crypto";
 import { cellSecretsCryptoService } from "./cell-secrets.service";
 import { authorizeCellProvision } from "./cell-authorization.service";
 
@@ -219,12 +220,14 @@ export async function createAdminCell(input: CreateAdminCellInput): Promise<Resu
 
     const db = getDb();
     const operator = input.actorUserId;
+    const cellId = randomUUID();
 
-    const payload = cellSecretsCryptoService.generateAndEncrypt(code);
+    const payload = cellSecretsCryptoService.generateAndEncrypt(cellId);
 
     const [row] = await db
       .insert(cells)
       .values({
+        id: cellId,
         code,
         tier: input.tier || "standard",
         topologyType: input.topologyType || "remote_vps",
@@ -933,13 +936,170 @@ function encryptSmtpSecret(providerName: string, plainSecret: string): { ciphert
     .digest();
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", masterKey, iv);
-  cipher.setAAD(Buffer.from(`smtp_provider:${providerName}:k1`, "utf8"));
+  cipher.setAAD(Buffer.from("smtp_provider:k1", "utf8"));
   const encrypted = Buffer.concat([cipher.update(plainSecret, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return {
     ciphertext: Buffer.concat([iv, tag, encrypted]),
     keyId: "k1",
   };
+}
+
+function decryptSmtpSecret(providerName: string, ciphertext: Buffer, keyId: string): string {
+  const masterKey = createHash("sha256")
+    .update(process.env.ENCRYPTION_KEY || process.env.CHATWOOT_SSO_SECRET || "mocter-saas-platform-secure-key-32b")
+    .digest();
+  const iv = ciphertext.subarray(0, 12);
+  const tag = ciphertext.subarray(12, 28);
+  const enc = ciphertext.subarray(28);
+  const aads = [
+    Buffer.from("smtp_provider:k1", "utf8"),
+    Buffer.from(`smtp_provider:${providerName}:k1`, "utf8"),
+    Buffer.from(`smtp_provider:${providerName}:${keyId}`, "utf8"),
+  ];
+  for (const aad of aads) {
+    try {
+      const decipher = createDecipheriv("aes-256-gcm", masterKey, iv);
+      decipher.setAAD(aad);
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
+    } catch {
+      // try next
+    }
+  }
+  throw new Error("No se pudo descifrar la contraseña SMTP");
+}
+
+export interface ActiveSmtpConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password: string;
+  from: string;
+}
+
+/**
+ * Obtiene la configuración SMTP activa desde la base de datos (admin.email_provider_configs).
+ * No usa variables de entorno para host/user/password.
+ */
+export async function processPendingEmailDeliveries(limit: number = 50): Promise<{ processed: number; sent: number; failed: number }> {
+  const db = getDb();
+  const cfg = await getActiveSmtpConfig();
+  if (!cfg || !cfg.host || !cfg.user) {
+    return { processed: 0, sent: 0, failed: 0 };
+  }
+  const nodemailer = await import("nodemailer");
+  const transporter = nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure || cfg.port === 465,
+    auth: { user: cfg.user, pass: cfg.password },
+    tls: { rejectUnauthorized: false },
+  });
+
+  const pending = await db
+    .select()
+    .from(emailDeliveries)
+    .where(
+      // status in queued/published/failed and attempts < 3
+      sql`${emailDeliveries.status} IN ('queued','published','failed') AND ${emailDeliveries.attempts} < 3`
+    )
+    .limit(limit);
+
+  let sent = 0;
+  let failed = 0;
+  for (const d of pending) {
+    try {
+      await db.update(emailDeliveries).set({ status: "sending", attempts: d.attempts + 1 }).where(eq(emailDeliveries.id, d.id));
+      const senderRows = await db.select().from(emailSenders).where(eq(emailSenders.id, d.senderId));
+      const sender = senderRows[0];
+      const fromEmail = sender?.fromEmail || cfg.from;
+      const fromName = sender?.fromName || "Mocter";
+      const info = await transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to: d.recipient,
+        subject: d.renderedSubject,
+        html: d.renderedHtml,
+      });
+      await db.update(emailDeliveries).set({
+        status: "sent",
+        sentAt: new Date(),
+        providerMessageId: info.messageId || null,
+        lastError: null,
+      }).where(eq(emailDeliveries.id, d.id));
+      sent++;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await db.update(emailDeliveries).set({
+        status: d.attempts + 1 >= 3 ? "dead" : "failed",
+        lastError: msg,
+      }).where(eq(emailDeliveries.id, d.id));
+      failed++;
+    }
+  }
+  return { processed: pending.length, sent, failed };
+}
+
+export async function sendTestEmail(to: string): Promise<{ messageId: string | null }> {
+  const cfg = await getActiveSmtpConfig();
+  if (!cfg || !cfg.host || !cfg.user) {
+    throw new Error("SMTP no configurado en BD (host/usuario vacíos)");
+  }
+  if (!cfg.password) {
+    throw new Error("La contraseña SMTP no está configurada o no pudo descifrarse. Re-guardá el proveedor con la contraseña en /admin/settings/notifications.");
+  }
+  const nodemailer = await import("nodemailer");
+  const transporter = nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure || cfg.port === 465,
+    auth: { user: cfg.user, pass: cfg.password },
+    tls: { rejectUnauthorized: false },
+  });
+  const info = await transporter.sendMail({
+    from: `"Mocter" <${cfg.from || cfg.user}>`,
+    to,
+    subject: "Prueba de envío de correo - Mocter",
+    text: "Este es un correo de prueba enviado desde el backoffice de Mocter.",
+    html: "<p>Este es un correo de prueba enviado desde el backoffice de Mocter.</p>",
+  });
+  return { messageId: info.messageId || null };
+}
+
+export async function getActiveSmtpConfig(): Promise<ActiveSmtpConfig | null> {
+  try {
+    const db = getDb();
+    const providers = await db.select().from(emailProviderConfigs);
+    const active = providers.find((p) => p.status === "active") || providers[0];
+    if (!active) return null;
+    let password = "";
+    if (active.passwordCiphertext && active.keyId) {
+      try {
+        password = decryptSmtpSecret(active.name, Buffer.from(active.passwordCiphertext), active.keyId);
+      } catch (e) {
+        // fallback: maybe stored as buffer already
+        try {
+          password = decryptSmtpSecret(active.name, active.passwordCiphertext as unknown as Buffer, active.keyId);
+        } catch {
+          password = "";
+        }
+      }
+    }
+    const senders = await db.select().from(emailSenders);
+    const defaultSender = senders.find((s) => s.isDefault && s.status === "active") || senders.find((s) => s.status === "active");
+    const from = defaultSender?.fromEmail || active.username || "";
+    return {
+      host: active.host,
+      port: active.port,
+      secure: active.secure,
+      user: active.username || "",
+      password,
+      from,
+    };
+  } catch (error) {
+    return null;
+  }
 }
 
 const CANONICAL_TEMPLATES_SEED = [

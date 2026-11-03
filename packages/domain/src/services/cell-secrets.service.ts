@@ -137,6 +137,18 @@ export class CellSecretsCryptoService {
       appLogger.error(`[CellSecretsCryptoService.getKey] Error al leer archivo de secreto: ${secretPath}`, err);
     }
 
+    // 2. Variable de entorno directa (CELL_SECRETS_KEY_<ID> o CELL_SECRETS_KEY)
+    const envKeyName = `CELL_SECRETS_KEY_${keyId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+    const defaultKeyId = process.env.CELL_SECRETS_ACTIVE_KEY_ID || "k1";
+    const envKeyValue =
+      process.env[envKeyName] ||
+      (keyId === defaultKeyId ? process.env.CELL_SECRETS_KEY : undefined);
+    if (envKeyValue && envKeyValue.trim().length > 0) {
+      const parsedKey = this.parseKey(envKeyValue.trim());
+      this.keys.set(keyId, parsedKey);
+      return parsedKey;
+    }
+
     throw new CellSecretsKeyNotFoundError(keyId);
   }
 
@@ -179,25 +191,44 @@ export class CellSecretsCryptoService {
 
   /**
    * Descifra un paquete de secretos validando AAD y tag de autenticación.
+   * Admite opcionalmente un `fallbackCellId` (ej. `cell.code`) para celdas históricas cuyo AAD se vinculó al slug.
    */
-  decryptBundle(ciphertext: Buffer, cellId: string, keyId: string): CellSecretsBundle {
+  decryptBundle(
+    ciphertext: Buffer,
+    cellId: string,
+    keyId: string,
+    fallbackCellId?: string,
+  ): CellSecretsBundle {
     if (ciphertext.length < 28) {
-      throw new CellSecretsDecryptionError("Ciphertext de secretos celulares corrupto o con longitud insuficiente (< 28 bytes).");
+      throw new CellSecretsDecryptionError(
+        "Ciphertext de secretos celulares corrupto o con longitud insuficiente (< 28 bytes).",
+      );
     }
 
     const key = this.getKey(keyId);
     const nonce = ciphertext.subarray(0, 12);
     const tag = ciphertext.subarray(12, 28);
     const encrypted = ciphertext.subarray(28);
-    const aad = Buffer.from(`${cellId}:cell-secrets`, "utf-8");
 
-    try {
+    const tryDecrypt = (id: string): CellSecretsBundle => {
+      const aad = Buffer.from(`${id}:cell-secrets`, "utf-8");
       const decipher = crypto.createDecipheriv("aes-256-gcm", key, nonce);
       decipher.setAAD(aad);
       decipher.setAuthTag(tag);
       const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
       return JSON.parse(decrypted.toString("utf-8")) as CellSecretsBundle;
+    };
+
+    try {
+      return tryDecrypt(cellId);
     } catch (error) {
+      if (fallbackCellId && fallbackCellId !== cellId) {
+        try {
+          return tryDecrypt(fallbackCellId);
+        } catch {
+          // El fallback también falló, se reporta el error primario
+        }
+      }
       throw new CellSecretsDecryptionError(
         `Fallo al descifrar secretos de celda "${cellId}" con clave "${keyId}". Datos alterados, celda incorrecta o clave inválida.`,
         { cause: error },

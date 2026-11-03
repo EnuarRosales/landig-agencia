@@ -6,7 +6,7 @@ import { locales } from "@/i18n/routing";
 import { FloatingBackground } from "@/components/sections/floating-background";
 import { LoginView } from "@/components/auth";
 import { authService } from "@mocter/domain";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 export const instant = false;
 
@@ -103,6 +103,26 @@ export default async function LoginPage({ params, searchParams }: Props) {
                   {locale === "es"
                     ? "Tu sesión ha expirado por inactividad. Por favor, ingresa tus credenciales para continuar."
                     : "Your session has expired due to inactivity. Please sign in again to continue."}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Banner HUD de sesión cerrada voluntariamente */}
+          {reason === "logged_out" && (
+            <div
+              role="alert"
+              className="mb-6 flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-emerald-200 backdrop-blur-sm"
+            >
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+              <div className="text-xs leading-relaxed">
+                <p className="font-semibold text-emerald-300">
+                  {locale === "es" ? "Sesión Finalizada" : "Signed Out Successfully"}
+                </p>
+                <p className="mt-0.5 text-emerald-200/80">
+                  {locale === "es"
+                    ? "Has cerrado tu sesión administrativa de manera segura. ¡Hasta pronto!"
+                    : "You have signed out of your administrative session safely. See you soon!"}
                 </p>
               </div>
             </div>

@@ -265,3 +265,105 @@ export function createDefaultAuthMailer(): IAuthMailer {
     },
   };
 }
+
+import { getActiveSmtpConfig } from "../services/admin-dashboard.service";
+
+/**
+ * Despachador de auth que obtiene la configuración SMTP desde la base de datos
+ * (admin.email_provider_configs / email_senders), sin usar variables de entorno.
+ */
+export class DbBackedAuthMailer implements IAuthMailer {
+  private async getTransporter(): Promise<{ transporter: any; from: string } | null> {
+    const cfg = await getActiveSmtpConfig();
+    if (!cfg || !cfg.host || !cfg.user) return null;
+    const nodemailer = await import("nodemailer");
+    const transporter = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure || cfg.port === 465,
+      auth: { user: cfg.user, pass: cfg.password },
+        tls: { rejectUnauthorized: false },
+    });
+    return { transporter, from: cfg.from || cfg.user };
+  }
+
+  async sendVerificationEmail(to: string, rawToken: string, name?: string): Promise<void> {
+    const info = await this.getTransporter();
+    if (!info) {
+      // fallback log
+      const { appLogger } = await import("../utils/logger");
+      appLogger.info("[AuthMailer] SMTP de BD no configurado, omitiendo envío", { to });
+      return;
+    }
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
+    const verificationUrl = `${baseUrl.replace(/\/+$/, "")}/auth/email/verify/confirm?token=${rawToken}`;
+    const recipientName = name ? name.trim() : "Estimado(a) usuario(a)";
+    try {
+      await info.transporter.sendMail({
+        from: `"Mocter" <${info.from}>`,
+        to,
+        subject: "Verifica tu cuenta en Mocter",
+        text: `Hola ${recipientName}, verifica tu cuenta: ${verificationUrl}`,
+        html: `<p>Hola ${recipientName}, verifica tu cuenta en <a href="${verificationUrl}">este enlace</a>.</p>`,
+      });
+    } catch (e) {
+      const { appLogger } = await import("../utils/logger");
+      appLogger.error("[AuthMailer] Error enviando verificación", e);
+    }
+  }
+
+  async sendPasswordSetupEmail(to: string, rawToken: string, name?: string): Promise<void> {
+    const info = await this.getTransporter();
+    if (!info) return;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
+    const setupUrl = `${baseUrl.replace(/\/+$/, "")}/auth/password/setup?token=${rawToken}`;
+    try {
+      await info.transporter.sendMail({
+        from: `"Mocter" <${info.from}>`,
+        to,
+        subject: "Establece tu contraseña en Mocter",
+        text: `Hola ${name || ""}, establece tu contraseña: ${setupUrl}`,
+        html: `<p>Hola ${name || ""}, establece tu contraseña en <a href="${setupUrl}">este enlace</a>.</p>`,
+      });
+    } catch (e) {
+      const { appLogger } = await import("../utils/logger");
+      appLogger.error("[AuthMailer] Error enviando setup", e);
+    }
+  }
+
+  async sendPasswordResetEmail(to: string, rawToken: string, name?: string): Promise<void> {
+    const info = await this.getTransporter();
+    if (!info) return;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
+    const resetUrl = `${baseUrl.replace(/\/+$/, "")}/auth/password/reset?token=${rawToken}`;
+    try {
+      await info.transporter.sendMail({
+        from: `"Mocter" <${info.from}>`,
+        to,
+        subject: "Restablece tu contraseña en Mocter",
+        text: `Hola ${name || ""}, restablece tu contraseña: ${resetUrl}`,
+        html: `<p>Hola ${name || ""}, restablece tu contraseña en <a href="${resetUrl}">este enlace</a>.</p>`,
+      });
+    } catch (e) {
+      const { appLogger } = await import("../utils/logger");
+      appLogger.error("[AuthMailer] Error enviando reset", e);
+    }
+  }
+
+  async sendAccountAlreadyExistsEmail(to: string, name?: string): Promise<void> {
+    const info = await this.getTransporter();
+    if (!info) return;
+    try {
+      await info.transporter.sendMail({
+        from: `"Mocter" <${info.from}>`,
+        to,
+        subject: "Tu cuenta en Mocter",
+        text: `Hola ${name || ""}, ya existe una cuenta con este correo.`,
+        html: `<p>Hola ${name || ""}, ya existe una cuenta con este correo.</p>`,
+      });
+    } catch (e) {
+      const { appLogger } = await import("../utils/logger");
+      appLogger.error("[AuthMailer] Error enviando already exists", e);
+    }
+  }
+}

@@ -49,6 +49,20 @@ export function handleUnauthorized(returnToUrl?: string): void {
 }
 
 /**
+ * Pone a cero las cookies de sesión y redirige al portal de login tras un cierre voluntario.
+ */
+export function handleLogoutRedirect(): void {
+  if (typeof window === "undefined") return;
+
+  // Limpiar cookies de sesión en el cliente
+  document.cookie = "mocter_sid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0;";
+  document.cookie = "__Host-mocter_sid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0;";
+
+  const loginBase = resolveLoginBase();
+  window.location.href = `${loginBase.replace(/\/$/, "")}/es/login?reason=logged_out`;
+}
+
+/**
  * Wrapper sobre fetch nativo que intercepta errores 401 Unauthorized y ejecuta
  * la política de expiración de sesión automáticamente.
  *

@@ -13,21 +13,26 @@ import {
   Gift,
   BarChart3,
   Server,
-  Layers,
   Mail,
   Palette,
   Paintbrush,
   Menu,
   X,
-  ShieldCheck,
   Activity,
+  User as UserIcon,
+  LogOut,
+  ChevronUp,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 import { BrandLogo } from "./brand-logo";
 import { getAdminDictionary } from "@/lib/i18n";
+import { UserProfileModal, type CurrentUserDto } from "./user-profile-modal";
+import { ConfirmationModal } from "./confirmation-modal";
+import { handleLogoutRedirect } from "@/lib/api-client";
 
 interface AdminShellProps {
   children: React.ReactNode;
+  currentUser?: CurrentUserDto;
 }
 
 interface NavItem {
@@ -46,21 +51,53 @@ interface NavItem {
  * - Escritorio: Barra lateral (sidebar) fija de 260px que NUNCA se desmonta entre transiciones de ruta,
  *   garantizando navegación instantánea tipo SPA idéntica a `<router-outlet>` de Angular.
  * - Iconografía profesional con Lucide Icons y resaltado de ruta activa con token de acento.
+ * - Ficha de Perfil HUD y Menú de Cierre de Sesión interactivo con modales de confirmación accesibles (Regla 4.17).
  */
-export function AdminShell({ children }: AdminShellProps) {
+export function AdminShell({ children, currentUser }: AdminShellProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profilePopoverOpen, setProfilePopoverOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+
   const dict = getAdminDictionary("es").shell;
 
-  // Cerrar el drawer móvil al cambiar de ruta
+  const user: CurrentUserDto = currentUser || {
+    id: "01a19874-1077-744c-8514-d4c990cd7259",
+    email: "soporte@mocter.co",
+    displayName: "Platform Owner",
+    role: "platform_owner",
+    status: "active",
+  };
+
+  async function handleConfirmLogout() {
+    setLogoutLoading(true);
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // Ignorar fallo de red para forzar redirección
+    } finally {
+      handleLogoutRedirect();
+    }
+  }
+
+  // Cerrar el drawer móvil y popovers al cambiar de ruta
   useEffect(() => {
     setMobileMenuOpen(false);
+    setProfilePopoverOpen(false);
   }, [pathname]);
 
-  // Cerrar el drawer con la tecla Escape
+  // Cerrar el drawer o popover con la tecla Escape
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setMobileMenuOpen(false);
+      if (e.key === "Escape") {
+        setMobileMenuOpen(false);
+        setProfilePopoverOpen(false);
+      }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -90,14 +127,24 @@ export function AdminShell({ children }: AdminShellProps) {
       icon: Inbox,
     },
     {
-      href: "/admin/conversations",
-      label: dict.navConversations,
-      icon: MessageSquare,
-    },
-    {
       href: "/admin/orders",
       label: dict.navOrders || "Suscripciones y Ventas",
       icon: CreditCard,
+    },
+    {
+      href: "/admin/billing",
+      label: dict.navBilling || "Facturación y Planes",
+      icon: CreditCard,
+    },
+    {
+      href: "/admin/cells",
+      label: dict.navCells || "Celdas de Datos",
+      icon: Server,
+    },
+    {
+      href: "/admin/conversations",
+      label: dict.navConversations,
+      icon: MessageSquare,
     },
     {
       href: "/admin/tenants",
@@ -118,21 +165,6 @@ export function AdminShell({ children }: AdminShellProps) {
       href: "/admin/reports",
       label: dict.navReports || "Informes y Analítica",
       icon: BarChart3,
-    },
-    {
-      href: "/admin/cells",
-      label: dict.navCells || "Celdas de Datos",
-      icon: Server,
-    },
-    {
-      href: "/admin/billing",
-      label: dict.navBilling || "Facturación y Planes",
-      icon: CreditCard,
-    },
-    {
-      href: "/admin/users",
-      label: dict.navUsersRoles || "Usuarios y Roles",
-      icon: ShieldCheck,
     },
     {
       href: "/admin/settings/notifications",
@@ -258,12 +290,79 @@ export function AdminShell({ children }: AdminShellProps) {
                 <span className="text-xs text-[var(--dsn-text-secondary)]">Tema visual</span>
                 <ThemeToggle />
               </div>
-              <div className="flex items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-2 text-xs">
-                <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
-                <div className="truncate">
-                  <p className="font-semibold text-[var(--dsn-text)] truncate">Platform Owner</p>
-                  <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono">Router Global</p>
-                </div>
+
+              {/* Menú de usuario en drawer móvil */}
+              <div className="relative">
+                {profilePopoverOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setProfilePopoverOpen(false)}
+                      aria-hidden="true"
+                    />
+                    <div
+                      role="menu"
+                      aria-label="Menú de cuenta de operador"
+                      className="absolute bottom-full mb-2 left-0 right-0 z-50 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
+                    >
+                      <div className="px-2.5 py-1.5 border-b border-[var(--dsn-border)]/60 mb-1">
+                        <p className="text-[11px] font-semibold text-[var(--dsn-text)] truncate">
+                          {user.displayName || "Platform Owner"}
+                        </p>
+                        <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
+                          {user.email}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          setProfilePopoverOpen(false);
+                          setProfileModalOpen(true);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors"
+                      >
+                        <UserIcon className="h-4 w-4 text-[var(--dsn-accent)]" />
+                        <span>Ficha De Perfil</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileMenuOpen(false);
+                          setProfilePopoverOpen(false);
+                          setLogoutModalOpen(true);
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
+                      >
+                        <LogOut className="h-4 w-4 text-rose-400" />
+                        <span>Cerrar Sesión</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setProfilePopoverOpen((prev) => !prev)}
+                  aria-expanded={profilePopoverOpen}
+                  aria-haspopup="menu"
+                  className="w-full flex items-center justify-between rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-2.5 text-xs text-left transition-colors hover:bg-[var(--dsn-surface-secondary)] hover:border-[var(--dsn-border-strong)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)]"
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] font-semibold text-xs border border-[var(--dsn-accent)]/40">
+                      {(user.displayName || user.email || "PO").slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="truncate">
+                      <p className="font-semibold text-[var(--dsn-text)] truncate">{user.displayName || "Platform Owner"}</p>
+                      <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">{user.email}</p>
+                    </div>
+                  </div>
+                  <ChevronUp
+                    className={`h-4 w-4 text-[var(--dsn-text-secondary)] transition-transform duration-200 shrink-0 ${
+                      profilePopoverOpen ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
               </div>
             </div>
           </div>
@@ -328,12 +427,76 @@ export function AdminShell({ children }: AdminShellProps) {
             <ThemeToggle />
           </div>
 
-          <div className="flex items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-2.5 text-xs">
-            <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
-            <div className="truncate">
-              <p className="font-semibold text-[var(--dsn-text)] truncate">Platform Owner</p>
-              <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono">soporte@mocter.co</p>
-            </div>
+          {/* Menú de cuenta de operador desktop con popover */}
+          <div className="relative">
+            {profilePopoverOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setProfilePopoverOpen(false)}
+                  aria-hidden="true"
+                />
+                <div
+                  role="menu"
+                  aria-label="Menú de cuenta de operador"
+                  className="absolute bottom-full mb-2 left-0 right-0 z-50 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <div className="px-2.5 py-1.5 border-b border-[var(--dsn-border)]/60 mb-1">
+                    <p className="text-[11px] font-semibold text-[var(--dsn-text)] truncate">
+                      {user.displayName || "Platform Owner"}
+                    </p>
+                    <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
+                      {user.email}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfilePopoverOpen(false);
+                      setProfileModalOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors"
+                  >
+                    <UserIcon className="h-4 w-4 text-[var(--dsn-accent)]" />
+                    <span>Ficha De Perfil</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfilePopoverOpen(false);
+                      setLogoutModalOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
+                  >
+                    <LogOut className="h-4 w-4 text-rose-400" />
+                    <span>Cerrar Sesión</span>
+                  </button>
+                </div>
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setProfilePopoverOpen((prev) => !prev)}
+              aria-expanded={profilePopoverOpen}
+              aria-haspopup="menu"
+              className="w-full flex items-center justify-between rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-2 text-xs text-left transition-colors hover:bg-[var(--dsn-surface-secondary)] hover:border-[var(--dsn-border-strong)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)]"
+            >
+              <div className="flex items-center gap-2.5 truncate">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] font-semibold text-xs border border-[var(--dsn-accent)]/40">
+                  {(user.displayName || user.email || "PO").slice(0, 2).toUpperCase()}
+                </div>
+                <div className="truncate">
+                  <p className="font-semibold text-[var(--dsn-text)] truncate">{user.displayName || "Platform Owner"}</p>
+                  <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">{user.email}</p>
+                </div>
+              </div>
+              <ChevronUp
+                className={`h-4 w-4 text-[var(--dsn-text-secondary)] transition-transform duration-200 shrink-0 ${
+                  profilePopoverOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
           </div>
         </div>
       </aside>
@@ -346,7 +509,35 @@ export function AdminShell({ children }: AdminShellProps) {
       <main className="flex-1 min-w-0 min-h-dvh bg-[var(--dsn-background)] text-[var(--dsn-text)]">
         {children}
       </main>
+
+      {/* ─────────────────────────────────────────────────────────────
+          5. MODALES ACCESIBLES: FICHA DE PERFIL Y CONFIRMACIÓN DE LOGOUT (Regla 4.17)
+         ───────────────────────────────────────────────────────────── */}
+      <UserProfileModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        user={user}
+      />
+
+      <ConfirmationModal
+        isOpen={logoutModalOpen}
+        onClose={() => setLogoutModalOpen(false)}
+        onConfirm={handleConfirmLogout}
+        title="Cerrar Sesión En Mocter"
+        subtitle="Finalizar la sesión operativa del operador en mocter-admin."
+        variant="warning"
+        confirmText="Cerrar Sesión Definitivamente"
+        confirmLoadingText="Cerrando Sesión..."
+        cancelText="Permanecer Conectado"
+        loading={logoutLoading}
+        details={[
+          { label: "Operador", value: user.displayName || "Platform Owner" },
+          { label: "Correo Electrónico", value: user.email, mono: true },
+          { label: "Rol De Plataforma", value: user.role, mono: true },
+        ]}
+        warningTitle="Finalización De Sesión Segura"
+        warningMessage="Se revocará el token de autenticación del servidor y deberás volver a ingresar credenciales para acceder al backoffice."
+      />
     </div>
   );
 }
-

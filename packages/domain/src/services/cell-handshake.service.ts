@@ -255,6 +255,7 @@ export class CellHandshakeService {
         cell.cellSecretsCiphertext,
         cell.id,
         cell.cellSecretsKeyId,
+        cell.code,
       );
     } catch (err) {
       const errorMsg = `Fallo crítico al descifrar el paquete de secretos de la celda ${cell.code}.`;

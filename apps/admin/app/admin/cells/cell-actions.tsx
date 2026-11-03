@@ -68,6 +68,7 @@ async function fetchCsrfToken(apiUrl: string): Promise<string> {
 export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): React.JSX.Element {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [manifestModalOpen, setManifestModalOpen] = useState(false);
+  const [manifestError, setManifestError] = useState<string | null>(null);
   const [handshakeModalOpen, setHandshakeModalOpen] = useState(false);
   const [manifestData, setManifestData] = useState<ManifestData | null>(null);
   const [handshakeResult, setHandshakeResult] = useState<HandshakeResponseData | null>(null);
@@ -212,7 +213,8 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
 
   async function handleLoadManifest() {
     setLoadingAction("manifest");
-    setErrorMsg(null);
+    setManifestError(null);
+    setManifestModalOpen(true);
     try {
       const res = await adminFetch(`${apiUrl}/admin/cells/${cell.id}/manifest`, {
         method: "GET",
@@ -223,11 +225,9 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
         throw new Error(body.error || "No se pudo obtener el manifiesto.");
       }
       setManifestData(body.data);
-      setManifestModalOpen(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al cargar manifiesto.";
-      setErrorMsg(msg);
-      setManifestModalOpen(true);
+      setManifestError(msg);
     } finally {
       setLoadingAction(null);
     }
@@ -281,12 +281,12 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
           <span>Manifiesto</span>
         </button>
 
-        {/* Botón Handshake */}
+        {/* Botón Verificar Conexión / Reverificar */}
         <button
           type="button"
           onClick={handleExecuteHandshake}
           disabled={loadingAction !== null}
-          title="Verificar y Activar Handshake 360°"
+          title={cell.status === "active" ? "Reverificar Conexión (Probes BD y HTTP)" : "Verificar Conexión (Probes BD y HTTP)"}
           className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all border ${
             cell.status === "active"
               ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border-[var(--dsn-accent)]/30 hover:bg-[var(--dsn-accent)]/25"
@@ -294,7 +294,7 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
           }`}
         >
           <RefreshCw className={`h-3 w-3 ${loadingAction === "handshake" ? "animate-spin" : ""}`} />
-          <span>{cell.status === "active" ? "Reverificar" : "Handshake"}</span>
+          <span>{cell.status === "active" ? "Reverificar" : "Verificar Conexión"}</span>
         </button>
 
         {/* Botón Drenar (si está activa) */}
@@ -340,124 +340,146 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
       </div>
 
       {/* Modal de Manifiesto */}
-      {manifestModalOpen && manifestData && (
+      {manifestModalOpen && (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in text-left"
         >
-          <div className="relative w-full max-w-3xl rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl p-6 max-h-[90vh] flex flex-col">
+          <div className="relative w-full max-w-3xl rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl p-6 max-h-[90vh] flex flex-col text-left">
             <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-4 mb-4">
               <div>
                 <h3 className="text-base font-bold text-[var(--dsn-text)] flex items-center gap-2">
                   <FileCode2 className="h-5 w-5 text-[var(--dsn-accent)]" />
-                  Manifiesto De Despliegue · {manifestData.code}
+                  Manifiesto De Despliegue · {cell.code}
                 </h3>
-                <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
-                  Directorio: <code className="font-mono text-[var(--dsn-accent)]">{manifestData.workingDir}</code> · Usuario: <code className="font-mono">{manifestData.deployUser}</code>
-                </p>
+                {manifestData && (
+                  <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
+                    Directorio: <code className="font-mono text-[var(--dsn-accent)]">{manifestData.workingDir}</code> · Usuario: <code className="font-mono">{manifestData.deployUser}</code>
+                  </p>
+                )}
               </div>
               <button
                 type="button"
-                onClick={() => setManifestModalOpen(false)}
-                className="rounded-lg p-1 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
+                onClick={() => {
+                  setManifestModalOpen(false);
+                  setManifestError(null);
+                }}
+                className="rounded-lg p-1 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)] min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Selector de pestañas */}
-            <div className="flex gap-2 border-b border-[var(--dsn-border)] pb-2 mb-4">
-              <button
-                type="button"
-                onClick={() => setActiveTab("compose")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  activeTab === "compose"
-                    ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-                    : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
-                }`}
-              >
-                docker-compose.cell.yml
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("env")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  activeTab === "env"
-                    ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-                    : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
-                }`}
-              >
-                .env.cell
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("instructions")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                  activeTab === "instructions"
-                    ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-                    : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
-                }`}
-              >
-                Instrucciones En Host
-              </button>
-            </div>
-
-            {/* Contenido de la pestaña */}
-            <div className="flex-1 overflow-y-auto space-y-4">
-              {activeTab === "compose" && (
-                <div className="relative">
+            {manifestError ? (
+              <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-4 text-xs text-rose-300">
+                <p className="font-semibold mb-1">Error al cargar el manifiesto de la célula:</p>
+                <p className="font-mono">{manifestError}</p>
+              </div>
+            ) : !manifestData ? (
+              <div className="flex items-center justify-center py-12 gap-3 text-xs text-[var(--dsn-text-secondary)]">
+                <Loader2 className="h-5 w-5 animate-spin text-[var(--dsn-accent)]" />
+                <span>Generando manifiesto y secretos criptográficos...</span>
+              </div>
+            ) : (
+              <>
+                {/* Selector de pestañas */}
+                <div className="flex gap-2 border-b border-[var(--dsn-border)] pb-2 mb-4">
                   <button
                     type="button"
-                    onClick={() => copyToClipboard(manifestData.dockerComposeContent, "compose")}
-                    className="absolute top-2 right-2 inline-flex items-center gap-1 rounded bg-[var(--dsn-surface)]/90 px-2.5 py-1 text-xs font-semibold border border-[var(--dsn-border)] shadow-xs hover:text-[var(--dsn-accent)]"
+                    onClick={() => setActiveTab("compose")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      activeTab === "compose"
+                        ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
+                        : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
+                    }`}
                   >
-                    {copied === "compose" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                    <span>{copied === "compose" ? "Copiado" : "Copiar"}</span>
+                    docker-compose.cell.yml
                   </button>
-                  <pre className="p-4 rounded-lg bg-[var(--dsn-surface-secondary)] border border-[var(--dsn-border)] font-mono text-xs overflow-x-auto text-[var(--dsn-text)] leading-relaxed">
-                    {manifestData.dockerComposeContent}
-                  </pre>
-                </div>
-              )}
-
-              {activeTab === "env" && (
-                <div className="relative">
                   <button
                     type="button"
-                    onClick={() => copyToClipboard(manifestData.envContent, "env")}
-                    className="absolute top-2 right-2 inline-flex items-center gap-1 rounded bg-[var(--dsn-surface)]/90 px-2.5 py-1 text-xs font-semibold border border-[var(--dsn-border)] shadow-xs hover:text-[var(--dsn-accent)]"
+                    onClick={() => setActiveTab("env")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      activeTab === "env"
+                        ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
+                        : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
+                    }`}
                   >
-                    {copied === "env" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                    <span>{copied === "env" ? "Copiado" : "Copiar"}</span>
+                    .env.cell
                   </button>
-                  <pre className="p-4 rounded-lg bg-[var(--dsn-surface-secondary)] border border-[var(--dsn-border)] font-mono text-xs overflow-x-auto text-[var(--dsn-text)] leading-relaxed">
-                    {manifestData.envContent}
-                  </pre>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("instructions")}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      activeTab === "instructions"
+                        ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
+                        : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
+                    }`}
+                  >
+                    Instrucciones En Host
+                  </button>
                 </div>
-              )}
 
-              {activeTab === "instructions" && (
-                <div className="space-y-3 p-2">
-                  <h4 className="text-xs font-bold text-[var(--dsn-text)]">
-                    Pasos De Ejecución En Producción (Usuario deploy:1000):
-                  </h4>
-                  <ol className="list-decimal list-inside space-y-2 text-xs text-[var(--dsn-text-secondary)]">
-                    {manifestData.instructions.map((step: string, idx: number) => (
-                      <li key={idx} className="leading-relaxed">
-                        <span className="text-[var(--dsn-text)]">{step}</span>
-                      </li>
-                    ))}
-                  </ol>
+                {/* Contenido de la pestaña */}
+                <div className="flex-1 overflow-y-auto space-y-4">
+                  {activeTab === "compose" && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(manifestData.dockerComposeContent, "compose")}
+                        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded bg-[var(--dsn-surface)]/90 px-2.5 py-1 text-xs font-semibold border border-[var(--dsn-border)] shadow-xs hover:text-[var(--dsn-accent)]"
+                      >
+                        {copied === "compose" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                        <span>{copied === "compose" ? "Copiado" : "Copiar"}</span>
+                      </button>
+                      <pre className="p-4 rounded-lg bg-[var(--dsn-surface-secondary)] border border-[var(--dsn-border)] font-mono text-xs overflow-x-auto text-[var(--dsn-text)] leading-relaxed">
+                        {manifestData.dockerComposeContent}
+                      </pre>
+                    </div>
+                  )}
+
+                  {activeTab === "env" && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(manifestData.envContent, "env")}
+                        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded bg-[var(--dsn-surface)]/90 px-2.5 py-1 text-xs font-semibold border border-[var(--dsn-border)] shadow-xs hover:text-[var(--dsn-accent)]"
+                      >
+                        {copied === "env" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                        <span>{copied === "env" ? "Copiado" : "Copiar"}</span>
+                      </button>
+                      <pre className="p-4 rounded-lg bg-[var(--dsn-surface-secondary)] border border-[var(--dsn-border)] font-mono text-xs overflow-x-auto text-[var(--dsn-text)] leading-relaxed">
+                        {manifestData.envContent}
+                      </pre>
+                    </div>
+                  )}
+
+                  {activeTab === "instructions" && (
+                    <div className="space-y-3 p-2">
+                      <h4 className="text-xs font-bold text-[var(--dsn-text)]">
+                        Pasos De Ejecución En Producción (Usuario deploy:1000):
+                      </h4>
+                      <ol className="list-decimal list-inside space-y-2 text-xs text-[var(--dsn-text-secondary)]">
+                        {manifestData.instructions.map((step: string, idx: number) => (
+                          <li key={idx} className="leading-relaxed">
+                            <span className="text-[var(--dsn-text)]">{step}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
 
             <div className="flex justify-end pt-4 border-t border-[var(--dsn-border)] mt-4">
               <button
                 type="button"
-                onClick={() => setManifestModalOpen(false)}
-                className="rounded-lg bg-[var(--dsn-surface-secondary)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-border)]"
+                onClick={() => {
+                  setManifestModalOpen(false);
+                  setManifestError(null);
+                }}
+                className="rounded-lg bg-[var(--dsn-surface-secondary)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-border)] min-h-[44px]"
               >
                 Cerrar
               </button>
@@ -466,14 +488,14 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
         </div>
       )}
 
-      {/* Modal de Resultado de Handshake */}
+      {/* Modal de Resultado de Verificación De Conexión */}
       {handshakeModalOpen && (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in text-left"
         >
-          <div className="relative w-full max-w-lg rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl p-6 flex flex-col">
+          <div className="relative w-full max-w-lg rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl p-6 flex flex-col text-left">
             <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-4 mb-4">
               <div className="flex items-center gap-2">
                 {handshakeResult?.ok ? (
@@ -483,7 +505,7 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
                 )}
                 <div>
                   <h3 className="text-sm font-bold text-[var(--dsn-text)]">
-                    {handshakeResult?.ok ? "Handshake Exitoso" : "Fallo De Handshake 360°"}
+                    {handshakeResult?.ok ? "Verificación De Conexión Exitosa" : "Fallo De Verificación De Conexión"}
                   </h3>
                   <p className="text-xs text-[var(--dsn-text-secondary)]">
                     Célula: {cell.code} ({cell.topologyType})
@@ -493,7 +515,7 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
               <button
                 type="button"
                 onClick={() => setHandshakeModalOpen(false)}
-                className="rounded-lg p-1 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
+                className="rounded-lg p-1 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)] min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -545,7 +567,7 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
               <button
                 type="button"
                 onClick={() => setHandshakeModalOpen(false)}
-                className="rounded-lg bg-[var(--dsn-surface-secondary)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-border)]"
+                className="rounded-lg bg-[var(--dsn-surface-secondary)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-border)] min-h-[44px]"
               >
                 Aceptar
               </button>
@@ -559,9 +581,9 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in text-left"
         >
-          <div className="relative w-full max-w-2xl rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl max-h-[90vh] flex flex-col overflow-y-auto">
+          <div className="relative w-full max-w-2xl rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl max-h-[90vh] flex flex-col overflow-y-auto text-left">
             <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3 mb-4">
               <div className="flex items-center gap-2">
                 <Pencil className="h-5 w-5 text-[var(--dsn-accent)]" />
@@ -591,7 +613,25 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
             )}
 
             <form onSubmit={handleSaveEdit} className="space-y-4">
+              {/* Fila 1: Código De La Célula | Nivel De Servicio */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="edit-cell-code"
+                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                  >
+                    Código De La Célula
+                  </label>
+                  <input
+                    id="edit-cell-code"
+                    type="text"
+                    disabled
+                    readOnly
+                    value={cell.code}
+                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text-secondary)] opacity-70 cursor-not-allowed focus:outline-none font-mono"
+                  />
+                </div>
+
                 <div>
                   <label
                     htmlFor="edit-cell-tier"
@@ -609,7 +649,10 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
                     <option value="dedicated">Dedicado (Inquilino Enterprise VIP)</option>
                   </select>
                 </div>
+              </div>
 
+              {/* Fila 2: Topología De Despliegue | URL De La Aplicación Celular */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label
                     htmlFor="edit-cell-topology"
@@ -632,28 +675,29 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
                     <option value="local_compose">Docker Compose Local (Emulación)</option>
                   </select>
                 </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-cell-app-url"
+                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                  >
+                    URL De La Aplicación Celular
+                  </label>
+                  <input
+                    id="edit-cell-app-url"
+                    type="text"
+                    required
+                    placeholder="ej. http://10.0.0.2:3004 o http://localhost:3004"
+                    value={editFormData.appUrl}
+                    onChange={(e) => setEditFormData({ ...editFormData, appUrl: e.target.value })}
+                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label
-                  htmlFor="edit-cell-app-url"
-                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                >
-                  URL De La Aplicación Celular
-                </label>
-                <input
-                  id="edit-cell-app-url"
-                  type="text"
-                  required
-                  placeholder="ej. http://10.0.0.2:3004 o https://cell-01.mocter.co"
-                  value={editFormData.appUrl}
-                  onChange={(e) => setEditFormData({ ...editFormData, appUrl: e.target.value })}
-                  className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                />
-              </div>
-
+              {/* Fila 3: Host De PgBouncer O PostgreSQL | Puerto De Conexión | Nombre De La Base De Datos */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="sm:col-span-2">
+                <div>
                   <label
                     htmlFor="edit-cell-host"
                     className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
@@ -664,11 +708,13 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
                     id="edit-cell-host"
                     type="text"
                     required
+                    placeholder="ej. pg-cell o 10.0.0.2"
                     value={editFormData.pgbouncerHost}
                     onChange={(e) => setEditFormData({ ...editFormData, pgbouncerHost: e.target.value })}
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
                   />
                 </div>
+
                 <div>
                   <label
                     htmlFor="edit-cell-port"
@@ -685,44 +731,27 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label
-                    htmlFor="edit-cell-db"
+                    htmlFor="edit-cell-dbname"
                     className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
                   >
                     Nombre De La Base De Datos
                   </label>
                   <input
-                    id="edit-cell-db"
+                    id="edit-cell-dbname"
                     type="text"
                     required
+                    placeholder="ej. mocter_cell_01"
                     value={editFormData.databaseName}
                     onChange={(e) => setEditFormData({ ...editFormData, databaseName: e.target.value })}
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
                   />
                 </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-cell-region"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Región Geográfica De Despliegue
-                  </label>
-                  <input
-                    id="edit-cell-region"
-                    type="text"
-                    required
-                    value={editFormData.region}
-                    onChange={(e) => setEditFormData({ ...editFormData, region: e.target.value })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                </div>
               </div>
 
+              {/* Fila 4: Dirección IP Privada (Opcional) | Dirección IP Pública (Opcional) */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label
@@ -734,6 +763,7 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
                   <input
                     id="edit-cell-private-ip"
                     type="text"
+                    placeholder="ej. 10.0.0.2"
                     value={editFormData.privateIp}
                     onChange={(e) => setEditFormData({ ...editFormData, privateIp: e.target.value })}
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
@@ -750,6 +780,7 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
                   <input
                     id="edit-cell-public-ip"
                     type="text"
+                    placeholder="ej. 198.51.100.2"
                     value={editFormData.publicIp}
                     onChange={(e) => setEditFormData({ ...editFormData, publicIp: e.target.value })}
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
@@ -757,8 +788,49 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="sm:col-span-2">
+              {/* Fila 5: Capacidad Máxima De Inquilinos | Región Geográfica De Despliegue */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="edit-cell-capacity"
+                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                  >
+                    Capacidad Máxima De Inquilinos
+                  </label>
+                  <input
+                    id="edit-cell-capacity"
+                    type="number"
+                    min={cell.currentClients || 1}
+                    max={500}
+                    required
+                    value={editFormData.maxClients}
+                    onChange={(e) => setEditFormData({ ...editFormData, maxClients: Number(e.target.value) })}
+                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-cell-region"
+                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                  >
+                    Región Geográfica De Despliegue
+                  </label>
+                  <input
+                    id="edit-cell-region"
+                    type="text"
+                    required
+                    placeholder="ej. us-east-1 o sa-east-1"
+                    value={editFormData.region}
+                    onChange={(e) => setEditFormData({ ...editFormData, region: e.target.value })}
+                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Fila 6: Directorio De Trabajo Canónico | Usuario De Despliegue */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
                   <label
                     htmlFor="edit-cell-working-dir"
                     className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
@@ -771,25 +843,24 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
                     required
                     value={editFormData.workingDir}
                     onChange={(e) => setEditFormData({ ...editFormData, workingDir: e.target.value })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
                   />
                 </div>
 
                 <div>
                   <label
-                    htmlFor="edit-cell-max-clients"
+                    htmlFor="edit-cell-deploy-user"
                     className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
                   >
-                    Capacidad Máxima
+                    Usuario De Despliegue
                   </label>
                   <input
-                    id="edit-cell-max-clients"
-                    type="number"
-                    required
-                    min={cell.currentClients || 1}
-                    value={editFormData.maxClients}
-                    onChange={(e) => setEditFormData({ ...editFormData, maxClients: Number(e.target.value) })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                    id="edit-cell-deploy-user"
+                    type="text"
+                    disabled
+                    readOnly
+                    value={editFormData.deployUser}
+                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text-secondary)] opacity-70 cursor-not-allowed focus:outline-none font-mono"
                   />
                 </div>
               </div>

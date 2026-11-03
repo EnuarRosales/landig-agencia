@@ -117,14 +117,14 @@ export function ConfirmationModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirmation-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-200 text-left"
       onClick={(e) => {
         if (e.target === e.currentTarget && !loading) {
           onClose();
         }
       }}
     >
-      <div className="w-full max-w-lg rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl">
+      <div className="w-full max-w-lg rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl text-left">
         {/* Encabezado */}
         <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3 mb-4">
           <div className="flex items-center gap-2.5">

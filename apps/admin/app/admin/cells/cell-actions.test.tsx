@@ -53,6 +53,14 @@ describe("apps/admin · CellActions Component", () => {
     expect(screen.getByRole("button", { name: /eliminar/i })).toBeDefined();
   });
 
+  it("renderiza botón 'Verificar Conexión' cuando la célula está en draft o error_connection", () => {
+    const draftCell: AdminCellDto = { ...mockCell, status: "draft" };
+    render(<CellActions cell={draftCell} apiUrl="http://localhost:3001/api" onRefresh={onRefresh} />);
+
+    expect(screen.getByRole("button", { name: /verificar conexión/i })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /reverificar/i })).toBeNull();
+  });
+
   it("abre el modal de confirmación de drenado al presionar Drenar", () => {
     render(<CellActions cell={mockCell} apiUrl="http://localhost:3001/api" onRefresh={onRefresh} />);
 

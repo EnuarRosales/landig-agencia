@@ -79,8 +79,8 @@ export class LogAuthMailer implements IAuthMailer {
   }
 }
 
-import { createDefaultAuthMailer, SmtpAuthMailer } from "./smtp-auth-mailer";
-export { SmtpAuthMailer, createDefaultAuthMailer };
+import { createDefaultAuthMailer, SmtpAuthMailer, DbBackedAuthMailer } from "./smtp-auth-mailer";
+export { SmtpAuthMailer, createDefaultAuthMailer, DbBackedAuthMailer };
 
-/** Instancia predeterminada de {@link IAuthMailer}. */
-export const defaultAuthMailer: IAuthMailer = createDefaultAuthMailer();
+/** Instancia predeterminada de {@link IAuthMailer} que lee SMTP desde la base de datos. */
+export const defaultAuthMailer: IAuthMailer = new DbBackedAuthMailer();

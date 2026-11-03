@@ -83,6 +83,56 @@ describe("DAT-001 §3.6.2 · CellManifestService", () => {
     expect(manifest.instructions[1]).toContain("/opt/cell-02");
   });
 
+  it("descifra y genera el manifiesto correctamente cuando los secretos fueron cifrados con cell.code (fallback AAD)", async () => {
+    const cellId = "01930000-0000-7000-8000-000000000020";
+    const customBundle: CellSecretsBundle = {
+      mocter_app_password: "mock-app-password-fallback",
+      mocter_migrator_password: "mock-migrator-password-fallback",
+      mocter_healthcheck_password: "mock-healthcheck-password-fallback",
+      handshake_secret: "mock-handshake-secret-fallback",
+    };
+    // Cifrado con cell.code en lugar de cellId
+    const payload = secretsService.encryptBundle(customBundle, "cell-legacy");
+
+    const mockCell = {
+      id: cellId,
+      code: "cell-legacy",
+      tier: "standard",
+      status: "draft",
+      topologyType: "remote_vps",
+      pgbouncerHost: "10.0.1.15",
+      pgbouncerPort: 6432,
+      databaseName: "db_cell_legacy",
+      appUrl: "https://cell-legacy.internal:3000",
+      privateIp: "10.0.1.15",
+      publicIp: null,
+      workingDir: "/opt/cell-legacy",
+      deployUser: "deploy:1000",
+      cellSecretsCiphertext: payload.ciphertext,
+      cellSecretsKeyId: payload.keyId,
+      maxClients: 100,
+      currentClients: 0,
+      region: "us-east-1",
+    };
+
+    const mockDb = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [mockCell],
+          }),
+        }),
+      }),
+    };
+
+    vi.spyOn(clientModule, "getDb").mockReturnValue(mockDb as any);
+
+    const manifest = await manifestService.generateManifest(cellId);
+    expect(manifest.cellId).toBe(cellId);
+    expect(manifest.code).toBe("cell-legacy");
+    expect(manifest.envContent).toContain("POSTGRES_PASSWORD=mock-app-password-fallback");
+  });
+
   it("lanza un error explícito si la celda no existe", async () => {
     const mockDb = {
       select: () => ({

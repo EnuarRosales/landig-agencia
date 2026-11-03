@@ -89,7 +89,7 @@ export function isValidOrigin(
  * aprovisionamiento de celdas (DAT-001 T1, ADM-001 RF-10.17).
  */
 export function isAdminOrigin(req: NextRequest): boolean {
-  const origin = req.headers.get("origin");
+  const origin = req.headers.get("origin") || req.headers.get("referer");
   if (!origin) return false;
 
   const trimmed = origin.trim();

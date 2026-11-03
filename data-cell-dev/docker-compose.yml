@@ -1,0 +1,79 @@
+# Manifiesto Canónico de Celda Mocter (cell-01)
+# Estándar DAT-001 §3.6.2 / OPS-001 RF-06.7
+name: mocter-cell-01
+
+services:
+  pg-cell:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata-cell-01:/var/lib/postgresql
+    networks:
+      - cell-backend
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  cell-migrator:
+    image: ghcr.io/enuarrosales/mocter-web:${TAG:-latest}
+    command: [ "node", "migrator/scripts/migrate.mjs", "--target=cell" ]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pg-cell:5432/${POSTGRES_DB}
+    networks:
+      - cell-backend
+    depends_on:
+      pg-cell:
+        condition: service_healthy
+    restart: "no"
+
+  pgbouncer-cell:
+    image: edoburu/pgbouncer:v1.26.1-p0
+    environment:
+      DB_HOST: pg-cell
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      LISTEN_PORT: 6432
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 20
+    ports:
+      - "${PGBOUNCER_PORT}:6432"
+    networks:
+      - cell-backend
+    depends_on:
+      pg-cell:
+        condition: service_healthy
+      cell-migrator:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  tenant-app:
+    image: ghcr.io/enuarrosales/mocter-web:${TAG:-latest}
+    environment:
+      CELL_CODE: ${CELL_CODE}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer-cell:6432/${POSTGRES_DB}
+      HANDSHAKE_SECRET: ${HANDSHAKE_SECRET}
+      NEXT_PUBLIC_APP_URL: ${APP_URL}
+    ports:
+      - "3004:3000"
+    networks:
+      - cell-backend
+    depends_on:
+      pgbouncer-cell:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata-cell-01:
+
+networks:
+  cell-backend:
+    driver: bridge

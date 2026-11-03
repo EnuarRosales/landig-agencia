@@ -70,7 +70,7 @@ describe("DAT-001 T1 · AdminCellsPage cliente", () => {
 
     await waitFor(() => {
       expect(container.textContent).toContain("cell-01");
-      expect(container.textContent).toContain("Handshake");
+      expect(container.textContent).toContain("Verificar Conexión");
       expect(container.textContent).toContain("Manifiesto");
     });
 
