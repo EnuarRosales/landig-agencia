@@ -731,4 +731,74 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
       expect(cannotSend).toBe(false);
     });
   });
+  describe("T7 / S10 · Validación y control de cuotas comerciales de contactos", () => {
+    it("bloquea la creación de prospecto si la cuota de contactos está agotada", async () => {
+      const mockQuotaEvaluator = {
+        getQuota: vi.fn().mockResolvedValue({ mode: "LIMITED", value: 1 }),
+      };
+      const crmWithQuota = new CrmService(mockRepo, mockQuotaEvaluator);
+
+      vi.mocked(mockRepo.listContacts).mockResolvedValue({
+        items: [],
+        total: 1, // Ya consumió 1 de 1
+      });
+
+      const res = await crmWithQuota.createProspect(cellId, clientId, {
+        fullName: "Nuevo Prospecto",
+        email: "nuevo@example.com",
+        createdBy: "tester",
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.error).toBe("Has alcanzado el límite de contactos incluido en tu plan.");
+        expect(res.code).toBe("QUOTA_EXCEEDED");
+      }
+    });
+
+    it("en ingesta desde Chatwoot, bloquea nuevos contactos si la cuota está agotada pero permite actualizar existentes", async () => {
+      const mockQuotaEvaluator = {
+        getQuota: vi.fn().mockResolvedValue({ mode: "LIMITED", value: 1 }),
+      };
+      const crmWithQuota = new CrmService(mockRepo, mockQuotaEvaluator);
+
+      // 1. Caso contacto existente: no consume cuota, actualiza con éxito
+      vi.mocked(mockRepo.findContactByChatwootId).mockResolvedValueOnce({
+        id: "existing-contact",
+        clientId,
+        fullName: "Existente",
+        deletedAt: null,
+      } as any);
+      vi.mocked(mockRepo.updateContact).mockResolvedValueOnce({
+        id: "existing-contact",
+        clientId,
+        fullName: "Existente",
+      } as any);
+
+      const updateRes = await crmWithQuota.ingestFromChatwoot(cellId, clientId, {
+        chatwootContactId: 123,
+        name: "Existente",
+        executedBy: "chatwoot",
+      });
+      expect(updateRes.ok).toBe(true);
+
+      // 2. Caso contacto nuevo con cuota agotada: bloquea con mensaje S10
+      vi.mocked(mockRepo.findContactByChatwootId).mockResolvedValueOnce(null);
+      vi.mocked(mockRepo.listContacts).mockResolvedValueOnce({
+        items: [],
+        total: 1,
+      });
+
+      const newRes = await crmWithQuota.ingestFromChatwoot(cellId, clientId, {
+        chatwootContactId: 456,
+        name: "Nuevo Bloqueado",
+        executedBy: "chatwoot",
+      });
+      expect(newRes.ok).toBe(false);
+      if (!newRes.ok) {
+        expect(newRes.error).toBe("Has alcanzado el límite de contactos incluido en tu plan.");
+        expect(newRes.code).toBe("QUOTA_EXCEEDED");
+      }
+    });
+  });
 });

@@ -99,3 +99,4 @@ export * from "./services/cell-authorization.service";
 export * from "./services/cell-manifest.service";
 export * from "./services/cell-handshake.service";
 export * from "./services/tenant-products-and-media.service";
+export * from "./services/tenant-contacts-and-users.service";

@@ -131,8 +131,15 @@ export interface WhatsAppConsentResult {
  * Servicio de negocio para la gestión comercial de prospectos, consentimientos Habeas Data
  * e indicadores de calidad de datos en Mocter (CRM-001).
  */
+export interface ICrmPlanQuotaEvaluator {
+  getQuota(clientId: string, dimension: "contacts"): Promise<{ mode: "LIMITED" | "UNLIMITED"; value: number | null }>;
+}
+
 export class CrmService {
-  constructor(private readonly repository: ICrmRepository) {}
+  constructor(
+    private readonly repository: ICrmRepository,
+    private readonly quotaEvaluator?: ICrmPlanQuotaEvaluator,
+  ) {}
 
   /**
    * Da de alta un nuevo prospecto exigiendo un mínimo de dos campos (nombre + canal de contacto).
@@ -175,6 +182,19 @@ export class CrmService {
           `El correo electrónico '${input.email}' no tiene una estructura válida.`,
           "VALIDATION_ERROR",
         );
+      }
+    }
+
+    if (this.quotaEvaluator) {
+      const quota = await this.quotaEvaluator.getQuota(clientId, "contacts");
+      if (quota.mode === "LIMITED") {
+        if (quota.value === null || quota.value === 0) {
+          return err("Has alcanzado el límite de contactos incluido en tu plan.", "QUOTA_EXCEEDED");
+        }
+        const { total } = await this.repository.listContacts(cellId, clientId, { includeDeleted: false });
+        if (total + 1 > quota.value) {
+          return err("Has alcanzado el límite de contactos incluido en tu plan.", "QUOTA_EXCEEDED");
+        }
       }
     }
 
@@ -317,6 +337,19 @@ export class CrmService {
             phoneMobile: input.phoneMobile,
             conflictingCount: matchingPhones.length,
           });
+        }
+      }
+
+      if (this.quotaEvaluator) {
+        const quota = await this.quotaEvaluator.getQuota(clientId, "contacts");
+        if (quota.mode === "LIMITED") {
+          if (quota.value === null || quota.value === 0) {
+            return err("Has alcanzado el límite de contactos incluido en tu plan.", "QUOTA_EXCEEDED");
+          }
+          const { total } = await this.repository.listContacts(cellId, clientId, { includeDeleted: false });
+          if (total + 1 > quota.value) {
+            return err("Has alcanzado el límite de contactos incluido en tu plan.", "QUOTA_EXCEEDED");
+          }
         }
       }
 
