@@ -531,7 +531,7 @@ function PlanModalDialogContent({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-4xl rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl my-8 flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-5xl xl:max-w-6xl rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl my-8 flex flex-col max-h-[90vh]">
         {/* Encabezado */}
         <div className="flex items-center justify-between pb-4 border-b border-[var(--dsn-border)] shrink-0">
           <div className="flex items-center gap-3">
@@ -557,11 +557,11 @@ function PlanModalDialogContent({
         </div>
 
         {/* Barra de pestañas (S6) */}
-        <div className="flex items-center gap-1 overflow-x-auto py-3 border-b border-[var(--dsn-border)] shrink-0 no-scrollbar">
+        <div className="flex items-center gap-1.5 overflow-x-auto py-3 border-b border-[var(--dsn-border)] shrink-0 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           <button
             type="button"
             onClick={() => setActiveTab("commercial")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
               activeTab === "commercial"
                 ? "bg-[var(--dsn-accent)] text-white shadow-sm"
                 : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
@@ -574,7 +574,7 @@ function PlanModalDialogContent({
           <button
             type="button"
             onClick={() => setActiveTab("catalog")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
               activeTab === "catalog"
                 ? "bg-[var(--dsn-accent)] text-white shadow-sm"
                 : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
@@ -587,7 +587,7 @@ function PlanModalDialogContent({
           <button
             type="button"
             onClick={() => setActiveTab("tenant")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
               activeTab === "tenant"
                 ? "bg-[var(--dsn-accent)] text-white shadow-sm"
                 : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
@@ -600,7 +600,7 @@ function PlanModalDialogContent({
           <button
             type="button"
             onClick={() => setActiveTab("chatwoot")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
               activeTab === "chatwoot"
                 ? "bg-[var(--dsn-accent)] text-white shadow-sm"
                 : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
@@ -613,7 +613,7 @@ function PlanModalDialogContent({
           <button
             type="button"
             onClick={() => setActiveTab("capabilities")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
               activeTab === "capabilities"
                 ? "bg-[var(--dsn-accent)] text-white shadow-sm"
                 : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
@@ -631,7 +631,7 @@ function PlanModalDialogContent({
           <button
             type="button"
             onClick={() => setActiveTab("summary")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
               activeTab === "summary"
                 ? "bg-[var(--dsn-accent)] text-white shadow-sm"
                 : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
