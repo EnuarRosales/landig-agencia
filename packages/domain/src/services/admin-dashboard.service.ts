@@ -110,6 +110,7 @@ export const PLAN_DIMENSION_NAMES_ES: Record<PlanLimitDimensionKey, string> = {
   contacts: "Contactos",
   tenant_users: "Usuarios por inquilino",
   storage_bytes: "Almacenamiento por inquilino",
+  chat_retention_days: "Retención de conversaciones",
   chatwoot_agents: "Agentes de atención",
   chatwoot_inboxes: "Bandejas de entrada",
   chatwoot_outbound_emails: "Correos salientes",
@@ -601,6 +602,19 @@ export function validatePlanLimits(
     }
   }
 
+  // Validación de piso legal para retención de conversaciones (mínimo 30 días si es limitado, ADM-001 RF-04.5)
+  const retentionLimit = limits.chat_retention_days;
+  if (
+    retentionLimit?.mode === "LIMITED" &&
+    typeof retentionLimit.value === "number" &&
+    retentionLimit.value < 30
+  ) {
+    return err(
+      "La retención de conversaciones debe ser de al menos 30 días conforme a la normativa legal.",
+      "CHAT_RETENTION_BELOW_LEGAL_FLOOR",
+    );
+  }
+
   // Validación cruzada S4: el límite de agentes no podrá superar el de usuarios cuando ambos sean finitos
   const agentsLimit = limits.chatwoot_agents;
   const usersLimit = limits.tenant_users;
@@ -688,7 +702,7 @@ export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Resu
       ? Math.round(input.priceAnnualCop * 100)
       : priceMonthlyCents * 10;
 
-    return await db.transaction(async (tx) => {
+    const txResult = await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(plans)
         .values({
@@ -754,6 +768,8 @@ export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Resu
 
       return ok(row);
     });
+
+    return txResult;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[createAdminPlan Failed] ${msg}`, error);
@@ -789,7 +805,7 @@ export async function updateAdminPlan(input: UpdateAdminPlanInput): Promise<Resu
       ? Math.round(input.priceAnnualCop * 100)
       : priceMonthlyCents * 10;
 
-    return await db.transaction(async (tx) => {
+    const txResult = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(plans)
         .set({
@@ -880,14 +896,14 @@ export async function updateAdminPlan(input: UpdateAdminPlanInput): Promise<Resu
       return ok(row);
     });
 
-    if (txResult.ok && txResult.data.chatwootEnabled) {
+    if (txResult.ok && input.chatwootEnabled) {
       try {
         await syncAllAccountsForPlan({
           planId: txResult.data.id,
           actor: operator,
           db,
         });
-      } catch (syncErr) {
+      } catch (syncErr: unknown) {
         appLogger.warn("[updateAdminPlan] Error al sincronizar cuentas de Chatwoot", {
           planId: txResult.data.id,
           error: syncErr instanceof Error ? syncErr.message : String(syncErr),
@@ -932,6 +948,7 @@ export async function fetchAdminPlanDetails(planId: string): Promise<Result<Admi
       contacts: { mode: "LIMITED", value: 0 },
       tenant_users: { mode: "LIMITED", value: 0 },
       storage_bytes: { mode: "LIMITED", value: 0 },
+      chat_retention_days: { mode: "LIMITED", value: 30 },
       chatwoot_agents: { mode: "LIMITED", value: 0 },
       chatwoot_inboxes: { mode: "LIMITED", value: 0 },
       chatwoot_outbound_emails: { mode: "LIMITED", value: 0 },
@@ -2313,7 +2330,13 @@ export async function createAdminTenant(input: CreateAdminTenantInput): Promise<
       });
 
     // 10. Aprovisionar automáticamente cuenta en Chatwoot (S9, T4)
-    if (selectedPlan.chatwootEnabled) {
+    const cwLimits = await db
+      .select()
+      .from(planLimits)
+      .where(and(eq(planLimits.planId, selectedPlan.id), eq(planLimits.dimension, "chatwoot_agents")))
+      .limit(1);
+    const chatwootEnabled = cwLimits.length > 0 && (cwLimits[0].mode === "UNLIMITED" || (cwLimits[0].value ?? 0) > 0);
+    if (chatwootEnabled) {
       try {
         const provRes = await provisionTenantChatwootAccount({
           clientId: newClient.id,

@@ -52,7 +52,7 @@ interface CapabilityItem {
   requiresRuntimeReview?: boolean;
 }
 
-const GIB_IN_BYTES = 1073741824;
+const MIB_IN_BYTES = 1048576;
 
 const CAPABILITY_FUNCTIONAL_GROUPS: Record<string, { title: string; codes: string[] }> = {
   channels: {
@@ -202,7 +202,8 @@ function PlanModalDialogContent({
   const [tenantLimits, setTenantLimits] = useState<Record<string, LimitFieldState>>({
     contacts: { mode: "UNLIMITED", value: 1000 },
     tenant_users: { mode: "LIMITED", value: 5 },
-    storage_bytes: { mode: "LIMITED", value: 10 }, // GiB
+    storage_bytes: { mode: "LIMITED", value: 500 }, // MB
+    chat_retention_days: { mode: "LIMITED", value: 30 },
   });
 
   // Pestaña 4: Atención y canales
@@ -271,7 +272,11 @@ function PlanModalDialogContent({
                 },
                 storage_bytes: {
                   mode: data.limits.storage_bytes?.mode || "LIMITED",
-                  value: Math.round((data.limits.storage_bytes?.value ?? GIB_IN_BYTES * 10) / GIB_IN_BYTES),
+                  value: Math.round((data.limits.storage_bytes?.value ?? MIB_IN_BYTES * 500) / MIB_IN_BYTES),
+                },
+                chat_retention_days: {
+                  mode: data.limits.chat_retention_days?.mode || "LIMITED",
+                  value: data.limits.chat_retention_days?.value ?? 30,
                 },
               });
 
@@ -383,7 +388,14 @@ function PlanModalDialogContent({
           value:
             tenantLimits.storage_bytes.mode === "UNLIMITED"
               ? null
-              : Number(tenantLimits.storage_bytes.value) * GIB_IN_BYTES,
+              : Number(tenantLimits.storage_bytes.value) * MIB_IN_BYTES,
+        },
+        chat_retention_days: {
+          mode: tenantLimits.chat_retention_days.mode,
+          value:
+            tenantLimits.chat_retention_days.mode === "UNLIMITED"
+              ? null
+              : Number(tenantLimits.chat_retention_days.value),
         },
         chatwoot_agents: {
           mode: chatwootLimits.chatwoot_agents.mode,
@@ -1152,7 +1164,7 @@ function PlanModalDialogContent({
                   {/* Almacenamiento */}
                   <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-[var(--dsn-text)]">Almacenamiento (GiB)</span>
+                      <span className="text-xs font-semibold text-[var(--dsn-text)]">Almacenamiento (MB)</span>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                         <input
                           type="checkbox"
@@ -1162,7 +1174,7 @@ function PlanModalDialogContent({
                               ...tenantLimits,
                               storage_bytes: {
                                 mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                value: e.target.checked ? 0 : tenantLimits.storage_bytes.value || 10,
+                                value: e.target.checked ? 0 : tenantLimits.storage_bytes.value || 500,
                               },
                             })
                           }
@@ -1174,7 +1186,7 @@ function PlanModalDialogContent({
                     {tenantLimits.storage_bytes.mode === "LIMITED" ? (
                       <div>
                         <label htmlFor="limit-storage" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
-                          Capacidad En GiB
+                          Capacidad En MB
                         </label>
                         <input
                           id="limit-storage"
@@ -1196,6 +1208,60 @@ function PlanModalDialogContent({
                     ) : (
                       <div className="p-2.5 rounded-lg bg-[var(--dsn-surface)] text-xs text-emerald-600 dark:text-emerald-400 font-medium text-center">
                         Almacenamiento Ilimitado
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Retención De Conversaciones */}
+                  <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-[var(--dsn-text)]">Retención De Conversaciones (Días)</span>
+                      <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={tenantLimits.chat_retention_days.mode === "UNLIMITED"}
+                          onChange={(e) =>
+                            setTenantLimits({
+                              ...tenantLimits,
+                              chat_retention_days: {
+                                mode: e.target.checked ? "UNLIMITED" : "LIMITED",
+                                value: e.target.checked ? 0 : tenantLimits.chat_retention_days.value || 30,
+                              },
+                            })
+                          }
+                          className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
+                        />
+                        <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
+                      </label>
+                    </div>
+                    {tenantLimits.chat_retention_days.mode === "LIMITED" ? (
+                      <div>
+                        <label htmlFor="limit-chat-retention" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                          Días De Retención (Mínimo 30)
+                        </label>
+                        <input
+                          id="limit-chat-retention"
+                          type="number"
+                          min="30"
+                          value={tenantLimits.chat_retention_days.value}
+                          onChange={(e) =>
+                            setTenantLimits({
+                              ...tenantLimits,
+                              chat_retention_days: {
+                                ...tenantLimits.chat_retention_days,
+                                value: Math.max(0, Number(e.target.value)),
+                              },
+                            })
+                          }
+                          className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                        />
+                        <p className="mt-1 text-[10px] text-[var(--dsn-text-muted)]">
+                          Normativa legal: mínimo 30 días de conservación de mensajes.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-lg bg-[var(--dsn-surface)] text-xs text-emerald-600 dark:text-emerald-400 font-medium text-center">
+                        Retención Ilimitada
                       </div>
                     )}
                   </div>
@@ -1578,7 +1644,15 @@ function PlanModalDialogContent({
                       <span className="font-medium text-[var(--dsn-text)]">
                         {tenantLimits.storage_bytes.mode === "UNLIMITED"
                           ? "Ilimitado"
-                          : `${tenantLimits.storage_bytes.value} GiB`}
+                          : `${tenantLimits.storage_bytes.value} MB`}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[var(--dsn-text-secondary)]">
+                      <span>Retención de conversaciones:</span>
+                      <span className="font-medium text-[var(--dsn-text)]">
+                        {tenantLimits.chat_retention_days.mode === "UNLIMITED"
+                          ? "Ilimitado"
+                          : `${tenantLimits.chat_retention_days.value} Días`}
                       </span>
                     </div>
                   </div>

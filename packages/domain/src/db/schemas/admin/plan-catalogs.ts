@@ -29,6 +29,7 @@ export const PLAN_DIMENSION_KEYS = [
   "contacts",
   "tenant_users",
   "storage_bytes",
+  "chat_retention_days",
   "chatwoot_agents",
   "chatwoot_inboxes",
   "chatwoot_outbound_emails",

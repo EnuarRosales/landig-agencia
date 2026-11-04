@@ -443,7 +443,6 @@ export class DrizzleTenantContactsAndUsersRepository
 
     const [override] = await db
       .select({
-        mode: clientPlanOverrides.mode,
         value: clientPlanOverrides.value,
       })
       .from(clientPlanOverrides)
@@ -459,7 +458,7 @@ export class DrizzleTenantContactsAndUsersRepository
 
     if (override) {
       return {
-        mode: override.mode as "LIMITED" | "UNLIMITED",
+        mode: "LIMITED",
         value: override.value !== null ? Number(override.value) : null,
       };
     }

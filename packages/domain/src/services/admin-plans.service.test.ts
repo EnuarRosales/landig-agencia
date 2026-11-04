@@ -52,6 +52,32 @@ describe("T3 · Admin Plan Validation & Business Rules (S1–S6, S10)", () => {
       }
     });
 
+    it("rechaza retención de conversaciones menor al piso legal de 30 días (ADM-001 RF-04.5)", () => {
+      const result = validatePlanLimits({
+        chat_retention_days: { mode: "LIMITED", value: 15 },
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe(
+          "La retención de conversaciones debe ser de al menos 30 días conforme a la normativa legal.",
+        );
+        expect(result.code).toBe("CHAT_RETENTION_BELOW_LEGAL_FLOOR");
+      }
+    });
+
+    it("acepta retención de conversaciones conforme al piso legal o ilimitada", () => {
+      const resultFinite = validatePlanLimits({
+        chat_retention_days: { mode: "LIMITED", value: 30 },
+      });
+      expect(resultFinite.ok).toBe(true);
+
+      const resultUnlimited = validatePlanLimits({
+        chat_retention_days: { mode: "UNLIMITED", value: null },
+      });
+      expect(resultUnlimited.ok).toBe(true);
+    });
+
     it("rechaza modo LIMITED con cantidad decimal en contadores (S10)", () => {
       const result = validatePlanLimits({
         tenant_users: { mode: "LIMITED", value: 3.5 },
@@ -183,7 +209,7 @@ describe("T3 · Admin Plan Validation & Business Rules (S1–S6, S10)", () => {
   });
 
   describe("PLAN_DIMENSION_NAMES_ES", () => {
-    it("cubre todas las 10 dimensiones canónicas", () => {
+    it("cubre todas las 11 dimensiones canónicas", () => {
       expect(PLAN_DIMENSION_NAMES_ES.products).toBe("Productos");
       expect(PLAN_DIMENSION_NAMES_ES.images_per_product).toBe("Imágenes por producto");
       expect(PLAN_DIMENSION_NAMES_ES.videos_per_product).toBe("Videos por producto");
@@ -191,6 +217,7 @@ describe("T3 · Admin Plan Validation & Business Rules (S1–S6, S10)", () => {
       expect(PLAN_DIMENSION_NAMES_ES.contacts).toBe("Contactos");
       expect(PLAN_DIMENSION_NAMES_ES.tenant_users).toBe("Usuarios por inquilino");
       expect(PLAN_DIMENSION_NAMES_ES.storage_bytes).toBe("Almacenamiento por inquilino");
+      expect(PLAN_DIMENSION_NAMES_ES.chat_retention_days).toBe("Retención de conversaciones");
       expect(PLAN_DIMENSION_NAMES_ES.chatwoot_agents).toBe("Agentes de atención");
       expect(PLAN_DIMENSION_NAMES_ES.chatwoot_inboxes).toBe("Bandejas de entrada");
       expect(PLAN_DIMENSION_NAMES_ES.chatwoot_outbound_emails).toBe("Correos salientes");

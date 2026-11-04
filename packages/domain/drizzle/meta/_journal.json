@@ -190,6 +190,13 @@
       "when": 1793766118472,
       "tag": "0026_plan_capabilities_and_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793826000000,
+      "tag": "0027_add_chat_retention_days",
+      "breakpoints": true
     }
   ]
 }

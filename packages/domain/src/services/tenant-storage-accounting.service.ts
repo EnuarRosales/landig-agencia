@@ -9,7 +9,8 @@ import { mediaCatalog } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { chatwootAccounts } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { cellClientMedia, cellClientUsage, cellProductMedia } from "../db/schemas/tenant/tenancy-catalog";
 
-export type MediaKind = "image" | "audio" | "video" | "pdf";
+export type StorageMediaKind = "image" | "audio" | "video" | "pdf";
+type MediaKind = StorageMediaKind;
 
 export interface IngestMediaInput {
   buffer: Buffer;
@@ -199,7 +200,6 @@ export class DrizzleTenantStorageAccountingRepository
 
     const [override] = await db
       .select({
-        mode: clientPlanOverrides.mode,
         value: clientPlanOverrides.value,
       })
       .from(clientPlanOverrides)
@@ -215,7 +215,7 @@ export class DrizzleTenantStorageAccountingRepository
 
     if (override) {
       return {
-        mode: override.mode as "LIMITED" | "UNLIMITED",
+        mode: "LIMITED",
         value: override.value !== null ? Number(override.value) : null,
       };
     }
