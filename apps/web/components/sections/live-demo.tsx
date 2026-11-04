@@ -97,7 +97,7 @@ export function LiveDemo() {
   return (
     <section
       id="demo"
-      className="relative px-[clamp(18px,5vw,60px)] py-[clamp(70px,10vw,120px)]"
+      className="relative px-[clamp(18px,5vw,60px)] py-10 md:py-20 lg:py-24"
     >
       <Reveal>
         <div className="eyebrow">{t("eyebrow")}</div>

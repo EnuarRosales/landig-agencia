@@ -1,6 +1,14 @@
 import type { Plan } from "../db/schemas/admin/plans";
 
 /**
+ * DTO de plan comercial enriquecido con límites y capacidades para presentación pública.
+ */
+export interface PublicPlanDto extends Plan {
+  limits?: Record<string, { mode: "LIMITED" | "UNLIMITED"; value: number | null }>;
+  capabilities?: Record<string, boolean>;
+}
+
+/**
  * Contrato de persistencia para la entidad de planes comerciales canónicos.
  *
  * Desacopla la lógica de negocio y las consultas de la landing / backoffice
@@ -15,7 +23,7 @@ export interface IPlansRepository {
    *
    * @returns Lista de planes públicos vigentes listos para ser presentados en la landing.
    */
-  getPublicPlans(): Promise<Plan[]>;
+  getPublicPlans(): Promise<PublicPlanDto[]>;
 
   /**
    * Busca un plan por su código slug público (ej. 'starter', 'growth', 'scale').

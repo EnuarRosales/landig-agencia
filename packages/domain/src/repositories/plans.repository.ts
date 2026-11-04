@@ -1,9 +1,9 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { getDb } from "../db/client";
 import * as schema from "../db/schemas";
 import { plans, type Plan } from "../db/schemas";
-import type { IPlansRepository } from "./plans.repository.interface";
+import type { IPlansRepository, PublicPlanDto } from "./plans.repository.interface";
 import { appLogger } from "../utils/logger";
 
 /**
@@ -33,13 +33,51 @@ export class DrizzlePlansRepository implements IPlansRepository {
    * @returns Lista de planes públicos vigentes.
    * @throws {Error} Si ocurre una falla durante la consulta en base de datos.
    */
-  async getPublicPlans(): Promise<Plan[]> {
+  async getPublicPlans(): Promise<PublicPlanDto[]> {
     try {
-      return await this.db
+      const planRows = await this.db
         .select()
         .from(plans)
         .where(and(eq(plans.status, "active"), eq(plans.isPublic, true)))
         .orderBy(asc(plans.sortOrder));
+
+      if (planRows.length === 0) return [];
+
+      try {
+        const planIds = planRows.map((p) => p.id);
+        const limitsRows = await this.db
+          .select()
+          .from(schema.planLimits)
+          .where(inArray(schema.planLimits.planId, planIds));
+
+        const capsRows = await this.db
+          .select()
+          .from(schema.planCapabilityValues)
+          .where(inArray(schema.planCapabilityValues.planId, planIds));
+
+        return planRows.map((p) => {
+          const limits: Record<string, { mode: "LIMITED" | "UNLIMITED"; value: number | null }> = {};
+          for (const l of (limitsRows || []).filter((row) => row.planId === p.id)) {
+            limits[l.dimension] = {
+              mode: l.mode as "LIMITED" | "UNLIMITED",
+              value: l.value !== null ? Number(l.value) : null,
+            };
+          }
+
+          const capabilities: Record<string, boolean> = {};
+          for (const c of (capsRows || []).filter((row) => row.planId === p.id)) {
+            capabilities[c.capabilityCode] = c.enabled;
+          }
+
+          return {
+            ...p,
+            limits,
+            capabilities,
+          };
+        });
+      } catch {
+        return planRows.map((p) => ({ ...p, limits: {}, capabilities: {} }));
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[PlansRepository.getPublicPlans Failed] ${msg}`, error);
@@ -104,7 +142,7 @@ const defaultPlansRepository = new DrizzlePlansRepository();
  *
  * @returns Lista de planes con `status = 'active'` y `is_public = true` ordenados por `sort_order`.
  */
-export async function getPublicPlans(): Promise<Plan[]> {
+export async function getPublicPlans(): Promise<PublicPlanDto[]> {
   return defaultPlansRepository.getPublicPlans();
 }
 

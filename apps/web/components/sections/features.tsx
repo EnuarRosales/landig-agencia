@@ -15,7 +15,7 @@ export function Features() {
   const check = <IconCheck className="h-3.5 w-3.5" />;
 
   return (
-    <section id="features" className="relative px-[clamp(18px,5vw,60px)] py-[clamp(70px,10vw,120px)]">
+    <section id="features" className="relative px-[clamp(18px,5vw,60px)] py-10 md:py-20 lg:py-24">
       <div className="eyebrow">{t("eyebrow")}</div>
       <h2 className="mx-auto mb-4 max-w-[860px] text-center font-display text-[clamp(28px,4.5vw,46px)] font-extrabold leading-[1.1] tracking-tight">
         {t("title")}

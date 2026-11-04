@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import type { Plan } from "@mocter/domain";
+import type { PublicPlanDto } from "@mocter/domain";
 import { IconCheck } from "../icons";
+import { PlanComparisonTable } from "./plan-comparison-table";
 
 /**
  * Propiedades de entrada para el componente {@link PricingSection}.
@@ -12,17 +13,47 @@ export interface PricingSectionProps {
   /**
    * Colección de planes comerciales canónicos activos provenientes del repositorio de datos.
    */
-  plans?: Plan[];
+  plans?: PublicPlanDto[];
+}
+
+function formatPlanLimit(
+  item: { mode: "LIMITED" | "UNLIMITED"; value: number | null } | undefined,
+  t: (key: string) => string,
+): string {
+  if (!item) return "—";
+  if (item.mode === "UNLIMITED") return t("unlimited");
+  return String(item.value ?? 0);
+}
+
+function formatPlanStorage(
+  item: { mode: "LIMITED" | "UNLIMITED"; value: number | null } | undefined,
+  t: (key: string) => string,
+): string {
+  if (!item) return "—";
+  if (item.mode === "UNLIMITED") return t("unlimited");
+  const bytes = item.value ?? 0;
+  const mb = Math.round(bytes / (1024 * 1024));
+  if (mb >= 1024) {
+    return `${Math.round(mb / 1024)} ${t("gb")}`;
+  }
+  return `${mb} ${t("mb")}`;
+}
+
+function formatPlanRetention(
+  item: { mode: "LIMITED" | "UNLIMITED"; value: number | null } | undefined,
+  t: (key: string) => string,
+): string {
+  if (!item) return "—";
+  if (item.mode === "UNLIMITED") return t("unlimited");
+  return `${item.value ?? 30} ${t("days")}`;
 }
 
 /**
  * Sección de tarifas y planes comerciales para la página de inicio.
  *
  * Presenta un diseño HUD responsive con selector de ciclo mensual/anual,
- * resaltado del plan más popular, visualización de características y
- * enlace directo de conversión con transferencia del parámetro `plan_code`.
- *
- * Si no existen planes activos en la base de datos, el componente no renderiza nada (`null`).
+ * métricas directas de capacidad en las tarjetas (productos, agentes, almacenamiento, retención),
+ * tabla comparativa colapsable en página y enlace directo de conversión con `plan_code`.
  *
  * @param props - Propiedades del componente {@link PricingSectionProps}.
  * @returns Elemento JSX de la sección o `null` si no hay planes disponibles.
@@ -31,6 +62,7 @@ export function PricingSection({ plans = [] }: PricingSectionProps) {
   const t = useTranslations("pricing");
   const locale = useLocale() as "es" | "en";
   const [cycle, setCycle] = useState<"monthly" | "annual">("monthly");
+  const [showComparison, setShowComparison] = useState(false);
 
   if (!plans || plans.length === 0) {
     return null;
@@ -49,17 +81,17 @@ export function PricingSection({ plans = [] }: PricingSectionProps) {
   };
 
   return (
-    <section id="planes" className="relative px-[clamp(18px,5vw,60px)] py-[clamp(70px,10vw,120px)]">
+    <section id="planes" className="relative px-[clamp(18px,5vw,60px)] py-10 md:py-20 lg:py-24">
       <div className="eyebrow">{t("pill")}</div>
       <h2 className="mx-auto mb-4 max-w-[860px] text-center font-display text-[clamp(28px,4.5vw,46px)] font-extrabold leading-[1.1] tracking-tight text-txt">
         {t("title")}
       </h2>
-      <p className="copy mx-auto mb-10 max-w-[660px] text-center text-[17px] text-muted">
+      <p className="copy mx-auto mb-8 max-w-[660px] text-center text-[17px] text-muted md:mb-10">
         {t("subtitle")}
       </p>
 
       {/* Switch Mensual / Anual */}
-      <div className="mb-14 flex items-center justify-center">
+      <div className="mb-8 flex items-center justify-center md:mb-12">
         <div className="inline-flex items-center gap-1.5 rounded-full border border-stroke bg-surface/90 p-1.5 shadow-sm">
           <button
             type="button"
@@ -106,7 +138,7 @@ export function PricingSection({ plans = [] }: PricingSectionProps) {
           return (
             <div
               key={plan.id}
-              className={`relative flex flex-col justify-between rounded-2xl border p-8 transition-all hover:scale-[1.01] ${
+              className={`relative flex flex-col justify-between rounded-2xl border p-6 md:p-8 transition-all hover:scale-[1.01] ${
                 plan.isPopular
                   ? "border-a1 bg-surface/90 shadow-[0_0_35px_rgba(47,107,255,0.25)] ring-1 ring-a1"
                   : "border-stroke bg-surface/60 hover:border-stroke/80"
@@ -122,13 +154,41 @@ export function PricingSection({ plans = [] }: PricingSectionProps) {
                 <h3 className="text-xl font-bold text-txt">{planName}</h3>
                 <p className="mt-2 min-h-[40px] text-sm text-muted">{planDesc}</p>
 
-                <div className="mt-6 flex items-baseline gap-1.5 border-b border-stroke pb-6">
+                <div className="mt-5 flex items-baseline gap-1.5 border-b border-stroke pb-5">
                   <span className="font-display text-4xl font-extrabold tracking-tight text-txt">
                     {displayPrice}
                   </span>
                   <span className="text-sm font-medium text-muted">
                     /{t("perMonth")}
                   </span>
+                </div>
+
+                {/* Métricas clave de capacidad (HUD) */}
+                <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl border border-stroke/70 bg-surface2/50 p-3 text-xs">
+                  <div>
+                    <span className="block text-[11px] text-muted">{t("productsLabel")}</span>
+                    <span className="font-mono font-semibold text-txt">
+                      {formatPlanLimit(plan.limits?.products, t)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-[11px] text-muted">{t("agentsLabel")}</span>
+                    <span className="font-mono font-semibold text-txt">
+                      {formatPlanLimit(plan.limits?.chatwoot_agents, t)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-[11px] text-muted">{t("storageLabel")}</span>
+                    <span className="font-mono font-semibold text-txt">
+                      {formatPlanStorage(plan.limits?.storage_bytes, t)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-[11px] text-muted">{t("retentionLabel")}</span>
+                    <span className="font-mono font-semibold text-txt">
+                      {formatPlanRetention(plan.limits?.chat_retention_days, t)}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="mt-6">
@@ -164,6 +224,28 @@ export function PricingSection({ plans = [] }: PricingSectionProps) {
           );
         })}
       </div>
+
+      {/* Botón para abrir / cerrar la tabla comparativa completa */}
+      <div className="mt-10 text-center md:mt-14">
+        <button
+          type="button"
+          onClick={() => setShowComparison(!showComparison)}
+          className="inline-flex items-center gap-2.5 rounded-full border border-stroke bg-surface/90 px-6 py-3 text-sm font-semibold text-txt shadow-sm transition-all hover:border-a1 hover:bg-surface hover:shadow-md"
+        >
+          <span>{showComparison ? t("hideCompareToggle") : t("compareToggle")}</span>
+          <span
+            className={`inline-block text-xs transition-transform duration-200 ${
+              showComparison ? "rotate-180" : ""
+            }`}
+            aria-hidden="true"
+          >
+            ▼
+          </span>
+        </button>
+      </div>
+
+      {/* Tabla comparativa colapsable en página */}
+      {showComparison && <PlanComparisonTable plans={plans} />}
     </section>
   );
 }

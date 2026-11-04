@@ -5,7 +5,7 @@ export function Testimonial() {
   const t = useTranslations("testimonial");
 
   return (
-    <section className="relative px-[clamp(18px,5vw,60px)] py-[clamp(70px,10vw,120px)]">
+    <section className="relative px-[clamp(18px,5vw,60px)] py-10 md:py-20 lg:py-24">
       <Reveal className="mx-auto max-w-[840px]">
         <blockquote className="rounded-[22px] border border-stroke bg-surface px-10 py-12 text-center backdrop-blur-[10px]">
           <div className="mb-5 text-[22px] tracking-[3px] text-[#ffd166]" aria-hidden>

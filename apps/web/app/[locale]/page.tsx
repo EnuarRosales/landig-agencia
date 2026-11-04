@@ -12,12 +12,12 @@ import { Faq } from "@/components/sections/faq";
 import { Footer } from "@/components/sections/footer";
 import { WhatsappFab } from "@/components/sections/whatsapp-fab";
 import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
-import { getPublicPlans, type Plan } from "@mocter/domain";
+import { getPublicPlans, type PublicPlanDto } from "@mocter/domain";
 
 export const instant = false;
 
 export default async function LandingPage() {
-  let publicPlans: Plan[] = [];
+  let publicPlans: PublicPlanDto[] = [];
   try {
     publicPlans = await getPublicPlans();
   } catch {

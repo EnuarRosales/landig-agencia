@@ -17,7 +17,7 @@ export function CtaSection() {
   return (
     <section
       id="cta"
-      className="relative px-[clamp(18px,5vw,60px)] py-[clamp(70px,10vw,120px)]"
+      className="relative px-[clamp(18px,5vw,60px)] py-10 md:py-20 lg:py-24"
     >
       <Reveal className="relative mx-auto max-w-[1000px] overflow-hidden rounded-[32px] border border-stroke bg-[linear-gradient(135deg,rgba(47,107,255,.2),rgba(34,211,238,.1))] px-[clamp(28px,7vw,70px)] py-[clamp(40px,7vw,70px)] text-center">
         <div

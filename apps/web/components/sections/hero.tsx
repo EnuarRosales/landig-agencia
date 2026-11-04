@@ -95,7 +95,7 @@ export function Hero() {
   ] as const;
 
   return (
-    <header className="relative flex min-h-screen flex-wrap items-center gap-x-12 gap-y-8 px-[clamp(18px,5vw,60px)] pb-16 pt-[120px]">
+    <header className="relative flex min-h-screen flex-wrap items-center gap-x-12 gap-y-8 px-[clamp(18px,5vw,60px)] pb-10 pt-[90px] md:pb-16 md:pt-[120px]">
       <div className="mx-auto w-full max-w-[660px] lg:mx-0 lg:flex-1 lg:min-w-[340px]">
         <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-stroke bg-surface px-4 py-[7px] text-[13px] text-muted">
           <span
