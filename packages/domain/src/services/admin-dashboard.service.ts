@@ -141,6 +141,7 @@ export interface CreateAdminPlanInput {
   isPopular?: boolean;
   status?: "draft" | "active" | "retired";
   marketingFeaturesEs?: string[];
+  marketingFeaturesEn?: string[];
   createdBy?: string;
   limits?: PlanLimitsConfig;
   capabilities?: Record<string, boolean>;
@@ -502,6 +503,7 @@ export interface UpdateAdminPlanInput {
   isPopular?: boolean;
   status?: "draft" | "active" | "retired";
   marketingFeaturesEs?: string[];
+  marketingFeaturesEn?: string[];
   updatedBy?: string;
   limits?: PlanLimitsConfig;
   capabilities?: Record<string, boolean>;
@@ -727,7 +729,10 @@ export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Resu
           currency: input.currency || "COP",
           marketingFeatures: {
             es: input.marketingFeaturesEs || [],
-            en: [],
+            en:
+              input.marketingFeaturesEn && input.marketingFeaturesEn.length > 0
+                ? input.marketingFeaturesEn
+                : input.marketingFeaturesEs || [],
           },
           createdBy: operator,
           updatedBy: operator,
@@ -828,7 +833,10 @@ export async function updateAdminPlan(input: UpdateAdminPlanInput): Promise<Resu
           currency: input.currency || "COP",
           marketingFeatures: {
             es: input.marketingFeaturesEs || [],
-            en: [],
+            en:
+              input.marketingFeaturesEn && input.marketingFeaturesEn.length > 0
+                ? input.marketingFeaturesEn
+                : input.marketingFeaturesEs || [],
           },
           updatedAt: new Date(),
           updatedBy: operator,

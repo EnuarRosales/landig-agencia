@@ -127,6 +127,13 @@ const CAPABILITY_FUNCTIONAL_GROUPS: Record<string, { title: string; codes: strin
   },
 };
 
+function computeAnnualDiscount(monthly: number, annual: number): number {
+  if (!monthly || monthly <= 0 || !annual || annual <= 0) return 20;
+  const full = monthly * 12;
+  const pct = Math.round(((full - annual) / full) * 100);
+  return pct > 0 && pct < 100 ? pct : 20;
+}
+
 function getInitialFormData(plan?: Plan | null) {
   if (!plan) {
     return {
@@ -134,9 +141,10 @@ function getInitialFormData(plan?: Plan | null) {
       nameEs: "",
       nameEn: "",
       descriptionEs: "",
+      descriptionEn: "",
       currency: "COP",
       priceMonthlyCop: 149000,
-      priceAnnualCop: 1490000,
+      priceAnnualCop: 1430400,
       annualDiscountPct: 20,
       cycleMonthly: true,
       cycleAnnual: true,
@@ -145,6 +153,7 @@ function getInitialFormData(plan?: Plan | null) {
       isPopular: false,
       status: "active",
       featuresRaw: "Atención con IA, Canal WhatsApp Cloud, Soporte estándar",
+      featuresEnRaw: "AI-powered assistance, WhatsApp Cloud channel, Standard support",
     };
   }
 
@@ -158,13 +167,14 @@ function getInitialFormData(plan?: Plan | null) {
     nameEs: pName?.es || "",
     nameEn: pName?.en || "",
     descriptionEs: pDesc?.es || "",
+    descriptionEn: pDesc?.en || "",
     currency: plan.currency || "COP",
     priceMonthlyCop: Math.round(Number(plan.priceMonthlyCents || 0) / 100),
     priceAnnualCop: Math.round(Number(plan.priceAnnualCents || 0) / 100),
     annualDiscountPct: computeAnnualDiscount(
       Math.round(Number(plan.priceMonthlyCents || 0) / 100),
       Math.round(Number(plan.priceAnnualCents || 0) / 100)
-    ) || 20,
+    ),
     cycleMonthly: cycles.includes("monthly"),
     cycleAnnual: cycles.includes("annual"),
     trialDays: plan.trialDays ?? 14,
@@ -172,6 +182,7 @@ function getInitialFormData(plan?: Plan | null) {
     isPopular: Boolean(plan.isPopular),
     status: plan.status || "active",
     featuresRaw: (pFeat?.es || []).join(", "),
+    featuresEnRaw: (pFeat?.en || []).join(", "),
   };
 }
 
@@ -307,6 +318,25 @@ function PlanModalDialogContent({
             if (data.chatwootEnabled !== undefined) {
               setChatwootEnabled(Boolean(data.chatwootEnabled));
             }
+            if (data.name) {
+              const pName = data.name as { es?: string; en?: string } | null;
+              const pDesc = data.description as { es?: string; en?: string } | null;
+              const pFeat = data.marketingFeatures as { es?: string[]; en?: string[] } | null;
+              const monthly = Math.round(Number(data.priceMonthlyCents || 0) / 100);
+              const annual = Math.round(Number(data.priceAnnualCents || 0) / 100);
+              setFormData((prev) => ({
+                ...prev,
+                nameEs: pName?.es || prev.nameEs,
+                nameEn: pName?.en || prev.nameEn,
+                descriptionEs: pDesc?.es || prev.descriptionEs,
+                descriptionEn: pDesc?.en || prev.descriptionEn,
+                priceMonthlyCop: monthly || prev.priceMonthlyCop,
+                priceAnnualCop: annual || prev.priceAnnualCop,
+                annualDiscountPct: computeAnnualDiscount(monthly || prev.priceMonthlyCop, annual || prev.priceAnnualCop),
+                featuresRaw: pFeat?.es ? pFeat.es.join(", ") : prev.featuresRaw,
+                featuresEnRaw: pFeat?.en ? pFeat.en.join(", ") : prev.featuresEnRaw,
+              }));
+            }
           }
         })
         .finally(() => {
@@ -347,6 +377,11 @@ function PlanModalDialogContent({
 
     try {
       const features = formData.featuresRaw
+        .split(",")
+        .map((f) => f.trim())
+        .filter(Boolean);
+
+      const featuresEn = formData.featuresEnRaw
         .split(",")
         .map((f) => f.trim())
         .filter(Boolean);
@@ -437,6 +472,7 @@ function PlanModalDialogContent({
         nameEs: formData.nameEs,
         nameEn: formData.nameEn || formData.nameEs,
         descriptionEs: formData.descriptionEs,
+        descriptionEn: formData.descriptionEn || formData.descriptionEs,
         currency: formData.currency,
         priceMonthlyCop: Number(formData.priceMonthlyCop),
         priceAnnualCop: Number(formData.priceAnnualCop),
@@ -446,6 +482,7 @@ function PlanModalDialogContent({
         isPopular: formData.isPopular,
         status: formData.status,
         marketingFeaturesEs: features,
+        marketingFeaturesEn: featuresEn.length > 0 ? featuresEn : features,
         limits: payloadLimits,
         capabilities,
         chatwootEnabled,
@@ -714,18 +751,34 @@ function PlanModalDialogContent({
                   </div>
                 </div>
 
-                <div>
-                  <label htmlFor="plan-desc-es" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                    Descripción Comercial
-                  </label>
-                  <textarea
-                    id="plan-desc-es"
-                    rows={2}
-                    placeholder="Descripción comercial para la landing page o propuesta..."
-                    value={formData.descriptionEs}
-                    onChange={(e) => setFormData({ ...formData, descriptionEs: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="plan-desc-es" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                      Descripción Comercial (Español)
+                    </label>
+                    <textarea
+                      id="plan-desc-es"
+                      rows={2}
+                      placeholder="Descripción comercial para la landing page en español..."
+                      value={formData.descriptionEs}
+                      onChange={(e) => setFormData({ ...formData, descriptionEs: e.target.value })}
+                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="plan-desc-en" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                      Descripción Comercial (Inglés)
+                    </label>
+                    <textarea
+                      id="plan-desc-en"
+                      rows={2}
+                      placeholder="Commercial description for English landing page..."
+                      value={formData.descriptionEn}
+                      onChange={(e) => setFormData({ ...formData, descriptionEn: e.target.value })}
+                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                    />
+                  </div>
                 </div>
 
                 <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4 space-y-4">
@@ -733,7 +786,7 @@ function PlanModalDialogContent({
                     Precios Y Ciclos Habilitados
                   </h3>
 
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div>
                       <label htmlFor="plan-price-monthly" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
                         Precio Ciclo Mensual ({formData.currency})
@@ -745,7 +798,32 @@ function PlanModalDialogContent({
                         step="1000"
                         required
                         value={formData.priceMonthlyCop}
-                        onChange={(e) => setFormData({ ...formData, priceMonthlyCop: Number(e.target.value) })}
+                        onChange={(e) => {
+                          const monthly = Number(e.target.value);
+                          const annual = Math.round(monthly * 12 * (1 - formData.annualDiscountPct / 100));
+                          setFormData({ ...formData, priceMonthlyCop: monthly, priceAnnualCop: annual });
+                        }}
+                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="plan-annual-discount" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                        Descuento Anual (%)
+                      </label>
+                      <input
+                        id="plan-annual-discount"
+                        type="number"
+                        min="0"
+                        max="99"
+                        step="1"
+                        required
+                        value={formData.annualDiscountPct}
+                        onChange={(e) => {
+                          const pct = Number(e.target.value);
+                          const annual = Math.round(formData.priceMonthlyCop * 12 * (1 - pct / 100));
+                          setFormData({ ...formData, annualDiscountPct: pct, priceAnnualCop: annual });
+                        }}
                         className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
                       />
                     </div>
@@ -761,7 +839,11 @@ function PlanModalDialogContent({
                         step="1000"
                         required
                         value={formData.priceAnnualCop}
-                        onChange={(e) => setFormData({ ...formData, priceAnnualCop: Number(e.target.value) })}
+                        onChange={(e) => {
+                          const annual = Number(e.target.value);
+                          const pct = computeAnnualDiscount(formData.priceMonthlyCop, annual);
+                          setFormData({ ...formData, priceAnnualCop: annual, annualDiscountPct: pct });
+                        }}
                         className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
                       />
                     </div>
@@ -844,21 +926,38 @@ function PlanModalDialogContent({
                   </label>
                 </div>
 
-                <div>
-                  <label htmlFor="plan-features" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                    Características De Marketing (Separadas Por Coma)
-                  </label>
-                  <textarea
-                    id="plan-features"
-                    rows={2}
-                    value={formData.featuresRaw}
-                    onChange={(e) => setFormData({ ...formData, featuresRaw: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                  <p className="text-[10px] text-[var(--dsn-text-secondary)] mt-1">
-                    Las características de marketing son descriptivas y no sustituyen los límites estructurados del plan.
-                  </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="plan-features" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                      Características De Marketing (Español)
+                    </label>
+                    <textarea
+                      id="plan-features"
+                      rows={2}
+                      placeholder="Atención con IA, Canal WhatsApp Cloud, Soporte estándar"
+                      value={formData.featuresRaw}
+                      onChange={(e) => setFormData({ ...formData, featuresRaw: e.target.value })}
+                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="plan-features-en" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                      Características De Marketing (Inglés)
+                    </label>
+                    <textarea
+                      id="plan-features-en"
+                      rows={2}
+                      placeholder="AI-powered assistance, WhatsApp Cloud channel, Standard support"
+                      value={formData.featuresEnRaw}
+                      onChange={(e) => setFormData({ ...formData, featuresEnRaw: e.target.value })}
+                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                    />
+                  </div>
                 </div>
+                <p className="text-[10px] text-[var(--dsn-text-secondary)] mt-1">
+                  Las características de marketing son descriptivas y se presentan como viñetas en las tarjetas de la landing page.
+                </p>
               </div>
             )}
 
@@ -1612,7 +1711,7 @@ function PlanModalDialogContent({
                     <div className="flex justify-between text-[var(--dsn-text-secondary)]">
                       <span>Precios:</span>
                       <span className="font-mono text-[var(--dsn-text)]">
-                        {formData.priceMonthlyCop.toLocaleString()} {formData.currency} / mes
+                        {formData.priceMonthlyCop.toLocaleString()} {formData.currency}/mes · {formData.priceAnnualCop.toLocaleString()} {formData.currency}/año ({formData.annualDiscountPct}% ahorro)
                       </span>
                     </div>
                     <div className="flex justify-between text-[var(--dsn-text-secondary)]">

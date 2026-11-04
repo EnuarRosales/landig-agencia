@@ -574,7 +574,7 @@ export class DrizzleAuthRepository implements IAuthRepository {
         .update(sessions)
         .set({
           lastSeenAt,
-          expiresAt: sql`LEAST(${expiresAt}, ${sessions.absoluteExpiresAt})`,
+          expiresAt: sql`LEAST(${expiresAt.toISOString()}::timestamptz, ${sessions.absoluteExpiresAt})`,
           updatedAt: lastSeenAt,
         })
         .where(and(eq(sessions.id, sessionId), isNull(sessions.revokedAt)));

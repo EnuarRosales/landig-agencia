@@ -150,8 +150,12 @@ export function PricingSection({ plans = [] }: PricingSectionProps) {
         {plans.map((plan) => {
           const lang = locale === "en" ? "en" : "es";
           const planName = plan.name?.[lang] || plan.name?.es || plan.code;
-          const planDesc = plan.description ? (plan.description[lang] || plan.description.es) : "";
-          const features = plan.marketingFeatures ? (plan.marketingFeatures[lang] || plan.marketingFeatures.es) : [];
+          const planDesc =
+            (plan.description?.[lang] && plan.description[lang].trim()) || plan.description?.es || "";
+          const features =
+            (plan.marketingFeatures?.[lang]?.length
+              ? plan.marketingFeatures[lang]
+              : plan.marketingFeatures?.es) || [];
 
           const rawPrice =
             cycle === "annual" && plan.priceAnnualCents
