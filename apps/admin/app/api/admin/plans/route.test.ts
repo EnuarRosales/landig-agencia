@@ -8,6 +8,8 @@ vi.mock("@mocter/domain", () => ({
   createAdminPlan: vi.fn(),
   updateAdminPlan: vi.fn(),
   deleteAdminPlan: vi.fn(),
+  fetchAdminPlanDetails: vi.fn(),
+  fetchChatwootCapabilitiesCatalog: vi.fn(),
 }));
 
 describe("BILL-001 / ADM-001 · Plans Route Handler (/api/admin/plans)", () => {
@@ -41,7 +43,8 @@ describe("BILL-001 / ADM-001 · Plans Route Handler (/api/admin/plans)", () => {
       },
     ]);
 
-    const res = await GET();
+    const req = new NextRequest("http://localhost/api/admin/plans");
+    const res = await GET(req);
     const json = await res.json();
 
     expect(res.status).toBe(200);
@@ -50,7 +53,57 @@ describe("BILL-001 / ADM-001 · Plans Route Handler (/api/admin/plans)", () => {
     expect(json.data[0].activeTenantsCount).toBe(3);
   });
 
-  it("POST: registra un nuevo plan comercial exitosamente", async () => {
+  it("GET ?id=: retorna el detalle integral de un plan con límites y capacidades (T3)", async () => {
+    vi.mocked(domain.fetchAdminPlanDetails).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: "plan-1",
+        code: "growth",
+        name: { es: "Crecimiento", en: "Growth" },
+        limits: {
+          products: { mode: "LIMITED", value: 500 },
+          contacts: { mode: "UNLIMITED", value: null },
+        },
+        capabilities: {
+          channel_whatsapp: true,
+          agent_management: true,
+        },
+        chatwootEnabled: true,
+      } as any,
+    });
+
+    const req = new NextRequest("http://localhost/api/admin/plans?id=plan-1");
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(json.data.limits.products.mode).toBe("LIMITED");
+    expect(json.data.limits.contacts.mode).toBe("UNLIMITED");
+    expect(json.data.chatwootEnabled).toBe(true);
+  });
+
+  it("GET ?capabilities=true: retorna el catálogo de capacidades Chatwoot v4.19.1 (T3)", async () => {
+    vi.mocked(domain.fetchChatwootCapabilitiesCatalog).mockResolvedValueOnce([
+      {
+        code: "channel_whatsapp",
+        name: { es: "Canal de WhatsApp", en: "WhatsApp Channel" },
+        ownership: "mocter",
+        commercialStatus: "commercial",
+      } as any,
+    ]);
+
+    const req = new NextRequest("http://localhost/api/admin/plans?capabilities=true");
+    const res = await GET(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0].code).toBe("channel_whatsapp");
+  });
+
+  it("POST: registra un nuevo plan comercial con límites y capacidades estructuradas (T3)", async () => {
     vi.mocked(domain.createAdminPlan).mockResolvedValueOnce({
       ok: true,
       data: {
@@ -66,6 +119,14 @@ describe("BILL-001 / ADM-001 · Plans Route Handler (/api/admin/plans)", () => {
         code: "scale",
         nameEs: "Escala",
         priceMonthlyCop: 299000,
+        limits: {
+          products: { mode: "LIMITED", value: 1000 },
+          contacts: { mode: "UNLIMITED", value: null },
+        },
+        capabilities: {
+          channel_whatsapp: true,
+        },
+        chatwootEnabled: true,
       }),
     });
 
@@ -74,10 +135,18 @@ describe("BILL-001 / ADM-001 · Plans Route Handler (/api/admin/plans)", () => {
 
     expect(res.status).toBe(201);
     expect(json.ok).toBe(true);
-    expect(json.data.code).toBe("scale");
+    expect(domain.createAdminPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "scale",
+        limits: expect.objectContaining({
+          products: { mode: "LIMITED", value: 1000 },
+        }),
+        chatwootEnabled: true,
+      }),
+    );
   });
 
-  it("PUT: actualiza un plan comercial existente", async () => {
+  it("PUT: actualiza un plan comercial con límites y capacidades", async () => {
     vi.mocked(domain.updateAdminPlan).mockResolvedValueOnce({
       ok: true,
       data: {
@@ -92,6 +161,9 @@ describe("BILL-001 / ADM-001 · Plans Route Handler (/api/admin/plans)", () => {
         id: "plan-1",
         nameEs: "Inicial Editado",
         priceMonthlyCop: 109000,
+        limits: {
+          products: { mode: "UNLIMITED", value: null },
+        },
       }),
     });
 
@@ -105,6 +177,9 @@ describe("BILL-001 / ADM-001 · Plans Route Handler (/api/admin/plans)", () => {
         id: "plan-1",
         nameEs: "Inicial Editado",
         priceMonthlyCop: 109000,
+        limits: {
+          products: { mode: "UNLIMITED", value: null },
+        },
       })
     );
   });

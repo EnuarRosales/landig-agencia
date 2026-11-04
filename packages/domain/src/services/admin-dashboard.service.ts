@@ -30,6 +30,16 @@ import {
   mediaVariants,
   aiUsageEvents,
   clientBrandings,
+  planLimits,
+  planDimensions,
+  chatwootCapabilities,
+  planCapabilityValues,
+  PLAN_DIMENSION_KEYS,
+  type PlanLimitDimensionKey,
+  COMMERCIAL_CHATWOOT_CAPABILITY_CODES,
+  CHATWOOT_CAPABILITY_CODES,
+  chatwootCapabilityDefinitions,
+  type ChatwootCapability,
   type Lead,
   type Cell,
   type Plan,
@@ -77,6 +87,42 @@ export interface CreateAdminCellInput {
  */
 export type AdminCellDto = Omit<Cell, "cellSecretsCiphertext" | "cellSecretsKeyId">;
 
+/**
+ * Configuración de un límite estructurado de plan comercial (S2, S3, S4).
+ * mode LIMITED exige un valor entero no negativo; UNLIMITED exige null.
+ */
+export interface PlanLimitConfigItem {
+  mode: "LIMITED" | "UNLIMITED";
+  value: number | null;
+}
+
+export type PlanLimitsConfig = Partial<Record<PlanLimitDimensionKey, PlanLimitConfigItem>>;
+
+/**
+ * Nombres amigables en español para las dimensiones canónicas de límites de plan.
+ */
+export const PLAN_DIMENSION_NAMES_ES: Record<PlanLimitDimensionKey, string> = {
+  products: "Productos",
+  images_per_product: "Imágenes por producto",
+  videos_per_product: "Videos por producto",
+  pdfs_per_product: "Archivos PDF por producto",
+  contacts: "Contactos",
+  tenant_users: "Usuarios por inquilino",
+  storage_bytes: "Almacenamiento por inquilino",
+  chatwoot_agents: "Agentes de atención",
+  chatwoot_inboxes: "Bandejas de entrada",
+  chatwoot_outbound_emails: "Correos salientes",
+};
+
+/**
+ * Detalle completo de un plan comercial con sus límites y capacidades (S1–S6).
+ */
+export interface AdminPlanDetails extends Plan {
+  limits: Record<PlanLimitDimensionKey, PlanLimitConfigItem>;
+  capabilities: Record<string, boolean>;
+  chatwootEnabled: boolean;
+}
+
 export interface CreateAdminPlanInput {
   code: string;
   nameEs: string;
@@ -94,6 +140,9 @@ export interface CreateAdminPlanInput {
   status?: "draft" | "active" | "retired";
   marketingFeaturesEs?: string[];
   createdBy?: string;
+  limits?: PlanLimitsConfig;
+  capabilities?: Record<string, boolean>;
+  chatwootEnabled?: boolean;
 }
 
 /**
@@ -452,6 +501,9 @@ export interface UpdateAdminPlanInput {
   status?: "draft" | "active" | "retired";
   marketingFeaturesEs?: string[];
   updatedBy?: string;
+  limits?: PlanLimitsConfig;
+  capabilities?: Record<string, boolean>;
+  chatwootEnabled?: boolean;
 }
 
 export interface DeleteAdminPlanResult {
@@ -490,10 +542,144 @@ export async function fetchAdminPlans(): Promise<AdminPlanWithMetrics[]> {
 }
 
 /**
- * Registra o actualiza un plan comercial o plan VIP privado (`admin.plans`).
+ * Valida la configuración estructurada de límites de un plan comercial (S2, S3, S4, S10).
+ */
+export function validatePlanLimits(
+  limits?: PlanLimitsConfig,
+  chatwootEnabled: boolean = false,
+): Result<void> {
+  if (!limits) return ok(undefined);
+
+  for (const [dimKey, item] of Object.entries(limits)) {
+    const key = dimKey as PlanLimitDimensionKey;
+    const name = PLAN_DIMENSION_NAMES_ES[key] || key;
+    if (!item || !item.mode) {
+      return err(
+        `Configuración incompleta para ${name}, no equivale a ilimitado.`,
+        "INVALID_LIMIT_CONFIG",
+      );
+    }
+    if (item.mode !== "LIMITED" && item.mode !== "UNLIMITED") {
+      return err(
+        `Modo inválido para ${name}: debe ser LIMITED o UNLIMITED.`,
+        "INVALID_LIMIT_MODE",
+      );
+    }
+    if (item.mode === "LIMITED") {
+      if (item.value === null || item.value === undefined) {
+        return err(
+          `Ingresa la cantidad permitida para ${name} o selecciona Ilimitado.`,
+          "LIMIT_VALUE_REQUIRED",
+        );
+      }
+      if (typeof item.value !== "number" || Number.isNaN(item.value)) {
+        return err(
+          `La cantidad de ${name} debe ser un número entero.`,
+          "INVALID_LIMIT_NUMBER",
+        );
+      }
+      if (item.value < 0) {
+        return err(
+          `La cantidad de ${name} debe ser mayor o igual a cero.`,
+          "NEGATIVE_LIMIT_VALUE",
+        );
+      }
+      if (!Number.isInteger(item.value)) {
+        return err(
+          `La cantidad de ${name} debe ser un número entero.`,
+          "DECIMAL_LIMIT_VALUE",
+        );
+      }
+    } else if (item.mode === "UNLIMITED") {
+      if (item.value !== null && item.value !== undefined) {
+        return err(
+          `Revisa la configuración de ${name}: un límite ilimitado no debe tener una cantidad.`,
+          "UNLIMITED_WITH_VALUE",
+        );
+      }
+    }
+  }
+
+  // Validación cruzada S4: el límite de agentes no podrá superar el de usuarios cuando ambos sean finitos
+  const agentsLimit = limits.chatwoot_agents;
+  const usersLimit = limits.tenant_users;
+  if (
+    agentsLimit?.mode === "LIMITED" &&
+    usersLimit?.mode === "LIMITED" &&
+    typeof agentsLimit.value === "number" &&
+    typeof usersLimit.value === "number" &&
+    agentsLimit.value > usersLimit.value
+  ) {
+    return err(
+      "El límite de agentes no podrá superar el de usuarios cuando ambos sean finitos.",
+      "AGENTS_EXCEED_USERS",
+    );
+  }
+
+  return ok(undefined);
+}
+
+/**
+ * Valida la habilitación de capacidades opcionales contra el catálogo v4.19.1 y restricciones (S5, S10).
+ */
+export function validatePlanCapabilities(
+  capabilities?: Record<string, boolean>,
+): Result<void> {
+  if (!capabilities) return ok(undefined);
+
+  for (const [code, enabled] of Object.entries(capabilities)) {
+    if (!enabled) continue;
+    if (!(CHATWOOT_CAPABILITY_CODES as readonly string[]).includes(code)) {
+      return err(
+        `La capacidad ${code} no está disponible en la edición o versión instalada.`,
+        "CAPABILITY_UNSUPPORTED",
+      );
+    }
+    if (code === "captain_classifier") {
+      return err(
+        "La capacidad Captain Classifier no está disponible en la edición o versión instalada.",
+        "CAPABILITY_CAPTAIN_CLASSIFIER_DISABLED",
+      );
+    }
+    if (code === "chatwoot_v4") {
+      return err(
+        "Chatwoot V4 es una configuración técnica de la instalación, no un beneficio comercial del plan.",
+        "CAPABILITY_CHATWOOT_V4_TECHNICAL",
+      );
+    }
+    if (code === "captain_tasks") {
+      return err(
+        "La capacidad Captain Tasks permanece pendiente de validación funcional en Community.",
+        "CAPABILITY_CAPTAIN_TASKS_UNVALIDATED",
+      );
+    }
+    if (!(COMMERCIAL_CHATWOOT_CAPABILITY_CODES as readonly string[]).includes(code)) {
+      return err(
+        `La capacidad ${code} no está disponible comercialmente en esta versión.`,
+        "CAPABILITY_NON_COMMERCIAL",
+      );
+    }
+  }
+
+  return ok(undefined);
+}
+
+/**
+ * Registra o actualiza un plan comercial o plan VIP privado (`admin.plans`)
+ * junto con sus límites estructurados y capacidades opcionales (S1–S6).
  */
 export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Result<Plan>> {
   try {
+    const limitsValidation = validatePlanLimits(input.limits, input.chatwootEnabled);
+    if (!limitsValidation.ok) {
+      return limitsValidation;
+    }
+
+    const capsValidation = validatePlanCapabilities(input.capabilities);
+    if (!capsValidation.ok) {
+      return capsValidation;
+    }
+
     const db = getDb();
     const operator = input.createdBy || "01a19874-1077-744c-8514-d4c990cd7259";
     const priceMonthlyCents = Math.round(input.priceMonthlyCop * 100);
@@ -501,41 +687,72 @@ export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Resu
       ? Math.round(input.priceAnnualCop * 100)
       : priceMonthlyCents * 10;
 
-    const [row] = await db
-      .insert(plans)
-      .values({
-        code: input.code.trim().toLowerCase(),
-        name: {
-          es: input.nameEs.trim(),
-          en: input.nameEn?.trim() || input.nameEs.trim(),
-        },
-        description: {
-          es: input.descriptionEs?.trim() || "",
-          en: input.descriptionEn?.trim() || input.descriptionEs?.trim() || "",
-        },
-        status: input.status || "active",
-        isPublic: input.isPublic ?? false,
-        isPopular: input.isPopular ?? false,
-        sortOrder: 10,
-        trialDays: input.trialDays ?? 14,
-        graceDays: input.graceDays ?? 7,
-        billingCycles: input.billingCycles || ["monthly", "annual"],
-        priceMonthlyCents,
-        priceAnnualCents,
-        currency: input.currency || "COP",
-        marketingFeatures: {
-          es: input.marketingFeaturesEs || [],
-          en: [],
-        },
-        createdBy: operator,
-        updatedBy: operator,
-      })
-      .returning();
+    return await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(plans)
+        .values({
+          code: input.code.trim().toLowerCase(),
+          name: {
+            es: input.nameEs.trim(),
+            en: input.nameEn?.trim() || input.nameEs.trim(),
+          },
+          description: {
+            es: input.descriptionEs?.trim() || "",
+            en: input.descriptionEn?.trim() || input.descriptionEs?.trim() || "",
+          },
+          status: input.status || "active",
+          isPublic: input.isPublic ?? false,
+          isPopular: input.isPopular ?? false,
+          sortOrder: 10,
+          trialDays: input.trialDays ?? 14,
+          graceDays: input.graceDays ?? 7,
+          billingCycles: input.billingCycles || ["monthly", "annual"],
+          priceMonthlyCents,
+          priceAnnualCents,
+          currency: input.currency || "COP",
+          marketingFeatures: {
+            es: input.marketingFeaturesEs || [],
+            en: [],
+          },
+          createdBy: operator,
+          updatedBy: operator,
+        })
+        .returning();
 
-    if (!row) {
-      return err("No se pudo registrar el plan comercial", "PLAN_INSERT_FAILED");
-    }
-    return ok(row);
+      if (!row) {
+        throw new Error("No se pudo registrar el plan comercial");
+      }
+
+      // Persistir límites del plan (S2, S3, S4)
+      for (const dim of PLAN_DIMENSION_KEYS) {
+        const item = input.limits?.[dim];
+        const mode = item?.mode || "LIMITED";
+        const value = mode === "UNLIMITED" ? null : (item?.value ?? 0);
+
+        await tx.insert(planLimits).values({
+          planId: row.id,
+          dimension: dim,
+          mode,
+          value,
+          createdBy: operator,
+          updatedBy: operator,
+        });
+      }
+
+      // Persistir capacidades de Chatwoot v4.19.1 (S5) - Deshabilitadas por defecto
+      for (const def of chatwootCapabilityDefinitions) {
+        const enabled = Boolean(input.capabilities?.[def.code] ?? false);
+        await tx.insert(planCapabilityValues).values({
+          planId: row.id,
+          capabilityCode: def.code,
+          enabled,
+          createdBy: operator,
+          updatedBy: operator,
+        });
+      }
+
+      return ok(row);
+    });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[createAdminPlan Failed] ${msg}`, error);
@@ -545,10 +762,25 @@ export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Resu
 
 /**
  * Actualiza los parámetros comerciales de un plan existente (`admin.plans`).
- * El código slug se preserva inmutable para proteger contratos y enlaces públicos.
+ * El código slug se preserva inmutable para proteger contratos y enlaces públicos (S1).
+ * Actualiza límites y capacidades según se suministren (S2–S5).
  */
 export async function updateAdminPlan(input: UpdateAdminPlanInput): Promise<Result<Plan>> {
   try {
+    if (input.limits) {
+      const limitsValidation = validatePlanLimits(input.limits, input.chatwootEnabled);
+      if (!limitsValidation.ok) {
+        return limitsValidation;
+      }
+    }
+
+    if (input.capabilities) {
+      const capsValidation = validatePlanCapabilities(input.capabilities);
+      if (!capsValidation.ok) {
+        return capsValidation;
+      }
+    }
+
     const db = getDb();
     const operator = input.updatedBy || "01a19874-1077-744c-8514-d4c990cd7259";
     const priceMonthlyCents = Math.round(input.priceMonthlyCop * 100);
@@ -556,44 +788,187 @@ export async function updateAdminPlan(input: UpdateAdminPlanInput): Promise<Resu
       ? Math.round(input.priceAnnualCop * 100)
       : priceMonthlyCents * 10;
 
-    const [row] = await db
-      .update(plans)
-      .set({
-        name: {
-          es: input.nameEs.trim(),
-          en: input.nameEn?.trim() || input.nameEs.trim(),
-        },
-        description: {
-          es: input.descriptionEs?.trim() || "",
-          en: input.descriptionEn?.trim() || input.descriptionEs?.trim() || "",
-        },
-        status: input.status || "active",
-        isPublic: input.isPublic ?? false,
-        isPopular: input.isPopular ?? false,
-        trialDays: input.trialDays ?? 14,
-        graceDays: input.graceDays ?? 7,
-        billingCycles: input.billingCycles || ["monthly", "annual"],
-        priceMonthlyCents,
-        priceAnnualCents,
-        currency: input.currency || "COP",
-        marketingFeatures: {
-          es: input.marketingFeaturesEs || [],
-          en: [],
-        },
-        updatedAt: new Date(),
-        updatedBy: operator,
-      })
-      .where(eq(plans.id, input.id))
-      .returning();
+    return await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(plans)
+        .set({
+          name: {
+            es: input.nameEs.trim(),
+            en: input.nameEn?.trim() || input.nameEs.trim(),
+          },
+          description: {
+            es: input.descriptionEs?.trim() || "",
+            en: input.descriptionEn?.trim() || input.descriptionEs?.trim() || "",
+          },
+          status: input.status || "active",
+          isPublic: input.isPublic ?? false,
+          isPopular: input.isPopular ?? false,
+          trialDays: input.trialDays ?? 14,
+          graceDays: input.graceDays ?? 7,
+          billingCycles: input.billingCycles || ["monthly", "annual"],
+          priceMonthlyCents,
+          priceAnnualCents,
+          currency: input.currency || "COP",
+          marketingFeatures: {
+            es: input.marketingFeaturesEs || [],
+            en: [],
+          },
+          updatedAt: new Date(),
+          updatedBy: operator,
+        })
+        .where(eq(plans.id, input.id))
+        .returning();
 
-    if (!row) {
-      return err("No se encontró el plan especificado para actualizar", "PLAN_NOT_FOUND");
-    }
-    return ok(row);
+      if (!row) {
+        return err("No se encontró el plan especificado para actualizar", "PLAN_NOT_FOUND");
+      }
+
+      // Upsert de límites si se incluyeron
+      if (input.limits) {
+        for (const [dimKey, item] of Object.entries(input.limits)) {
+          if (!item) continue;
+          const dim = dimKey as PlanLimitDimensionKey;
+          const mode = item.mode;
+          const value = mode === "UNLIMITED" ? null : item.value;
+
+          await tx
+            .insert(planLimits)
+            .values({
+              planId: row.id,
+              dimension: dim,
+              mode,
+              value,
+              createdBy: operator,
+              updatedBy: operator,
+            })
+            .onConflictDoUpdate({
+              target: [planLimits.planId, planLimits.dimension],
+              set: {
+                mode,
+                value,
+                updatedAt: new Date(),
+                updatedBy: operator,
+              },
+            });
+        }
+      }
+
+      // Upsert de capacidades si se incluyeron
+      if (input.capabilities) {
+        for (const [code, enabled] of Object.entries(input.capabilities)) {
+          await tx
+            .insert(planCapabilityValues)
+            .values({
+              planId: row.id,
+              capabilityCode: code,
+              enabled: Boolean(enabled),
+              createdBy: operator,
+              updatedBy: operator,
+            })
+            .onConflictDoUpdate({
+              target: [planCapabilityValues.planId, planCapabilityValues.capabilityCode],
+              set: {
+                enabled: Boolean(enabled),
+                updatedAt: new Date(),
+                updatedBy: operator,
+              },
+            });
+        }
+      }
+
+      return ok(row);
+    });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[updateAdminPlan Failed] ${msg}`, error);
     return err(`Error al actualizar plan: ${msg}`, "PLAN_UPDATE_ERROR");
+  }
+}
+
+/**
+ * Consulta el detalle integral de un plan con sus límites estructurados y capacidades (S1–S6).
+ */
+export async function fetchAdminPlanDetails(planId: string): Promise<Result<AdminPlanDetails>> {
+  try {
+    const db = getDb();
+    const [plan] = await db.select().from(plans).where(eq(plans.id, planId)).limit(1);
+    if (!plan) {
+      return err("El plan comercial especificado no existe", "PLAN_NOT_FOUND");
+    }
+
+    const limitsRows = await db
+      .select()
+      .from(planLimits)
+      .where(eq(planLimits.planId, planId));
+
+    const capRows = await db
+      .select()
+      .from(planCapabilityValues)
+      .where(eq(planCapabilityValues.planId, planId));
+
+    const limitsMap: Record<PlanLimitDimensionKey, PlanLimitConfigItem> = {
+      products: { mode: "LIMITED", value: 0 },
+      images_per_product: { mode: "LIMITED", value: 0 },
+      videos_per_product: { mode: "LIMITED", value: 0 },
+      pdfs_per_product: { mode: "LIMITED", value: 0 },
+      contacts: { mode: "LIMITED", value: 0 },
+      tenant_users: { mode: "LIMITED", value: 0 },
+      storage_bytes: { mode: "LIMITED", value: 0 },
+      chatwoot_agents: { mode: "LIMITED", value: 0 },
+      chatwoot_inboxes: { mode: "LIMITED", value: 0 },
+      chatwoot_outbound_emails: { mode: "LIMITED", value: 0 },
+    };
+
+    for (const r of limitsRows) {
+      if (r.dimension in limitsMap) {
+        limitsMap[r.dimension as PlanLimitDimensionKey] = {
+          mode: r.mode as "LIMITED" | "UNLIMITED",
+          value: r.value !== null ? Number(r.value) : null,
+        };
+      }
+    }
+
+    const capabilitiesMap: Record<string, boolean> = {};
+    for (const def of chatwootCapabilityDefinitions) {
+      capabilitiesMap[def.code] = false;
+    }
+    for (const c of capRows) {
+      capabilitiesMap[c.capabilityCode] = c.enabled;
+    }
+
+    const hasChatwootLimits =
+      limitsMap.chatwoot_agents.mode === "UNLIMITED" ||
+      (limitsMap.chatwoot_agents.value ?? 0) > 0 ||
+      limitsMap.chatwoot_inboxes.mode === "UNLIMITED" ||
+      (limitsMap.chatwoot_inboxes.value ?? 0) > 0;
+
+    const hasAnyActiveCap = Object.values(capabilitiesMap).some(Boolean);
+    const chatwootEnabled = hasChatwootLimits || hasAnyActiveCap;
+
+    return ok({
+      ...plan,
+      limits: limitsMap,
+      capabilities: capabilitiesMap,
+      chatwootEnabled,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[fetchAdminPlanDetails Failed] ${msg}`, error, { planId });
+    return err(`Error al consultar detalle del plan: ${msg}`, "PLAN_DETAILS_ERROR");
+  }
+}
+
+/**
+ * Consulta el catálogo canónico de capacidades de Chatwoot Community v4.19.1 (`admin.chatwoot_capabilities`).
+ */
+export async function fetchChatwootCapabilitiesCatalog(): Promise<ChatwootCapability[]> {
+  try {
+    const db = getDb();
+    return await db.select().from(chatwootCapabilities).orderBy(asc(chatwootCapabilities.code));
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[fetchChatwootCapabilitiesCatalog Failed] ${msg}`, error);
+    return [];
   }
 }
 

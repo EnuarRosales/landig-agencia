@@ -1,10 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminPlan, fetchAdminPlans, updateAdminPlan, deleteAdminPlan } from "@mocter/domain";
+import {
+  createAdminPlan,
+  fetchAdminPlans,
+  updateAdminPlan,
+  deleteAdminPlan,
+  fetchAdminPlanDetails,
+  fetchChatwootCapabilitiesCatalog,
+} from "@mocter/domain";
 
 /**
  * Route Handler para consulta, creación, edición y retiro/eliminación de planes comerciales y VIP (ADM-001, DAT-001).
+ * Soporta parametrización estructurada de límites y catálogo de capacidades Chatwoot Community v4.19.1 (T3).
  */
-export async function GET(): Promise<NextResponse> {
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+
+  if (id) {
+    const detailsResult = await fetchAdminPlanDetails(id);
+    if (!detailsResult.ok) {
+      return NextResponse.json(
+        { ok: false, error: detailsResult.error, code: detailsResult.code },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json({ ok: true, data: detailsResult.data });
+  }
+
+  if (searchParams.get("capabilities") === "true") {
+    const capabilities = await fetchChatwootCapabilitiesCatalog();
+    return NextResponse.json({ ok: true, data: capabilities });
+  }
+
   const plansList = await fetchAdminPlans();
   return NextResponse.json({ ok: true, data: plansList });
 }
@@ -33,6 +60,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       isPopular: Boolean(body.isPopular),
       status: body.status || "active",
       marketingFeaturesEs: body.marketingFeaturesEs || [],
+      limits: body.limits,
+      capabilities: body.capabilities,
+      chatwootEnabled: body.chatwootEnabled,
     });
 
     if (!result.ok) {
@@ -73,6 +103,9 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
       isPopular: Boolean(body.isPopular),
       status: body.status || "active",
       marketingFeaturesEs: body.marketingFeaturesEs || [],
+      limits: body.limits,
+      capabilities: body.capabilities,
+      chatwootEnabled: body.chatwootEnabled,
     });
 
     if (!result.ok) {
