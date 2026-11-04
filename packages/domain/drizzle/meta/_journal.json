@@ -183,6 +183,13 @@
       "when": 1793635192839,
       "tag": "0025_cell_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793766118472,
+      "tag": "0026_plan_capabilities_and_limits",
+      "breakpoints": true
     }
   ]
 }

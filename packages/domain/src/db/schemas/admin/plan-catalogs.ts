@@ -17,6 +17,26 @@ import { users } from "./users";
 import { auditColumns } from "../shared/audit-columns";
 
 /**
+ * Dimensiones canónicas de límites de plan (T2, S3–S4).
+ *
+ * Estas claves se usan en `admin.plan_limits` con modo LIMITED/UNLIMITED.
+ */
+export const PLAN_DIMENSION_KEYS = [
+  "products",
+  "images_per_product",
+  "videos_per_product",
+  "pdfs_per_product",
+  "contacts",
+  "tenant_users",
+  "storage_bytes",
+  "chatwoot_agents",
+  "chatwoot_inboxes",
+  "chatwoot_outbound_emails",
+] as const;
+
+export type PlanLimitDimensionKey = (typeof PLAN_DIMENSION_KEYS)[number];
+
+/**
  * Catálogo de dimensiones numéricas de plan (`admin.plan_dimensions`, ADM-001 T-10, RF-04.8).
  *
  * Incluye dimensiones como `max_products`, `max_tenant_agents`, `max_images_per_product`,
@@ -48,6 +68,12 @@ export const planDimensions = adminSchema.table(
 
 /**
  * Topes numéricos por plan y dimensión (`admin.plan_limits`, ADM-001 T-10, DAT-001 §3.3).
+ *
+ * Cada límite tiene un modo explícito:
+ * - LIMITED: `value` es obligatorio y mayor o igual a cero.
+ * - UNLIMITED: `value` es NULL; no establece cuota comercial.
+ *
+ * El valor cero nunca significa ilimitado.
  */
 export const planLimits = adminSchema.table(
   "plan_limits",
@@ -59,12 +85,26 @@ export const planLimits = adminSchema.table(
     dimension: text("dimension")
       .notNull()
       .references(() => planDimensions.key, { onDelete: "restrict" }),
-    value: bigint("value", { mode: "number" }).notNull(),
+    mode: text("mode").notNull().default("LIMITED"),
+    value: bigint("value", { mode: "number" }),
     ...auditColumns(),
   },
   (table) => [
     uniqueIndex("plan_limits_plan_dimension_unique").on(table.planId, table.dimension),
-    check("plan_limits_value_check", sql.raw("value >= 0")),
+    check(
+      "plan_limits_mode_check",
+      sql.raw("mode IN ('LIMITED', 'UNLIMITED')"),
+    ),
+    check(
+      "plan_limits_mode_value_check",
+      sql.raw(
+        "(mode = 'LIMITED' AND value IS NOT NULL) OR (mode = 'UNLIMITED' AND value IS NULL)",
+      ),
+    ),
+    check(
+      "plan_limits_value_check",
+      sql.raw("value IS NULL OR value >= 0"),
+    ),
   ],
 );
 

@@ -15,6 +15,7 @@ export * from "./password-reset-tokens";
 export * from "./user-consents";
 export * from "./auth-providers-config";
 export * from "./plan-catalogs";
+export * from "./chatwoot-capabilities";
 export * from "./chatwoot-media-onboarding";
 export * from "./notifications";
 export * from "./bot-catalog";
