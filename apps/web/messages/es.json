@@ -267,7 +267,7 @@
     "subtitle": "Sin costos por mensaje. Elige el plan que mejor se adapte al volumen de tu empresa.",
     "monthly": "Mensual",
     "annual": "Anual",
-    "discountBadge": "Ahorra 20%",
+    "discountBadge": "Ahorra {percent}%",
     "popularBadge": "Más popular",
     "perMonth": "mes",
     "perYear": "año",

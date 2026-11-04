@@ -137,6 +137,7 @@ function getInitialFormData(plan?: Plan | null) {
       currency: "COP",
       priceMonthlyCop: 149000,
       priceAnnualCop: 1490000,
+      annualDiscountPct: 20,
       cycleMonthly: true,
       cycleAnnual: true,
       trialDays: 14,
@@ -160,6 +161,10 @@ function getInitialFormData(plan?: Plan | null) {
     currency: plan.currency || "COP",
     priceMonthlyCop: Math.round(Number(plan.priceMonthlyCents || 0) / 100),
     priceAnnualCop: Math.round(Number(plan.priceAnnualCents || 0) / 100),
+    annualDiscountPct: computeAnnualDiscount(
+      Math.round(Number(plan.priceMonthlyCents || 0) / 100),
+      Math.round(Number(plan.priceAnnualCents || 0) / 100)
+    ) || 20,
     cycleMonthly: cycles.includes("monthly"),
     cycleAnnual: cycles.includes("annual"),
     trialDays: plan.trialDays ?? 14,

@@ -64,6 +64,30 @@ export function PricingSection({ plans = [] }: PricingSectionProps) {
   const [cycle, setCycle] = useState<"monthly" | "annual">("monthly");
   const [showComparison, setShowComparison] = useState(false);
 
+  // Porcentaje de ahorro anual derivado de los planes activos parametrizados en el backoffice
+  const dynamicDiscount = (() => {
+    const popular = plans.find(
+      (p) => p.isPopular && p.priceMonthlyCents > 0 && p.priceAnnualCents && p.priceAnnualCents > 0,
+    );
+    if (popular && popular.priceAnnualCents) {
+      const full = popular.priceMonthlyCents * 12;
+      const pct = Math.round(((full - popular.priceAnnualCents) / full) * 100);
+      if (pct > 0 && pct < 100) return pct;
+    }
+    const discounts = plans
+      .filter((p) => p.priceMonthlyCents > 0 && p.priceAnnualCents && p.priceAnnualCents > 0)
+      .map((p) => {
+        const full = p.priceMonthlyCents * 12;
+        return Math.round(((full - (p.priceAnnualCents ?? full)) / full) * 100);
+      })
+      .filter((pct) => pct > 0 && pct < 100);
+
+    if (discounts.length > 0) {
+      return Math.max(...discounts);
+    }
+    return 20;
+  })();
+
   if (!plans || plans.length === 0) {
     return null;
   }
@@ -114,8 +138,8 @@ export function PricingSection({ plans = [] }: PricingSectionProps) {
             }`}
           >
             <span>{t("annual")}</span>
-            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-bold text-emerald-400">
-              {t("discountBadge")}
+            <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-400">
+              {t("discountBadge", { percent: dynamicDiscount })}
             </span>
           </button>
         </div>
@@ -245,7 +269,7 @@ export function PricingSection({ plans = [] }: PricingSectionProps) {
       </div>
 
       {/* Tabla comparativa colapsable en página */}
-      {showComparison && <PlanComparisonTable plans={plans} />}
+      {showComparison && <PlanComparisonTable plans={plans} cycle={cycle} />}
     </section>
   );
 }

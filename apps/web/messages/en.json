@@ -267,7 +267,7 @@
     "subtitle": "No per-message fees. Choose the plan that best fits your company's growth.",
     "monthly": "Monthly",
     "annual": "Annual",
-    "discountBadge": "Save 20%",
+    "discountBadge": "Save {percent}%",
     "popularBadge": "Most popular",
     "perMonth": "mo",
     "perYear": "yr",

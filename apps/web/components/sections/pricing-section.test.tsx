@@ -6,14 +6,16 @@ import { PricingSection } from "./pricing-section";
 import type { PublicPlanDto } from "@mocter/domain";
 
 vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => {
+  useTranslations: () => (key: string, params?: Record<string, unknown>) => {
+    if (key === "discountBadge") {
+      return `Ahorra ${params?.percent ?? 20}%`;
+    }
     const dict: Record<string, string> = {
       pill: "Planes y Tarifas",
       title: "Escala tu atención sin límites",
       subtitle: "Sin costos por mensaje",
       monthly: "Mensual",
       annual: "Anual",
-      discountBadge: "Ahorra 20%",
       popularBadge: "Más Popular",
       perMonth: "mes",
       cta: "Comenzar ahora",
@@ -161,3 +163,4 @@ describe("PricingSection & PlanComparisonTable Component", () => {
     expect(screen.queryByText("Comparación Detallada De Planes")).toBeNull();
   });
 });
+
