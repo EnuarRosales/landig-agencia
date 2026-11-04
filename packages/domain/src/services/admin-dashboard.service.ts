@@ -55,6 +55,7 @@ import { INITIAL_AI_ASSIST_FIELDS, INITIAL_AI_ASSIST_PROMPTS } from "./ai-assist
 import { createCipheriv, createDecipheriv, randomBytes, createHash, randomUUID } from "node:crypto";
 import { cellSecretsCryptoService } from "./cell-secrets.service";
 import { authorizeCellProvision } from "./cell-authorization.service";
+import { provisionTenantChatwootAccount, syncAllAccountsForPlan } from "./chatwoot-provisioning.service";
 
 export interface ControlPlaneMetricsDto {
   tenants: number;
@@ -878,6 +879,23 @@ export async function updateAdminPlan(input: UpdateAdminPlanInput): Promise<Resu
 
       return ok(row);
     });
+
+    if (txResult.ok && txResult.data.chatwootEnabled) {
+      try {
+        await syncAllAccountsForPlan({
+          planId: txResult.data.id,
+          actor: operator,
+          db,
+        });
+      } catch (syncErr) {
+        appLogger.warn("[updateAdminPlan] Error al sincronizar cuentas de Chatwoot", {
+          planId: txResult.data.id,
+          error: syncErr instanceof Error ? syncErr.message : String(syncErr),
+        });
+      }
+    }
+
+    return txResult;
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[updateAdminPlan Failed] ${msg}`, error);
@@ -2293,6 +2311,29 @@ export async function createAdminTenant(input: CreateAdminTenantInput): Promise<
         createdBy: actor,
         updatedBy: actor,
       });
+
+    // 10. Aprovisionar automáticamente cuenta en Chatwoot (S9, T4)
+    if (selectedPlan.chatwootEnabled) {
+      try {
+        const provRes = await provisionTenantChatwootAccount({
+          clientId: newClient.id,
+          planId: selectedPlan.id,
+          actor,
+          db,
+        });
+        if (!provRes.ok) {
+          appLogger.warn("[createAdminTenant] Falla al aprovisionar cuenta en Chatwoot", {
+            clientId: newClient.id,
+            error: provRes.error,
+          });
+        }
+      } catch (cwErr) {
+        appLogger.warn("[createAdminTenant] Error inesperado en aprovisionamiento Chatwoot", {
+          clientId: newClient.id,
+          error: cwErr instanceof Error ? cwErr.message : String(cwErr),
+        });
+      }
+    }
 
     const pObj = selectedPlan.name as { es?: string; en?: string } | null;
     const planName = pObj?.es || selectedPlan.code;

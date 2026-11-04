@@ -16,6 +16,7 @@ export const env = createEnv({
     REDIS_URL: z.string().optional(),
     REDIS_PASSWORD: z.string().optional(),
     CHATWOOT_BASE_URL: z.string().url().default("http://localhost:3000"),
+    CHATWOOT_PLATFORM_TOKEN: z.string().optional(),
   },
   client: {
     NEXT_PUBLIC_ADMIN_URL: z
@@ -43,6 +44,7 @@ export const env = createEnv({
     REDIS_URL: process.env.REDIS_URL,
     REDIS_PASSWORD: process.env.REDIS_PASSWORD,
     CHATWOOT_BASE_URL: process.env.CHATWOOT_BASE_URL,
+    CHATWOOT_PLATFORM_TOKEN: process.env.CHATWOOT_PLATFORM_TOKEN,
     NEXT_PUBLIC_ADMIN_URL: process.env.NEXT_PUBLIC_ADMIN_URL,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_CHATWOOT_URL: process.env.NEXT_PUBLIC_CHATWOOT_URL,
