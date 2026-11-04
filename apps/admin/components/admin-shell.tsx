@@ -34,6 +34,7 @@ import { handleLogoutRedirect } from "@/lib/api-client";
 interface AdminShellProps {
   children: React.ReactNode;
   currentUser?: CurrentUserDto;
+  tenantCapabilities?: Record<string, boolean>;
 }
 
 interface NavItem {
@@ -41,6 +42,7 @@ interface NavItem {
   label: string;
   badge?: string;
   icon: React.ComponentType<{ className?: string }>;
+  capabilityCode?: string;
 }
 
 /**
@@ -54,7 +56,7 @@ interface NavItem {
  * - Iconografía profesional con Lucide Icons y resaltado de ruta activa con token de acento.
  * - Ficha de Perfil HUD y Menú de Cierre de Sesión interactivo con modales de confirmación accesibles (Regla 4.17).
  */
-export function AdminShell({ children, currentUser }: AdminShellProps) {
+export function AdminShell({ children, currentUser, tenantCapabilities }: AdminShellProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profilePopoverOpen, setProfilePopoverOpen] = useState(false);
@@ -171,6 +173,7 @@ export function AdminShell({ children, currentUser }: AdminShellProps) {
       href: "/admin/reports",
       label: dict.navReports || "Informes y Analítica",
       icon: BarChart3,
+      capabilityCode: "reports",
     },
     {
       href: "/admin/settings/notifications",
@@ -188,6 +191,10 @@ export function AdminShell({ children, currentUser }: AdminShellProps) {
       icon: Palette,
     },
   ];
+
+  const visibleNavItems = tenantCapabilities
+    ? navItems.filter((item) => !item.capabilityCode || Boolean(tenantCapabilities[item.capabilityCode]))
+    : navItems;
 
   function isLinkActive(href: string): boolean {
     if (href === "/") {
@@ -255,7 +262,7 @@ export function AdminShell({ children, currentUser }: AdminShellProps) {
 
               {/* Lista de navegación vertical con scroll independiente */}
               <nav className="mt-4 space-y-1.5 overflow-y-auto flex-1 pr-1 overscroll-contain" aria-label="Navegación principal móvil">
-                {navItems.map((item) => {
+                {visibleNavItems.map((item) => {
                   const Icon = item.icon;
                   const active = isLinkActive(item.href);
 
@@ -391,7 +398,7 @@ export function AdminShell({ children, currentUser }: AdminShellProps) {
 
           {/* Navegación Desktop */}
           <nav className="mt-4 space-y-1.5" aria-label="Navegación principal escritorio">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const active = isLinkActive(item.href);
 

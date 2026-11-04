@@ -100,3 +100,5 @@ export * from "./services/cell-manifest.service";
 export * from "./services/cell-handshake.service";
 export * from "./services/tenant-products-and-media.service";
 export * from "./services/tenant-contacts-and-users.service";
+export * from "./services/tenant-storage-accounting.service";
+export * from "./services/tenant-capability-gate.service";

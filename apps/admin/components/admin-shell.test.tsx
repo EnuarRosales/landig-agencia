@@ -117,5 +117,22 @@ describe("apps/admin · AdminShell Component (Profile & Logout)", () => {
       });
     }
   });
-});
+  it("oculta el acceso a Informes y Analítica cuando la capacidad 'reports' no está incluida en el plan del inquilino (CA-008)", () => {
+    // 1. Sin capacidades filtradas o con reports=true -> aparece en la navegación
+    const { unmount } = render(
+      <AdminShell currentUser={mockUser} tenantCapabilities={{ reports: true }}>
+        <div>Vista</div>
+      </AdminShell>
+    );
+    expect(screen.getAllByText(/Informes y Analítica/i).length).toBeGreaterThanOrEqual(1);
+    unmount();
 
+    // 2. Con reports=false -> no aparece en la navegación (CA-008)
+    render(
+      <AdminShell currentUser={mockUser} tenantCapabilities={{ reports: false }}>
+        <div>Vista</div>
+      </AdminShell>
+    );
+    expect(screen.queryByText(/Informes y Analítica/i)).toBeNull();
+  });
+});
