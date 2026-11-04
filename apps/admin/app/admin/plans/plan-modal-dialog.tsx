@@ -333,8 +333,14 @@ function PlanModalDialogContent({
 
   const selectedCapabilitiesCount = Object.values(capabilities).filter(Boolean).length;
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(e?: React.FormEvent | React.MouseEvent) {
+    if (e) {
+      e.preventDefault();
+    }
+    // Salvaguarda: el formulario solo puede confirmarse en la pestaña de resumen
+    if (activeTab !== "summary") {
+      return;
+    }
     setLoading(true);
     setError(null);
     setSuccess(false);
@@ -627,7 +633,15 @@ function PlanModalDialogContent({
 
         {/* Contenedor scrolleable del formulario */}
         {!fetchingDetails && (
-          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto py-4 space-y-6">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (activeTab === "summary") {
+                handleSubmit(e);
+              }
+            }}
+            className="flex-1 overflow-y-auto py-4 space-y-6"
+          >
             {/* PESTAÑA 1: Información Comercial */}
             {activeTab === "commercial" && (
               <div className="space-y-4">
@@ -1748,8 +1762,11 @@ function PlanModalDialogContent({
               <div className="flex items-center gap-3">
                 {activeTab !== "summary" ? (
                   <button
+                    key="wizard-next-btn"
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       if (activeTab === "commercial") setActiveTab("catalog");
                       else if (activeTab === "catalog") setActiveTab("tenant");
                       else if (activeTab === "tenant") setActiveTab("chatwoot");
@@ -1763,7 +1780,12 @@ function PlanModalDialogContent({
                   </button>
                 ) : (
                   <button
-                    type="submit"
+                    key="wizard-submit-btn"
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleSubmit(e);
+                    }}
                     disabled={loading}
                     className="flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-5 py-2 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50 transition-all shadow-sm"
                   >
