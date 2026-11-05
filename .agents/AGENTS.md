@@ -148,6 +148,10 @@ Queda estrictamente prohibido proponer o implementar soluciones o heurísticas a
 
 Queda estrictamente prohibido el uso de diálogos nativos del navegador (`window.alert()`, `window.confirm()`, `window.prompt()`) para cualquier interacción o confirmación destructiva en el sistema. Toda confirmación (eliminación, retiro, drenado de células, cambios de estado operativo o restauración de configuración) debe implementarse como diálogo modal accesible (`role="dialog"`, `aria-modal="true"`), estilizado con tokens del sistema de diseño Mocter (`--dsn-*`), tarjeta de resumen de metadatos del recurso, banner contextual de salvaguarda/advertencia y botones en Title Case con feedback de carga. Consulte la directiva completa en [rules/rules-for-custom-confirmation-modals-no-native-dialogs.md](rules/rules-for-custom-confirmation-modals-no-native-dialogs.md).
 
+### 4.18 Recompilación, reinicio de servicios y verificación de salud obligatoria (Compile, Restart & Health Check Protocol)
+
+Queda estrictamente prohibido dar por concluida o entregada una tarea sin compilar los cambios, reiniciar el o los contenedores Docker de los servicios afectados (`mocter-core-admin-portal-1`, `mocter-core-web-portal-1`, etc.) y verificar en caliente su código de respuesta HTTP 200 y ausencia de excepciones en logs. No se permite confiar exclusivamente en el hot reload del entorno de desarrollo. Todo cambio en el paquete compartido `@mocter/domain` exige el reinicio inmediato de ambos portales (`apps/admin` y `apps/web`). Consulte la directiva completa en [rules/rules-for-compile-restart-and-healthcheck.md](rules/rules-for-compile-restart-and-healthcheck.md).
+
 ## 5. Formato del reporte del agente
 
 Al terminar una especificación, entrega:
