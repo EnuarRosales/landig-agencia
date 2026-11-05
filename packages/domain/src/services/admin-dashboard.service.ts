@@ -1571,6 +1571,13 @@ const CANONICAL_TEMPLATES_SEED = [
     bodyHtml: "<p>Hola {{referrer_name}},</p><p><strong>{{referred_name}}</strong> se ha registrado con tu enlace de referidos. Tu beneficio acumulado es: {{reward_summary}}.</p>",
   },
   {
+    eventKey: "community.role_promoted",
+    locale: "es",
+    senderKey: "comunidad",
+    subject: "Nuevo rol en la comunidad {{community_name}}",
+    bodyHtml: "<p>Hola {{user_name}},</p><p>Has sido promovido al rol <strong>{{role}}</strong> en la comunidad <strong>{{community_name}}</strong>.</p><p><a href=\"{{community_url}}\">Ver comunidad</a></p>",
+  },
+  {
     eventKey: "community.join_accepted",
     locale: "es",
     senderKey: "comunidad",
@@ -1652,44 +1659,70 @@ export async function fetchAdminEmailSettings(): Promise<AdminEmailSettingsDto> 
     }
 
     // 3. Inicialización idempotente de Eventos Transaccionales del Sistema
-    if (eventsList.length === 0) {
-      for (const ev of CANONICAL_EMAIL_EVENTS) {
-        await db.insert(emailEvents).values({
-          key: ev.key.toLowerCase(),
-          category: ev.category,
-          description: ev.description,
-          variablesSchema: [...ev.variablesSchema],
-          defaultSenderKey: ev.defaultSenderKey,
-          isEnabled: ev.isEnabled,
-          isSystem: ev.isSystem,
-          createdBy: "platform_owner",
-          updatedBy: "platform_owner",
-        });
+    const existingEventKeys = new Set(eventsList.map((ev) => ev.key.toLowerCase()));
+    for (const ev of CANONICAL_EMAIL_EVENTS) {
+      if (!existingEventKeys.has(ev.key.toLowerCase())) {
+        try {
+          await db.insert(emailEvents).values({
+            key: ev.key.toLowerCase(),
+            category: ev.category,
+            description: ev.description,
+            variablesSchema: [...ev.variablesSchema],
+            defaultSenderKey: ev.defaultSenderKey,
+            isEnabled: ev.isEnabled,
+            isSystem: ev.isSystem,
+            createdBy: "platform_owner",
+            updatedBy: "platform_owner",
+          });
+          existingEventKeys.add(ev.key.toLowerCase());
+        } catch (e) {
+          appLogger.warn(`[fetchAdminEmailSettings] No se pudo inicializar evento ${ev.key}`, { error: e instanceof Error ? e.message : String(e) });
+        }
       }
-      eventsList = await db.select().from(emailEvents);
     }
+    eventsList = await db.select().from(emailEvents);
 
     // 4. Inicialización idempotente de Plantillas Vinculadas a Remitente y Evento
-    if (templatesList.length === 0 && sendersList.length > 0) {
+    if (sendersList.length > 0) {
       const senderKeyMap = new Map(sendersList.map((s) => [s.key, s.id]));
       const defaultSenderId = sendersList.find((s) => s.isDefault)?.id || sendersList[0].id;
+      const validEventKeys = new Set(eventsList.map((e) => e.key));
+      const existingTemplateKeys = new Set(
+        templatesList.map((t) => `${t.eventKey}:${t.locale}:${t.version}`)
+      );
 
       for (const t of CANONICAL_TEMPLATES_SEED) {
+        if (!validEventKeys.has(t.eventKey)) {
+          continue;
+        }
+        const templateKey = `${t.eventKey}:${t.locale}:1`;
+        if (existingTemplateKeys.has(templateKey)) {
+          continue;
+        }
+
         const targetSenderId = senderKeyMap.get(t.senderKey) || defaultSenderId;
-        await db.insert(emailTemplates).values({
-          eventKey: t.eventKey,
-          locale: t.locale,
-          senderId: targetSenderId,
-          subject: t.subject,
-          bodyJson: { type: "doc", content: [{ type: "paragraph", text: t.bodyHtml }] },
-          bodyHtml: t.bodyHtml,
-          version: 1,
-          status: "published",
-          isLocked: t.eventKey.startsWith("auth."),
-          publishedAt: new Date(),
-          createdBy: "platform_owner",
-          updatedBy: "platform_owner",
-        });
+        try {
+          await db.insert(emailTemplates).values({
+            eventKey: t.eventKey,
+            locale: t.locale,
+            senderId: targetSenderId,
+            subject: t.subject,
+            bodyJson: { type: "doc", content: [{ type: "paragraph", text: t.bodyHtml }] },
+            bodyHtml: t.bodyHtml,
+            version: 1,
+            status: "published",
+            isLocked: t.eventKey.startsWith("auth."),
+            publishedAt: new Date(),
+            createdBy: "platform_owner",
+            updatedBy: "platform_owner",
+          });
+          existingTemplateKeys.add(templateKey);
+        } catch (e) {
+          appLogger.warn(
+            `[fetchAdminEmailSettings] No se pudo inicializar plantilla ${t.eventKey}:${t.locale}`,
+            { error: e instanceof Error ? e.message : String(e) }
+          );
+        }
       }
       templatesList = await db.select().from(emailTemplates);
     }

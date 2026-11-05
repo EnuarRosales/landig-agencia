@@ -72,3 +72,4 @@ docker logs --tail 20 <nombre-del-contenedor>
 1. **Prohibido asumir éxito sin comprobación HTTP en caliente:** Ningún agente puede reportar *"quedó listo"* o *"está funcionando"* sin haber ejecutado la verificación del código de respuesta HTTP.
 2. **Prohibido omitir el reinicio cuando se altere `@mocter/domain`:** Todo cambio en contratos, esquemas, servicios o repositorios del dominio exige reiniciar inmediatamente tanto el portal administrativo como la landing web.
 3. **Prohibido ignorar errores en logs post-reinicio:** Si tras el reinicio el contenedor emite trazas de error o códigos HTTP 4xx/5xx imprevistos, el agente debe detenerse, investigar la causa raíz técnica y subsanarla antes de entregar la respuesta.
+

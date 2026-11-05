@@ -88,6 +88,14 @@
       "sessions": 7,
       "memories": 14,
       "prompts": 0
+    },
+    {
+      "id": "f514b11b",
+      "created_by": "alejandroher",
+      "created_at": "2026-11-03T22:45:11.7376334Z",
+      "sessions": 1,
+      "memories": 0,
+      "prompts": 0
     }
   ]
 }

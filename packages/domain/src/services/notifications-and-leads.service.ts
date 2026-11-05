@@ -125,6 +125,15 @@ export const CANONICAL_EMAIL_EVENTS = [
     isSystem: false,
   },
   {
+    key: "community.digest",
+    category: "community" as const,
+    description: "Resumen periódico de actividad y novedades en la comunidad.",
+    variablesSchema: ["user_name", "community_name"],
+    defaultSenderKey: "comunidad",
+    isEnabled: true,
+    isSystem: false,
+  },
+  {
     key: "referral.registered",
     category: "referral" as const,
     description: "Confirmación de referido registrado y resumen de recompensa.",
