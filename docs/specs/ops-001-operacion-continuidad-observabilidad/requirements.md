@@ -3,11 +3,11 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.7 |
-| Estado | Aprobada |
-| Fecha | 2026-10-21 · actualizado 2026-11-02 |
+| Versión | 1.8 |
+| Estado | Aprobada · v1.8 |
+| Fecha | 2026-10-21 · actualizado 2026-11-06 |
 | Documentos | `requirements.md` (este) · [`design.md`](design.md) · [`tasks.md`](tasks.md) |
-| Depende de | [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) · [CD-001](../cd-001-despliegue-continuo/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
+| Depende de | [DAT-001](../dat-001-arquitectura-datos-multiinquilino/requirements.md) · [CD-001](../cd-001-despliegue-continuo/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) · [CEL-001](../cel-001-despliegue-celdas/requirements.md) |
 | Directivas | `.agents/AGENTS.md` |
 
 ## 1. Propósito
@@ -131,7 +131,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-06.4 | La passphrase de cifrado se guarda en un gestor de secretos y en una copia offsite; sin ella el respaldo es irrecuperable. |
 | RF-06.5 | Restaurar exige dos secretos distintos: acceso a R2 y passphrase. Cada uno vive en un archivo separado con permisos `0600` en el VPS; ninguno se guarda en el repositorio ni en el mismo archivo. |
 | RF-06.6 | Las claves HMAC de imgproxy y las credenciales S3 de SeaweedFS las provee la plataforma y viven en su gestor de secretos, separadas de las credenciales R2. La rotación conserva el par anterior al menos hasta que las URLs emitidas con él expiren o se regeneren; la ventana se documenta y ninguna clave se expone al navegador ni al repositorio. |
-| RF-06.7 | **Estándar de Despliegue de Celdas en Host (`/opt/<name-cell>`):** En producción, toda celda autónoma reside en la ruta canónica `/opt/<name-cell>` (ej. `/opt/cell-01`) y es desplegada y operada estrictamente bajo el usuario no privilegiado `deploy:1000` (`UID:GID 1000:1000`). Ningún proceso o contenedor celular se ejecuta como `root` en el host ni expone puertos fuera de la red privada controlada. |
+| RF-06.7 | **Estándar de host y exposición celular:** El contrato por perfil para directorio, usuario de despliegue, redes y puertos es canónico en CEL-001. OPS-001 exige verificar en runbooks que las celdas productivas lo cumplan, no corran como root y no expongan puertos fuera de redes privadas. |
 
 ### RF-07 · Costos
 
@@ -150,19 +150,19 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 | RF-08.3 | Los runbooks se pueden ejecutar sin contexto previo y sin decisiones implícitas. |
 | RF-08.4 | La spec distingue explícitamente **verificado**, **supuesto** y **no verificado**. Un agente no convierte un supuesto en hecho. |
 | RF-08.5 | Los procedimientos destructivos declaran su efecto, su reversión y la confirmación que exigen. |
-| RF-08.6 | **Emulación Local y Paridad Celular:** Se documenta el runbook de ejecución de celdas aisladas en local con `docker-compose.cell.yml` vía `pnpm cell:up`, replicando la estructura de red privada `mocter-cell-net`, PgBouncer y migraciones efímeras (`cell-migrator`) de producción. Los puertos de desarrollo se publican solo en `127.0.0.1`; no se expone la celda fuera del host local. |
+| RF-08.6 | **Runbook de emulación celular:** OPS-001 documenta la operación y verificación de los perfiles definidos en CEL-001, incluyendo `pnpm cell:up`, aislamiento local, migraciones y puertos loopback. CEL-001 es la fuente técnica para el Compose generado y la paridad por perfil. |
 
 ### RF-09 · Despliegue y conectividad celular
 
 | ID | Requisito |
 |---|---|
-| RF-09.1 | **Conectividad privada Router→celda:** Solo el Router Global inicia las pruebas desde una ruta privada controlada hacia `pgbouncer_host:pgbouncer_port` y `app_url`; cada destino debe resolver dentro de `CELL_PRIVATE_ALLOWED_CIDRS`. Nunca se conecta a `public_ip` ni se publica PostgreSQL/PgBouncer en Internet. En `remote_vps` se valida TLS; en `local_compose` solo se permite loopback o la red Docker celular explícitamente conectada. |
-| RF-09.2 | **Rol de healthcheck con mínimo privilegio:** La verificación de base usa una credencial dedicada `mocter_healthcheck` que solo conecta y lee catálogos/metadatos de migraciones; no lee filas de negocio, no ejecuta DDL y no tiene `BYPASSRLS`. |
-| RF-09.3 | **Handshake dual 360°:** La verificación de datos confirma conectividad, migraciones requeridas, tablas base y RLS habilitado/forzado; la verificación HTTP llama `GET /api/health` con `X-Mocter-Handshake-Secret` y valida el token en tiempo constante. Ambas pruebas deben pasar para `verifying → active`; el fallo deja `error_connection` con diagnóstico saneado y no reasigna rutas existentes. |
-| RF-09.4 | **Sonda operativa y recuperación manual:** Una sonda liviana posterior ejecuta `SELECT 1` y el healthcheck HTTP cada 60 segundos; tres fallos consecutivos cambian `active` a `error_connection`. La recuperación a `active` requiere una verificación manual completa; ningún healthcheck reactiva una celda automáticamente. |
-| RF-09.5 | **Migración antes de exponer servicios:** En el compose de celda, `cell-migrator` aplica `packages/domain/drizzle.cell.config.ts` conectándose directamente a PostgreSQL; `pg-cell` debe estar saludable antes de iniciar el migrador, y PgBouncer y `tenant-service` solo inician si el migrador termina exitosamente (`service_completed_successfully`). El mismo `docker-compose.cell.yml` se usa en `remote_vps` y `local_compose`. |
-| RF-09.6 | **Manejo seguro de `.env.cell`:** El portal conserva el paquete cifrado; un Platform Owner puede solicitar su exportación explícita y auditada. El portal descifra los secretos solo en memoria y devuelve `.env.cell` con `Cache-Control: no-store`; no persiste el archivo ni registra valores secretos. El operador lo almacena en el host con permisos `0600`, fuera del repositorio, y lo consume únicamente al ejecutar Compose en `/opt/<name-cell>`. |
-| RF-09.7 | **Red local aislada:** `pnpm cell:up` levanta la celda en una red bridge aislada (`mocter-cell-net`); los puertos de desarrollo se enlazan solo a `127.0.0.1` y ningún servicio celular se expone fuera del host. |
+| RF-09.1 | **Conectividad privada Router→celda:** Solo el Router Global inicia probes hacia endpoints celulares privados; nunca usa `public_ip` ni se publica PostgreSQL/PgBouncer en Internet. Los perfiles, TLS, allowlist CIDR y resolución segura están definidos en CEL-001; OPS-001 gobierna su verificación operativa. |
+| RF-09.2 | **Rol de healthcheck con mínimo privilegio:** Las probes celulares usan `mocter_healthcheck` conforme al contrato de CEL-001; el rol no lee filas de negocio, no ejecuta DDL y no tiene `BYPASSRLS`. OPS-001 registra evidencia y runbooks operativos. |
+| RF-09.3 | **Handshake dual 360°:** El contrato de verificación de datos y aplicación, autenticación HTTP, transición `verifying → active`, errores y preservación de rutas se define de forma canónica en CEL-001. OPS-001 exige alertas y diagnósticos saneados para los fallos operativos. |
+| RF-09.4 | **Sonda operativa y recuperación manual:** Intervalo, cantidad de fallos, transiciones y recuperación manual son parte del contrato celular en CEL-001. OPS-001 define su supervisión, alertas y runbook de respuesta; ningún healthcheck reactiva una celda automáticamente. |
+| RF-09.5 | **Migración antes de exponer servicios:** El migrador celular es one-shot, conecta directamente a PostgreSQL y termina antes de PgBouncer y `tenant-app`. El target de migración, health ordering, topología y salidas Compose de cada perfil se especifican en CEL-001; OPS-001 comprueba el orden en el runbook. |
+| RF-09.6 | **Manejo seguro de `.env.cell`:** El contrato de cifrado, exportación auditada, `Cache-Control: no-store`, ruta y referencias de secretos es CEL-001. OPS-001 conserva las reglas de almacenamiento operacional con permisos `0600`, fuera del repositorio y sin secretos en logs. |
+| RF-09.7 | **Red local aislada:** El perfil local, `pnpm cell:up`, red privada y puertos loopback se definen en CEL-001. OPS-001 documenta su operación y verifica que ningún servicio celular se exponga fuera del host. |
 
 ## 5. Criterios de aceptación
 
@@ -180,7 +180,7 @@ Esta especificación también es material de aprendizaje: el respaldo y la obser
 12. SeaweedFS tiene respaldo en R2 y restore probado; la pérdida del VPS no deja la multimedia de los inquilinos sin recuperación.
 13. imgproxy entrega imágenes solo con URL firmada, rechaza solicitudes sin firma con 403, no expone SeaweedFS a Internet y se mantiene dentro de los límites de CPU/RAM acordados. Un `GET` anónimo al gateway S3 responde 403; el deploy falla si responde 200 o no responde.
 14. Los adjuntos de Chatwoot tienen respaldo y restore probado, sea desde su volumen local o desde su bucket S3-compatible; el respaldo de PostgreSQL por sí solo no satisface este criterio.
-15. El despliegue de celdas sigue el estándar `/opt/<name-cell>` bajo `deploy:1000`, con migración antes de exponer PgBouncer/tenant-service, conectividad privada Router→celda, `.env.cell` con permisos `0600` y red local aislada en `127.0.0.1`.
+15. La operación y evidencia de los perfiles celulares cumple CEL-001: estándar de host, migración antes de PgBouncer/tenant-app, conectividad privada, secretos `.env.cell` con permisos `0600` y red local aislada en `127.0.0.1`.
 
 ## 6. Decisiones
 
@@ -220,3 +220,4 @@ No quedan decisiones abiertas en OPS-001.
 - 2026-10-27: inventario observado de producción en `docs/reference/production-services.md`. Se agrega RF-01.12 y el criterio 14: los adjuntos de Chatwoot (volumen local o bucket S3-compatible) requieren respaldo y restore propios; el `pg_dump` de la base no los cubre. T-22B agrega la verificación.
 - 2026-10-27: límites de imgproxy documentados (bucket `media`, 100 MB de origen, 4096 px de resultado, cola 100 con 429, 1 frame de animación) y smoke de deploy del gateway S3: 403 sin credenciales. RF-04.7, criterio 13 y T-22A/T-22C actualizados.
 - 2026-11-02: **OPS-001 1.7.** Alineación con DAT-001 1.5 para el handshake de celdas: se agrega RF-09 con conectividad privada Router→celda, rol `mocter_healthcheck`, handshake dual, sonda operativa, migración antes de servicios, manejo seguro de `.env.cell` y red local aislada; RF-08.6 y criterio 15 actualizados.
+- 2026-11-06: **OPS-001 1.8 aprobada.** RF-06.7, RF-08.6, RF-09.1–09.7 y criterio 15 remiten a CEL-001 para perfiles, host, Compose y probes; `design.md` §7.8 remite a CEL-001 para el acceso celular a medios. OPS conserva backups, monitoreo, secretos y runbooks; los estados de tareas operativas no se modifican.

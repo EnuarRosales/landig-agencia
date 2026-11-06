@@ -3,10 +3,10 @@
 | Atributo | Valor |
 |---|---|
 | ID | ADM-001 |
-| Versión | 1.5 |
-| Fecha | 2026-10-21 · actualizado 2026-10-27 |
-| Depende de | [`requirements.md`](requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/design.md) |
-| Estado | Aprobada |
+| Versión | 1.7 |
+| Fecha | 2026-10-21 · actualizado 2026-11-06 |
+| Depende de | [`requirements.md`](requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/design.md) · [CEL-001](../cel-001-despliegue-celdas/design.md) |
+| Estado | Aprobada · v1.7 |
 
 ## 1. Principios
 
@@ -591,20 +591,11 @@ El inquilino puede definir un enlace en lugar de cargar un archivo (RF-07.17): *
 - **Deduplicación:** para externos, `content_hash = SHA-256(url normalizada)` con índice único parcial (`WHERE storage_type = 'external'`); el mismo enlace no se registra dos veces.
 - **GC:** un enlace externo no tiene objeto que borrar; el desvínculo elimina solo las filas.
 
-### 11.6 Entrega con imgproxy y URLs firmadas
+### 11.6 Integración de celdas con SeaweedFS e imgproxy
 
-- **Servicios de plataforma:** SeaweedFS v4.51 (S3 interno) e imgproxy v4.0.20 (`media.mocter.co`) ya están aprovisionados en desarrollo, pruebas y producción; son las versiones canónicas y su actualización es responsabilidad de la plataforma. ADM-001 no define su despliegue, contenedores, compose ni variables de entorno; solo su contrato de uso.
-- **Bucket y credenciales:** el bucket `media` y las credenciales S3 de mínimo privilegio los provee la plataforma. El backend las recibe desde el gestor de secretos; el navegador nunca las recibe.
-- **Firma:** el backend genera URLs con HMAC-SHA256 usando el par key/salt provisto por la plataforma. La firma cubre el path completo después de la firma: opciones, `plain/`, la fuente `s3://media/<key>` y el formato de salida (`@webp`/`@avif`). Solo se firman fuentes de ese bucket; no se habilitan URLs HTTP(S) arbitrarias. Sin firma válida → 403, sin invocar libvips.
-- **Transformaciones:** la plataforma debe aplicar allowlist de opciones y tiene estos límites vigentes: bucket `media`, origen máximo 100 MB, dimensión resultante máxima 4096 px, cola de 100 solicitudes (429 al llenarse) y máximo 1 frame de animación. El backend solo firma resize/fit, formato, calidad, gravity y `expires`; no puede habilitar opciones fuera de esa lista. El límite de ingreso de imágenes sigue siendo 10 MB: el límite de 100 MB de imgproxy no relaja la validación de producto. Con 1 frame, una animación se entrega como primer frame; si el producto necesita animación, se sube el límite y se valida.
-- **Caché:** `Cache-Control: public, max-age=31536000, immutable` para imágenes de producto; la URL firmada cambia cuando cambian las opciones. La caché persistente y su TTL son responsabilidad de la plataforma; en v1 la caché efectiva es la del navegador (y un CDN si se agrega). No se usa para adjuntos privados de conversación, que siguen en Chatwoot.
-- **Caducidad:** la plataforma admite la opción firmada `expires`; una URL vencida responde 404. Las imágenes públicas de producto pueden usar firma de larga duración; si en el futuro se sirven medios privados fuera de Chatwoot, se firma con `expires` corto, sin `immutable` y con control de autorización en el backend. La firma por sí sola valida integridad, no identidad.
-- **Claves:** las provee y rota la plataforma. El backend consume el par vigente; el par anterior se conserva al menos hasta que las URLs emitidas con él expiren o se regeneren, según la ventana que defina OPS-001.
-- **No expuesto:** SeaweedFS no publica S3 en Internet; el único endpoint público de medios es `media.mocter.co`.
+El contrato único para que `tenant-app` persista multimedia en SeaweedFS y la sirva de forma segura mediante imgproxy está en [CEL-001 — Despliegue, ubicación y multimedia de celdas](../cel-001-despliegue-celdas/requirements.md) y su `design.md`. CEL-001 define el bucket `media`, endpoint S3 privado, referencias de secretos server-only, catálogo/clave de almacenamiento, autorización por `client_id`, URL HMAC-SHA256, transformaciones permitidas, límites, expiración y perfiles de conectividad.
 
-**Contexto de producción (2026-10-27):** el stack `mocter-media` corre con SeaweedFS en `media_network` y `mocter-admin-prod_backend`, e imgproxy en `media_network` y `traefik_network`. Chatwoot corre en `mocter-chatwoot` y sus adjuntos siguen en volumen local. Ver el inventario observado en [`docs/reference/production-services.md`](../../reference/production-services.md).
-
-**GC en dos fases:** marcar el objeto como candidato, verificar referencias en todas las celdas y eliminar. Si una celda no responde, el objeto no se borra.
+ADM-001 conserva los requisitos del producto: formatos, cuotas, catálogo, relaciones producto-archivo, deduplicación y política de GC. SeaweedFS e imgproxy son servicios compartidos administrados por la plataforma/`mocter-media`, no servicios del Compose de cada celda. El inventario observado de redes y versiones sigue en [`docs/reference/production-services.md`](../../reference/production-services.md); su presencia allí no demuestra conectividad desde un host celular.
 
 ## 12. Planes y retención
 

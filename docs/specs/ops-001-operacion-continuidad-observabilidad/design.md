@@ -3,10 +3,10 @@
 | Atributo | Valor |
 |---|---|
 | ID | OPS-001 |
-| Versión | 1.7 |
-| Fecha | 2026-10-21 · actualizado 2026-11-02 |
-| Depende de | [`requirements.md`](requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) |
-| Estado | Aprobada |
+| Versión | 1.8 |
+| Fecha | 2026-10-21 · actualizado 2026-11-06 |
+| Depende de | [`requirements.md`](requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [CEL-001](../cel-001-despliegue-celdas/design.md) |
+| Estado | Aprobada · v1.8 |
 
 ## 1. Principios
 
@@ -320,6 +320,8 @@ Tras ejecutar un restore en aislamiento o producción, se debe ejecutar la valid
 6. Registrar hallazgos y abrir tareas de corrección.
 
 ### 7.8 Respaldo y restore de SeaweedFS
+
+El write/read de `tenant-app` contra SeaweedFS/imgproxy y su configuración por perfil se especifican en CEL-001. OPS-001 sigue siendo fuente para respaldo, restore, verificación y continuidad del servicio compartido.
 
 1. **Alcance:** volumen de datos de SeaweedFS y metadatos del catálogo de archivos.
 2. **Frecuencia:** full semanal + incremental diario, cifrado en cliente antes de subir a R2. RPO de multimedia ≤ 24 h; RTO ≤ 4 h.

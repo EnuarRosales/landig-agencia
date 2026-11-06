@@ -3,11 +3,11 @@
 | Atributo | Valor |
 |---|---|
 | ID | DAT-001 |
-| Versión | 1.5 |
-| Estado | Aprobada |
-| Fecha | 2026-10-20 · actualizado 2026-11-02 |
+| Versión | 1.6 |
+| Estado | Aprobada · v1.6 |
+| Fecha | 2026-10-20 · actualizado 2026-11-06 |
 | Depende de | [`requirements.md`](requirements.md) |
-| Relacionado | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) |
+| Relacionado | [ADM-001](../adm-001-mocter-admin/requirements.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/requirements.md) · [CEL-001](../cel-001-despliegue-celdas/design.md) |
 
 ## 1. Principio rector
 
@@ -113,7 +113,8 @@ Todas las tablas siguen la directiva: nombre plural, PK `id`, FK `<entidad>_id`,
 
 | Tabla | Propósito | Columnas clave |
 |---|---|---|
-| `cells` | Catálogo y ciclo de vida de celdas | `id`, `code`, `tier`, `status`, `topology_type`, `pgbouncer_host`, `pgbouncer_port`, `database_name`, `app_url`, `private_ip`, `public_ip` (inventario; nunca destino del handshake), `working_dir`, `deploy_user`, `cell_secrets_ciphertext`, `cell_secrets_key_id`, `max_clients`, `current_clients`, `region`, `health_status` (diagnóstico saneado), `last_health_check_at` |
+| `cell_hosts` | Registro de hosts del Control Plane | `id`, `code`, `deployment_profile`, `status`, `connectivity_config_ref`, auditoría |
+| `cells` | Catálogo y ciclo de vida de celdas | `id`, `code`, `host_id`, `tier`, `status`, `topology_type`, `pgbouncer_host`, `pgbouncer_port`, `database_name`, `app_url`, `private_ip`, `public_ip` (inventario; nunca destino del handshake), `working_dir`, `deploy_user`, `cell_secrets_ciphertext`, `cell_secrets_key_id`, `max_clients`, `current_clients`, `health_status` (diagnóstico saneado), `last_health_check_at` |
 | `clients` | Inquilinos | `id` (UUIDv7), `slug`, `display_name`, `lifecycle_status`, `plan_id`, `quota_version`, `created_at`, `updated_at` |
 | `client_routing` | Enrutamiento vigente | `id`, `client_id`, `cell_id`, `routing_status`, `routing_version`, `updated_at` |
 | `client_migrations` | Auditoría de migraciones | `id`, `client_id`, `source_cell_id`, `target_cell_id`, `state`, `started_at`, `completed_at` |
@@ -129,6 +130,7 @@ Reglas:
 
 - `clients.id` es la PK del inquilino y se expone como `client_id` en las tablas hijas. Las tablas hijas no generan un `client_id` nuevo: copian el valor de `clients.id`. En el plano de control es una FK física; en las celdas es una clave lógica porque no hay FK entre bases. En tablas particionadas, la PK es `(client_id, id)`; en las no particionadas, la PK es `id` o `(client_id, id)`.
 - `client_routing.client_id` es único.
+- `cells.host_id` referencia `cell_hosts.id` dentro del Control Plane. Puede ser nulo solo mientras la celda está en `draft`; es obligatorio antes de `provisioning`. La configuración de host se referencia sin almacenar secretos en claro.
 - `chatwoot_accounts.client_id` es único; `chatwoot_accounts.chatwoot_account_id` es único.
 - **Módulo de Comunidades transversal:** `communities` y `community_members` residen exclusivamente en el plano de control (`pg-control-plane`). El `leader_client_id` y los `client_id` de los miembros son FK físicas a `clients(id)`. Esto permite que inquilinos alojados en distintas celdas autónomas pertenezcan a la misma comunidad y se comuniquen transversalmente sin requerir consultas distribuidas ni enlaces directos entre bases celulares.
 - `media_catalog` tiene unicidad por `(content_hash, storage_pool_id)` y no tiene `client_id` ni atributos de negocio. `content_hash` corresponde a los bytes almacenados: original de imagen/audio/PDF, canónico de video o URL normalizada en externos. `storage_pool_id` referencia un pool de almacenamiento (SeaweedFS) definido en la implementación; su catálogo no se detalla en esta spec.
@@ -143,9 +145,32 @@ Reglas:
 ### 3.3 DDL de referencia
 
 ```sql
+CREATE TABLE cell_hosts (
+    id                       uuid PRIMARY KEY DEFAULT uuidv7(),
+    code                     text NOT NULL UNIQUE,
+    deployment_profile       text NOT NULL CHECK (deployment_profile IN ('local_development', 'control_plane_vps', 'external_vps')),
+    status                   text NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'maintenance', 'disabled')),
+    connectivity_config_ref  text NOT NULL,
+    created_at               timestamptz NOT NULL DEFAULT now(),
+    updated_at               timestamptz NOT NULL DEFAULT now(),
+    created_by               text NOT NULL,
+    updated_by               text NOT NULL
+);
+COMMENT ON TABLE cell_hosts IS 'Hosts configurables para placement explícito de celdas desde el Control Plane.';
+COMMENT ON COLUMN cell_hosts.id IS 'Identificador estable del host.';
+COMMENT ON COLUMN cell_hosts.code IS 'Código estable y único del host; no contiene credenciales.';
+COMMENT ON COLUMN cell_hosts.deployment_profile IS 'Perfil que el host admite: local_development, control_plane_vps o external_vps.';
+COMMENT ON COLUMN cell_hosts.status IS 'Elegibilidad operativa manual del host: ready, maintenance o disabled.';
+COMMENT ON COLUMN cell_hosts.connectivity_config_ref IS 'Referencia a configuración no secreta de conectividad; los secretos se almacenan por separado.';
+COMMENT ON COLUMN cell_hosts.created_at IS 'Fecha de creación del registro.';
+COMMENT ON COLUMN cell_hosts.updated_at IS 'Fecha de última actualización del registro.';
+COMMENT ON COLUMN cell_hosts.created_by IS 'Actor que creó el registro.';
+COMMENT ON COLUMN cell_hosts.updated_by IS 'Actor que actualizó por última vez el registro.';
+
 CREATE TABLE cells (
     id                       uuid PRIMARY KEY DEFAULT uuidv7(),
     code                     text NOT NULL UNIQUE,
+    host_id                  uuid REFERENCES cell_hosts(id) ON DELETE RESTRICT,
     tier                     text NOT NULL DEFAULT 'standard',
     status                   text NOT NULL DEFAULT 'draft',
     topology_type            text NOT NULL DEFAULT 'remote_vps',
@@ -161,7 +186,6 @@ CREATE TABLE cells (
     cell_secrets_key_id      text NOT NULL,
     max_clients              integer NOT NULL DEFAULT 100,
     current_clients          integer NOT NULL DEFAULT 0,
-    region                   text NOT NULL DEFAULT 'us-east-1',
     health_status            jsonb,
     last_health_check_at     timestamptz,
     created_at               timestamptz NOT NULL DEFAULT now(),
@@ -169,6 +193,7 @@ CREATE TABLE cells (
     created_by               text NOT NULL,
     updated_by               text NOT NULL,
     CONSTRAINT cells_status_check CHECK (status IN ('draft', 'provisioning', 'verifying', 'active', 'draining', 'readonly', 'maintenance', 'error_connection')),
+    CONSTRAINT cells_host_required_check CHECK (status = 'draft' OR host_id IS NOT NULL),
     CONSTRAINT cells_topology_check CHECK (topology_type IN ('local_compose', 'remote_vps')),
     CONSTRAINT cells_secrets_payload_check CHECK (octet_length(cell_secrets_ciphertext) > 0 AND length(cell_secrets_key_id) > 0),
     CONSTRAINT cells_max_clients_check CHECK (max_clients > 0),
@@ -365,31 +390,17 @@ V1 admite `remote_vps` y `local_compose` con Docker Compose. Kubernetes y CloudN
 
 La única transición que habilita nuevas asignaciones es `verifying → active` con resultado satisfactorio. Toda reactivación desde `draining`, `readonly` o `maintenance` requiere volver a verificar; ningún healthcheck reactiva una celda automáticamente. `retired` y el borrado/retirada definitiva no forman parte de v1. La lista permitida por `cells_status_check` y `RF-03.1` debe ser idéntica a los estados de esta tabla.
 
-#### 3.6.2 Despliegue físico, secretos y estándar de host
+#### 3.6.2 Fuente canónica de despliegue, placement y secretos
 
-- **Directorio y operador:** En producción cada celda reside en `/opt/<name-cell>` derivado del código normalizado de la celda; el valor no es una ruta libre ejecutable ingresada por el usuario. El único usuario de host autorizado para Compose es `deploy:1000` (`UID:GID 1000:1000`); ningún servicio de celda se ejecuta como `root`.
-- **Servicios y orden de inicio:** `pg-cell` usa PostgreSQL 18 con pgvector. Cuando su healthcheck local confirma que acepta conexiones, `cell-migrator` conecta directamente a PostgreSQL y aplica `packages/domain/drizzle.cell.config.ts`; PgBouncer y `tenant-service` dependen de que el migrador termine exitosamente. Si falla, ambos servicios permanecen sin iniciar y Compose informa el fallo.
-- **Roles separados:** `mocter_migrator` es el único rol de migración/DDL; `mocter_app` atiende tráfico de la aplicación; `mocter_healthcheck` solo conecta y lee el journal de migraciones/metadatos necesarios para la verificación, sin leer filas de negocio, sin DDL y sin `BYPASSRLS`.
-- **Paquete de secretos:** Mocter genera secretos con CSPRNG (32 bytes como mínimo para cada contraseña/token). Si el operador provee un valor personalizado, se exige la misma longitud mínima. El paquete contiene los secretos de `mocter_app`, `mocter_migrator`, `mocter_healthcheck` y `handshake_secret`; la base del Router conserva únicamente el paquete cifrado en `cell_secrets_ciphertext` y su `cell_secrets_key_id`. Se cifra con AES-256-GCM usando una clave activa montada desde `/run/secrets/`; el AAD vincula el cifrado al `cell_id` y al propósito `cell-secrets`. No se almacenan valores en claro ni se incluyen en listados, errores o logs.
-- **Entrega del manifiesto:** La descarga de `.env.cell` es una acción explícita y auditada, solo para Platform Owner, con respuesta `Cache-Control: no-store`. El archivo contiene secretos en claro para el operador, no se persiste en el servidor, debe instalarse con permisos `0600` y no debe versionarse. El Router descifra el paquete solo en memoria para ejecutar el handshake.
-- **Red de producción:** La plantilla canónica `docker-compose.cell.yml` contiene `pg-cell`, `pgbouncer-cell` en modo `transaction` (6432), `cell-migrator` y `tenant-service` exponiendo `/api/health`. La base y la aplicación solo aceptan conexiones por la red privada aprobada; el firewall permite el origen del Router, nunca acceso público a PostgreSQL. `public_ip` es inventario, no un destino permitido para probes.
+Los perfiles de desarrollo local, producción en VPS del Control Plane y producción en VPS externo; el `host_id`; la topología de cuatro servicios; el contrato de Compose por perfil; el estándar de host; las referencias/entrega de secretos; y las reglas de acceso a servicios compartidos se definen de forma central en [CEL-001 — Despliegue, ubicación y multimedia de celdas](../cel-001-despliegue-celdas/requirements.md) y su `design.md`. DAT-001 conserva el modelo de datos, estados de elegibilidad y routing por inquilino. CEL-001 no sustituye RLS, particionamiento ni los invariantes de datos de esta especificación.
 
-#### 3.6.3 Handshake Dual 360° y monitoreo
+#### 3.6.3 Handshake y monitoreo
 
-El Router Global es el iniciador del handshake y solo usa rutas privadas aprobadas. La configuración `CELL_PRIVATE_ALLOWED_CIDRS` contiene los CIDR autorizados por infraestructura para las celdas; antes de cada conexión, el destino DNS se resuelve y se valida contra esos CIDR. Se rechazan destinos públicos, loopback, link-local/metadata, multicast, destinos fuera de los CIDR y respuestas DNS fuera del conjunto autorizado. En el stack local se admite loopback solo para desarrollo y el Router local corre en el host o se conecta explícitamente a `mocter-cell-net`. No hay fallback a IP pública. Para `remote_vps`, PostgreSQL usa TLS con verificación de certificado y el endpoint HTTP usa HTTPS con validación TLS; se fijan timeouts de 5 segundos y no se siguen redirecciones.
+El contrato completo de probes de datos y aplicación, conectividad privada, TLS, allowlist, secretos, límites de timeout, transición de estados y sondas periódicas es CEL-001 (CEL-RF-012–015 y su diseño). La máquina de estados de DAT-001 §3.6.1 sigue siendo la fuente de verdad para la elegibilidad de nuevas asignaciones; ninguna probe cambia `client_routing` ni mueve inquilinos automáticamente.
 
-La verificación de activación ejecuta ambas pruebas:
+#### 3.6.4 Paridad y emulación por perfil
 
-1. **Datos:** conexión a `pgbouncer_host:pgbouncer_port` con `mocter_healthcheck`; `SELECT 1`; comparación del journal `drizzle.__drizzle_migrations` con la versión esperada; comprobación de existencia de las tablas base y los padres particionados `contacts`, `product_embeddings` y `contact_memories`; y comprobación en catálogos de que todas las tablas celulares de tenencia tienen RLS habilitado, forzado y políticas instaladas. No exige particiones por inquilino en una celda vacía y no consulta filas de negocio.
-2. **Aplicación:** `GET <app_url>/api/health` con `X-Mocter-Handshake-Secret`. El servicio compara el token en tiempo constante y responde `200` solo si aplicación, base y esquema están saludables; token inválido responde `401`, dependencia no saludable responde `503`. El cuerpo solo expone estado y códigos de diagnóstico saneados, nunca secretos, URLs de conexión ni datos de inquilinos.
-
-Ambas pruebas satisfactorias producen `verifying → active`; cualquier fallo deja `error_connection`, guarda fecha y códigos saneados en `health_status`/`last_health_check_at` y genera una alerta al Platform Owner. El botón de activación ejecuta la prueba completa. Una sonda periódica liviana ejecuta `SELECT 1` y el healthcheck HTTP cada 60 segundos; tres fallos consecutivos marcan `active → error_connection`. Recuperar una celda siempre requiere verificación manual completa. Ningún probe cambia `client_routing` ni mueve inquilinos automáticamente.
-
-#### 3.6.4 Paridad y emulación en desarrollo local
-
-- Se versiona `docker-compose.cell.yml` en la raíz de infraestructura y se implementa `pnpm cell:up`; ambos usan la misma secuencia de migración y servicios que producción.
-- El stack local usa la red Docker aislada `mocter-cell-net`. Si el Router corre en el host, los puertos locales (por ejemplo PgBouncer `6433` y app `3004`) se enlazan a `127.0.0.1`; si corre en contenedor, se conecta explícitamente a la red celular. No se publican en `0.0.0.0`.
-- La paridad v1 significa mismos artefactos, migraciones, roles, probes y transiciones. Direcciones, certificados y puertos de desarrollo pueden diferir de producción.
+La emulación local, perfiles de producción, generación de `docker-compose.cell.yml` y paridad de los cuatro servicios se rigen por CEL-001 (CEL-RF-006–014). La paridad significa conservar el contrato lógico celular; el renderer puede generar YAML distinto por perfil para build/imagen, redes, puertos y routing. Los puertos de desarrollo se mantienen en loopback. Esta aclaración reemplaza la interpretación previa de que el archivo YAML deba ser byte-a-byte idéntico en todos los perfiles.
 
 ### 3.7 Separación futura del control plane
 
