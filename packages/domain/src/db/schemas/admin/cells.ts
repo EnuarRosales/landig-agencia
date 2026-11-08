@@ -3,6 +3,7 @@ import { bytea } from "../shared/bytea";
 import { sql } from "drizzle-orm";
 import { adminSchema } from "./namespace";
 import { auditColumns } from "../shared/audit-columns";
+import { cellHosts } from "./cell-hosts";
 
 /**
  * Catalog of tenant data cells (DAT-001 §3.3 / §3.6). Each cell is a separate PostgreSQL
@@ -15,6 +16,7 @@ export const cells = adminSchema.table(
   {
     id: uuid("id").primaryKey().default(sql`uuidv7()`),
     code: text("code").notNull().unique(),
+    hostId: uuid("host_id").references(() => cellHosts.id, { onDelete: "restrict" }),
     tier: text("tier").notNull().default("standard"),
     status: text("status").notNull().default("draft"),
     topologyType: text("topology_type").notNull().default("remote_vps"),
@@ -50,7 +52,7 @@ export const cells = adminSchema.table(
       "cells_secrets_payload_check",
       sql.raw("octet_length(cell_secrets_ciphertext) > 0 AND length(cell_secrets_key_id) > 0"),
     ),
-    check("cells_max_clients_check", sql.raw("max_clients > 0")),
+    check("cells_max_clients_check", sql.raw("max_clients > 0 AND max_clients <= 100")),
     check("cells_capacity_check", sql.raw("current_clients <= max_clients")),
   ],
 );

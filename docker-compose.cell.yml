@@ -32,7 +32,7 @@ services:
   cell-migrator:
     image: node:24-alpine
     working_dir: /app
-    command: sh -c "corepack enable && corepack pnpm install && node packages/domain/scripts/migrate.mjs"
+    command: sh -c "corepack enable && corepack pnpm install && node packages/domain/scripts/migrate.mjs --target=cell"
     volumes:
       - .:/app
       - cell_node_modules:/app/node_modules
@@ -60,6 +60,11 @@ services:
       AUTH_TYPE: any
     ports:
       - "127.0.0.1:6432:6432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     depends_on:
       pg-cell:
         condition: service_healthy
@@ -83,7 +88,7 @@ services:
       - "127.0.0.1:3004:3004"
     depends_on:
       pgbouncer-cell:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - mocter-cell-net

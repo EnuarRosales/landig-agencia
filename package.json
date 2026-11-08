@@ -22,6 +22,7 @@
     "db:migrate": "pnpm --filter @mocter/domain db:migrate",
     "db:check": "pnpm --filter @mocter/domain db:check",
     "db:push": "pnpm --filter @mocter/domain db:push",
+    "cell:prepare": "node scripts/cell-prepare.mjs",
     "cell:up": "docker compose -f docker-compose.cell.yml up -d",
     "cell:down": "docker compose -f docker-compose.cell.yml down",
     "cell:logs": "docker compose -f docker-compose.cell.yml logs -f"

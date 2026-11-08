@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { S3StorageService } from "./s3-storage.service";
 import { err, ok, type Result } from "../types/result";
 
 /**
@@ -127,7 +128,12 @@ export class CatalogAndMediaService {
         saltHex: "31".repeat(32),
       },
     ],
-    private readonly imgproxyBaseUrl: string = "https://media.mocter.co",
+    private readonly imgproxyBaseUrl: string = (
+      process.env.IMGPROXY_PUBLIC_URL ||
+      process.env.IMGPROXY_BASE_URL ||
+      "http://localhost:8081"
+    ).replace(/\/+$/, ""),
+    private readonly s3Storage?: S3StorageService,
   ) {}
 
   /**
@@ -509,6 +515,44 @@ export class CatalogAndMediaService {
       billedBytesForClient: this.getClientBilledStorageBytes(params.clientId),
       altText: params.altText ?? null,
     });
+  }
+
+  /**
+   * Sube el binario a SeaweedFS S3 si no está deduplicado y vincula el archivo multimedia a un producto (CEL-RF-016, CEL-RF-017).
+   */
+  async ingestAndUploadProductMedia(params: {
+    clientId: string;
+    productId: string;
+    buffer: Buffer;
+    originalFilename: string;
+    altText?: string | null;
+  }): Promise<
+    Result<{
+      media: MediaCatalogEntry;
+      deduplicatedGlobal: boolean;
+      billedBytesForClient: number;
+      altText: string | null;
+    }>
+  > {
+    const ingestResult = this.ingestAndLinkProductMedia(params);
+    if (!ingestResult.ok) {
+      return ingestResult;
+    }
+
+    if (this.s3Storage && !ingestResult.data.deduplicatedGlobal) {
+      const media = ingestResult.data.media;
+      const detected = this.detectAndValidateMediaContent(params.buffer, params.originalFilename);
+      const mimeType = detected.ok ? detected.data.mimeType : "application/octet-stream";
+      const uploadRes = await this.s3Storage.putObject(media.storageKey, params.buffer, mimeType);
+      if (!uploadRes.ok) {
+        return err(
+          `Fallo al persistir en SeaweedFS S3: ${uploadRes.error}`,
+          "SEAWEEDFS_S3_UPLOAD_FAILED",
+        );
+      }
+    }
+
+    return ingestResult;
   }
 
   /**

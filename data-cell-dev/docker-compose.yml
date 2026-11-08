@@ -1,5 +1,5 @@
-# Manifiesto Canónico de Celda Mocter (cell-01)
-# Estándar DAT-001 §3.6.2 / OPS-001 RF-06.7
+# Manifiesto Canónico de Celda Mocter (cell-01) · Perfil local_development
+# Estándar CEL-001 §3.2 / OPS-001 RF-06.7 (Puertos Loopback 127.0.0.1, Readiness y Offline)
 name: mocter-cell-01
 
 services:
@@ -9,6 +9,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata-cell-01:/var/lib/postgresql
     networks:
@@ -21,8 +23,13 @@ services:
       retries: 10
 
   cell-migrator:
-    image: ghcr.io/enuarrosales/mocter-web:${TAG:-latest}
-    command: [ "node", "migrator/scripts/migrate.mjs", "--target=cell" ]
+    image: node:24-alpine
+    working_dir: /app
+    command: [ "node", "packages/domain/scripts/migrate.mjs", "--target=cell" ]
+    volumes:
+      - ..:/app
+      - mocter-core_root-node-modules:/app/node_modules
+      - mocter-core_domain-node-modules:/app/packages/domain/node_modules
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pg-cell:5432/${POSTGRES_DB}
     networks:
@@ -44,8 +51,14 @@ services:
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 100
       DEFAULT_POOL_SIZE: 20
+      AUTH_TYPE: scram-sha-256
     ports:
-      - "${PGBOUNCER_PORT}:6432"
+      - "127.0.0.1:${PGBOUNCER_PORT}:6432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     networks:
       - cell-backend
     depends_on:
@@ -54,21 +67,25 @@ services:
       cell-migrator:
         condition: service_completed_successfully
     restart: unless-stopped
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432" ]
-      interval:   5s
-      timeout    : 3s
-      retries: 10
 
   tenant-app:
-    image: ghcr.io/enuarrosales/mocter-web:${TAG:-latest}
+    image: node:24-alpine
+    working_dir: /app/apps/web
+    command: [ "./node_modules/.bin/next", "dev", "-p", "3000", "--hostname", "0.0.0.0" ]
+    volumes:
+      - ..:/app
+      - mocter-core_root-node-modules:/app/node_modules
+      - mocter-core_web-node-modules:/app/apps/web/node_modules
+      - mocter-core_domain-node-modules:/app/packages/domain/node_modules
+      - cell-01-web-next:/app/apps/web/.next
     environment:
       CELL_CODE: ${CELL_CODE}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer-cell:6432/${POSTGRES_DB}
       HANDSHAKE_SECRET: ${HANDSHAKE_SECRET}
       NEXT_PUBLIC_APP_URL: ${APP_URL}
+      PORT: 3000
     ports:
-      - "3004:3000"
+      - "127.0.0.1:3004:3000"
     networks:
       - cell-backend
     depends_on:
@@ -78,6 +95,13 @@ services:
 
 volumes:
   pgdata-cell-01:
+  cell-01-web-next:
+  mocter-core_root-node-modules:
+    external: true
+  mocter-core_domain-node-modules:
+    external: true
+  mocter-core_web-node-modules:
+    external: true
 
 networks:
   cell-backend:

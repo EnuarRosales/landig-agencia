@@ -56,6 +56,24 @@ try {
   );
   await migrate(drizzle(sql), { migrationsFolder });
   console.log(`[migrate] Migraciones (${target}) aplicadas correctamente.`);
+
+  if (target === "cell" && process.env.POSTGRES_HEALTHCHECK_PASSWORD) {
+    const healthPassword = process.env.POSTGRES_HEALTHCHECK_PASSWORD.replace(/'/g, "''");
+    await sql.unsafe(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'mocter_healthcheck') THEN
+          CREATE ROLE mocter_healthcheck WITH LOGIN PASSWORD '${healthPassword}';
+        ELSE
+          ALTER ROLE mocter_healthcheck WITH PASSWORD '${healthPassword}';
+        END IF;
+      END $$;
+      GRANT CONNECT ON DATABASE current_database() TO mocter_healthcheck;
+      GRANT USAGE ON SCHEMA public, drizzle TO mocter_healthcheck;
+      GRANT SELECT ON ALL TABLES IN SCHEMA drizzle TO mocter_healthcheck;
+    `);
+    console.log(`[migrate] Usuario de sondeo de salud mocter_healthcheck aprovisionado.`);
+  }
 } catch (err) {
   console.error(`[migrate] Error aplicando migraciones (${target}):`, err);
   process.exitCode = 1;

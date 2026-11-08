@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { Server, Database, Activity, ShieldCheck } from "lucide-react";
-import type { AdminCellDto } from "@mocter/domain";
+import type { AdminCellDto, CellHostDto } from "@mocter/domain";
 import { CreateCellForm } from "./create-cell-form";
 import { CellActions } from "./cell-actions";
 import { adminFetch } from "@/lib/api-client";
@@ -52,6 +52,30 @@ async function fetchCells(): Promise<{ ok: boolean; data?: AdminCellDto[]; error
   }
 }
 
+async function fetchCellHosts(): Promise<{ ok: boolean; data?: CellHostDto[]; error?: string }> {
+  try {
+    const res = await adminFetch(`${getApiUrl()}/admin/cell-hosts`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, error: data.error || "Error al listar hosts" };
+    }
+
+    return await res.json();
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Error de conexión con cell-hosts",
+    };
+  }
+}
+
 /**
  * Vista de administración de celdas de datos multi-inquilino (DAT-001 §3.3).
  *
@@ -60,6 +84,7 @@ async function fetchCells(): Promise<{ ok: boolean; data?: AdminCellDto[]; error
  */
 export default function AdminCellsPage(): React.JSX.Element {
   const [cellsList, setCellsList] = useState<AdminCellDto[]>([]);
+  const [hostsList, setHostsList] = useState<CellHostDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,11 +92,14 @@ export default function AdminCellsPage(): React.JSX.Element {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchCells();
-      if (!result.ok) {
-        setError(result.error || "Error desconocido");
+      const [cellsRes, hostsRes] = await Promise.all([fetchCells(), fetchCellHosts()]);
+      if (!cellsRes.ok) {
+        setError(cellsRes.error || "Error desconocido");
       } else {
-        setCellsList(result.data || []);
+        setCellsList(cellsRes.data || []);
+      }
+      if (hostsRes.ok && hostsRes.data) {
+        setHostsList(hostsRes.data);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado");
@@ -86,12 +114,15 @@ export default function AdminCellsPage(): React.JSX.Element {
       setLoading(true);
       setError(null);
       try {
-        const result = await fetchCells();
+        const [cellsRes, hostsRes] = await Promise.all([fetchCells(), fetchCellHosts()]);
         if (cancelled) return;
-        if (!result.ok) {
-          setError(result.error || "Error desconocido");
+        if (!cellsRes.ok) {
+          setError(cellsRes.error || "Error desconocido");
         } else {
-          setCellsList(result.data || []);
+          setCellsList(cellsRes.data || []);
+        }
+        if (hostsRes.ok && hostsRes.data) {
+          setHostsList(hostsRes.data);
         }
       } catch (err) {
         if (!cancelled) {
@@ -135,7 +166,7 @@ export default function AdminCellsPage(): React.JSX.Element {
           </p>
         </div>
 
-        <CreateCellForm apiUrl={getApiUrl()} onSuccess={refresh} />
+        <CreateCellForm apiUrl={getApiUrl()} hosts={hostsList} onSuccess={refresh} />
       </header>
 
       {/* Métricas rápidas de infraestructura */}
@@ -224,6 +255,7 @@ export default function AdminCellsPage(): React.JSX.Element {
               <thead className="bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)] border-b border-[var(--dsn-border)]">
                 <tr>
                   <th className="py-3 px-4 font-semibold">Código</th>
+                  <th className="py-3 px-4 font-semibold">Host Anfitrión</th>
                   <th className="py-3 px-4 font-semibold">Nivel</th>
                   <th className="py-3 px-4 font-semibold">Topología</th>
                   <th className="py-3 px-4 font-semibold">Host / PgBouncer</th>
@@ -267,6 +299,11 @@ export default function AdminCellsPage(): React.JSX.Element {
                       <td className="py-3.5 px-4 font-mono font-medium text-[var(--dsn-accent)]">
                         {c.code}
                       </td>
+                      <td className="py-3.5 px-4 font-mono text-[var(--dsn-text)]">
+                        {hostsList.find((h) => h.id === c.hostId)?.code || (
+                          <span className="text-[var(--dsn-text-secondary)] italic">Sin Asignar</span>
+                        )}
+                      </td>
                       <td className="py-3.5 px-4">
                         <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-medium ${
                           c.tier === "dedicated"
@@ -304,7 +341,7 @@ export default function AdminCellsPage(): React.JSX.Element {
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        <CellActions cell={c} apiUrl={getApiUrl()} onRefresh={refresh} />
+                        <CellActions cell={c} hosts={hostsList} apiUrl={getApiUrl()} onRefresh={refresh} />
                       </td>
                     </tr>
                   );

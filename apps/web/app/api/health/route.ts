@@ -1,23 +1,48 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import crypto from "node:crypto";
 import { checkDatabaseConnection } from "@mocter/domain";
 import { getRequestLogger } from "@/lib/logger";
 
 /**
- * Route Handler para monitoreo de salud del sistema (Healthcheck).
+ * Route Handler para monitoreo de salud del sistema (Healthcheck) y Handshake Celular (CEL-RF-013).
  *
- * Utilizado por contenedores Docker (`HEALTHCHECK`), balanceadores Traefik y sondas de Kubernetes (Liveness/Readiness).
- * Ejecuta una comprobación efectiva contra PostgreSQL llamando a {@link checkDatabaseConnection}.
+ * En modo celular (o cuando HANDSHAKE_SECRET está configurado):
+ * - Valida en tiempo constante mediante {@link crypto.timingSafeEqual} la cabecera `X-Mocter-Handshake-Secret`.
+ * - Rechaza con 401 Unauthorized si el secreto es inválido o no coincide.
  *
- * - **Método:** `GET`
- * - **Ruta:** `/api/health`
- * - **Respuestas:**
- *   - `200 OK`: La aplicación y la base de datos están operativas y saludables.
- *   - `503 Service Unavailable`: La base de datos es inaccesible o falló la verificación.
+ * Utilizado por contenedores Docker (`HEALTHCHECK`), balanceadores Traefik, sondas de Kubernetes y el Handshake 360°.
  *
+ * @param request - Solicitud HTTP entrante con cabeceras de handshake.
  * @returns Respuesta HTTP {@link NextResponse} en formato JSON con estado y latencia de conexión.
  */
-export async function GET(): Promise<NextResponse> {
+export async function GET(request?: NextRequest): Promise<NextResponse> {
   const log = await getRequestLogger();
+  const configuredSecret = process.env.HANDSHAKE_SECRET;
+  const incomingSecret = request?.headers?.get("x-mocter-handshake-secret");
+
+  // Validación de Handshake Secret en tiempo constante (CEL-RF-013)
+  if (configuredSecret) {
+    if (!incomingSecret) {
+      log.warn({ event: "sys.healthcheck_missing_handshake_secret" });
+      return NextResponse.json(
+        { error: "Unauthorized: Cabecera X-Mocter-Handshake-Secret requerida" },
+        { status: 401 },
+      );
+    }
+
+    const incBuf = Buffer.from(incomingSecret);
+    const expBuf = Buffer.from(configuredSecret);
+    const isMatch = incBuf.length === expBuf.length && crypto.timingSafeEqual(incBuf, expBuf);
+
+    if (!isMatch) {
+      log.warn({ event: "sys.healthcheck_invalid_handshake_secret" });
+      return NextResponse.json(
+        { error: "Unauthorized: Secreto de handshake celular inválido" },
+        { status: 401 },
+      );
+    }
+  }
+
   const dbHealth = await checkDatabaseConnection();
   const status = dbHealth.ok ? 200 : 503;
 
@@ -33,6 +58,8 @@ export async function GET(): Promise<NextResponse> {
     {
       status: dbHealth.ok ? "healthy" : "unhealthy",
       timestamp: new Date().toISOString(),
+      mode: process.env.CELL_CODE ? "cell" : "control_plane",
+      cellCode: process.env.CELL_CODE ?? null,
       services: {
         database: {
           status: dbHealth.ok ? "up" : "down",

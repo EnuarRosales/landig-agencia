@@ -63,6 +63,7 @@ function makeCell(overrides: Partial<Cell> = {}): Cell {
   return {
     id: "019a0000-0000-7000-8000-000000000200",
     code: "cell-01",
+    hostId: null,
     tier: "standard",
     status: "active",
     topologyType: "remote_vps",

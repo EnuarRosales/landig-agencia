@@ -180,6 +180,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const result = await createAdminCell({
       code: input.code,
+      hostId: input.hostId ?? null,
       tier: input.tier ?? "standard",
       topologyType: input.topologyType ?? "remote_vps",
       pgbouncerHost: input.pgbouncerHost,

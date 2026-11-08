@@ -3,10 +3,12 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Server, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import type { CellHostDto } from "@mocter/domain";
 import { adminFetch } from "@/lib/api-client";
 
 interface CreateCellFormProps {
   apiUrl: string;
+  hosts?: CellHostDto[];
   onSuccess?: () => void;
 }
 
@@ -36,7 +38,7 @@ async function fetchCsrfToken(apiUrl: string): Promise<string> {
  * Formulario interactivo para registrar una nueva célula de datos en Mocter (DAT-001 §3.3).
  * Ahora consume la API protegida de apps/web con sesión, CSRF y validación de origen admin.
  */
-export function CreateCellForm({ apiUrl, onSuccess }: CreateCellFormProps): React.JSX.Element {
+export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellFormProps): React.JSX.Element {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -45,6 +47,7 @@ export function CreateCellForm({ apiUrl, onSuccess }: CreateCellFormProps): Reac
 
   const [formData, setFormData] = useState<{
     code: string;
+    hostId: string;
     tier: string;
     topologyType: "remote_vps" | "local_compose";
     pgbouncerHost: string;
@@ -57,6 +60,7 @@ export function CreateCellForm({ apiUrl, onSuccess }: CreateCellFormProps): Reac
     region: string;
   }>({
     code: "",
+    hostId: "",
     tier: "standard",
     topologyType: "remote_vps",
     pgbouncerHost: "pgbouncer-cell-01",
@@ -80,6 +84,7 @@ export function CreateCellForm({ apiUrl, onSuccess }: CreateCellFormProps): Reac
 
       const payload = {
         code: formData.code.trim().toLowerCase(),
+        hostId: formData.hostId ? formData.hostId.trim() : null,
         tier: formData.tier,
         topologyType: formData.topologyType,
         pgbouncerHost: formData.pgbouncerHost.trim(),
@@ -252,21 +257,43 @@ export function CreateCellForm({ apiUrl, onSuccess }: CreateCellFormProps): Reac
 
                 <div>
                   <label
-                    htmlFor="cell-app-url"
+                    htmlFor="cell-host-id"
                     className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
                   >
-                    URL De La Aplicación Celular
+                    Host De Despliegue
                   </label>
-                  <input
-                    id="cell-app-url"
-                    type="text"
-                    required
-                    placeholder="ej. http://10.0.0.2:3004 o http://localhost:3004"
-                    value={formData.appUrl}
-                    onChange={(e) => setFormData({ ...formData, appUrl: e.target.value })}
+                  <select
+                    id="cell-host-id"
+                    value={formData.hostId}
+                    onChange={(e) => setFormData({ ...formData, hostId: e.target.value })}
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
+                  >
+                    <option value="">Sin Asignar (Borrador)</option>
+                    {hosts.map((h) => (
+                      <option key={h.id} value={h.id} disabled={h.status !== "ready"}>
+                        {h.code} · {h.deploymentProfile} {h.status !== "ready" ? `(${h.status})` : ""}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="cell-app-url"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  URL De La Aplicación Celular
+                </label>
+                <input
+                  id="cell-app-url"
+                  type="text"
+                  required
+                  placeholder="ej. http://10.0.0.2:3004 o http://localhost:3004"
+                  value={formData.appUrl}
+                  onChange={(e) => setFormData({ ...formData, appUrl: e.target.value })}
+                  className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                />
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

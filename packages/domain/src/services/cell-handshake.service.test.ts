@@ -4,9 +4,13 @@ import {
   validatePrivateTarget,
   probeDatabase,
   probeHttpHealth,
+  isIpInCidr,
+  executeCellPeriodicProbe,
+  resolveLocalProbeTarget,
 } from "./cell-handshake.service";
 import { CellSecretsCryptoService } from "./cell-secrets.service";
 import * as clientModule from "../db/client";
+import * as redisModule from "../redis/client";
 
 describe("DAT-001 §3.6.3 · CellHandshakeService", () => {
   const dummyKey = Buffer.alloc(32, 9);
@@ -30,6 +34,35 @@ describe("DAT-001 §3.6.3 · CellHandshakeService", () => {
       expect(validatePrivateTarget("127.0.0.1", 5432, { allowLocal: false }).valid).toBe(false);
       expect(validatePrivateTarget("localhost", 5432, { allowLocal: false }).valid).toBe(false);
       expect(validatePrivateTarget("127.0.0.1", 5432, { allowLocal: true }).valid).toBe(true);
+    });
+
+    it("rechaza destinos link-local y metadatos de nube en todo entorno (CEL-RF-014)", () => {
+      expect(validatePrivateTarget("169.254.169.254", 80, { allowLocal: true }).valid).toBe(false);
+      expect(validatePrivateTarget("169.254.1.1", 5432, { allowLocal: false }).valid).toBe(false);
+      expect(validatePrivateTarget("169.254.169.254", 80, { allowLocal: true }).reason).toContain("link-local");
+    });
+
+    it("rechaza IPs públicas no autorizadas fuera de los CIDRs privados permitidos", () => {
+      expect(validatePrivateTarget("8.8.8.8", 5432, { allowLocal: false }).valid).toBe(false);
+      expect(validatePrivateTarget("1.1.1.1", 5432, { allowLocal: false }).valid).toBe(false);
+      expect(validatePrivateTarget("10.20.30.40", 5432, { allowLocal: false }).valid).toBe(true);
+      expect(validatePrivateTarget("172.16.5.10", 5432, { allowLocal: false }).valid).toBe(true);
+      expect(validatePrivateTarget("192.168.1.50", 5432, { allowLocal: false }).valid).toBe(true);
+    });
+
+    it("admite bloques CIDR personalizados configurados", () => {
+      expect(
+        validatePrivateTarget("50.10.20.30", 5432, {
+          allowLocal: false,
+          allowedCidrs: ["50.10.0.0/16"],
+        }).valid,
+      ).toBe(true);
+      expect(
+        validatePrivateTarget("50.20.20.30", 5432, {
+          allowLocal: false,
+          allowedCidrs: ["50.10.0.0/16"],
+        }).valid,
+      ).toBe(false);
     });
   });
 
@@ -249,6 +282,121 @@ describe("DAT-001 §3.6.3 · CellHandshakeService", () => {
       expect(res.diagnostic.db.ok).toBe(false);
       expect(res.diagnostic.error).toContain("Connection refused");
       expect(updateCalls[1].status).toBe("error_connection");
+    });
+  });
+
+  describe("executeCellPeriodicProbe (Sonda 60s CEL-RF-014)", () => {
+    it("transiciona celda a error_connection al acumular 3 fallos consecutivos", async () => {
+      const cellId = "01930000-0000-7000-8000-000000000099";
+      const payload = secretsService.generateAndEncrypt(cellId);
+
+      const mockActiveCell = {
+        id: cellId,
+        code: "cell-active-failing",
+        tier: "standard",
+        status: "active",
+        topologyType: "local_compose",
+        pgbouncerHost: "127.0.0.1",
+        pgbouncerPort: 6432,
+        databaseName: "db_cell_active",
+        appUrl: "http://127.0.0.1:3004",
+        cellSecretsCiphertext: payload.ciphertext,
+        cellSecretsKeyId: payload.keyId,
+        maxClients: 100,
+        currentClients: 10,
+        region: "us-east-1",
+      };
+
+      const updateCalls: any[] = [];
+      const mockDb = {
+        select: () => ({
+          from: () => ({
+            where: async () => [mockActiveCell],
+          }),
+        }),
+        update: () => ({
+          set: (vals: any) => {
+            updateCalls.push(vals);
+            return {
+              where: async () => undefined,
+            };
+          },
+        }),
+      };
+
+      vi.spyOn(clientModule, "getDb").mockReturnValue(mockDb as any);
+
+      // Simular Redis retornando 3 fallos
+      const mockRedis = {
+        set: vi.fn().mockResolvedValue("OK"),
+        incr: vi.fn().mockResolvedValue(3),
+        expire: vi.fn().mockResolvedValue(1),
+        del: vi.fn().mockResolvedValue(1),
+      };
+      vi.spyOn(redisModule, "getRedisClient").mockReturnValue(mockRedis as any);
+
+      // Probes que fallan
+      const mockDbClient = vi.fn().mockRejectedValue(new Error("PgBouncer down"));
+      (mockDbClient as any).end = vi.fn().mockResolvedValue(undefined);
+      const mockDbFactory = vi.fn().mockReturnValue(mockDbClient);
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+      });
+
+      const res = await executeCellPeriodicProbe({
+        dbClientFactory: mockDbFactory,
+        fetchImpl: mockFetch as any,
+        secretsService,
+        redisClient: mockRedis,
+      });
+
+      expect(res.checkedCount).toBe(1);
+      expect(res.transitionedCount).toBe(1);
+      expect(updateCalls.length).toBeGreaterThan(0);
+      expect(updateCalls[0].status).toBe("error_connection");
+      expect(mockRedis.incr).toHaveBeenCalledWith(`cell:probe:failures:${cellId}`);
+    });
+  });
+
+  describe("resolveLocalProbeTarget", () => {
+    it("conserva host y appUrl sin alteraciones para remote_vps", () => {
+      const res = resolveLocalProbeTarget({
+        topologyType: "remote_vps",
+        host: "10.0.1.20",
+        appUrl: "https://cell-01.mocter.co",
+      });
+      expect(res.probeHost).toBe("10.0.1.20");
+      expect(res.probeAppUrl).toBe("https://cell-01.mocter.co");
+    });
+
+    it("resuelve localhost y stack celular a host.docker.internal cuando DOCKER_CONTAINER=true", () => {
+      const prevEnv = process.env.DOCKER_CONTAINER;
+      process.env.DOCKER_CONTAINER = "true";
+      try {
+        const res1 = resolveLocalProbeTarget({
+          topologyType: "local_compose",
+          host: "pgbouncer-cell-01",
+          appUrl: "http://localhost:3004/",
+        });
+        expect(res1.probeHost).toBe("host.docker.internal");
+        expect(res1.probeAppUrl).toBe("http://host.docker.internal:3004/");
+
+        const res2 = resolveLocalProbeTarget({
+          topologyType: "local_compose",
+          host: "127.0.0.1",
+          appUrl: "http://127.0.0.1:3004/api/health",
+        });
+        expect(res2.probeHost).toBe("host.docker.internal");
+        expect(res2.probeAppUrl).toBe("http://host.docker.internal:3004/api/health");
+      } finally {
+        if (prevEnv !== undefined) {
+          process.env.DOCKER_CONTAINER = prevEnv;
+        } else {
+          delete process.env.DOCKER_CONTAINER;
+        }
+      }
     });
   });
 });

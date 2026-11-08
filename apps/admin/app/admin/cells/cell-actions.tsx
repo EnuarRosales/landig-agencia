@@ -15,12 +15,13 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import type { AdminCellDto } from "@mocter/domain";
+import type { AdminCellDto, CellHostDto } from "@mocter/domain";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import { adminFetch } from "@/lib/api-client";
 
 interface CellActionsProps {
   cell: AdminCellDto;
+  hosts?: CellHostDto[];
   apiUrl: string;
   onRefresh: () => void;
 }
@@ -65,7 +66,7 @@ async function fetchCsrfToken(apiUrl: string): Promise<string> {
   return data.csrfToken;
 }
 
-export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): React.JSX.Element {
+export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActionsProps): React.JSX.Element {
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [manifestModalOpen, setManifestModalOpen] = useState(false);
   const [manifestError, setManifestError] = useState<string | null>(null);
@@ -87,6 +88,7 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
   const [drainError, setDrainError] = useState<string | null>(null);
 
   const [editFormData, setEditFormData] = useState({
+    hostId: cell.hostId || "",
     tier: cell.tier || "standard",
     topologyType: (cell.topologyType as "remote_vps" | "local_compose") || "remote_vps",
     pgbouncerHost: cell.pgbouncerHost || "",
@@ -103,6 +105,7 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
 
   function handleOpenEditModal() {
     setEditFormData({
+      hostId: cell.hostId || "",
       tier: cell.tier || "standard",
       topologyType: (cell.topologyType as "remote_vps" | "local_compose") || "remote_vps",
       pgbouncerHost: cell.pgbouncerHost || "",
@@ -132,7 +135,10 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
           "Content-Type": "application/json",
           "x-csrf-token": csrf,
         },
-        body: JSON.stringify(editFormData),
+        body: JSON.stringify({
+          ...editFormData,
+          hostId: editFormData.hostId || null,
+        }),
       });
 
       const body = await res.json();
@@ -651,7 +657,7 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
                 </div>
               </div>
 
-              {/* Fila 2: Topología De Despliegue | URL De La Aplicación Celular */}
+              {/* Fila 2: Topología De Despliegue | Host De Despliegue */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label
@@ -678,21 +684,43 @@ export function CellActions({ cell, apiUrl, onRefresh }: CellActionsProps): Reac
 
                 <div>
                   <label
-                    htmlFor="edit-cell-app-url"
+                    htmlFor="edit-cell-host-id"
                     className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
                   >
-                    URL De La Aplicación Celular
+                    Host De Despliegue
                   </label>
-                  <input
-                    id="edit-cell-app-url"
-                    type="text"
-                    required
-                    placeholder="ej. http://10.0.0.2:3004 o http://localhost:3004"
-                    value={editFormData.appUrl}
-                    onChange={(e) => setEditFormData({ ...editFormData, appUrl: e.target.value })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
+                  <select
+                    id="edit-cell-host-id"
+                    value={editFormData.hostId}
+                    onChange={(e) => setEditFormData({ ...editFormData, hostId: e.target.value })}
+                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
+                  >
+                    <option value="">Sin Asignar (Borrador)</option>
+                    {hosts.map((h) => (
+                      <option key={h.id} value={h.id} disabled={h.status !== "ready" && h.id !== cell.hostId}>
+                        {h.code} · {h.deploymentProfile} {h.status !== "ready" ? `(${h.status})` : ""}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-cell-app-url"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  URL De La Aplicación Celular
+                </label>
+                <input
+                  id="edit-cell-app-url"
+                  type="text"
+                  required
+                  placeholder="ej. http://10.0.0.2:3004 o http://localhost:3004"
+                  value={editFormData.appUrl}
+                  onChange={(e) => setEditFormData({ ...editFormData, appUrl: e.target.value })}
+                  className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                />
               </div>
 
               {/* Fila 3: Host De PgBouncer O PostgreSQL | Puerto De Conexión | Nombre De La Base De Datos */}

@@ -32,6 +32,7 @@ function createMockCell(overrides?: Partial<Cell>): Cell {
   return {
     id: "cell-uuid-001",
     code: "cell-01",
+    hostId: null,
     tier: "standard",
     status: "draft",
     topologyType: "remote_vps",

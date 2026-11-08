@@ -4,7 +4,13 @@ import type { Instrumentation } from 'next';
  * Inicialización única por instancia de servidor Next.js 16 (Regla 4.13).
  */
 export async function register(): Promise<void> {
-  // Inicialización de telemetría a nivel de proceso si está configurada
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Inicializar sonda periódica liviana de 60s si está habilitada o en producción (CEL-RF-014)
+    if (process.env.ENABLE_CELL_PROBE === "true") {
+      const { startCellPeriodicProbe } = await import("@mocter/domain");
+      startCellPeriodicProbe(60_000);
+    }
+  }
 }
 
 /**

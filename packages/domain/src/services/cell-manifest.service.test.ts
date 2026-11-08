@@ -133,6 +133,68 @@ describe("DAT-001 §3.6.2 · CellManifestService", () => {
     expect(manifest.envContent).toContain("POSTGRES_PASSWORD=mock-app-password-fallback");
   });
 
+  it("resuelve el perfil local_development a partir de cell.hostId y genera manifiesto con node:24-alpine", async () => {
+    const cellId = "01930000-0000-7000-8000-000000000030";
+    const customBundle: CellSecretsBundle = {
+      mocter_app_password: "mock-app-password-dev",
+      mocter_migrator_password: "mock-migrator-password-dev",
+      mocter_healthcheck_password: "mock-healthcheck-password-dev",
+      handshake_secret: "mock-handshake-secret-dev",
+    };
+    const payload = secretsService.encryptBundle(customBundle, cellId);
+
+    const mockCell = {
+      id: cellId,
+      code: "cell-dev",
+      tier: "standard",
+      status: "draft",
+      topologyType: "local_compose",
+      pgbouncerHost: "127.0.0.1",
+      pgbouncerPort: 6432,
+      databaseName: "pg-cell-dev",
+      appUrl: "http://localhost:3004/",
+      privateIp: "127.0.0.1",
+      publicIp: null,
+      workingDir: "/opt/cell-dev",
+      deployUser: "deploy:1000",
+      cellSecretsCiphertext: payload.ciphertext,
+      cellSecretsKeyId: payload.keyId,
+      maxClients: 100,
+      currentClients: 0,
+      region: "us-east-1",
+      hostId: "host-uuid-local-01",
+    };
+
+    const mockHost = {
+      id: "host-uuid-local-01",
+      deploymentProfile: "local_development",
+    };
+
+    let queryCount = 0;
+    const mockDb = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => {
+              queryCount++;
+              return queryCount === 1 ? [mockCell] : [mockHost];
+            },
+          }),
+        }),
+      }),
+    };
+
+    vi.spyOn(clientModule, "getDb").mockReturnValue(mockDb as any);
+
+    const manifest = await manifestService.generateManifest(cellId);
+
+    expect(manifest.dockerComposeContent).toContain("Perfil local_development");
+    expect(manifest.dockerComposeContent).toContain("image: node:24-alpine");
+    expect(manifest.dockerComposeContent).toContain("127.0.0.1:3004:3000");
+    expect(manifest.dockerComposeContent).not.toContain("ghcr.io/enuarrosales/mocter-web");
+    expect(manifest.dockerComposeContent).not.toContain("${TAG:-latest}");
+  });
+
   it("lanza un error explícito si la celda no existe", async () => {
     const mockDb = {
       select: () => ({

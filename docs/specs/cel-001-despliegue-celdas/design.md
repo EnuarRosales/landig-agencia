@@ -81,6 +81,45 @@ The nominal capacity is 100 tenants per cell. Host resource capacity is separate
 
 The persisted `topology_type` values `local_compose` and `remote_vps` are preserved. `local_compose` maps to `local_development`; `remote_vps` remains generic and does not choose between `control_plane_vps` and `external_vps`. The renderer obtains the profile from the explicit `host_id`/host registry and fails closed for a missing or ambiguous host profile. Existing records are never remapped automatically.
 
+### Contrato de hosts y mapping de topología (CEL-T01a)
+
+Esta sección fija, sin ampliar CEL-001, el contrato que CEL-T01b implementa. Reutiliza el DDL de referencia de DAT-001 `design.md §3.3`; ante discrepancia prevalece DAT-001 para el esquema y CEL-001 para el comportamiento.
+
+**`cell_hosts` (Control Plane, esquema `admin`)**
+
+| Columna | Contrato |
+|---|---|
+| `id` | UUID estable; es el `host_id` referenciado por `cells.host_id` (FK interna, `ON DELETE RESTRICT`). |
+| `code` | Único, sin credenciales. |
+| `deployment_profile` | `local_development`, `control_plane_vps` o `external_vps`. |
+| `status` | `ready`, `maintenance` o `disabled`. Solo un host `ready` recibe celdas nuevas. `ready` es una declaración manual y auditada del operador tras un preflight de capacidad (CEL-RF-001); ninguna migración ni proceso automático la declara. |
+| `connectivity_config_ref` | Referencia no secreta a la configuración de conectividad; los secretos viven en el límite de gestión de secretos. |
+| `created_at`, `updated_at`, `created_by`, `updated_by` | Auditoría del registro. |
+
+No existe columna `region` en `cell_hosts` ni en el modelo neutral (CEL-RF-025, AC-13).
+
+**Mapping `topology_type` → perfil** (CEL-RF-026; los valores persistidos no se reescriben)
+
+| `cells.topology_type` | Perfil resuelto | Regla |
+|---|---|---|
+| `local_compose` | `local_development` | El host asignado debe tener `deployment_profile = local_development`. |
+| `remote_vps` | Definido por el host | Se exige `host_id` con perfil `control_plane_vps` o `external_vps`; no se infiere desde `topology_type`. |
+| Cualquier otro valor o combinación incompatible con el perfil del host | — | La generación falla de forma cerrada con diagnóstico; no hay remapeo silencioso. |
+
+**Reglas de `cells.host_id`**
+
+1. Nulo solo en `draft`; obligatorio antes de `provisioning` y para generar manifiesto.
+2. No se asigna ni se reasigna automáticamente. El cambio de host es explícito y auditable (CEL-RF-004).
+3. Cambiar el estado de un host no modifica `client_routing`.
+
+**Estrategia de migración para filas existentes (expandir → contraer, AGENTS.md §4.2.7)**
+
+1. **M1 (expandir):** crea `admin.cell_hosts` y agrega `cells.host_id` nullable, sin restricción de obligatoriedad, sin sembrar hosts en estado `ready` y sin asignar hosts a filas existentes.
+2. **Operación manual:** el operador registra el host, ejecuta y registra el preflight de capacidad, lo declara `ready` y asigna las celdas existentes (p. ej. `cell-01`) con auditoría.
+3. **M2 (contraer):** agrega `CHECK (status = 'draft' OR host_id IS NOT NULL)` únicamente tras verificar que no quedan filas en conflicto. Si las hay, la migración falla de forma explícita; no corrige datos.
+
+**Etapa 1 y este contrato:** la Etapa 1 no persiste nada de lo anterior. `CellDeploymentSpec.cell.hostId` y `profile` admiten `null` solo para representar filas legadas sin resolver; CEL-T01b/CEL-T03 los vuelven obligatorios.
+
 ### Host directory and secret boundary
 
 Production paths are derived from normalized `cell_code` as `/opt/<name-cell>` and are operated by `deploy:1000`; they are renderer/operations details, never neutral-model fields. The secret bundle contains only per-cell credentials and handshake material, is generated with CSPRNG, encrypted at rest with AES-256-GCM and AAD bound to `cell_id` plus purpose, and stored as ciphertext plus key identifier. The active encryption key is mounted through the approved secret manager/path; no fallback production key is allowed. A Platform Owner's explicit `.env.cell` export is audited and `no-store`; the operator installs it with `0600` permissions. The neutral model carries secret references only.

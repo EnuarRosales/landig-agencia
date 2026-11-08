@@ -3,6 +3,7 @@ import { getDb } from "../db/client";
 import {
   clients,
   leads,
+  cellHosts,
   cells,
   plans,
   users,
@@ -41,6 +42,9 @@ import {
   chatwootCapabilityDefinitions,
   type ChatwootCapability,
   type Lead,
+  type CellHost,
+  type CellHostDeploymentProfile,
+  type CellHostStatus,
   type Cell,
   type Plan,
   type BrandingPaletteTokens,
@@ -66,6 +70,7 @@ export interface ControlPlaneMetricsDto {
 
 export interface CreateAdminCellInput {
   code: string;
+  hostId?: string | null;
   tier?: "standard" | "dedicated";
   topologyType?: "remote_vps" | "local_compose";
   pgbouncerHost: string;
@@ -208,6 +213,7 @@ export async function fetchAdminCells(): Promise<AdminCellDto[]> {
       .select({
         id: cells.id,
         code: cells.code,
+        hostId: cells.hostId,
         tier: cells.tier,
         status: cells.status,
         topologyType: cells.topologyType,
@@ -274,6 +280,41 @@ export async function createAdminCell(input: CreateAdminCellInput): Promise<Resu
     const operator = input.actorUserId;
     const cellId = randomUUID();
 
+    let hostId: string | null = null;
+    if (input.hostId) {
+      const [host] = await db
+        .select()
+        .from(cellHosts)
+        .where(eq(cellHosts.id, input.hostId))
+        .limit(1);
+
+      if (!host) {
+        return err(`Host de despliegue con id "${input.hostId}" no encontrado.`, "HOST_NOT_FOUND");
+      }
+
+      if (host.status !== "ready") {
+        return err(
+          `El host "${host.code}" está en estado "${host.status}". Solo hosts en estado "ready" pueden recibir celdas (CEL-RF-001).`,
+          "HOST_NOT_READY",
+        );
+      }
+
+      const topology = input.topologyType || "remote_vps";
+      if (topology === "local_compose" && host.deploymentProfile !== "local_development") {
+        return err(
+          `Incompatibilidad de perfil: la topología "local_compose" requiere un host con perfil "local_development", pero "${host.code}" tiene "${host.deploymentProfile}" (CEL-RF-026).`,
+          "PROFILE_MISMATCH",
+        );
+      }
+      if (topology === "remote_vps" && host.deploymentProfile === "local_development") {
+        return err(
+          `Incompatibilidad de perfil: la topología "remote_vps" no admite hosts con perfil "local_development" (CEL-RF-026).`,
+          "PROFILE_MISMATCH",
+        );
+      }
+      hostId = host.id;
+    }
+
     const payload = cellSecretsCryptoService.generateAndEncrypt(cellId);
 
     const [row] = await db
@@ -281,6 +322,7 @@ export async function createAdminCell(input: CreateAdminCellInput): Promise<Resu
       .values({
         id: cellId,
         code,
+        hostId,
         tier: input.tier || "standard",
         topologyType: input.topologyType || "remote_vps",
         status: "draft",
@@ -343,6 +385,7 @@ export async function updateCellStatus(
 }
 
 export interface UpdateAdminCellInput {
+  hostId?: string | null;
   tier?: "standard" | "dedicated";
   topologyType?: "remote_vps" | "local_compose";
   pgbouncerHost?: string;
@@ -395,6 +438,48 @@ export async function updateAdminCell(
       updatedAt: new Date(),
       updatedBy: operator,
     };
+
+    if (input.hostId !== undefined) {
+      if (input.hostId === null) {
+        if (existing.status !== "draft") {
+          return err("Solo una celda en estado 'draft' puede tener host_id nulo (CEL-RF-001).", "VALIDATION_ERROR");
+        }
+        updateValues.hostId = null;
+      } else {
+        const [host] = await db
+          .select()
+          .from(cellHosts)
+          .where(eq(cellHosts.id, input.hostId))
+          .limit(1);
+
+        if (!host) {
+          return err(`Host de despliegue con id "${input.hostId}" no encontrado.`, "HOST_NOT_FOUND");
+        }
+
+        if (host.status !== "ready" && host.id !== existing.hostId) {
+          return err(
+            `El host "${host.code}" está en estado "${host.status}". Solo hosts en estado "ready" pueden recibir celdas (CEL-RF-001).`,
+            "HOST_NOT_READY",
+          );
+        }
+
+        const topology = input.topologyType ?? existing.topologyType;
+        if (topology === "local_compose" && host.deploymentProfile !== "local_development") {
+          return err(
+            `Incompatibilidad de perfil: la topología "local_compose" requiere un host con perfil "local_development", pero "${host.code}" tiene "${host.deploymentProfile}" (CEL-RF-026).`,
+            "PROFILE_MISMATCH",
+          );
+        }
+        if (topology === "remote_vps" && host.deploymentProfile === "local_development") {
+          return err(
+            `Incompatibilidad de perfil: la topología "remote_vps" no admite hosts con perfil "local_development" (CEL-RF-026).`,
+            "PROFILE_MISMATCH",
+          );
+        }
+
+        updateValues.hostId = input.hostId;
+      }
+    }
 
     if (input.tier !== undefined) updateValues.tier = input.tier;
     if (input.topologyType !== undefined) updateValues.topologyType = input.topologyType;
@@ -480,6 +565,243 @@ export async function deleteAdminCell(
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[deleteAdminCell Failed] ${msg}`, error);
     return err(`Error al eliminar la célula: ${msg}`, "CELL_ERROR");
+  }
+}
+
+/**
+ * DTO para la visualización y gestión de hosts de celdas en el Plano de Control (CEL-RF-001, DAT-001 §3.3).
+ */
+export interface CellHostDto {
+  id: string;
+  code: string;
+  deploymentProfile: CellHostDeploymentProfile;
+  status: CellHostStatus;
+  connectivityConfigRef: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  updatedBy: string;
+}
+
+/**
+ * Parámetros para el registro de un nuevo host en el Plano de Control.
+ */
+export interface CreateCellHostInput {
+  code: string;
+  deploymentProfile: CellHostDeploymentProfile;
+  status?: CellHostStatus;
+  connectivityConfigRef: string;
+  actorUserId: string;
+}
+
+/**
+ * Parámetros para la actualización de un host existente.
+ */
+export interface UpdateCellHostInput {
+  status?: CellHostStatus;
+  connectivityConfigRef?: string;
+  actorUserId: string;
+}
+
+/**
+ * Consulta la lista de hosts registrados en el Plano de Control (CEL-RF-001).
+ *
+ * @returns Lista ordenada de hosts según su código.
+ */
+export async function fetchAdminCellHosts(): Promise<CellHostDto[]> {
+  try {
+    const db = getDb();
+    const rows = await db
+      .select({
+        id: cellHosts.id,
+        code: cellHosts.code,
+        deploymentProfile: cellHosts.deploymentProfile,
+        status: cellHosts.status,
+        connectivityConfigRef: cellHosts.connectivityConfigRef,
+        createdAt: cellHosts.createdAt,
+        updatedAt: cellHosts.updatedAt,
+        createdBy: cellHosts.createdBy,
+        updatedBy: cellHosts.updatedBy,
+      })
+      .from(cellHosts)
+      .orderBy(asc(cellHosts.code));
+    return rows;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[fetchAdminCellHosts Failed] ${msg}`, error);
+    return [];
+  }
+}
+
+/**
+ * Registra un nuevo host en el Plano de Control para el placement explícito de celdas (CEL-RF-001).
+ *
+ * Requiere autorización con permiso `cells.provision`.
+ *
+ * @param input - Datos validados del host y usuario operador.
+ * @returns Registro del host creado o error de validación/autorización.
+ */
+export async function createAdminCellHost(input: CreateCellHostInput): Promise<Result<CellHostDto>> {
+  try {
+    if (!input.actorUserId) {
+      return err("Identificador de usuario actor requerido.", "UNAUTHORIZED");
+    }
+    const authz = await authorizeCellProvision(input.actorUserId);
+    if (!authz.ok) {
+      return err(authz.error, "FORBIDDEN");
+    }
+
+    const code = input.code.trim().toLowerCase();
+    const connectivityConfigRef = input.connectivityConfigRef.trim();
+    if (!code || !connectivityConfigRef) {
+      return err("Código y referencia de configuración de conectividad son obligatorios.", "VALIDATION_ERROR");
+    }
+
+    const validProfiles: CellHostDeploymentProfile[] = ["local_development", "control_plane_vps", "external_vps"];
+    if (!validProfiles.includes(input.deploymentProfile)) {
+      return err(`Perfil de despliegue "${input.deploymentProfile}" no válido.`, "VALIDATION_ERROR");
+    }
+
+    const status = input.status ?? "ready";
+    const validStatuses: CellHostStatus[] = ["ready", "maintenance", "disabled"];
+    if (!validStatuses.includes(status)) {
+      return err(`Estado de host "${status}" no válido.`, "VALIDATION_ERROR");
+    }
+
+    const db = getDb();
+    const hostId = randomUUID();
+    const [row] = await db
+      .insert(cellHosts)
+      .values({
+        id: hostId,
+        code,
+        deploymentProfile: input.deploymentProfile,
+        status,
+        connectivityConfigRef,
+        createdBy: input.actorUserId,
+        updatedBy: input.actorUserId,
+      })
+      .returning();
+
+    if (!row) {
+      return err("No se pudo crear el registro del host.", "HOST_CREATE_FAILED");
+    }
+
+    return ok(row);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[createAdminCellHost Failed] ${msg}`, error);
+    if (msg.includes("unique") || msg.includes("duplicate key")) {
+      return err(`Ya existe un host registrado con el código "${input.code}".`, "DUPLICATE_CODE");
+    }
+    return err(`Error al registrar host: ${msg}`, "HOST_ERROR");
+  }
+}
+
+/**
+ * Modifica el estado o referencia de conectividad de un host existente (CEL-RF-001).
+ *
+ * La transición a `ready` es una declaración manual y auditada del operador tras preflight de capacidad.
+ *
+ * @param hostId - Identificador UUID del host.
+ * @param input - Datos de actualización y usuario operador.
+ * @returns Registro actualizado del host.
+ */
+export async function updateAdminCellHost(
+  hostId: string,
+  input: UpdateCellHostInput,
+): Promise<Result<CellHostDto>> {
+  try {
+    if (!input.actorUserId) {
+      return err("Identificador de usuario actor requerido.", "UNAUTHORIZED");
+    }
+    const authz = await authorizeCellProvision(input.actorUserId);
+    if (!authz.ok) {
+      return err(authz.error, "FORBIDDEN");
+    }
+
+    const db = getDb();
+    const [existing] = await db.select().from(cellHosts).where(eq(cellHosts.id, hostId)).limit(1);
+    if (!existing) {
+      return err(`Host con id "${hostId}" no encontrado.`, "NOT_FOUND");
+    }
+
+    const updateValues: Partial<typeof cellHosts.$inferInsert> = {
+      updatedAt: new Date(),
+      updatedBy: input.actorUserId,
+    };
+
+    if (input.status !== undefined) {
+      const validStatuses: CellHostStatus[] = ["ready", "maintenance", "disabled"];
+      if (!validStatuses.includes(input.status)) {
+        return err(`Estado de host "${input.status}" no válido.`, "VALIDATION_ERROR");
+      }
+      updateValues.status = input.status;
+    }
+
+    if (input.connectivityConfigRef !== undefined) {
+      const ref = input.connectivityConfigRef.trim();
+      if (!ref) {
+        return err("La referencia de conectividad no puede estar vacía.", "VALIDATION_ERROR");
+      }
+      updateValues.connectivityConfigRef = ref;
+    }
+
+    const [updated] = await db
+      .update(cellHosts)
+      .set(updateValues)
+      .where(eq(cellHosts.id, hostId))
+      .returning();
+
+    if (!updated) {
+      return err("No se pudo actualizar el host.", "HOST_UPDATE_FAILED");
+    }
+
+    return ok(updated);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminCellHost Failed] ${msg}`, error);
+    return err(`Error al actualizar host: ${msg}`, "HOST_ERROR");
+  }
+}
+
+/**
+ * Elimina un host si no tiene celdas de datos asignadas (CEL-RF-001).
+ *
+ * @param hostId - Identificador UUID del host.
+ * @param actorUserId - Identificador del operador autorizado.
+ * @returns Confirmación con el id del host eliminado.
+ */
+export async function deleteAdminCellHost(
+  hostId: string,
+  actorUserId: string,
+): Promise<Result<{ id: string }>> {
+  try {
+    if (!actorUserId) {
+      return err("Identificador de usuario actor requerido.", "UNAUTHORIZED");
+    }
+    const authz = await authorizeCellProvision(actorUserId);
+    if (!authz.ok) {
+      return err(authz.error, "FORBIDDEN");
+    }
+
+    const db = getDb();
+    const [existing] = await db.select().from(cellHosts).where(eq(cellHosts.id, hostId)).limit(1);
+    if (!existing) {
+      return err(`Host con id "${hostId}" no encontrado.`, "NOT_FOUND");
+    }
+
+    const assignedCells = await db.select({ id: cells.id }).from(cells).where(eq(cells.hostId, hostId)).limit(1);
+    if (assignedCells.length > 0) {
+      return err("No se puede eliminar el host porque tiene celdas de datos asignadas.", "HOST_HAS_CELLS");
+    }
+
+    await db.delete(cellHosts).where(eq(cellHosts.id, hostId));
+    return ok({ id: hostId });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[deleteAdminCellHost Failed] ${msg}`, error);
+    return err(`Error al eliminar host: ${msg}`, "HOST_ERROR");
   }
 }
 

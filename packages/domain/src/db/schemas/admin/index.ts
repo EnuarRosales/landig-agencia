@@ -6,6 +6,7 @@ export * from "./plans";
 export * from "./clients";
 export * from "./client-plans";
 export * from "./users";
+export * from "./cell-hosts";
 export * from "./cells";
 export * from "./client-routing";
 export * from "./identities";
