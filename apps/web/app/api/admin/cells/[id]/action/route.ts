@@ -4,6 +4,7 @@ import {
   authService,
   updateCellStatus,
   assertCellProvisionAuthorization,
+  cellMigrationService,
 } from "@mocter/domain";
 import { env } from "@/env";
 import { isAdminOrigin } from "@/lib/origin";
@@ -100,6 +101,29 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const action = body.action;
 
+    if (action === "migrate") {
+      const actor = sessionValidation.data.user.email || sessionValidation.data.user.id;
+      const migrateResult = await cellMigrationService.executeCellMigrations(cellId, actor);
+      if (!migrateResult.ok) {
+        return NextResponse.json(
+          { ok: false, error: migrateResult.error, code: migrateResult.code },
+          { status: 400, headers: corsHeaders(origin) },
+        );
+      }
+
+      log.info({
+        event: "cells.action.migrate_success",
+        cellId,
+        appliedCount: migrateResult.data.appliedCount,
+        durationMs: Math.round(performance.now() - start),
+      });
+
+      return NextResponse.json(
+        { ok: true, data: migrateResult.data },
+        { status: 200, headers: corsHeaders(origin) },
+      );
+    }
+
     let targetStatus: "draining" | "maintenance" | "active" | "draft";
     if (action === "drain") {
       targetStatus = "draining";
@@ -109,7 +133,7 @@ export async function POST(
       targetStatus = "draft";
     } else {
       return NextResponse.json(
-        { ok: false, error: `Acción inválida: "${action}". Permitidas: drain, maintenance, draft.`, code: "INVALID_ACTION" },
+        { ok: false, error: `Acción inválida: "${action}". Permitidas: drain, maintenance, draft, migrate.`, code: "INVALID_ACTION" },
         { status: 400, headers: corsHeaders(origin) },
       );
     }

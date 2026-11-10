@@ -2161,14 +2161,38 @@ export class AuthService {
         return err("Usuario no encontrado.", "USER_NOT_FOUND");
       }
 
-      if (tokenRecord.purpose === "setup" && user.passwordHash !== null) {
+      const isCellUser = user.identityLocation !== "router" && !!user.activeClientId;
+      let cellCredentials: CellUserCredentials | null = null;
+
+      if (isCellUser) {
+        try {
+          cellCredentials = await this.cellAuthRepo.findUserCredentialsInCell(
+            user.identityLocation,
+            user.activeClientId!,
+            user.id,
+          );
+        } catch (cellErr) {
+          appLogger.error(
+            "[AuthService.resetPassword] Fallo de conexión con la celda asignada (Fail-Closed)",
+            cellErr,
+            { userId: user.id, cellId: user.identityLocation },
+          );
+          return err("Celda temporalmente fuera de servicio.", "CELL_UNAVAILABLE");
+        }
+      }
+
+      const hasNativePassword = isCellUser
+        ? !!cellCredentials?.passwordHash
+        : user.passwordHash !== null;
+
+      if (tokenRecord.purpose === "setup" && hasNativePassword) {
         return err(
           "La cuenta ya cuenta con una contraseña establecida.",
           "PASSWORD_ALREADY_EXISTS",
         );
       }
 
-      if (tokenRecord.purpose === "reset" && user.passwordHash === null) {
+      if (tokenRecord.purpose === "reset" && !hasNativePassword) {
         return err(
           "La cuenta no cuenta con una contraseña nativa previa para recuperar.",
           "NO_NATIVE_PASSWORD",
@@ -2177,12 +2201,40 @@ export class AuthService {
 
       const newPasswordHash = await hashPassword(password);
 
-      await this.authRepo.consumePasswordResetToken(
-        tokenRecord.id,
-        user.id,
-        newPasswordHash,
-        tokenRecord.purpose as "reset" | "setup",
-      );
+      if (isCellUser) {
+        if (!cellCredentials) {
+          await this.cellAuthRepo.expandCellUser(user.identityLocation, {
+            id: user.id,
+            clientId: user.activeClientId!,
+            email: user.email,
+            emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+            status: user.status,
+            displayName: user.displayName,
+            avatarUrl: user.avatarUrl,
+          });
+        }
+
+        await this.cellAuthRepo.updatePasswordHashInCell(
+          user.identityLocation,
+          user.activeClientId!,
+          user.id,
+          newPasswordHash,
+        );
+
+        await this.authRepo.consumePasswordResetToken(
+          tokenRecord.id,
+          user.id,
+          null,
+          tokenRecord.purpose as "reset" | "setup",
+        );
+      } else {
+        await this.authRepo.consumePasswordResetToken(
+          tokenRecord.id,
+          user.id,
+          newPasswordHash,
+          tokenRecord.purpose as "reset" | "setup",
+        );
+      }
 
       appLogger.info("[AuthService.resetPassword] Contraseña actualizada y sesiones revocadas", {
         userId: user.id,

@@ -1,6 +1,7 @@
 import { eq, and, sql, isNull, desc } from "drizzle-orm";
 import { err, ok, type Result } from "../types/result";
 import { getDb } from "../db/client";
+import { withTenantCellTransaction } from "../db/cell-client";
 import { clients } from "../db/schemas/admin/clients";
 import { plans } from "../db/schemas/admin/plans";
 import { planLimits, type PlanLimitDimensionKey } from "../db/schemas/admin/plan-catalogs";
@@ -255,10 +256,21 @@ export class InMemoryTenantProductsRepository implements ITenantProductsReposito
 }
 
 /**
+ * Tipo funcional para ejecutar transacciones celulares bajo contexto RLS de inquilino.
+ */
+export type TenantCellTxRunner = <T>(
+  clientId: string,
+  callback: (tx: any) => Promise<T>,
+) => Promise<T>;
+
+/**
  * Repositorio Drizzle ORM sobre PostgreSQL.
  */
 export class DrizzleTenantProductsRepository implements ITenantProductsRepository {
-  constructor(private readonly db: any = getDb()) {}
+  constructor(
+    private readonly portalDb: any = getDb(),
+    private readonly cellTxRunner: TenantCellTxRunner = withTenantCellTransaction,
+  ) {}
 
   async getPlanQuota(
     clientId: string,
@@ -266,7 +278,7 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
   ): Promise<{ mode: "LIMITED" | "UNLIMITED"; value: number | null }> {
     // 1. Revisar overrides vigentes del inquilino
     const now = new Date();
-    const [override] = await this.db
+    const [override] = await this.portalDb
       .select()
       .from(clientPlanOverrides)
       .where(
@@ -284,7 +296,7 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
     }
 
     // 2. Consultar plan asignado al cliente
-    const [client] = await this.db
+    const [client] = await this.portalDb
       .select({ planId: clients.planId })
       .from(clients)
       .where(eq(clients.id, clientId))
@@ -294,7 +306,7 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
       return { mode: "UNLIMITED", value: null };
     }
 
-    const [limitRow] = await this.db
+    const [limitRow] = await this.portalDb
       .select()
       .from(planLimits)
       .where(and(eq(planLimits.planId, client.planId), eq(planLimits.dimension, dimension)))
@@ -311,11 +323,13 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
   }
 
   async countActiveProducts(clientId: string): Promise<number> {
-    const [res] = await this.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(cellProducts)
-      .where(and(eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)));
-    return res?.count ?? 0;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const [res] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(cellProducts)
+        .where(and(eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)));
+      return res?.count ?? 0;
+    });
   }
 
   async countProductMediaByKind(
@@ -323,54 +337,60 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
     productId: string,
     kind: MediaKind,
   ): Promise<number> {
-    const [res] = await this.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(cellProductMedia)
-      .where(
-        and(
-          eq(cellProductMedia.clientId, clientId),
-          eq(cellProductMedia.productId, productId),
-        ),
-      );
-    return res?.count ?? 0;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const [res] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(cellProductMedia)
+        .where(
+          and(
+            eq(cellProductMedia.clientId, clientId),
+            eq(cellProductMedia.productId, productId),
+          ),
+        );
+      return res?.count ?? 0;
+    });
   }
 
   async getTenantStorageUsage(clientId: string): Promise<number> {
-    const [usage] = await this.db
-      .select({ used: cellClientUsage.usedValue })
-      .from(cellClientUsage)
-      .where(
-        and(
-          eq(cellClientUsage.clientId, clientId),
-          eq(cellClientUsage.dimension, "storage_bytes"),
-        ),
-      )
-      .limit(1);
-    return usage?.used ?? 0;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const [usage] = await tx
+        .select({ used: cellClientUsage.usedValue })
+        .from(cellClientUsage)
+        .where(
+          and(
+            eq(cellClientUsage.clientId, clientId),
+            eq(cellClientUsage.dimension, "storage_bytes"),
+          ),
+        )
+        .limit(1);
+      return usage?.used ?? 0;
+    });
   }
 
   async createProduct(clientId: string, input: TenantProductInput, actor: string): Promise<CellProduct> {
-    const [created] = await this.db
-      .insert(cellProducts)
-      .values({
-        clientId,
-        name: input.name,
-        description: input.description,
-        priceCents: input.priceCents,
-        currency: input.currency ?? "COP",
-        sku: input.sku ?? null,
-        gtin: input.gtin ?? null,
-        brand: input.brand ?? null,
-        category: input.category ?? null,
-        kind: input.kind ?? "physical",
-        condition: input.condition ?? "new",
-        availability: input.availability ?? "in_stock",
-        status: input.status ?? "draft",
-        createdBy: actor,
-        updatedBy: actor,
-      })
-      .returning();
-    return created;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const [created] = await tx
+        .insert(cellProducts)
+        .values({
+          clientId,
+          name: input.name,
+          description: input.description,
+          priceCents: input.priceCents,
+          currency: input.currency ?? "COP",
+          sku: input.sku ?? null,
+          gtin: input.gtin ?? null,
+          brand: input.brand ?? null,
+          category: input.category ?? null,
+          kind: input.kind ?? "physical",
+          condition: input.condition ?? "new",
+          availability: input.availability ?? "in_stock",
+          status: input.status ?? "draft",
+          createdBy: actor,
+          updatedBy: actor,
+        })
+        .returning();
+      return created;
+    });
   }
 
   async updateProduct(
@@ -379,45 +399,53 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
     updates: Partial<TenantProductInput>,
     actor: string,
   ): Promise<CellProduct | null> {
-    const [updated] = await this.db
-      .update(cellProducts)
-      .set({
-        ...updates,
-        updatedAt: new Date(),
-        updatedBy: actor,
-      })
-      .where(and(eq(cellProducts.id, productId), eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
-      .returning();
-    return updated ?? null;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const [updated] = await tx
+        .update(cellProducts)
+        .set({
+          ...updates,
+          updatedAt: new Date(),
+          updatedBy: actor,
+        })
+        .where(and(eq(cellProducts.id, productId), eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
+        .returning();
+      return updated ?? null;
+    });
   }
 
   async deleteProduct(clientId: string, productId: string, actor: string): Promise<boolean> {
-    const rows = await this.db
-      .update(cellProducts)
-      .set({
-        deletedAt: new Date(),
-        deletedBy: actor,
-      })
-      .where(and(eq(cellProducts.id, productId), eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
-      .returning({ id: cellProducts.id });
-    return rows.length > 0;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const rows = await tx
+        .update(cellProducts)
+        .set({
+          deletedAt: new Date(),
+          deletedBy: actor,
+        })
+        .where(and(eq(cellProducts.id, productId), eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
+        .returning({ id: cellProducts.id });
+      return rows.length > 0;
+    });
   }
 
   async listProducts(clientId: string): Promise<CellProduct[]> {
-    return this.db
-      .select()
-      .from(cellProducts)
-      .where(and(eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
-      .orderBy(desc(cellProducts.createdAt));
+    return this.cellTxRunner(clientId, async (tx) => {
+      return tx
+        .select()
+        .from(cellProducts)
+        .where(and(eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
+        .orderBy(desc(cellProducts.createdAt));
+    });
   }
 
   async getProductById(clientId: string, productId: string): Promise<CellProduct | null> {
-    const [product] = await this.db
-      .select()
-      .from(cellProducts)
-      .where(and(eq(cellProducts.id, productId), eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
-      .limit(1);
-    return product ?? null;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const [product] = await tx
+        .select()
+        .from(cellProducts)
+        .where(and(eq(cellProducts.id, productId), eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
+        .limit(1);
+      return product ?? null;
+    });
   }
 
   async importProducts(
@@ -426,7 +454,7 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
     actor: string,
   ): Promise<CellProduct[]> {
     if (items.length === 0) return [];
-    return this.db.transaction(async (tx: any) => {
+    return this.cellTxRunner(clientId, async (tx) => {
       const inserted: CellProduct[] = [];
       for (const item of items) {
         const [row] = await tx
@@ -460,7 +488,7 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
     input: ProductMediaAttachmentInput,
     actor: string,
   ): Promise<{ id: string; productId: string; mediaId: string }> {
-    return this.db.transaction(async (tx: any) => {
+    return this.cellTxRunner(clientId, async (tx) => {
       const [link] = await tx
         .insert(cellProductMedia)
         .values({
@@ -497,17 +525,19 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
   }
 
   async detachMedia(clientId: string, productId: string, mediaId: string): Promise<boolean> {
-    const deleted = await this.db
-      .delete(cellProductMedia)
-      .where(
-        and(
-          eq(cellProductMedia.clientId, clientId),
-          eq(cellProductMedia.productId, productId),
-          eq(cellProductMedia.mediaId, mediaId),
-        ),
-      )
-      .returning();
-    return deleted.length > 0;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const deleted = await tx
+        .delete(cellProductMedia)
+        .where(
+          and(
+            eq(cellProductMedia.clientId, clientId),
+            eq(cellProductMedia.productId, productId),
+            eq(cellProductMedia.mediaId, mediaId),
+          ),
+        )
+        .returning();
+      return deleted.length > 0;
+    });
   }
 }
 

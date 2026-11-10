@@ -4,6 +4,7 @@ import type { LeadInput } from "../validation";
 import { appLogger } from "../utils/logger";
 
 export * from "./client";
+export * from "./cell-client";
 export * from "./health";
 export * from "./schemas";
 

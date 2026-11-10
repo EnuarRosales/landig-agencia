@@ -81,3 +81,5 @@ export function createCheckoutRouteHandler(checkoutService: CheckoutService) {
   };
 }
 
+export const POST = createCheckoutRouteHandler({} as any);
+

@@ -686,7 +686,7 @@ export class DrizzleAuthRepository implements IAuthRepository {
   async consumePasswordResetToken(
     tokenId: string,
     userId: string,
-    newPasswordHash: string,
+    newPasswordHash: string | null,
     purpose: "reset" | "setup",
   ): Promise<User> {
     try {
@@ -706,13 +706,13 @@ export class DrizzleAuthRepository implements IAuthRepository {
         // 2. Actualizar contraseña del usuario y email_verified_at si es setup
         const userUpdateValues: Record<string, unknown> = {
           passwordHash: newPasswordHash,
-          passwordUpdatedAt: now,
+          passwordUpdatedAt: newPasswordHash !== null ? now : null,
           updatedAt: now,
           updatedBy: "self",
         };
 
         if (purpose === "setup") {
-          userUpdateValues.emailVerifiedAt = sql`COALESCE(${users.emailVerifiedAt}, ${now})`;
+          userUpdateValues.emailVerifiedAt = sql`COALESCE(${users.emailVerifiedAt}, now())`;
         }
 
         const [updatedUser] = await tx

@@ -272,3 +272,38 @@
 - [x] **T-35 · [HUMANO] Aprobar ADM-001**
   - Revisar `requirements.md`, `design.md` y `tasks.md`; aprobar o registrar correcciones.
   - Verificación: estado `Aprobada` en `.agents/AGENTS.md` §6 y en la cabecera de la spec.
+
+## Fase 8 · Estabilización del Entorno Operativo del Inquilino, Onboarding Unificado y Backoffice Celular (`/workspace/*` · v1.8)
+
+- [ ] **T-39 · Implementar `CellDatabasePoolManager`, provisión celular en alta manual y reconciliación en `pg-cell-XX`**
+  - Crear `packages/domain/src/db/cell-client.ts` (`getCellDb(cellId)` y `withTenantCellTransaction(clientId, callback)`) que descifra `cell_secrets_ciphertext`, resuelve el endpoint de PgBouncer (`resolveLocalProbeTarget` para `local_compose`) y fija `SELECT set_config('app.current_client_id', clientId, true)` bajo RLS.
+  - Conectar `DrizzleCellAuthRepository` a `getCellDb(cellId)` para autenticar y persistir credenciales en la celda asignada (`pg-cell-XX`).
+  - Implementar `provisionTenantInCellDataPlane` y `reconcileProvisionedTenantsInCells` en `admin-dashboard.service.ts` para materializar en `pg-cell-XX` (`admin.users`, `admin.tenant_users` con `role = 'tenant_owner'`, `admin.tenant_labels` con las 4 etiquetas reservadas y `admin.client_business_info`), crear altas manuales en estado `lifecycle_status = 'alta'`, promover `users.identity_location = '<cell_id>'`, persistir la contraseña de `/password/setup` en la celda y mostrar el rol `tenant_owner` y celda en `/admin/users`.
+  - Verificación: el inquilino `Synergia Market` (`synergiamarket25@gmail.com`) queda reconciliado en `pg-cell-01` con RLS activo, `identity_location` apunta al UUID de `cell-01` y `/admin/users` muestra `tenant_owner` en vez de `Sin Rol`.
+  - RF-01.6, RF-01.7, RF-03.7, RF-10.7, RF-10.11, D-12, D-36, D-37, criterios 44 y 45.
+
+- [ ] **T-40 · Implementar `resolveAuthenticatedPortalContext` y separación estricta de árboles `.tsx` (`AdminShell.tsx` vs `TenantWorkspaceShell.tsx`)**
+  - Crear `packages/domain/src/services/session-context.service.ts` (`resolveAuthenticatedPortalContext`) que resuelve de forma autoritativa el scope (`platform`, `tenant` o `onboarding_prospect`), rol, estado de ciclo de vida del comercio, celda y capacidades del plan.
+  - Eliminar el fallback `role = "platform_owner"` en `apps/admin/app/layout.tsx`, incorporar `PortalShellRouter.tsx` y proteger `apps/admin/app/page.tsx` y `/admin/*` para que los operadores SaaS usen `AdminShell.tsx`, los prospectos o comercios en estado `alta` sean redirigidos a `/onboarding` (`TenantOnboardingWizard.tsx`), y los inquilinos activos sean redirigidos a `/workspace` (`TenantWorkspaceShell.tsx`).
+  - Unificar las redirecciones post-autenticación en `apps/web` (`login-form.tsx`, `setup-password-card.tsx`, callback OAuth) hacia el portal `mocter-admin`.
+  - Verificación: ningún usuario de inquilino o prospecto puede ver `AdminShell.tsx` ni `/admin/*`; `AdminShell.tsx` y `TenantWorkspaceShell.tsx` son archivos `.tsx` completamente separados.
+  - RF-01.9, RF-02.1, RF-02.3, RF-02.6, D-31, D-35, criterio 43.
+
+- [ ] **T-41 · Implementar el Asistente de Onboarding Unificado en 3 pasos (`/onboarding`) para Alta Manual y Alta Autónoma**
+  - Crear `packages/domain/src/services/tenant-onboarding.service.ts` conectado a PostgreSQL (`db-portal` y `pg-cell-XX` bajo RLS) con soporte tanto para Alta Manual (Paso 1 pre-cargado en estado `alta`) como para Alta Autónoma desde `/register` (`active_client_id = NULL`, creando el cliente, asignando `cell-01`, aprovisionando `pg-cell-01` y promoviendo credenciales en el Paso 1), creación del primer producto con «Mejorar con AI» en el Paso 2 y configuración de `client_business_info` + transición a `lifecycle_status = 'activo'` en el Paso 3.
+  - Crear `/onboarding` (`apps/admin/app/onboarding/page.tsx`, `tenant-onboarding-wizard.tsx` y `/api/tenant/onboarding/route.ts`) siguiendo Mobile First y Title Case en labels.
+  - Verificación: un inquilino de alta manual y un usuario registrado en `/es/register` completan los 3 pasos en `/onboarding`, persisten su primer producto y contexto de bot en `pg-cell-01` y pasan a `lifecycle_status = 'activo'`.
+  - RF-14.1 a RF-14.13, D-26, D-36, criterios 12, 27 y 44.
+
+- [ ] **T-42 · Implementar el Backoffice del Inquilino (`/workspace/*`), `TenantCapabilityGateService` y el flujo multimedia `SeaweedFS` + `imgproxy`**
+  - Crear `packages/domain/src/services/tenant-workspace.service.ts` y los Route Handlers `/api/tenant/{products,media,contacts,orders,bot,team}` operando sobre `pg-cell-XX` con `withTenantCellTransaction` y validando los topes de `plan_limits`.
+  - Integrar la subida real de archivos al bucket privado `media` de SeaweedFS (`S3StorageService`), registro en `admin.media_catalog` (`db-portal`) + `admin.product_media` / `admin.client_media` / `admin.client_usage` (`pg-cell-XX`), y entrega mediante URLs públicas firmadas con HMAC-SHA256 de `imgproxy`.
+  - Crear `TenantWorkspaceShell.tsx` y las vistas independientes en `apps/admin/app/workspace/` (`page.tsx`, `products/page.tsx`, `contacts/page.tsx`, `orders/page.tsx`, `bot/page.tsx`, `team/page.tsx`, `billing/page.tsx`, más las vistas filtradas por `TenantCapabilityGateService`: `conversations/page.tsx`, `branding/page.tsx`, `community/page.tsx`, `reports/page.tsx`).
+  - Verificación: el inquilino gestiona su catálogo, sube imágenes a SeaweedFS visualizándolas con URL firmada de imgproxy, gestiona contactos CRM, pedidos, bot y equipo en `pg-cell-01`, y solo ve los módulos habilitados por su plan.
+  - RF-02.6, RF-02.7, RF-04.1 a RF-04.9, RF-05, RF-07.12 a RF-07.21, D-33, D-35, D-37, criterios 4, 42 y 45.
+
+- [ ] **T-43 · Ejecutar verificación integral de aislamiento físico RLS, flujo multimedia y protocolo de compilación/reinicio (Regla 4.18)**
+  - Ejecutar `pnpm --filter @mocter/domain test`, `pnpm lint`, recompilar y reiniciar `mocter-core-admin-portal-1` y `mocter-core-web-portal-1`.
+  - Validar en caliente los 4 escenarios end-to-end: (A) Reconciliación y Onboarding de `Synergia Market`, (B) Aislamiento físico con `FORCE ROW LEVEL SECURITY` en `pg-cell-01`, (C) Subida multimedia a SeaweedFS y entrega firmada por imgproxy, (D) Alta autónoma desde `/es/register` hasta `/workspace`.
+  - Verificación: HTTP 200 en healthchecks, cero errores en logs y evidencia verificada de los criterios 43, 44 y 45.
+  - AGENTS.md §4.18, criterios 43, 44 y 45.

@@ -59,3 +59,5 @@ export function createBillingExportRouteHandler(
   };
 }
 
+export const GET = createBillingExportRouteHandler({} as any, { getExportItems: async () => [] });
+

@@ -264,7 +264,7 @@ export interface IAuthRepository {
   consumePasswordResetToken(
     tokenId: string,
     userId: string,
-    newPasswordHash: string,
+    newPasswordHash: string | null,
     purpose: "reset" | "setup",
   ): Promise<User>;
 

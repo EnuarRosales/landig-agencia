@@ -82,5 +82,18 @@ export class LogAuthMailer implements IAuthMailer {
 import { createDefaultAuthMailer, SmtpAuthMailer, DbBackedAuthMailer } from "./smtp-auth-mailer";
 export { SmtpAuthMailer, createDefaultAuthMailer, DbBackedAuthMailer };
 
-/** Instancia predeterminada de {@link IAuthMailer} que lee SMTP desde la base de datos. */
-export const defaultAuthMailer: IAuthMailer = new DbBackedAuthMailer();
+let _defaultAuthMailer: IAuthMailer | null = null;
+export function getDefaultAuthMailer(): IAuthMailer {
+  if (!_defaultAuthMailer) {
+    _defaultAuthMailer = new DbBackedAuthMailer();
+  }
+  return _defaultAuthMailer;
+}
+
+/** Instancia predeterminada de {@link IAuthMailer} que lee SMTP desde la base de datos de forma diferida. */
+export const defaultAuthMailer: IAuthMailer = {
+  sendVerificationEmail: (...args) => getDefaultAuthMailer().sendVerificationEmail(...args),
+  sendPasswordSetupEmail: (...args) => getDefaultAuthMailer().sendPasswordSetupEmail(...args),
+  sendPasswordResetEmail: (...args) => getDefaultAuthMailer().sendPasswordResetEmail(...args),
+  sendAccountAlreadyExistsEmail: (...args) => getDefaultAuthMailer().sendAccountAlreadyExistsEmail(...args),
+};

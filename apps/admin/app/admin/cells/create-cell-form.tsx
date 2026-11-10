@@ -114,6 +114,7 @@ export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellForm
       setSuccess(true);
       setFormData({
         code: "",
+        hostId: "",
         tier: "standard",
         topologyType: "remote_vps",
         pgbouncerHost: "pgbouncer-cell-01",

@@ -239,3 +239,10 @@
 - [x] **T-37 · [HUMANO] Aprobar AUTH-001**
   - Revisar `requirements.md`, `design.md` y `tasks.md`; decidir si se aprueba la spec.
   - Verificación: el estado pasa a `Aprobada` solo con decisión explícita; no se inicia implementación antes.
+
+- [ ] **T-40 · Conectar autenticación celular a `CellDatabasePoolManager`, persistir setup de contraseña en `pg-cell-XX` y despachar a `/onboarding` o `/workspace`**
+  - Conectar `DrizzleCellAuthRepository` a `getCellDb(cellId)` (`packages/domain/src/db/cell-client.ts`) para que la lectura y escritura de credenciales de inquilinos opere realmente contra el PgBouncer de su celda asignada (`pg-cell-XX`) con `SET LOCAL app.current_client_id`.
+  - Actualizar `AuthService.resetPassword` (`purpose = 'setup'` y `'reset'`) para que, cuando el usuario tenga `active_client_id` e `identity_location = '<cell_id>'`, escriba el nuevo `password_hash` en `pg-cell-XX` (`admin.users`) bajo RLS, marque `email_verified_at = now()` y mantenga `password_hash = NULL` en el Router Global.
+  - Actualizar `AuthService.login` y las redirecciones post-autenticación para despachar hacia `mocter-admin` (`/admin/*` para `platform_*`, `/onboarding` para prospectos o inquilinos en `lifecycle_status = 'alta'`, y `/workspace` para inquilinos en `lifecycle_status = 'activo'`).
+  - Verificación: un propietario creado en alta manual establece su contraseña en `/es/password/setup`, el hash queda en `pg-cell-01` (nulo en `db-portal`), inicia sesión contra `pg-cell-01` y aterriza en `/onboarding` → `/workspace`.
+  - AUTH-D-01, AUTH-D-03, AUTH-D-09, ADM-001 D-35, D-36, D-37.

@@ -26,7 +26,21 @@ export function proxy(request: NextRequest) {
 
   // Redirección inmediata del backoffice hacia mocter-admin (puerto 3003) con control de sesión
   const pathname = request.nextUrl.pathname;
-  if (pathname === "/admin" || pathname.startsWith("/es/admin") || pathname.startsWith("/en/admin")) {
+  const isBackofficeRoute =
+    pathname === "/admin" ||
+    pathname.startsWith("/admin/") ||
+    pathname.startsWith("/es/admin") ||
+    pathname.startsWith("/en/admin") ||
+    pathname === "/workspace" ||
+    pathname.startsWith("/workspace/") ||
+    pathname.startsWith("/es/workspace") ||
+    pathname.startsWith("/en/workspace") ||
+    pathname === "/onboarding" ||
+    pathname.startsWith("/onboarding/") ||
+    pathname.startsWith("/es/onboarding") ||
+    pathname.startsWith("/en/onboarding");
+
+  if (isBackofficeRoute) {
     const isProduction = process.env.NODE_ENV === "production";
     const sidCookieName = isProduction ? "__Host-mocter_sid" : "mocter_sid";
     const sid = request.cookies.get(sidCookieName)?.value || request.cookies.get("mocter_sid")?.value;
@@ -46,7 +60,7 @@ export function proxy(request: NextRequest) {
       const targetLogin = new URL(`/es/login?return_to=${returnUrl}`, loginBase);
 
       logger.warn({
-        event: "proxy.admin_unauthorized_redirect",
+        event: "proxy.backoffice_unauthorized_redirect",
         requestId,
         from: pathname,
         to: targetLogin.toString(),
@@ -65,11 +79,13 @@ export function proxy(request: NextRequest) {
     ) {
       adminBase = `${request.nextUrl.protocol}//${request.nextUrl.hostname}:3003`;
     }
-    const subPath = pathname.replace(/^(\/(es|en))?\/admin/, "") || "/";
-    const targetUrl = new URL(subPath, adminBase);
+
+    // Remover prefijo de idioma (/es o /en) preservando completamente /admin, /workspace o /onboarding
+    const canonicalPath = pathname.replace(/^\/(es|en)/, "") || "/";
+    const targetUrl = new URL(canonicalPath + request.nextUrl.search, adminBase);
 
     logger.info({
-      event: "proxy.admin_redirect",
+      event: "proxy.backoffice_redirect",
       requestId,
       from: pathname,
       to: targetUrl.toString(),

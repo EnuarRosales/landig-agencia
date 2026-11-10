@@ -19,7 +19,7 @@ export default async function AdminBrandingPage() {
   const settings = await fetchAdminBrandingSettings();
 
   return (
-    <div className="space-y-6 p-4 md:p-8 max-w-7xl mx-auto">
+    <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
       <AdminBrandingView initialData={settings} />
     </div>
   );

@@ -150,3 +150,5 @@ export function createWompiWebhookHandler(
   };
 }
 
+export const POST = createWompiWebhookHandler({} as any, process.env.WOMPI_EVENTS_SECRET || "");
+

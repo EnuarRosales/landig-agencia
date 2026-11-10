@@ -14,6 +14,7 @@ import {
   Trash2,
   AlertCircle,
   Loader2,
+  GitBranch,
 } from "lucide-react";
 import type { AdminCellDto, CellHostDto } from "@mocter/domain";
 import { ConfirmationModal } from "@/components/confirmation-modal";
@@ -86,6 +87,9 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
   const [editError, setEditError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [drainError, setDrainError] = useState<string | null>(null);
+  const [migrateModalOpen, setMigrateModalOpen] = useState(false);
+  const [migrateLoading, setMigrateLoading] = useState(false);
+  const [migrateError, setMigrateError] = useState<string | null>(null);
 
   const [editFormData, setEditFormData] = useState({
     hostId: cell.hostId || "",
@@ -244,6 +248,34 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
     setDrainModalOpen(true);
   }
 
+  async function handleConfirmMigrate() {
+    setMigrateLoading(true);
+    setMigrateError(null);
+    try {
+      const csrf = await fetchCsrfToken(apiUrl);
+      const res = await adminFetch(`${apiUrl}/admin/cells/${cell.id}/action`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrf,
+        },
+        body: JSON.stringify({ action: "migrate" }),
+      });
+
+      const body = await res.json();
+      if (!res.ok || !body.ok) {
+        throw new Error(body.error || "No se pudieron ejecutar las migraciones de la célula.");
+      }
+      setMigrateModalOpen(false);
+      onRefresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error al migrar célula.";
+      setMigrateError(msg);
+    } finally {
+      setMigrateLoading(false);
+    }
+  }
+
   async function handleExecuteDrain() {
     setDrainLoading(true);
     setDrainError(null);
@@ -314,6 +346,23 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
           >
             <PowerOff className="h-3 w-3" />
             <span>Drenar</span>
+          </button>
+        )}
+
+        {/* Botón Migrar Esquema */}
+        {["active", "maintenance", "verifying"].includes(cell.status) && (
+          <button
+            type="button"
+            onClick={() => {
+              setMigrateError(null);
+              setMigrateModalOpen(true);
+            }}
+            disabled={loadingAction !== null}
+            title="Ejecutar Migraciones Pendientes De Esquema"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/30 transition-colors border border-[var(--dsn-border)]"
+          >
+            <GitBranch className="h-3 w-3" />
+            <span>Migrar</span>
           </button>
         )}
 
@@ -1002,6 +1051,33 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
         confirmLoadingText="Eliminando Célula..."
         loading={deleteLoading}
         error={deleteError}
+      />
+
+      {/* Modal Accesible de Confirmación de Migración de Célula (Regla 4.17) */}
+      <ConfirmationModal
+        isOpen={migrateModalOpen}
+        onClose={() => {
+          setMigrateModalOpen(false);
+          setMigrateError(null);
+        }}
+        onConfirm={handleConfirmMigrate}
+        title="Ejecutar Migraciones De Esquema"
+        subtitle={`Aplicación de migraciones pendientes del journal Drizzle en ${cell.code}.`}
+        variant="neutral"
+        icon={<GitBranch className="h-5 w-5 text-cyan-400" />}
+        confirmText="Ejecutar Migración"
+        confirmLoadingText="Migrando..."
+        cancelText="Cancelar"
+        loading={migrateLoading}
+        error={migrateError}
+        details={[
+          { label: "Célula", value: cell.code, mono: true },
+          { label: "Host", value: cell.pgbouncerHost || "Local", mono: true },
+          { label: "Base De Datos", value: cell.databaseName, mono: true },
+          { label: "Estado Operativo", value: cell.status, mono: true },
+        ]}
+        warningTitle="Actualización De Modelo De Datos Celular"
+        warningMessage="Esta operación aplicará las transiciones de esquema SQL pendientes sobre la base de datos de la célula. Se garantiza idempotencia mediante registro criptográfico en __drizzle_migrations."
       />
     </>
   );

@@ -387,7 +387,7 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95 disabled:opacity-50"
                     >
                       {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                       <span>Guardar Cambios</span>
@@ -536,7 +536,7 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95 disabled:opacity-50"
                     >
                       {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                       <span>Versionar Bloque</span>
@@ -629,7 +629,7 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
               <button
                 type="submit"
                 disabled={loading}
-                className="inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95 disabled:opacity-50"
               >
                 {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 <span>Guardar Parámetros Globales</span>

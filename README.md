@@ -30,8 +30,10 @@ Sistema de información empresarial multi-inquilino de alta disponibilidad para 
 ### 1.1 Objetivos de Negocio y Arquitectura
 
 - **Plataforma Única (Single Pane of Glass):** Consola administrativa unificada (`mocter-admin`) para el Platform Owner (gobernanza, infraestructura celular, facturación) y para los inquilinos (pedidos, productos, CRM, Chatwoot embebido).
-- **Arquitectura de Celdas Autónomas (DAT-001):** Particionamiento físico y lógico donde cada célula (50-100 inquilinos) opera como un nodo completo (PostgreSQL 18 + pgvector + PgBouncer transaccional + capa celular HTTP `tenant-app`), garantizando aislamiento y zero blast radius.
+- **Entorno Operativo del Inquilino y Backoffice Celular (TNT-001):** Despacho autoritativo y bifurcación de shell estricta entre la gobernanza SaaS (`/admin/*` con `AdminShell`), el flujo de bienvenida guiado (`/onboarding` con `TenantOnboardingWizard`) y la operación del inquilino (`/workspace/*` con `TenantWorkspaceShell`), garantizando cero fuga de roles y navegación segura.
+- **Arquitectura de Celdas Autónomas (DAT-001 / CEL-001):** Particionamiento físico y lógico donde cada célula (50-100 inquilinos) opera como un nodo completo (PostgreSQL 18 + pgvector + PgBouncer transaccional + capa celular HTTP `tenant-app`), garantizando aislamiento y zero blast radius con `CellDatabasePoolManager` y RLS transaccional estricto.
 - **Orquestación Declarativa (Modelo A):** Aprovisionamiento seguro con paquetes de secretos cifrados en AES-256-GCM, Handshake Dual 360° (probes TCP y HTTP con secretos de tiempo constante) y manifiestos canónicos.
+- **Auditoría y Ejecución Controlada de Migraciones Celulares:** Inspección en tiempo real del journal canónico (`packages/domain/drizzle-cell`) frente al catálogo físico `drizzle.__drizzle_migrations`, clasificando el estado celular ("Al día" vs "Actualización Pendiente") con ejecución transaccional manual para operadores.
 - **Gobernanza RBAC y Seguridad Híbrida (AUTH-001):** Control granular de acceso por roles de plataforma e inquilino, TOTP 2FA cifrado, tokens CSRF, validación estricta de origen administrativo y SSO transparente hacia Chatwoot.
 - **Despliegue Continuo Seguro:** Automatización integral de pruebas, compilación de imágenes y despliegue idempotente con rollback automático y sin caídas de servicio.
 
@@ -123,10 +125,12 @@ landig-agencia/
 ├── apps/
 │   ├── admin/                        # Consola administrativa unificada (@mocter/admin)
 │   │   ├── app/                      # App Router Next.js 16 (Single Pane of Glass)
-│   │   │   ├── admin/                # Vistas de gobernanza (cells, tenants, users, plans, billing, ai)
-│   │   │   ├── api/                  # Route Handlers administrativos (RFC 9457 Problem Details)
+│   │   │   ├── admin/                # Vistas de gobernanza SaaS (cells, tenants, users, plans, billing, ai)
+│   │   │   ├── workspace/            # Vistas de operación del inquilino (catálogo, contactos, configuración)
+│   │   │   ├── onboarding/           # Wizard unificado de 3 pasos para bienvenida de inquilinos
+│   │   │   ├── api/                  # Route Handlers administrativos y de inquilino (RFC 9457)
 │   │   │   └── globals.css           # Tokens de diseño del sistema DSN-001 (Title Case estricto)
-│   │   ├── components/               # Componentes atómicos (AdminShell, ConfirmationModal, AiEnhance)
+│   │   ├── components/               # Componentes atómicos (AdminShell, TenantWorkspaceShell, PortalShellRouter)
 │   │   └── proxy.ts                  # Inyector de x-request-id y AsyncLocalStorage para trazas
 │   └── web/                          # Portal público y landing page (@mocter/web)
 │       ├── app/                      # Rutas localizadas (/es, /en) en App Router Next.js 16
@@ -138,12 +142,17 @@ landig-agencia/
 │       ├── drizzle-cell/             # Migraciones SQL del Plano Celular de Datos (schema mocter_cell)
 │       ├── src/
 │       │   ├── auth/                 # Motor de autenticación híbrida (Argon2id, TOTP, CSRF, SSO)
-│       │   ├── db/                   # Esquema relacional del Control Plane (users, cells, plans, audit)
+│       │   ├── db/                   # Esquema relacional del Control Plane y Pool Manager celular
 │       │   ├── db-cell/              # Esquema relacional celular (tenants, leads, orders, products)
 │       │   ├── repositories/         # Repositorios de persistencia desacoplados de infraestructura
-│       │   └── services/             # Servicios de dominio (cell-secrets, admin-dashboard, outbox, bot)
+│       │   └── services/             # Servicios de dominio (cell-secrets, workspace, onboarding, migrations)
 │       ├── scripts/                  # Ejecutores standalone de migraciones para Docker/CI
 │       └── package.json              # Configuración y dependencias de la capa de dominio
+├── tests/
+│   └── e2e/                          # Suite de verificación integral End-to-End en caja opaca
+│       ├── harness/                  # Clientes HTTP, conexión directa DB, aserciones y fixtures
+│       ├── scenarios/                # Escenarios A (Aislamiento), B (Despacho), C (Onboarding), D (Media), E (Migraciones)
+│       └── run.mjs                   # Runner ejecutor de pruebas E2E con reporte y compuertas de calidad
 ├── data-cell-dev/                    # Entorno local de emulación de célula de datos (DAT-001)
 │   ├── docker-compose.yml            # Orquestación de pg-cell-01, pgbouncer-cell-01 y tenant-app
 │   └── pgbouncer/                    # Configuración de PgBouncer transaccional y userlist
@@ -320,9 +329,19 @@ pnpm --filter @mocter/web build
 ### 7.3 Ejecución de Pruebas y Control de Calidad
 
 ```bash
-# Ejecutar la suite completa de pruebas unitarias e integración (1,048 pruebas pasando / 135 suites)
-# Distribución: 679 en @mocter/domain, 259 en @mocter/web, 110 en @mocter/admin
+# Ejecutar la suite completa de pruebas unitarias e integración en paquetes (1,192 pruebas pasando)
+# Distribución: 792 en @mocter/domain, 265 en @mocter/web, 135 en @mocter/admin
 pnpm test
+
+# Suite de Pruebas End-to-End (E2E) en Caja Opaca (Escenarios A a E):
+node tests/e2e/run.mjs --all
+
+# O por escenario E2E individual:
+node tests/e2e/run.mjs --scenario=A  # Escenario A: Aislamiento Físico Celular, RLS y Promoción de Identidad (16/16)
+node tests/e2e/run.mjs --scenario=B  # Escenario B: Despacho Autoritativo de Sesión y Shells Bifurcadas (16/16)
+node tests/e2e/run.mjs --scenario=C  # Escenario C: Wizard Unificado de Onboarding en 3 Pasos (16/16)
+node tests/e2e/run.mjs --scenario=D  # Escenario D: Espacio Operativo del Inquilino y Multimedia S3 (16/16)
+node tests/e2e/run.mjs --scenario=E  # Escenario E: Inspección y Ejecución Controlada de Migraciones Celulares (15/15)
 
 # Verificación estricta de linting y reglas de tipos TypeScript (tsc --noEmit)
 pnpm lint

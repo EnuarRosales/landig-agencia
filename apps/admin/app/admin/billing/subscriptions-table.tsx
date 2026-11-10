@@ -359,7 +359,7 @@ export function SubscriptionsTable({ initialSubscriptions, metrics }: Subscripti
               <button
                 type="button"
                 onClick={() => handleAction(activeModal.sub.id, "extend_trial", trialDaysInput)}
-                className="flex items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-bold text-black hover:opacity-90"
+                className="flex items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95"
               >
                 <span>Aplicar Extensión</span>
               </button>

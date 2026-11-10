@@ -1,6 +1,6 @@
 import React from "react";
 import { fetchAdminTenantsOverview } from "@mocter/domain";
-import { Store, Users, Server, AlertTriangle, ShieldCheck, CheckCircle2, Clock } from "lucide-react";
+import { Store, Server, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import { CreateTenantForm } from "./create-tenant-form";
 import { TenantActions } from "./tenant-actions";
 
@@ -19,7 +19,7 @@ export default async function AdminTenantsPage() {
   const overview = await fetchAdminTenantsOverview();
 
   return (
-    <div className="space-y-6 p-4 md:p-8 max-w-7xl mx-auto">
+    <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
       {/* Encabezado HUD */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--dsn-border)] pb-5">
         <div>
@@ -209,6 +209,9 @@ export default async function AdminTenantsPage() {
                         clientId={t.id}
                         clientName={t.displayName}
                         currentStatus={t.lifecycleStatus}
+                        tenant={t}
+                        availablePlans={overview.availablePlans}
+                        availableCells={overview.availableCells}
                       />
                     </td>
                   </tr>

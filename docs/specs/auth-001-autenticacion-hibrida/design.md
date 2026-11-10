@@ -4,9 +4,9 @@
 |---|---|
 | ID | AUTH-001 |
 | Versión | 1.2 |
-| Fecha | 2026-10-20 · actualizado 2026-10-27 |
+| Fecha | 2026-10-20 · actualizado 2026-11-08 |
 | Depende de | [`requirements.md`](requirements.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/design.md) |
-| Estado | Aprobada |
+| Estado | Aprobada · v1.2 |
 
 ## 1. Principios
 
@@ -351,7 +351,7 @@ La vinculación se hace en una transacción sobre la ubicación de identidad del
 La recuperación no está en el documento de origen, pero es necesaria para una cuenta nativa; se trata como soporte operativo, no como una capacidad nueva de negocio.
 
 - `POST /auth/password/forgot` responde `202` genérico. Si la cuenta tiene contraseña, invalida tokens anteriores, crea un token de 32 bytes con hash, vence en 30 minutos y envía el enlace. Límite: 3 por cuenta/hora y 10 por IP/hora. Si la cuenta es solo federada, `forgot` no emite token: el enlace para establecer la primera contraseña nace del flujo de registro (§5.1).
-- `POST /auth/password/reset` valida el token, la política y consume el token. Si `purpose = 'setup'`, exige que la cuenta no tenga contraseña y setea `email_verified_at`; si `purpose = 'reset'`, exige que ya tenga contraseña. Actualiza `password_hash`, `password_updated_at`, revoca todas las sesiones y audita. No inicia sesión automáticamente.
+- `POST /auth/password/reset` valida el token, la política y consume el token. Si `purpose = 'setup'`, exige que la cuenta no tenga contraseña y setea `email_verified_at`; si `purpose = 'reset'`, exige que ya tenga contraseña. Cuando el usuario pertenece a un inquilino (`active_client_id IS NOT NULL` / `identity_location = '<cell_id>'`), el nuevo `password_hash` y `password_updated_at` se escriben directamente en `pg-cell-XX` (`admin.users`) bajo RLS (`SET LOCAL app.current_client_id`) a través de `CellDatabasePoolManager`, manteniendo `password_hash = NULL` en el Router Global (AUTH-D-01, AUTH-D-09). Revoca todas las sesiones y audita. No inicia sesión automáticamente.
 - `POST /auth/password/change` exige sesión y contraseña actual; si hay 2FA, exige TOTP. Actualiza el hash, `reauth_at`, revoca las demás sesiones y rota la actual.
 
 ### 5.9 Invitaciones, onboarding y tenencia

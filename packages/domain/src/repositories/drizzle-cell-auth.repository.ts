@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { getDb } from "../db/client";
+import { getCellDb, type CellDatabaseProvider } from "../db/cell-client";
 import * as schema from "../db/schemas";
 import { cellUsers, cellIdentities } from "../db/schemas/tenant";
 import {
@@ -17,10 +17,7 @@ import { appLogger } from "../utils/logger";
  */
 export type CellConnectionChecker = (cellId: string) => Promise<boolean>;
 
-/**
- * Proveedor de instancias Drizzle conectadas al pool (PgBouncer) de una celda de datos específica.
- */
-export type CellDatabaseProvider = (cellId?: string) => PostgresJsDatabase<typeof schema>;
+export type { CellDatabaseProvider } from "../db/cell-client";
 
 /**
  * Implementación Drizzle de persistencia y consulta de credenciales delegada al Cell Data Plane
@@ -34,12 +31,12 @@ export class DrizzleCellAuthRepository implements ICellAuthRepository {
    * @param cellHealthChecker - Evaluador opcional de disponibilidad previa de la celda.
    */
   constructor(
-    private readonly dbProvider: CellDatabaseProvider = () => getDb(),
+    private readonly dbProvider: CellDatabaseProvider = (cellId?: string) => getCellDb(cellId ?? "cell-01"),
     private readonly cellHealthChecker?: CellConnectionChecker,
   ) {}
 
-  private getDbForCell(cellId: string): PostgresJsDatabase<typeof schema> {
-    return this.dbProvider(cellId);
+  private async getDbForCell(cellId: string): Promise<PostgresJsDatabase<typeof schema>> {
+    return await this.dbProvider(cellId);
   }
 
   /**
@@ -65,7 +62,8 @@ export class DrizzleCellAuthRepository implements ICellAuthRepository {
     await this.ensureCellAvailable(cellId);
 
     try {
-      return await this.getDbForCell(cellId).transaction(async (tx) => {
+      const cellDb = await this.getDbForCell(cellId);
+      return await cellDb.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT set_config('app.current_client_id', ${clientId}, true)`,
         );
@@ -126,7 +124,8 @@ export class DrizzleCellAuthRepository implements ICellAuthRepository {
     await this.ensureCellAvailable(cellId);
 
     try {
-      await this.getDbForCell(cellId).transaction(async (tx) => {
+      const cellDb = await this.getDbForCell(cellId);
+      await cellDb.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT set_config('app.current_client_id', ${clientId}, true)`,
         );
@@ -171,7 +170,8 @@ export class DrizzleCellAuthRepository implements ICellAuthRepository {
     await this.ensureCellAvailable(cellId);
 
     try {
-      await this.getDbForCell(cellId).transaction(async (tx) => {
+      const cellDb = await this.getDbForCell(cellId);
+      await cellDb.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT set_config('app.current_client_id', ${clientId}, true)`,
         );
@@ -215,7 +215,8 @@ export class DrizzleCellAuthRepository implements ICellAuthRepository {
     await this.ensureCellAvailable(cellId);
 
     try {
-      return await this.getDbForCell(cellId).transaction(async (tx) => {
+      const cellDb = await this.getDbForCell(cellId);
+      return await cellDb.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT set_config('app.current_client_id', ${clientId}, true)`,
         );
@@ -260,7 +261,8 @@ export class DrizzleCellAuthRepository implements ICellAuthRepository {
     await this.ensureCellAvailable(targetCellId);
 
     try {
-      await this.getDbForCell(targetCellId).transaction(async (tx) => {
+      const cellDb = await this.getDbForCell(targetCellId);
+      await cellDb.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT set_config('app.current_client_id', ${user.clientId}, true)`,
         );
@@ -320,7 +322,8 @@ export class DrizzleCellAuthRepository implements ICellAuthRepository {
     await this.ensureCellAvailable(targetCellId);
 
     try {
-      await this.getDbForCell(targetCellId).transaction(async (tx) => {
+      const cellDb = await this.getDbForCell(targetCellId);
+      await cellDb.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT set_config('app.current_client_id', ${credentials.clientId}, true)`,
         );
@@ -382,7 +385,8 @@ export class DrizzleCellAuthRepository implements ICellAuthRepository {
     await this.ensureCellAvailable(targetCellId);
 
     try {
-      await this.getDbForCell(targetCellId).transaction(async (tx) => {
+      const cellDb = await this.getDbForCell(targetCellId);
+      await cellDb.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT set_config('app.current_client_id', ${clientId}, true)`,
         );
@@ -451,7 +455,8 @@ export class DrizzleCellAuthRepository implements ICellAuthRepository {
     await this.ensureCellAvailable(sourceCellId);
 
     try {
-      await this.getDbForCell(sourceCellId).transaction(async (tx) => {
+      const cellDb = await this.getDbForCell(sourceCellId);
+      await cellDb.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT set_config('app.current_client_id', ${clientId}, true)`,
         );

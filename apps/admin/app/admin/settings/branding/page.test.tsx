@@ -45,7 +45,7 @@ describe("ADM-001 / DSN-001 · Identidad Visual y Marca Blanca (Backoffice)", ()
     const children = React.Children.toArray(page.props.children);
     expect(children.length).toBe(1);
 
-    const view = children[0] as React.ReactElement;
+    const view = children[0] as React.ReactElement<any>;
     expect(view.type).toBe(AdminBrandingView);
     expect(view.props.initialData.platformBranding.brandName).toBe("Mocter");
   });

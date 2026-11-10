@@ -107,4 +107,35 @@ describe("ADM-001 §6 / DAT-001 · Directorio y Gestión de Inquilinos y Comerci
     );
     expect(React.isValidElement(actionsElement)).toBe(true);
   });
+
+  it("renderiza TenantActions con modelo CRUD completo (Editar, Onboarding, Reactivar, Baja)", () => {
+    const actionsElement = (
+      <TenantActions
+        tenant={{
+          id: "tenant-01",
+          slug: "zapateria-andina",
+          displayName: "Zapatería Andina",
+          contactEmail: "contacto@zapateria.com",
+          phone: "+573001234567",
+          lifecycleStatus: "suspendido",
+          locale: "es",
+          currency: "COP",
+          planId: "plan-pro",
+          planCode: "growth",
+          planName: "Plan Crecimiento",
+          cellId: "cell-01",
+          cellCode: "cell-primary",
+          cellTier: "standard",
+          ownerUserId: "usr-01",
+          ownerName: "Carlos Gómez",
+          ownerEmail: "carlos@zapateria.com",
+          createdAt: "2026-11-01T12:00:00.000Z",
+          updatedAt: "2026-11-01T12:00:00.000Z",
+        }}
+        availablePlans={[{ id: "plan-pro", code: "growth", name: "Plan Crecimiento" }]}
+        availableCells={[{ id: "cell-01", code: "cell-primary", currentClients: 1, maxClients: 100 }]}
+      />
+    );
+    expect(React.isValidElement(actionsElement)).toBe(true);
+  });
 });

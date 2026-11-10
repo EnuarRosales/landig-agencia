@@ -16,7 +16,7 @@ export default async function AdminNotificationsSettingsPage() {
   const data = await fetchAdminEmailSettings();
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">
+    <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
       {/* Encabezado HUD */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--dsn-border)] pb-4">
         <div className="flex items-center gap-3">

@@ -65,7 +65,7 @@ export function BillingTabsView({
   const privateCount = plansList.filter((p) => !p.isPublic).length;
 
   return (
-    <div className="space-y-6 p-4 md:p-8 max-w-7xl mx-auto">
+    <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
       {/* Encabezado Principal */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--dsn-border)] pb-5">
         <div>

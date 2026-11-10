@@ -75,31 +75,54 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
         return;
       }
 
-      // Redirección inteligente post-login según AUTH-D-09
-      let target = returnTo;
+      // Redirección inteligente post-login según AUTH-D-09 y TNT-001 M2 (Feature 13)
+      let target: string | null = null;
+
+      // Sanitizar returnTo para prevenir ataques de Open Redirect
+      if (returnTo) {
+        if (returnTo.startsWith("/") && !returnTo.startsWith("//")) {
+          target = returnTo;
+        } else {
+          try {
+            const parsed = new URL(returnTo);
+            const isLocal = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+            const isMocter = parsed.hostname === "mocter.co" || parsed.hostname.endsWith(".mocter.co");
+            if (isLocal || isMocter) {
+              target = returnTo;
+            }
+          } catch {
+            target = null;
+          }
+        }
+      }
+
       if (!target) {
         const userRole = data.data?.user?.role || "";
         const clientId = data.data?.clientId;
+        const lifecycleStatus = data.data?.lifecycleStatus;
 
-        if (userRole.startsWith("platform_")) {
-          // (1) Operador de plataforma -> Backoffice corporativo (mocter-admin)
-          if (
-            typeof window !== "undefined" &&
-            window.location.hostname !== "localhost" &&
-            window.location.hostname !== "127.0.0.1" &&
-            !window.location.hostname.endsWith(".mocter.co") &&
-            window.location.hostname !== "mocter.co"
-          ) {
-            target = `${window.location.protocol}//${window.location.hostname}:3003`;
+        let adminBase = process.env.NEXT_PUBLIC_ADMIN_URL || "https://admin.mocter.co";
+        if (typeof window !== "undefined") {
+          const hostname = window.location.hostname;
+          if (hostname === "localhost" || hostname === "127.0.0.1") {
+            adminBase = process.env.NEXT_PUBLIC_ADMIN_URL || "http://localhost:3003";
+          } else if (hostname.endsWith(".mocter.co") || hostname === "mocter.co") {
+            adminBase = "https://admin.mocter.co";
           } else {
-            target = process.env.NEXT_PUBLIC_ADMIN_URL || "https://admin.mocter.co";
+            // Entornos de prueba en LAN o staging preservando el protocolo y puerto de Traefik
+            adminBase = `${window.location.protocol}//${window.location.host.replace(/:3001$/, ":3003")}`;
           }
-        } else if (!clientId) {
-          // (3) Prospecto sin membresía activa -> Onboarding guiado
-          target = `/${locale}/onboarding`;
+        }
+
+        if (userRole.startsWith("platform_") || data.data?.scope === "platform") {
+          // (1) Operador de plataforma -> Backoffice corporativo /admin
+          target = `${adminBase}/admin`;
+        } else if (!clientId || lifecycleStatus === "alta" || data.data?.scope === "onboarding_prospect") {
+          // (3) Prospecto o inquilino en alta -> Asistente guiado de onboarding
+          target = `${adminBase}/onboarding`;
         } else {
-          // (2) Inquilino activo -> Aplicación celular del inquilino / portal cliente
-          target = `/${locale}/admin`;
+          // (2) Inquilino activo -> Aplicación celular del inquilino /workspace
+          target = `${adminBase}/workspace`;
         }
       }
 

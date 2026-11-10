@@ -88,7 +88,7 @@ describe("ADM-001 D-31 · Consola de Gobernanza de Usuarios, Roles y Permisos (R
     const header = children[0] as React.ReactElement;
     expect(header.type).toBe("header");
 
-    const view = children[1] as React.ReactElement;
+    const view = children[1] as React.ReactElement<any>;
     expect(view.type).toBe(RbacView);
     expect(view.props.initialData.kpis.totalUsers).toBe(3);
     expect(view.props.initialData.users[0].email).toBe("soporte@mocter.co");

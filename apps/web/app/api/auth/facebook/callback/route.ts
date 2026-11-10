@@ -3,6 +3,7 @@ import {
   authService,
   authRateLimiter,
   RedisUnavailableError,
+  getClientLifecycleStatus,
 } from "@mocter/domain";
 import { env } from "@/env";
 import { getRequestLogger } from "@/lib/logger";
@@ -212,6 +213,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const sidCookieName = isProduction ? "__Host-mocter_sid" : "mocter_sid";
     const csrfCookieName = isProduction ? "__Host-mocter_csrf" : "mocter_csrf";
 
+    const adminBase = process.env.NEXT_PUBLIC_ADMIN_URL || (isProduction ? "https://admin.mocter.co" : "http://localhost:3003");
+    let targetPath = "/onboarding";
+
+    if (result.data.user.role?.startsWith("platform_")) {
+      targetPath = "/admin";
+    } else if (result.data.clientId) {
+      try {
+        const status = await getClientLifecycleStatus(result.data.clientId);
+        targetPath = status === "activo" ? "/workspace" : "/onboarding";
+      } catch {
+        targetPath = "/onboarding";
+      }
+    }
+
+    const targetUrl = new URL(targetPath, adminBase);
     const acceptsJson = req.headers.get("accept")?.includes("application/json");
 
     const response = acceptsJson
@@ -222,12 +238,13 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
               user: result.data.user,
               emailVerified: result.data.emailVerified,
               clientId: result.data.clientId,
+              targetUrl: targetUrl.toString(),
               expiresAt: result.data.expiresAt,
             },
           },
           { status: 200 },
         )
-      : NextResponse.redirect(new URL(process.env.NEXT_PUBLIC_ADMIN_URL || "http://localhost:3003"), {
+      : NextResponse.redirect(targetUrl, {
           status: 303,
         });
 

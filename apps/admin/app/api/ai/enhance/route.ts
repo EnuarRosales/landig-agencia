@@ -111,3 +111,5 @@ export function createEnhanceRouteHandler(aiAssistService: AiAssistService) {
   };
 }
 
+export const POST = createEnhanceRouteHandler({} as any);
+

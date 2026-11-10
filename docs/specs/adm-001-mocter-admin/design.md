@@ -3,10 +3,10 @@
 | Atributo | Valor |
 |---|---|
 | ID | ADM-001 |
-| Versión | 1.7 |
-| Fecha | 2026-10-21 · actualizado 2026-11-06 |
+| Versión | 1.8 |
+| Fecha | 2026-10-21 · actualizado 2026-11-08 |
 | Depende de | [`requirements.md`](requirements.md) · [CHW-001](../chw-001-inventario-chatwoot/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/requirements.md) · [OPS-001](../ops-001-operacion-continuidad-observabilidad/design.md) · [CEL-001](../cel-001-despliegue-celdas/design.md) |
-| Estado | Aprobada · v1.7 |
+| Estado | Aprobada · v1.8 |
 
 ## 1. Principios
 
@@ -255,20 +255,28 @@ CREATE UNIQUE INDEX outbox_events_one_idempotency
 
 Para todos los inquilinos que han completado su onboarding, el Router conserva únicamente el correo y el puntero `identity_location`, mientras que las credenciales, el secreto TOTP y las identidades federadas residen estrictamente en la celda asignada (AUTH-D-01). Si un prospecto en staging no finaliza su onboarding ni se vincula efectivamente a un plan en un plazo de **60 días**, el sistema elimina automáticamente su preregistro del Router Global.
 
-### 6.2 Alta orgánica
+### 6.2 Alta orgánica y Asistente Unificado de 3 Pasos (`/onboarding` · D-36)
 
-1. El usuario se registra con Google o con correo y contraseña. Durante esta etapa previa al onboarding permanece en staging en el Router Global (`identity_location = 'router'`, `active_client_id = NULL`) sin generar registros en ninguna celda (`pg-cell-XX`).
-2. Google se considera verificado; el correo manual queda pendiente hasta la confirmación (RF-14.6).
-3. Con la identidad verificada, se ejecuta el asistente guiado: datos del negocio, plan, preferencias. Si viene `plan_code` desde la landing, se resuelve `plans.code` → `plans.id` (UUID) y se precarga.
-4. Antes de crear el cliente se verifica que el usuario no tenga `active_client_id` ni sea dueño de un cliente no dado de baja; si ya tiene membresía o negocio, el alta se rechaza.
-5. Al completar el asistente se crea el `client` con `owner_user_id`, `plan_id` (UUID resuelto), se enruta a una celda activa, se crea la fila `tenant_users` del `tenant_owner`, se reserva `users.active_client_id` y se promueven atómicamente las credenciales, secretos TOTP e identidades federadas desde el staging del Router a la celda asignada (`promoteStagingIdentityToCell`), conmutando `identity_location = '<cell_id>'` y limpiando secretos del Router. Si el usuario abandona antes de completar el onboarding, el avance y el `plan_code` se conservan hasta por **60 días**; cumplido ese término sin materializarse en un inquilino con plan, el preregistro se depura del Router Global.
+1. El usuario se registra con Google o con correo y contraseña en `/register`. Durante esta etapa previa al onboarding permanece en staging en el Router Global (`identity_location = 'router'`, `active_client_id = NULL`) sin generar registros en ninguna celda (`pg-cell-XX`).
+2. Google se considera verificado; el correo manual queda pendiente hasta la confirmación en `/verify-email` (RF-14.6).
+3. Con la identidad verificada, al iniciar sesión en `/login` es redirigido al portal `mocter-admin`, donde el guard server-side detecta `scope = 'onboarding_prospect'` (`active_client_id IS NULL`) y lo conduce a `/onboarding` (`TenantOnboardingWizard.tsx`). Si viene `plan_code` desde la landing, se resuelve `plans.code` → `plans.id` (UUID) y se precarga.
+4. El asistente `/onboarding` ejecuta **3 pasos secuenciales**:
+   - **Paso 1 (Negocio, Slug, Plan y Celda):** Antes de crear el cliente se verifica que el usuario no tenga `active_client_id` ni sea dueño de un cliente no dado de baja. Al confirmar el Paso 1 en alta autónoma, `TenantOnboardingService.completeStep1Business` crea el `client` en estado `lifecycle_status = 'alta'` con `owner_user_id` y `plan_id`, asigna una celda activa con capacidad (`cell-01`), registra `admin.client_routing` y `admin.client_plans` (`source = 'self_service'`), reserva `users.active_client_id`, ejecuta `provisionTenantInCellDataPlane` en `pg-cell-XX` (creando `admin.users`, `admin.tenant_users` con `role = 'tenant_owner'`, `admin.tenant_labels` con las 4 etiquetas reservadas y `admin.client_business_info`) y promueve atómicamente sus credenciales desde el Router Global a `pg-cell-XX` (`identity_location = '<cell_id>'`, limpiando `password_hash` en el Router).
+   - **Paso 2 (Primer Producto con «Mejorar con AI»):** `completeStep2FirstProduct` inserta el primer producto real en `pg-cell-XX` (`admin.products` con `status = 'published'`, `kind`, `price_cents`, `description`) dentro de una transacción con `SET LOCAL app.current_client_id` e incrementa `admin.client_usage` (`dimension = 'products'`). El campo de descripción integra asistencia AI («Mejorar con AI»).
+   - **Paso 3 (Preset del Bot y Activación de Canal):** `completeStep3BotAndActivate` persiste la configuración de atención en `pg-cell-XX` (`admin.client_business_info`: métodos de pago, política de devoluciones/garantía, mensaje de cierre y preset de bot), actualiza `admin.clients.lifecycle_status` de `'alta'` a `'activo'` en el Router Global y redirige al propietario a `/workspace`.
+5. Si el usuario abandona antes de completar el onboarding, el avance se conserva; si no materializa el Paso 1 en un plazo de **60 días**, el preregistro se depura del Router Global.
 6. El inquilino opera sin comunidad hasta que `platform_admin` le asigna el rol de líder. El onboarding no crea comunidades ni autoasigna liderazgo (RF-08.1).
 
-El inquilino no existe antes de que el negocio esté configurado. El avance del asistente se guarda por usuario y, cuando existe, por inquilino (RF-14.4).
+### 6.3 Alta manual (`/admin/tenants` · D-36)
 
-### 6.3 Alta manual
+El gestor de ventas o administrador (`platform_sales` / `platform_admin` / `platform_owner`) crea el inquilino desde `/admin/tenants` y, en la misma operación, el usuario dueño (`createAdminTenant`). Si el correo ya existe, se vincula la identidad existente sin duplicarla (AUTH-001); si no existe, se crea. La operación falla si no hay `owner_user_id` (RF-01.6, D-29) o si el usuario ya tiene un `active_client_id` distinto.
 
-El gestor de ventas (`platform_sales`) crea el inquilino y, en la misma operación, el usuario dueño. Si el correo ya existe, se vincula la identidad existente sin duplicarla (AUTH-001); si no existe, se crea. La operación falla si no hay `owner_user_id` (RF-01.6, D-29) o si el usuario ya tiene un `active_client_id` distinto: no se puede asignar a un segundo inquilino. La reserva del `active_client_id` y la creación de `tenant_users` se hacen en la misma saga; si la celda falla, se compensa el puntero. En la misma operación se asigna el plan del catálogo; el `tenant_owner` queda único y sin `tenant_agent` hasta que lo invite.
+En la misma operación:
+1. Se crea la fila en `admin.clients` con `lifecycle_status = 'alta'` (pendiente de completar el asistente de onboarding en el primer ingreso del propietario), se asigna el plan (`admin.client_plans` con `source = 'manual'`) y se enruta a una celda activa (`admin.client_routing`).
+2. Se invoca `provisionTenantInCellDataPlane` contra la celda asignada (`pg-cell-XX`), insertando bajo RLS (`SET LOCAL app.current_client_id`) la proyección `admin.users`, la membresía `admin.tenant_users` (`role = 'tenant_owner'`, `status = 'active'`), las 4 etiquetas reservadas en `admin.tenant_labels` y el registro inicial `admin.client_business_info`.
+3. Se actualiza `users.identity_location = '<cell_id>'` y `users.active_client_id = client.id` en el Router Global, y se emite el enlace de configuración de contraseña (`purpose = 'setup'`). Cuando el propietario confirma su contraseña en `/[locale]/password/setup`, `AuthService.resetPassword` persiste el `password_hash` Argon2id directamente en `pg-cell-XX` (`admin.users`) bajo RLS y mantiene `password_hash = NULL` en el Router Global.
+4. En su primer inicio de sesión, el guard server-side detecta `lifecycle_status = 'alta'` y lo redirige a `/onboarding` con el Paso 1 pre-cargado para confirmar los datos de su negocio y completar los Pasos 2 (primer producto) y 3 (preset del bot), tras lo cual pasa a `lifecycle_status = 'activo'` e ingresa a `/workspace`.
+5. Para garantizar la consistencia de inquilinos creados antes de la activación del aprovisionamiento celular, `reconcileProvisionedTenantsInCells` sincroniza de forma idempotente hacia `pg-cell-XX` cualquier cliente enrutado cuya proyección en celda aún no exista.
 
 ### 6.4 Invitaciones
 
@@ -284,6 +292,11 @@ La invitación es un canal alternativo para sumarse a un inquilino existente. Se
 - Las referencias entre planos son identificadores; no hay FK entre Router y celda ni entre celdas (RF-10.8).
 
 **Aprovisionamiento de celda:** crear la instancia, ejecutar la línea de migraciones, registrar la celda en `cells`, actualizar `client_routing` y auditar. La operación es idempotente.
+
+**Gestor de conexiones celulares y aislamiento RLS (`CellDatabasePoolManager` · D-37):**
+- El módulo `packages/domain/src/db/cell-client.ts` expone `getCellDb(cellId)` y `withTenantCellTransaction(clientId, callback)`.
+- Para cada operación de un inquilino, `withTenantCellTransaction` consulta `admin.client_routing` → `admin.cells` en el Router Global, descifra `cell_secrets_ciphertext` en memoria mediante `cellSecretsCryptoService.decrypt(cell.id, ...)` y resuelve el endpoint de PgBouncer aplicando `resolveLocalProbeTarget(cell.pgbouncerHost, cell.pgbouncerPort, cell.topologyType)` (permitiendo conectividad transparente tanto en `local_compose` como en redes privadas de producción).
+- Dentro de la transacción Drizzle sobre el pool de la celda (`pg-cell-XX`), ejecuta obligatoriamente `SELECT set_config('app.current_client_id', clientId, true)` antes de cualquier sentencia SQL, garantizando que todas las lecturas y escrituras queden confinadas al `client_id` bajo `FORCE ROW LEVEL SECURITY`.
 
 ## 8. Aprovisionamiento de Chatwoot
 
@@ -635,6 +648,33 @@ No hay archivo por defecto. Un plan con archivo legal exporta cifrado a R2 con r
 - **Simplicidad:** una acción principal por vista; sin explicación externa ni más de un concepto nuevo por pantalla; estados vacío, carga y error con recuperación (RF-13).
 - **Onboarding:** asistente de menos de 5 minutos, interrumpible, reejecutable; crea el inquilino al completar los datos del negocio (RF-14).
 
+### 13.1 Separación Física de Árboles `.tsx` y Gating del Backoffice del Inquilino (`/workspace/*` · D-35, D-37)
+
+Dentro de `apps/admin` (`mocter-admin`), el enrutador de cascarón `PortalShellRouter.tsx` y el servicio `resolveAuthenticatedPortalContext(sid)` (`packages/domain/src/services/session-context.service.ts`) garantizan la separación total entre el plano corporativo de la SaaS y el plano operativo del inquilino:
+
+1. **Plano Corporativo SaaS (`/` y `/admin/*`):**
+   - Accesible únicamente cuando `scope === 'platform'` (`platform_owner`, `platform_admin`, `platform_sales`).
+   - Utiliza exclusivamente `AdminShell.tsx` (`apps/admin/components/admin-shell.tsx`) y `AdminHomePage.tsx` (`apps/admin/app/page.tsx`).
+   - Se elimina cualquier fallback por defecto a `platform_owner`; si un usuario de inquilino o prospecto intenta acceder a `/` o `/admin/*`, el servidor redirige de inmediato a `/onboarding` o `/workspace`.
+2. **Plano de Onboarding (`/onboarding`):**
+   - Renderiza `TenantOnboardingWizard.tsx` (`apps/admin/app/onboarding/tenant-onboarding-wizard.tsx`) en un layout limpio sin barra lateral administrativa cuando `scope === 'onboarding_prospect'` (`active_client_id IS NULL`) o cuando el comercio del inquilino se encuentra en `lifecycle_status = 'alta'`.
+3. **Plano Operativo del Inquilino (`/workspace/*`):**
+   - Accesible únicamente para `tenant_owner` y `tenant_agent` con `lifecycle_status = 'activo'`.
+   - Utiliza su propio archivo de shell **`TenantWorkspaceShell.tsx`** (`apps/admin/components/tenant-workspace-shell.tsx`) y vistas `.tsx` independientes bajo `apps/admin/app/workspace/`:
+     - **Módulos Base (Habilitados en todos los planes, gobernados por cuotas numéricas de `plan_limits`):**
+       - `/workspace` (`page.tsx`) — Tablero Del Comercio (KPIs en vivo desde `pg-cell-XX`, consumo de cuotas y estado RLS).
+       - `/workspace/products` (`products/page.tsx`) — Catálogo y Multimedia (CRUD en `pg-cell-XX`, subida a bucket privado `media` en SeaweedFS, URLs firmadas HMAC en imgproxy y «Mejorar con AI»).
+       - `/workspace/contacts` (`contacts/page.tsx`) — Contactos y Prospectos CRM (en `pg-cell-XX` con etiquetas `lead-frio`..`compra-realizada`).
+       - `/workspace/orders` (`orders/page.tsx`) — Pedidos y Ventas (en `pg-cell-XX`).
+       - `/workspace/bot` (`bot/page.tsx`) — Asistente AI y Contexto (`client_business_info` en `pg-cell-XX`).
+       - `/workspace/team` (`team/page.tsx`) — Equipo y Agentes (`tenant_users` en `pg-cell-XX` validando límite `tenant_users` del plan).
+       - `/workspace/billing` (`billing/page.tsx`) — Mi Plan y Cuotas (suscripción vigente y uso por dimensión).
+     - **Módulos Dinámicos Filtrados por Capacidad (`TenantCapabilityGateService`):**
+       - `/workspace/conversations` — Bandeja Omnicanal Chatwoot (iframe same-site, visible si el plan habilita Chatwoot).
+       - `/workspace/branding` — Identidad y Marca Blanca (visible si el plan habilita `white_label`).
+       - `/workspace/community` — Comunidad y Catálogo Compartido (visible si el plan habilita `community_feed`).
+       - `/workspace/reports` — Informes y Analítica Del Comercio (visible si el plan habilita `reports` / `data_export`).
+
 ## 14. Seguridad
 
 ### 14.1 Roles de base
@@ -695,13 +735,13 @@ El schema `admin` es la unidad de privilegios; la landing no accede a él (D-25,
 | Sección | Requisitos | Decisiones |
 |---|---|---|
 | §5 Modelo de datos | RF-01, RF-05, RF-07, RF-08, RF-10 | D-11 a D-13, D-15, D-19, D-25, D-29, D-30, D-31 |
-| §6 Identidad y alta | RF-01, RF-04, RF-14 | D-12, D-24, D-26, D-29, D-31 |
-| §7 Tenencia y celdas | RF-10 | D-11, D-12 |
+| §6 Identidad y alta | RF-01, RF-04, RF-14 | D-12, D-24, D-26, D-29, D-31, D-36 |
+| §7 Tenencia y celdas | RF-10 | D-11, D-12, D-37 |
 | §8 Chatwoot | RF-02, RF-03 | D-01 a D-09 de CHW-001, D-32 |
 | §9 Productos y sincronización | RF-05, RF-06, RF-08 | D-18, D-21, D-22, D-23, D-30 |
 | §10 Comunidades y feed | RF-08 | D-14 a D-20, D-30, D-31 |
-| §11 Archivos | RF-07 | D-13, D-23, D-28 |
-| §12 Planes y retención | RF-04 | D-27, D-28 |
-| §13 Interfaz | RF-11 a RF-15 | — |
+| §11 Archivos | RF-07 | D-13, D-23, D-28, D-33, D-37 |
+| §12 Planes y retención | RF-04 | D-27, D-28, D-37 |
+| §13 Interfaz | RF-02, RF-11 a RF-15 | D-35, D-36, D-37 |
 | §14 Seguridad | RF-09, RF-10 | D-25, D-31 |
 | §15 Operación | — | D-10, OPS-001 |

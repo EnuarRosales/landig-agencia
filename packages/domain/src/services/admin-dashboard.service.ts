@@ -1,5 +1,13 @@
-import { sql, desc, asc, eq, and } from "drizzle-orm";
+import { sql, desc, asc, eq, and, ne, isNull } from "drizzle-orm";
 import { getDb } from "../db/client";
+import { withTenantCellTransaction } from "../db/cell-client";
+import {
+  cellUsers,
+  cellTenantUsers,
+  cellTenantLabels,
+  cellClientBusinessInfo,
+  cellProducts,
+} from "../db/schemas/tenant";
 import {
   clients,
   leads,
@@ -7,6 +15,8 @@ import {
   cells,
   plans,
   users,
+  passwordResetTokens,
+  emailVerificationTokens,
   clientRouting,
   clientPlans,
   subscriptions,
@@ -60,6 +70,8 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash, randomUUID }
 import { cellSecretsCryptoService } from "./cell-secrets.service";
 import { authorizeCellProvision } from "./cell-authorization.service";
 import { provisionTenantChatwootAccount, syncAllAccountsForPlan } from "./chatwoot-provisioning.service";
+import { generateSecureToken, hashToken } from "../auth/tokens";
+import { defaultAuthMailer } from "../auth/auth-mailer.interface";
 
 export interface ControlPlaneMetricsDto {
   tenants: number;
@@ -1730,12 +1742,16 @@ export async function processPendingEmailDeliveries(limit: number = 50): Promise
     return { processed: 0, sent: 0, failed: 0 };
   }
   const nodemailer = await import("nodemailer");
+  const isExplicitSecure = cfg.port === 465 || (cfg.secure && cfg.port !== 587);
   const transporter = nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port,
-    secure: cfg.secure || cfg.port === 465,
+    secure: isExplicitSecure,
     auth: { user: cfg.user, pass: cfg.password },
-    tls: { rejectUnauthorized: false },
+    tls: {
+      rejectUnauthorized: false,
+      servername: cfg.host,
+    },
   });
 
   const pending = await db
@@ -1790,12 +1806,16 @@ export async function sendTestEmail(to: string): Promise<{ messageId: string | n
     throw new Error("La contraseña SMTP no está configurada o no pudo descifrarse. Re-guardá el proveedor con la contraseña en /admin/settings/notifications.");
   }
   const nodemailer = await import("nodemailer");
+  const isExplicitSecure = cfg.port === 465 || (cfg.secure && cfg.port !== 587);
   const transporter = nodemailer.createTransport({
     host: cfg.host,
     port: cfg.port,
-    secure: cfg.secure || cfg.port === 465,
+    secure: isExplicitSecure,
     auth: { user: cfg.user, pass: cfg.password },
-    tls: { rejectUnauthorized: false },
+    tls: {
+      rejectUnauthorized: false,
+      servername: cfg.host,
+    },
   });
   const info = await transporter.sendMail({
     from: `"Mocter" <${cfg.from || cfg.user}>`,
@@ -2437,6 +2457,20 @@ export interface UpdateAdminTenantLifecycleInput {
   actorUserId?: string;
 }
 
+export interface UpdateAdminTenantInput {
+  clientId: string;
+  displayName?: string;
+  slug?: string;
+  contactEmail?: string;
+  phone?: string | null;
+  locale?: string;
+  planId?: string;
+  cellId?: string;
+  ownerDisplayName?: string;
+  lifecycleStatus?: "alta" | "activo" | "suspendido" | "baja";
+  actorUserId?: string;
+}
+
 /**
  * Consulta el directorio integral de inquilinos y comercios registrados en el plano de control (ADM-001, DAT-001).
  * Correlaciona cliente, propietario, plan asignado y enrutamiento a la célula PostgreSQL.
@@ -2552,6 +2586,336 @@ export async function fetchAdminTenantsOverview(): Promise<AdminTenantsOverviewD
   }
 }
 
+export const RESERVED_LEAD_LABELS = [
+  { title: "lead-frio", description: "Prospecto con bajo interés inicial", color: "#64748B", origin: "mocter_default" },
+  { title: "lead-tibio", description: "Prospecto con interés moderado", color: "#F59E0B", origin: "mocter_default" },
+  { title: "lead-caliente", description: "Prospecto con alta intención de compra", color: "#EF4444", origin: "mocter_default" },
+  { title: "compra-realizada", description: "Cliente que completó una transacción", color: "#10B981", origin: "mocter_default" },
+] as const;
+
+/**
+ * Aprovisiona en el plano de datos celular (pg-cell-XX) los registros base del inquilino bajo RLS:
+ * - admin.users: Proyección del dueño
+ * - admin.tenant_users: Membresía con rol tenant_owner
+ * - admin.tenant_labels: 4 etiquetas reservadas de clasificación de leads
+ * - admin.client_business_info: Configuración comercial base
+ */
+export async function provisionTenantInCellDataPlane(
+  clientId: string,
+  cellId: string,
+  ownerUserId: string,
+  clientData?: {
+    displayName?: string;
+    contactEmail?: string;
+    phone?: string;
+    actor?: string;
+    ownerUser?: {
+      id: string;
+      email: string;
+      displayName?: string | null;
+      avatarUrl?: string | null;
+      passwordHash?: string | null;
+      passwordUpdatedAt?: Date | null;
+      emailVerifiedAt?: Date | null;
+    };
+  },
+): Promise<Result<{ success: boolean }>> {
+  const actor = clientData?.actor ?? "tenant_provisioning";
+  const db = getDb();
+
+  let owner = clientData?.ownerUser;
+  if (!owner) {
+    const [dbOwner] = await db.select().from(users).where(eq(users.id, ownerUserId)).limit(1);
+    if (!dbOwner) {
+      return err("Usuario dueño no encontrado en el Router Global.", "USER_NOT_FOUND");
+    }
+    owner = {
+      id: dbOwner.id,
+      email: dbOwner.email,
+      displayName: dbOwner.displayName,
+      avatarUrl: dbOwner.avatarUrl,
+      passwordHash: dbOwner.passwordHash,
+      passwordUpdatedAt: dbOwner.passwordUpdatedAt,
+      emailVerifiedAt: dbOwner.emailVerifiedAt,
+    };
+  }
+
+  const normalizedEmail = owner.email.trim().toLowerCase();
+
+  try {
+    await withTenantCellTransaction(
+      clientId,
+      async (tx) => {
+        // 1. Materializar admin.users en pg-cell-XX
+        const passwordUpdatedAt = owner.passwordHash ? (owner.passwordUpdatedAt ?? new Date()) : null;
+        await tx
+          .insert(cellUsers)
+          .values({
+            id: ownerUserId,
+            clientId,
+            email: normalizedEmail,
+            emailVerifiedAt: owner.emailVerifiedAt,
+            passwordHash: owner.passwordHash ?? null,
+            passwordUpdatedAt,
+            status: "active",
+            displayName: owner.displayName ?? null,
+            avatarUrl: owner.avatarUrl ?? null,
+            createdBy: actor,
+            updatedBy: actor,
+          })
+          .onConflictDoUpdate({
+            target: [cellUsers.clientId, cellUsers.id],
+            set: {
+              email: normalizedEmail,
+              displayName: owner.displayName ?? null,
+              avatarUrl: owner.avatarUrl ?? null,
+              status: "active",
+              updatedAt: new Date(),
+              updatedBy: actor,
+            },
+          });
+
+        // 2. Materializar membresía admin.tenant_users
+        const [existingMembership] = await tx
+          .select()
+          .from(cellTenantUsers)
+          .where(and(eq(cellTenantUsers.clientId, clientId), eq(cellTenantUsers.userId, ownerUserId)))
+          .limit(1);
+
+        if (!existingMembership) {
+          await tx.insert(cellTenantUsers).values({
+            clientId,
+            userId: ownerUserId,
+            role: "tenant_owner",
+            status: "active",
+            joinedAt: new Date(),
+            createdBy: actor,
+            updatedBy: actor,
+          });
+        } else if (existingMembership.role !== "tenant_owner" || existingMembership.status !== "active") {
+          await tx
+            .update(cellTenantUsers)
+            .set({ role: "tenant_owner", status: "active", updatedAt: new Date(), updatedBy: actor })
+            .where(eq(cellTenantUsers.id, existingMembership.id));
+        }
+
+        // 3. Sembrar las 4 etiquetas reservadas en admin.tenant_labels
+        for (const label of RESERVED_LEAD_LABELS) {
+          await tx
+            .insert(cellTenantLabels)
+            .values({
+              clientId,
+              title: label.title,
+              description: label.description,
+              color: label.color,
+              origin: label.origin,
+              showOnSidebar: true,
+              state: "active",
+              createdBy: actor,
+              updatedBy: actor,
+            })
+            .onConflictDoNothing({ target: [cellTenantLabels.clientId, cellTenantLabels.title] });
+        }
+
+        // 4. Sembrar configuración comercial en admin.client_business_info
+        await tx
+          .insert(cellClientBusinessInfo)
+          .values({
+            clientId,
+            paymentMethods: ["transferencia", "contraentrega"],
+            shippingPolicy: { freeShipping: false, defaultCostCents: 0 },
+            faqs: [],
+            botPreset: "natural_rhythm",
+            remindersEnabled: false,
+            createdBy: actor,
+            updatedBy: actor,
+          })
+          .onConflictDoNothing();
+      },
+      { cellId },
+    );
+
+    return ok({ success: true });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[provisionTenantInCellDataPlane Failed] ${msg}`, error, {
+      clientId,
+      cellId,
+      ownerUserId,
+    });
+    return err(`Fallo al aprovisionar inquilino en celda: ${msg}`, "CELL_PROVISION_ERROR");
+  }
+}
+
+export interface ReconcileTenantDetail {
+  clientId: string;
+  slug: string;
+  cellId: string;
+  cellCode: string;
+  ownerUserId: string;
+  ownerEmail: string;
+  credentialsPromoted: boolean;
+  lifecycleStatus: string;
+}
+
+export interface ReconcileResult {
+  reconciledCount: number;
+  tenants: ReconcileTenantDetail[];
+}
+
+/**
+ * Rutina idempotente de reconciliación de inquilinos en sus celdas asignadas (TNT-001 R1).
+ *
+ * Para cada inquilino con ruta celular activa:
+ * 1. Materializa los registros base en pg-cell-XX (admin.users, admin.tenant_users, admin.tenant_labels, admin.client_business_info).
+ * 2. Si las credenciales residen en db-portal, promueve el hash a la celda y fija password_hash = NULL, identity_location = cellId en Router.
+ * 3. Si el inquilino no tiene productos en la celda, alinea lifecycle_status = 'alta' en db-portal para dirigir al onboarding.
+ */
+export async function reconcileProvisionedTenantsInCells(
+  options?: { clientId?: string; actor?: string },
+): Promise<Result<ReconcileResult>> {
+  const actor = options?.actor ?? "tenant_reconciliation";
+  const db = getDb();
+
+  try {
+    let query = db
+      .select({
+        clientId: clients.id,
+        slug: clients.slug,
+        displayName: clients.displayName,
+        lifecycleStatus: clients.lifecycleStatus,
+        ownerUserId: clients.ownerUserId,
+        ownerEmail: users.email,
+        ownerDisplayName: users.displayName,
+        ownerAvatarUrl: users.avatarUrl,
+        ownerPasswordHash: users.passwordHash,
+        ownerPasswordUpdatedAt: users.passwordUpdatedAt,
+        ownerEmailVerifiedAt: users.emailVerifiedAt,
+        ownerIdentityLocation: users.identityLocation,
+        cellId: cells.id,
+        cellCode: cells.code,
+        cellStatus: cells.status,
+      })
+      .from(clients)
+      .innerJoin(clientRouting, and(eq(clients.id, clientRouting.clientId), eq(clientRouting.routingStatus, "active")))
+      .innerJoin(cells, eq(clientRouting.cellId, cells.id))
+      .innerJoin(users, eq(clients.ownerUserId, users.id));
+
+    if (options?.clientId) {
+      query = query.where(eq(clients.id, options.clientId)) as any;
+    }
+
+    const routedTenants = await query;
+    const reconciledTenants: ReconcileTenantDetail[] = [];
+
+    for (const tenant of routedTenants) {
+      if (tenant.cellStatus !== "active") {
+        appLogger.warn("[reconcileProvisionedTenantsInCells] Omitiendo inquilino por celda inactiva", {
+          clientId: tenant.clientId,
+          cellId: tenant.cellId,
+          cellStatus: tenant.cellStatus,
+        });
+        continue;
+      }
+
+      const provRes = await provisionTenantInCellDataPlane(tenant.clientId, tenant.cellId, tenant.ownerUserId, {
+        displayName: tenant.displayName,
+        contactEmail: tenant.ownerEmail,
+        actor,
+        ownerUser: {
+          id: tenant.ownerUserId,
+          email: tenant.ownerEmail,
+          displayName: tenant.ownerDisplayName,
+          avatarUrl: tenant.ownerAvatarUrl,
+          passwordHash: tenant.ownerPasswordHash,
+          passwordUpdatedAt: tenant.ownerPasswordUpdatedAt,
+          emailVerifiedAt: tenant.ownerEmailVerifiedAt,
+        },
+      });
+
+      if (!provRes.ok) {
+        appLogger.error("[reconcileProvisionedTenantsInCells] Error aprovisionando en celda", provRes.error, {
+          clientId: tenant.clientId,
+          cellId: tenant.cellId,
+        });
+        continue;
+      }
+
+      let credentialsPromoted = false;
+      if (tenant.ownerIdentityLocation !== tenant.cellId || tenant.ownerPasswordHash !== null) {
+        await db
+          .update(users)
+          .set({
+            identityLocation: tenant.cellId,
+            passwordHash: null,
+            passwordUpdatedAt: null,
+            updatedAt: new Date(),
+            updatedBy: actor,
+          })
+          .where(eq(users.id, tenant.ownerUserId));
+        credentialsPromoted = true;
+      }
+
+      let productsCount = 0;
+      try {
+        productsCount = await withTenantCellTransaction(
+          tenant.clientId,
+          async (tx) => {
+            const [pRow] = await tx
+              .select({ count: sql<number>`count(*)::int` })
+              .from(cellProducts)
+              .where(eq(cellProducts.clientId, tenant.clientId));
+            return pRow?.count ?? 0;
+          },
+          { cellId: tenant.cellId },
+        );
+      } catch (countErr) {
+        appLogger.warn("[reconcileProvisionedTenantsInCells] Advertencia al contar productos en celda", {
+          clientId: tenant.clientId,
+          error: countErr instanceof Error ? countErr.message : String(countErr),
+        });
+      }
+
+      let currentLifecycle = tenant.lifecycleStatus;
+      if (productsCount === 0 && tenant.lifecycleStatus !== "alta") {
+        await db
+          .update(clients)
+          .set({
+            lifecycleStatus: "alta",
+            updatedAt: new Date(),
+            updatedBy: actor,
+          })
+          .where(eq(clients.id, tenant.clientId));
+        currentLifecycle = "alta";
+      }
+
+      reconciledTenants.push({
+        clientId: tenant.clientId,
+        slug: tenant.slug,
+        cellId: tenant.cellId,
+        cellCode: tenant.cellCode,
+        ownerUserId: tenant.ownerUserId,
+        ownerEmail: tenant.ownerEmail,
+        credentialsPromoted,
+        lifecycleStatus: currentLifecycle,
+      });
+    }
+
+    appLogger.info("[reconcileProvisionedTenantsInCells] Reconciliación completada", {
+      reconciledCount: reconciledTenants.length,
+    });
+
+    return ok({
+      reconciledCount: reconciledTenants.length,
+      tenants: reconciledTenants,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[reconcileProvisionedTenantsInCells Failed] ${msg}`, error);
+    return err(`Error en reconciliación de inquilinos: ${msg}`);
+  }
+}
+
 /**
  * Aprovisiona manualmente un nuevo comercio/inquilino coordinando usuario dueño, celda y plan (ADM-001 §6.3, T-06).
  */
@@ -2602,7 +2966,7 @@ export async function createAdminTenant(input: CreateAdminTenantInput): Promise<
           email: ownerEmail,
           displayName: ownerDisplayName,
           status: "active",
-          emailVerifiedAt: new Date(),
+          emailVerifiedAt: null,
           createdBy: actor,
           updatedBy: actor,
         })
@@ -2644,7 +3008,7 @@ export async function createAdminTenant(input: CreateAdminTenantInput): Promise<
         phone: input.phone?.trim() || null,
         ownerUserId: ownerId,
         planId: selectedPlan.id,
-        lifecycleStatus: "activo",
+        lifecycleStatus: "alta",
         locale: input.locale || "es",
         currency: "COP",
         createdBy: actor,
@@ -2669,6 +3033,25 @@ export async function createAdminTenant(input: CreateAdminTenantInput): Promise<
         createdBy: actor,
         updatedBy: actor,
       });
+
+    // 7.1 Actualizar identity_location del dueño a la UUID de la celda asignada
+    await db
+      .update(users)
+      .set({ identityLocation: assignedCell.id, updatedBy: actor, updatedAt: new Date() })
+      .where(eq(users.id, ownerId));
+
+    // 7.2 Aprovisionar registros base en pg-cell-XX
+    const provRes = await provisionTenantInCellDataPlane(newClient.id, assignedCell.id, ownerId, {
+      displayName: newClient.displayName,
+      contactEmail: ownerEmail,
+      actor,
+    });
+    if (!provRes.ok) {
+      appLogger.warn("[createAdminTenant] Advertencia en aprovisionamiento celular inicial", {
+        clientId: newClient.id,
+        error: provRes.error,
+      });
+    }
 
     // 8. Incrementar current_clients en la celda
     await db
@@ -2724,6 +3107,23 @@ export async function createAdminTenant(input: CreateAdminTenantInput): Promise<
     const pObj = selectedPlan.name as { es?: string; en?: string } | null;
     const planName = pObj?.es || selectedPlan.code;
 
+    // 11. Despachar notificación de bienvenida y onboarding
+    try {
+      await dispatchTenantWelcomeAndOnboardingEmail({
+        userId: ownerId,
+        clientId: newClient.id,
+        tenantName: newClient.displayName,
+        ownerEmail,
+        ownerDisplayName,
+        actorUserId: actor,
+      });
+    } catch (notifyErr) {
+      appLogger.warn("[createAdminTenant] Fallo al despachar notificación de onboarding", {
+        error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+        clientId: newClient.id,
+      });
+    }
+
     appLogger.info("[createAdminTenant] Inquilino aprovisionado con éxito", {
       clientId: newClient.id,
       slug: newClient.slug,
@@ -2737,7 +3137,7 @@ export async function createAdminTenant(input: CreateAdminTenantInput): Promise<
       displayName: newClient.displayName,
       contactEmail: newClient.contactEmail,
       phone: newClient.phone,
-      lifecycleStatus: "activo",
+      lifecycleStatus: "alta",
       locale: newClient.locale,
       currency: newClient.currency,
       planId: selectedPlan.id,
@@ -2807,6 +3207,737 @@ export async function updateAdminTenantLifecycle(
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[updateAdminTenantLifecycle Failed] ${msg}`, error);
     return err(`Error al actualizar estado del inquilino: ${msg}`);
+  }
+}
+
+export interface SendSystemNotificationEmailInput {
+  eventKey: string;
+  recipient: string;
+  variables: Record<string, string | number>;
+  clientId?: string | null;
+  locale?: string;
+  actorUserId?: string;
+}
+
+export interface SendSystemNotificationEmailResult {
+  success: boolean;
+  deliveryId: string;
+  eventKey: string;
+  recipient: string;
+  renderedSubject: string;
+  renderedHtml: string;
+  status: "sent" | "queued" | "failed";
+  providerMessageId?: string | null;
+  error?: string;
+}
+
+/**
+ * Despacha un correo transaccional utilizando estrictamente las plantillas publicadas en la base de datos
+ * (admin.email_templates), los remitentes institucionales asociados (admin.email_senders) y persistiendo
+ * la entrega en el outbox transaccional (admin.email_deliveries) (NTF-001, ADM-001 T-38).
+ */
+export async function sendSystemNotificationEmail(
+  input: SendSystemNotificationEmailInput,
+): Promise<SendSystemNotificationEmailResult> {
+  const db = getDb();
+  const actor = input.actorUserId || "01a19874-1077-744c-8514-d4c990cd7259";
+  const reqLocale = input.locale || "es";
+
+  // 1. Consultar plantilla publicada en la BD para (eventKey, locale)
+  let tplRows = await db
+    .select()
+    .from(emailTemplates)
+    .where(
+      and(
+        eq(emailTemplates.eventKey, input.eventKey),
+        eq(emailTemplates.locale, reqLocale),
+        eq(emailTemplates.status, "published"),
+      ),
+    )
+    .orderBy(desc(emailTemplates.version))
+    .limit(1);
+
+  // Fallback a locale "es" si se solicitó otro y no existe
+  if (tplRows.length === 0 && reqLocale !== "es") {
+    tplRows = await db
+      .select()
+      .from(emailTemplates)
+      .where(
+        and(
+          eq(emailTemplates.eventKey, input.eventKey),
+          eq(emailTemplates.locale, "es"),
+          eq(emailTemplates.status, "published"),
+        ),
+      )
+      .orderBy(desc(emailTemplates.version))
+      .limit(1);
+  }
+
+  let templateId: string;
+  let rawSubject: string;
+  let rawHtml: string;
+  let senderId: string | null = null;
+
+  if (tplRows.length > 0) {
+    const t = tplRows[0];
+    templateId = t.id;
+    rawSubject = t.subject;
+    rawHtml = t.bodyHtml;
+    senderId = t.senderId;
+  } else {
+    const seed =
+      CANONICAL_TEMPLATES_SEED.find((s) => s.eventKey === input.eventKey && s.locale === reqLocale) ||
+      CANONICAL_TEMPLATES_SEED.find((s) => s.eventKey === input.eventKey);
+
+    if (seed) {
+      templateId = "00000000-0000-0000-0000-000000000000";
+      rawSubject = seed.subject;
+      rawHtml = seed.bodyHtml;
+    } else {
+      templateId = "00000000-0000-0000-0000-000000000000";
+      rawSubject = `Notificación de Mocter: ${input.eventKey}`;
+      rawHtml = `<p>Notificación del sistema Mocter.</p>`;
+    }
+  }
+
+  // 2. Resolver remitente (admin.email_senders)
+  let senderEmail = "soporte@mocter.co";
+  let senderName = "Mocter";
+  let resolvedSenderId = senderId;
+
+  if (senderId) {
+    const sRows = await db.select().from(emailSenders).where(eq(emailSenders.id, senderId)).limit(1);
+    if (sRows.length > 0) {
+      senderEmail = sRows[0].fromEmail;
+      senderName = sRows[0].fromName;
+    }
+  } else {
+    const defSenders = await db
+      .select()
+      .from(emailSenders)
+      .where(and(eq(emailSenders.isDefault, true), eq(emailSenders.status, "active")))
+      .limit(1);
+    if (defSenders.length > 0) {
+      resolvedSenderId = defSenders[0].id;
+      senderEmail = defSenders[0].fromEmail;
+      senderName = defSenders[0].fromName;
+    } else {
+      const anySender = await db.select().from(emailSenders).where(eq(emailSenders.status, "active")).limit(1);
+      if (anySender.length > 0) {
+        resolvedSenderId = anySender[0].id;
+        senderEmail = anySender[0].fromEmail;
+        senderName = anySender[0].fromName;
+      }
+    }
+  }
+
+  // 3. Interpolación de variables
+  const renderedSubject = rawSubject.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => {
+    return input.variables[key] !== undefined && input.variables[key] !== null ? String(input.variables[key]) : "";
+  });
+  const renderedHtml = rawHtml.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => {
+    return input.variables[key] !== undefined && input.variables[key] !== null ? String(input.variables[key]) : "";
+  });
+
+  // 4. Registro en el outbox transaccional (admin.email_deliveries)
+  const deliveryId = randomUUID();
+  const idempotencyKey = `${input.eventKey}:${input.recipient.trim().toLowerCase()}:${Date.now()}:${randomBytes(4).toString("hex")}`;
+
+  let deliveryCreated = false;
+  if (resolvedSenderId && templateId !== "00000000-0000-0000-0000-000000000000") {
+    try {
+      await db.insert(emailDeliveries).values({
+        id: deliveryId,
+        eventKey: input.eventKey,
+        templateId,
+        senderId: resolvedSenderId,
+        recipient: input.recipient.trim().toLowerCase(),
+        clientId: input.clientId || null,
+        locale: reqLocale,
+        renderedSubject,
+        renderedHtml,
+        payload: input.variables,
+        idempotencyKey,
+        status: "queued",
+        attempts: 0,
+        createdBy: actor,
+        updatedBy: actor,
+      });
+      deliveryCreated = true;
+    } catch (insertErr) {
+      appLogger.warn("[sendSystemNotificationEmail] No se pudo persistir registro en email_deliveries", {
+        error: insertErr instanceof Error ? insertErr.message : String(insertErr),
+        eventKey: input.eventKey,
+      });
+    }
+  }
+
+  // 5. Envío inmediato si SMTP está activo
+  const smtpConfig = await getActiveSmtpConfig();
+  if (smtpConfig && smtpConfig.host && smtpConfig.user) {
+    try {
+      const nodemailer = await import("nodemailer");
+      const isExplicitSecure = smtpConfig.port === 465 || (smtpConfig.secure && smtpConfig.port !== 587);
+      const transporter = nodemailer.createTransport({
+        host: smtpConfig.host,
+        port: smtpConfig.port,
+        secure: isExplicitSecure,
+        auth: { user: smtpConfig.user, pass: smtpConfig.password },
+        tls: {
+          rejectUnauthorized: false,
+          servername: smtpConfig.host,
+        },
+      });
+
+      const info = await transporter.sendMail({
+        from: `"${senderName}" <${senderEmail || smtpConfig.from}>`,
+        to: input.recipient,
+        subject: renderedSubject,
+        html: renderedHtml,
+      });
+
+      if (deliveryCreated) {
+        await db
+          .update(emailDeliveries)
+          .set({
+            status: "sent",
+            sentAt: new Date(),
+            providerMessageId: info.messageId || null,
+            attempts: 1,
+            updatedBy: actor,
+            updatedAt: new Date(),
+          })
+          .where(eq(emailDeliveries.id, deliveryId));
+      }
+
+      appLogger.info("[sendSystemNotificationEmail] Notificación entregada vía SMTP", {
+        eventKey: input.eventKey,
+        recipient: input.recipient,
+        messageId: info.messageId,
+      });
+
+      return {
+        success: true,
+        deliveryId,
+        eventKey: input.eventKey,
+        recipient: input.recipient,
+        renderedSubject,
+        renderedHtml,
+        status: "sent",
+        providerMessageId: info.messageId || null,
+      };
+    } catch (sendErr) {
+      const errorMsg = sendErr instanceof Error ? sendErr.message : String(sendErr);
+      appLogger.warn("[sendSystemNotificationEmail] Error al entregar correo vía SMTP", {
+        error: errorMsg,
+        eventKey: input.eventKey,
+        recipient: input.recipient,
+      });
+
+      if (deliveryCreated) {
+        await db
+          .update(emailDeliveries)
+          .set({
+            status: "failed",
+            lastError: errorMsg,
+            attempts: 1,
+            updatedBy: actor,
+            updatedAt: new Date(),
+          })
+          .where(eq(emailDeliveries.id, deliveryId));
+      }
+
+      return {
+        success: false,
+        deliveryId,
+        eventKey: input.eventKey,
+        recipient: input.recipient,
+        renderedSubject,
+        renderedHtml,
+        status: "failed",
+        error: errorMsg,
+      };
+    }
+  } else {
+    appLogger.info("[sendSystemNotificationEmail] SMTP no configurado, notificación registrada en cola", {
+      eventKey: input.eventKey,
+      recipient: input.recipient,
+      subject: renderedSubject,
+      variables: input.variables,
+    });
+
+    return {
+      success: true,
+      deliveryId,
+      eventKey: input.eventKey,
+      recipient: input.recipient,
+      renderedSubject,
+      renderedHtml,
+      status: "queued",
+    };
+  }
+}
+
+export interface DispatchTenantWelcomeEmailInput {
+  userId: string;
+  clientId: string;
+  tenantName: string;
+  ownerEmail: string;
+  ownerDisplayName?: string | null;
+  actorUserId?: string;
+}
+
+/**
+ * Despacha notificación de bienvenida y onboarding con token de un solo uso para configuración inicial (ADM-001 §6, NTF-001).
+ * Utiliza estrictamente las plantillas publicadas en la base de datos (auth.verify_email, tenant.welcome, auth.reset_password).
+ */
+export async function dispatchTenantWelcomeAndOnboardingEmail(
+  input: DispatchTenantWelcomeEmailInput,
+): Promise<{ success: boolean; setupToken: string; expiresAt: Date; setupUrl: string }> {
+  const db = getDb();
+  const actor = input.actorUserId || "01a19874-1077-744c-8514-d4c990cd7259";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
+
+  // 1. Generar token de setup de contraseña de un solo uso (24 horas)
+  const rawToken = generateSecureToken();
+  const tokenHash = hashToken(rawToken);
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+
+  // Invalidar tokens previos de setup no consumidos para este usuario
+  await db
+    .update(passwordResetTokens)
+    .set({ consumedAt: new Date(), updatedBy: actor, updatedAt: new Date() })
+    .where(and(eq(passwordResetTokens.userId, input.userId), isNull(passwordResetTokens.consumedAt)));
+
+  // Insertar token de setup seguro
+  await db.insert(passwordResetTokens).values({
+    userId: input.userId,
+    tokenHash,
+    purpose: "setup",
+    expiresAt,
+    createdBy: actor,
+    updatedBy: actor,
+  });
+
+  const setupUrl = `${baseUrl.replace(/\/+$/, "")}/es/password/setup?token=${rawToken}`;
+
+  appLogger.info("[dispatchTenantWelcomeAndOnboardingEmail] Enlace de onboarding y setup generado", {
+    userId: input.userId,
+    clientId: input.clientId,
+    email: input.ownerEmail,
+    setupUrl,
+    expiresAt: expiresAt.toISOString(),
+  });
+
+  // 2. Despachar una ÚNICA notificación oficial de bienvenida (tenant.welcome)
+  // que contiene el enlace para configurar contraseña o acceder mediante Google/Facebook
+  try {
+    await sendSystemNotificationEmail({
+      eventKey: "tenant.welcome",
+      recipient: input.ownerEmail,
+      variables: {
+        owner_name: input.ownerDisplayName || input.ownerEmail,
+        tenant_name: input.tenantName,
+        login_url: setupUrl,
+        brand_name: "Mocter",
+      },
+      clientId: input.clientId,
+      actorUserId: actor,
+    });
+  } catch (welcomeErr) {
+    appLogger.warn("[dispatchTenantWelcomeAndOnboardingEmail] Error al enviar tenant.welcome", {
+      error: welcomeErr instanceof Error ? welcomeErr.message : String(welcomeErr),
+      email: input.ownerEmail,
+    });
+  }
+
+  return { success: true, setupToken: rawToken, expiresAt, setupUrl };
+}
+
+/**
+ * Reenvía la invitación / verificación de onboarding al propietario del inquilino (ADM-001 §6.3).
+ */
+export async function resendTenantOnboardingEmail(
+  clientId: string,
+  actorUserId?: string,
+): Promise<Result<{ success: boolean; emailSentTo: string }>> {
+  const db = getDb();
+  try {
+    const tenantRows = await db
+      .select({
+        id: clients.id,
+        displayName: clients.displayName,
+        ownerUserId: clients.ownerUserId,
+        ownerEmail: users.email,
+        ownerDisplayName: users.displayName,
+      })
+      .from(clients)
+      .innerJoin(users, eq(users.id, clients.ownerUserId))
+      .where(eq(clients.id, clientId))
+      .limit(1);
+
+    if (tenantRows.length === 0) {
+      return err("Inquilino o usuario propietario no encontrado", "TENANT_NOT_FOUND");
+    }
+
+    const t = tenantRows[0];
+    await dispatchTenantWelcomeAndOnboardingEmail({
+      userId: t.ownerUserId,
+      clientId: t.id,
+      tenantName: t.displayName,
+      ownerEmail: t.ownerEmail,
+      ownerDisplayName: t.ownerDisplayName,
+      actorUserId,
+    });
+
+    return ok({ success: true, emailSentTo: t.ownerEmail });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[resendTenantOnboardingEmail Failed] ${msg}`, error);
+    return err(`Error al reenviar invitación de onboarding: ${msg}`);
+  }
+}
+
+/**
+ * Actualiza la información integral de un inquilino/comercio en el plano de control (ADM-001, DAT-001).
+ * Soporta actualización de metadatos, propietario, plan asignado, migración de celda y estado de ciclo de vida.
+ */
+export async function updateAdminTenant(input: UpdateAdminTenantInput): Promise<Result<AdminTenantItemDto>> {
+  const db = getDb();
+  const actor = input.actorUserId || "01a19874-1077-744c-8514-d4c990cd7259";
+
+  try {
+    const existing = await db
+      .select({
+        id: clients.id,
+        slug: clients.slug,
+        displayName: clients.displayName,
+        contactEmail: clients.contactEmail,
+        phone: clients.phone,
+        locale: clients.locale,
+        currency: clients.currency,
+        lifecycleStatus: clients.lifecycleStatus,
+        planId: clients.planId,
+        ownerUserId: clients.ownerUserId,
+        createdAt: clients.createdAt,
+        updatedAt: clients.updatedAt,
+        cellId: clientRouting.cellId,
+      })
+      .from(clients)
+      .leftJoin(clientRouting, eq(clients.id, clientRouting.clientId))
+      .where(eq(clients.id, input.clientId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      return err("El inquilino especificado no existe.", "TENANT_NOT_FOUND");
+    }
+
+    const current = existing[0];
+
+    // Si se proporciona slug, validar sintaxis y unicidad
+    let newSlug = current.slug;
+    if (input.slug !== undefined) {
+      const trimmedSlug = input.slug.trim().toLowerCase();
+      if (!trimmedSlug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(trimmedSlug)) {
+        return err(
+          "El identificador (slug) solo permite letras minúsculas, números y guiones sencillos.",
+          "INVALID_SLUG",
+        );
+      }
+      if (trimmedSlug !== current.slug) {
+        const conflict = await db
+          .select({ id: clients.id })
+          .from(clients)
+          .where(and(eq(clients.slug, trimmedSlug), ne(clients.id, input.clientId)))
+          .limit(1);
+        if (conflict.length > 0) {
+          return err("El identificador (slug) ya está en uso por otro comercio.", "SLUG_ALREADY_EXISTS");
+        }
+        newSlug = trimmedSlug;
+      }
+    }
+
+    // Validar plan si cambia
+    let newPlanId = current.planId;
+    let selectedPlanRow: { id: string; code: string; name: unknown } | null = null;
+    if (input.planId !== undefined && input.planId !== current.planId) {
+      const planRes = await db
+        .select({ id: plans.id, code: plans.code, name: plans.name })
+        .from(plans)
+        .where(eq(plans.id, input.planId))
+        .limit(1);
+      if (planRes.length === 0) {
+        return err("El plan seleccionado no existe.", "PLAN_NOT_FOUND");
+      }
+      newPlanId = planRes[0].id;
+      selectedPlanRow = planRes[0];
+    }
+
+    // Validar celda si cambia
+    let newCellId = current.cellId;
+    if (input.cellId !== undefined && input.cellId !== current.cellId) {
+      const cellRes = await db
+        .select({
+          id: cells.id,
+          code: cells.code,
+          tier: cells.tier,
+          currentClients: cells.currentClients,
+          maxClients: cells.maxClients,
+        })
+        .from(cells)
+        .where(eq(cells.id, input.cellId))
+        .limit(1);
+      if (cellRes.length === 0) {
+        return err("La célula seleccionada no existe.", "CELL_NOT_FOUND");
+      }
+      newCellId = cellRes[0].id;
+    }
+
+    const newLifecycle = input.lifecycleStatus ?? current.lifecycleStatus;
+
+    // Actualizar registro del inquilino
+    await db
+      .update(clients)
+      .set({
+        displayName: input.displayName ? input.displayName.trim() : current.displayName,
+        slug: newSlug,
+        contactEmail: input.contactEmail ? input.contactEmail.trim().toLowerCase() : current.contactEmail,
+        phone: input.phone !== undefined ? (input.phone ? input.phone.trim() : null) : current.phone,
+        locale: input.locale ?? current.locale,
+        planId: newPlanId,
+        lifecycleStatus: newLifecycle,
+        updatedBy: actor,
+        updatedAt: new Date(),
+      })
+      .where(eq(clients.id, input.clientId));
+
+    // Actualizar propietario si se provee nombre
+    if (input.ownerDisplayName !== undefined && input.ownerDisplayName.trim()) {
+      await db
+        .update(users)
+        .set({
+          displayName: input.ownerDisplayName.trim(),
+          updatedBy: actor,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, current.ownerUserId));
+    }
+
+    // Si cambió el plan, registrar historial y sincronizar Chatwoot
+    if (newPlanId !== current.planId && selectedPlanRow) {
+      await db.insert(clientPlans).values({
+        clientId: input.clientId,
+        planId: newPlanId,
+        source: "manual",
+        assignedByUserId: actor,
+        createdBy: actor,
+        updatedBy: actor,
+      });
+
+      try {
+        const cwLimits = await db
+          .select()
+          .from(planLimits)
+          .where(and(eq(planLimits.planId, newPlanId), eq(planLimits.dimension, "chatwoot_agents")))
+          .limit(1);
+        const chatwootEnabled = cwLimits.length > 0 && (cwLimits[0].mode === "UNLIMITED" || (cwLimits[0].value ?? 0) > 0);
+        if (chatwootEnabled) {
+          await provisionTenantChatwootAccount({
+            clientId: input.clientId,
+            planId: newPlanId,
+            actor,
+            db,
+          });
+        }
+      } catch (cwErr) {
+        appLogger.warn("[updateAdminTenant] Error al sincronizar cuenta Chatwoot tras cambio de plan", {
+          clientId: input.clientId,
+          error: cwErr instanceof Error ? cwErr.message : String(cwErr),
+        });
+      }
+    }
+
+    // Si cambió la celda, actualizar enrutamiento y contadores
+    if (newCellId && newCellId !== current.cellId) {
+      if (current.cellId) {
+        await db
+          .update(clientRouting)
+          .set({
+            cellId: newCellId,
+            routingVersion: sql`${clientRouting.routingVersion} + 1`,
+            updatedBy: actor,
+            updatedAt: new Date(),
+          })
+          .where(eq(clientRouting.clientId, input.clientId));
+
+        await db
+          .update(cells)
+          .set({
+            currentClients: sql`GREATEST(0, ${cells.currentClients} - 1)`,
+            updatedBy: actor,
+            updatedAt: new Date(),
+          })
+          .where(eq(cells.id, current.cellId));
+      } else {
+        await db.insert(clientRouting).values({
+          clientId: input.clientId,
+          cellId: newCellId,
+          routingStatus: "active",
+          routingVersion: 1,
+          createdBy: actor,
+          updatedBy: actor,
+        });
+      }
+
+      await db
+        .update(cells)
+        .set({
+          currentClients: sql`${cells.currentClients} + 1`,
+          updatedBy: actor,
+          updatedAt: new Date(),
+        })
+        .where(eq(cells.id, newCellId));
+    }
+
+    // Gestionar transiciones de ciclo de vida
+    if (newLifecycle === "baja" && current.lifecycleStatus !== "baja") {
+      await db
+        .update(users)
+        .set({ activeClientId: null, updatedBy: actor, updatedAt: new Date() })
+        .where(eq(users.id, current.ownerUserId));
+
+      await db
+        .update(clientRouting)
+        .set({ routingStatus: "readonly", updatedBy: actor, updatedAt: new Date() })
+        .where(eq(clientRouting.clientId, input.clientId));
+
+      if (current.cellId) {
+        await db
+          .update(cells)
+          .set({
+            currentClients: sql`GREATEST(0, ${cells.currentClients} - 1)`,
+            updatedBy: actor,
+            updatedAt: new Date(),
+          })
+          .where(eq(cells.id, current.cellId));
+      }
+    } else if (newLifecycle === "activo" && current.lifecycleStatus === "baja") {
+      await db
+        .update(users)
+        .set({ activeClientId: input.clientId, updatedBy: actor, updatedAt: new Date() })
+        .where(eq(users.id, current.ownerUserId));
+
+      await db
+        .update(clientRouting)
+        .set({ routingStatus: "active", updatedBy: actor, updatedAt: new Date() })
+        .where(eq(clientRouting.clientId, input.clientId));
+
+      const activeCellId = newCellId || current.cellId;
+      if (activeCellId) {
+        await db
+          .update(cells)
+          .set({
+            currentClients: sql`${cells.currentClients} + 1`,
+            updatedBy: actor,
+            updatedAt: new Date(),
+          })
+          .where(eq(cells.id, activeCellId));
+      }
+    }
+
+    // Recuperar DTO actualizado
+    const overview = await fetchAdminTenantsOverview();
+    const updatedDto = overview.tenants.find((t) => t.id === input.clientId);
+
+    if (!updatedDto) {
+      return err("No se pudo recuperar la información del inquilino actualizado.", "READ_FAILED");
+    }
+
+    appLogger.info("[updateAdminTenant] Inquilino actualizado con éxito", {
+      clientId: input.clientId,
+      slug: updatedDto.slug,
+      actor,
+    });
+
+    return ok(updatedDto);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminTenant Failed] ${msg}`, error);
+    return err(`Error al actualizar inquilino: ${msg}`);
+  }
+}
+
+/**
+ * Realiza la baja lógica (decommissioning) de un inquilino en el plano de control (ADM-001, DAT-001).
+ * Marca el ciclo de vida como 'baja', libera el active_client_id del propietario,
+ * coloca el routing en 'readonly' y decrementa el conteo de clientes de su celda.
+ */
+export async function deleteAdminTenant(
+  clientId: string,
+  actorUserId?: string,
+): Promise<Result<{ success: boolean; clientId: string }>> {
+  const db = getDb();
+  const actor = actorUserId || "01a19874-1077-744c-8514-d4c990cd7259";
+
+  try {
+    const existing = await db
+      .select({
+        id: clients.id,
+        ownerUserId: clients.ownerUserId,
+        lifecycleStatus: clients.lifecycleStatus,
+        cellId: clientRouting.cellId,
+      })
+      .from(clients)
+      .leftJoin(clientRouting, eq(clients.id, clientRouting.clientId))
+      .where(eq(clients.id, clientId))
+      .limit(1);
+
+    if (existing.length === 0) {
+      return err("El inquilino especificado no existe.", "TENANT_NOT_FOUND");
+    }
+
+    const current = existing[0];
+
+    await db
+      .update(clients)
+      .set({
+        lifecycleStatus: "baja",
+        updatedBy: actor,
+        updatedAt: new Date(),
+      })
+      .where(eq(clients.id, clientId));
+
+    await db
+      .update(users)
+      .set({ activeClientId: null, updatedBy: actor, updatedAt: new Date() })
+      .where(eq(users.id, current.ownerUserId));
+
+    await db
+      .update(clientRouting)
+      .set({ routingStatus: "readonly", updatedBy: actor, updatedAt: new Date() })
+      .where(eq(clientRouting.clientId, clientId));
+
+    if (current.lifecycleStatus !== "baja" && current.cellId) {
+      await db
+        .update(cells)
+        .set({
+          currentClients: sql`GREATEST(0, ${cells.currentClients} - 1)`,
+          updatedBy: actor,
+          updatedAt: new Date(),
+        })
+        .where(eq(cells.id, current.cellId));
+    }
+
+    appLogger.info("[deleteAdminTenant] Inquilino dado de baja con éxito", {
+      clientId,
+      actor,
+    });
+
+    return ok({ success: true, clientId });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[deleteAdminTenant Failed] ${msg}`, error);
+    return err(`Error al dar de baja el inquilino: ${msg}`);
   }
 }
 

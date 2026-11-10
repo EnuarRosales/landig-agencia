@@ -16,7 +16,7 @@ export default function DesignSystemCatalogPage() {
   const dict = getAdminDictionary("es").designSystem;
 
   return (
-    <main className="mx-auto max-w-5xl space-y-8 p-4 md:p-8">
+    <div className="w-full space-y-8 p-4 md:px-8 md:py-6">
       <header className="border-b border-[var(--dsn-border)] pb-4">
         <div className="flex items-center gap-3">
           <div className="rounded-lg bg-[var(--dsn-accent)]/15 p-2 text-[var(--dsn-accent)]">
@@ -34,6 +34,6 @@ export default function DesignSystemCatalogPage() {
       </header>
 
       <DesignSystemPlayground />
-    </main>
+    </div>
   );
 }

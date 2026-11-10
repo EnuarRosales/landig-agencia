@@ -99,7 +99,7 @@ export function CreateTenantForm({ availablePlans, availableCells, onSuccess }: 
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-3.5 py-2 text-xs font-semibold text-black transition-opacity hover:opacity-90"
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95"
       >
         <Plus className="h-4 w-4" />
         <span>Alta Manual De Inquilino</span>
@@ -275,16 +275,16 @@ export function CreateTenantForm({ availablePlans, availableCells, onSuccess }: 
                 <button
                   type="button"
                   onClick={() => setIsOpen(false)}
-                  className="rounded-lg border border-[var(--dsn-border)] bg-transparent px-4 py-2 text-xs text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                  className="min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-transparent px-4 py-2 text-sm font-medium text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)] transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-black transition-opacity hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95 disabled:opacity-50"
                 >
-                  {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                   <span>Guardar Inquilino</span>
                 </button>
               </div>

@@ -25,7 +25,7 @@ describe("ADM-001 D-32 / CHW-001 · Vista de Chatwoot embebido same-site", () =>
     );
     expect(iframeWrapper).toBeDefined();
 
-    const iframe = (iframeWrapper?.props as { children: React.ReactElement }).children;
+    const iframe = (iframeWrapper?.props as { children: React.ReactElement<any> }).children as React.ReactElement<any>;
     expect(iframe.type).toBe("iframe");
     expect(iframe.props.title).toBe("Chatwoot Omnichannel Inbox");
     expect(iframe.props.sandbox).toContain("allow-same-origin");
@@ -43,7 +43,7 @@ describe("ADM-001 D-32 / CHW-001 · Vista de Chatwoot embebido same-site", () =>
         typeof (child.props as { className?: string })?.className === "string" &&
         ((child.props as { className?: string }).className?.includes("overflow-hidden") ?? false),
     );
-    const iframe = (iframeWrapper?.props as { children: React.ReactElement }).children;
+    const iframe = (iframeWrapper?.props as { children: React.ReactElement<any> }).children as React.ReactElement<any>;
     expect(iframe.props.src).toContain("/super_admin");
   });
 });

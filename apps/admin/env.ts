@@ -17,6 +17,9 @@ export const env = createEnv({
     REDIS_PASSWORD: z.string().optional(),
     CHATWOOT_BASE_URL: z.string().url().default("http://localhost:3000"),
     CHATWOOT_PLATFORM_TOKEN: z.string().optional(),
+    IMGPROXY_KEY: z.string().optional(),
+    IMGPROXY_SALT: z.string().optional(),
+    IMGPROXY_BASE_URL: z.string().optional(),
   },
   client: {
     NEXT_PUBLIC_ADMIN_URL: z
@@ -45,6 +48,9 @@ export const env = createEnv({
     REDIS_PASSWORD: process.env.REDIS_PASSWORD,
     CHATWOOT_BASE_URL: process.env.CHATWOOT_BASE_URL,
     CHATWOOT_PLATFORM_TOKEN: process.env.CHATWOOT_PLATFORM_TOKEN,
+    IMGPROXY_KEY: process.env.IMGPROXY_KEY,
+    IMGPROXY_SALT: process.env.IMGPROXY_SALT,
+    IMGPROXY_BASE_URL: process.env.IMGPROXY_BASE_URL,
     NEXT_PUBLIC_ADMIN_URL: process.env.NEXT_PUBLIC_ADMIN_URL,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_CHATWOOT_URL: process.env.NEXT_PUBLIC_CHATWOOT_URL,

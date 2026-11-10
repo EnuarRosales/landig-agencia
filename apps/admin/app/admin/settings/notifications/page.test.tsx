@@ -82,7 +82,7 @@ describe("NTF-001 · Administración de Correos, SMTP y Plantillas Vinculadas", 
     const header = children[0] as React.ReactElement;
     expect(header.type).toBe("header");
 
-    const view = children[1] as React.ReactElement;
+    const view = children[1] as React.ReactElement<any>;
     expect(view.type).toBe(NotificationsView);
     expect(view.props.initialData.provider?.name).toBe("Pasarela SMTP Hostinger Mocter");
     expect(view.props.initialData.senders.length).toBe(2);

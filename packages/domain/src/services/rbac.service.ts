@@ -6,6 +6,8 @@ import {
   systemRoles,
   systemPermissions,
   rolePermissions,
+  clients,
+  cells,
   type User,
   type SystemRole,
   type SystemPermission,
@@ -412,7 +414,7 @@ export async function fetchRbacOverview(): Promise<RbacOverviewDto> {
       }
     }
 
-    // 4. Consultar Usuarios con sus Roles
+    // 4. Consultar Usuarios con sus Roles, Clientes y Celdas
     const allUsers = await db
       .select({
         id: users.id,
@@ -420,10 +422,33 @@ export async function fetchRbacOverview(): Promise<RbacOverviewDto> {
         displayName: users.displayName,
         status: users.status,
         identityLocation: users.identityLocation,
+        activeClientId: users.activeClientId,
         createdAt: users.createdAt,
       })
       .from(users)
       .orderBy(asc(users.email));
+
+    const activeClients = await db
+      .select({
+        id: clients.id,
+        ownerUserId: clients.ownerUserId,
+      })
+      .from(clients)
+      .where(sql`${clients.lifecycleStatus} <> 'baja'`);
+
+    const ownerUserIds = new Set(activeClients.map((c) => c.ownerUserId));
+
+    const allCells = await db
+      .select({
+        id: cells.id,
+        code: cells.code,
+      })
+      .from(cells);
+
+    const cellCodeMap = new Map<string, string>();
+    for (const c of allCells) {
+      cellCodeMap.set(c.id, c.code);
+    }
 
     const activeRoles = await db
       .select()
@@ -441,15 +466,38 @@ export async function fetchRbacOverview(): Promise<RbacOverviewDto> {
       roleUserCountMap.set(ur.role, (roleUserCountMap.get(ur.role) || 0) + 1);
     }
 
-    const usersDto: UserWithRolesDto[] = allUsers.map((u) => ({
-      id: u.id,
-      email: u.email,
-      displayName: u.displayName,
-      status: u.status,
-      identityLocation: u.identityLocation,
-      roles: userRolesMap.get(u.id) || ["Sin Rol"],
-      createdAt: u.createdAt ? new Date(u.createdAt).toISOString().split("T")[0] : "—",
-    }));
+    const usersDto: UserWithRolesDto[] = allUsers.map((u) => {
+      const platformRoles = userRolesMap.get(u.id) || [];
+      const roles: string[] = [...platformRoles];
+
+      if (ownerUserIds.has(u.id)) {
+        if (!roles.includes("tenant_owner")) {
+          roles.push("tenant_owner");
+          roleUserCountMap.set("tenant_owner", (roleUserCountMap.get("tenant_owner") || 0) + 1);
+        }
+      } else if (u.activeClientId) {
+        if (!roles.includes("tenant_agent")) {
+          roles.push("tenant_agent");
+          roleUserCountMap.set("tenant_agent", (roleUserCountMap.get("tenant_agent") || 0) + 1);
+        }
+      }
+
+      if (roles.length === 0) {
+        roles.push("Sin Rol");
+      }
+
+      const identityLocation = cellCodeMap.get(u.identityLocation) || u.identityLocation;
+
+      return {
+        id: u.id,
+        email: u.email,
+        displayName: u.displayName,
+        status: u.status,
+        identityLocation,
+        roles,
+        createdAt: u.createdAt ? new Date(u.createdAt).toISOString().split("T")[0] : "—",
+      };
+    });
 
     // 5. Consultar Roles y sus Permisos
     const allRoles = await db.select().from(systemRoles).orderBy(asc(systemRoles.name));

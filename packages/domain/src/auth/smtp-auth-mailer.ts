@@ -266,7 +266,7 @@ export function createDefaultAuthMailer(): IAuthMailer {
   };
 }
 
-import { getActiveSmtpConfig } from "../services/admin-dashboard.service";
+import { getActiveSmtpConfig, sendSystemNotificationEmail } from "../services/admin-dashboard.service";
 
 /**
  * Despachador de auth que obtiene la configuración SMTP desde la base de datos
@@ -277,34 +277,34 @@ export class DbBackedAuthMailer implements IAuthMailer {
     const cfg = await getActiveSmtpConfig();
     if (!cfg || !cfg.host || !cfg.user) return null;
     const nodemailer = await import("nodemailer");
+    const isExplicitSecure = cfg.port === 465 || (cfg.secure && cfg.port !== 587);
     const transporter = nodemailer.createTransport({
       host: cfg.host,
       port: cfg.port,
-      secure: cfg.secure || cfg.port === 465,
+      secure: isExplicitSecure,
       auth: { user: cfg.user, pass: cfg.password },
-        tls: { rejectUnauthorized: false },
+      tls: {
+        rejectUnauthorized: false,
+        servername: cfg.host,
+      },
     });
     return { transporter, from: cfg.from || cfg.user };
   }
 
   async sendVerificationEmail(to: string, rawToken: string, name?: string): Promise<void> {
-    const info = await this.getTransporter();
-    if (!info) {
-      // fallback log
-      const { appLogger } = await import("../utils/logger");
-      appLogger.info("[AuthMailer] SMTP de BD no configurado, omitiendo envío", { to });
-      return;
-    }
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
     const verificationUrl = `${baseUrl.replace(/\/+$/, "")}/auth/email/verify/confirm?token=${rawToken}`;
     const recipientName = name ? name.trim() : "Estimado(a) usuario(a)";
+
     try {
-      await info.transporter.sendMail({
-        from: `"Mocter" <${info.from}>`,
-        to,
-        subject: "Verifica tu cuenta en Mocter",
-        text: `Hola ${recipientName}, verifica tu cuenta: ${verificationUrl}`,
-        html: `<p>Hola ${recipientName}, verifica tu cuenta en <a href="${verificationUrl}">este enlace</a>.</p>`,
+      await sendSystemNotificationEmail({
+        eventKey: "auth.verify_email",
+        recipient: to,
+        variables: {
+          user_name: recipientName,
+          verify_url: verificationUrl,
+          expires_minutes: "30",
+        },
       });
     } catch (e) {
       const { appLogger } = await import("../utils/logger");
@@ -313,17 +313,19 @@ export class DbBackedAuthMailer implements IAuthMailer {
   }
 
   async sendPasswordSetupEmail(to: string, rawToken: string, name?: string): Promise<void> {
-    const info = await this.getTransporter();
-    if (!info) return;
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
     const setupUrl = `${baseUrl.replace(/\/+$/, "")}/auth/password/setup?token=${rawToken}`;
+    const recipientName = name ? name.trim() : "Estimado(a) usuario(a)";
+
     try {
-      await info.transporter.sendMail({
-        from: `"Mocter" <${info.from}>`,
-        to,
-        subject: "Establece tu contraseña en Mocter",
-        text: `Hola ${name || ""}, establece tu contraseña: ${setupUrl}`,
-        html: `<p>Hola ${name || ""}, establece tu contraseña en <a href="${setupUrl}">este enlace</a>.</p>`,
+      await sendSystemNotificationEmail({
+        eventKey: "auth.reset_password",
+        recipient: to,
+        variables: {
+          user_name: recipientName,
+          reset_url: setupUrl,
+          expires_minutes: "1440",
+        },
       });
     } catch (e) {
       const { appLogger } = await import("../utils/logger");
@@ -332,17 +334,19 @@ export class DbBackedAuthMailer implements IAuthMailer {
   }
 
   async sendPasswordResetEmail(to: string, rawToken: string, name?: string): Promise<void> {
-    const info = await this.getTransporter();
-    if (!info) return;
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
     const resetUrl = `${baseUrl.replace(/\/+$/, "")}/auth/password/reset?token=${rawToken}`;
+    const recipientName = name ? name.trim() : "Estimado(a) usuario(a)";
+
     try {
-      await info.transporter.sendMail({
-        from: `"Mocter" <${info.from}>`,
-        to,
-        subject: "Restablece tu contraseña en Mocter",
-        text: `Hola ${name || ""}, restablece tu contraseña: ${resetUrl}`,
-        html: `<p>Hola ${name || ""}, restablece tu contraseña en <a href="${resetUrl}">este enlace</a>.</p>`,
+      await sendSystemNotificationEmail({
+        eventKey: "auth.reset_password",
+        recipient: to,
+        variables: {
+          user_name: recipientName,
+          reset_url: resetUrl,
+          expires_minutes: "30",
+        },
       });
     } catch (e) {
       const { appLogger } = await import("../utils/logger");

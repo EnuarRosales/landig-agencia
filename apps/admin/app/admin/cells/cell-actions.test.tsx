@@ -10,6 +10,7 @@ import type { AdminCellDto } from "@mocter/domain";
 const mockCell: AdminCellDto = {
   id: "cell-01-uuid",
   code: "cell-01",
+  hostId: null,
   tier: "standard",
   status: "active",
   topologyType: "remote_vps",
@@ -49,8 +50,20 @@ describe("apps/admin · CellActions Component", () => {
     expect(screen.getByRole("button", { name: /manifiesto/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /reverificar/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /drenar/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /migrar/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /editar/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /eliminar/i })).toBeDefined();
+  });
+
+  it("abre el modal de confirmación de migración de esquema al presionar Migrar", () => {
+    render(<CellActions cell={mockCell} apiUrl="http://localhost:3001/api" onRefresh={onRefresh} />);
+
+    const migrateButton = screen.getByRole("button", { name: /migrar/i });
+    fireEvent.click(migrateButton);
+
+    expect(screen.getByRole("dialog")).toBeDefined();
+    expect(screen.getByText(/Ejecutar Migraciones De Esquema/i)).toBeDefined();
+    expect(screen.getByRole("button", { name: /Ejecutar Migración/i })).toBeDefined();
   });
 
   it("renderiza botón 'Verificar Conexión' cuando la célula está en draft o error_connection", () => {

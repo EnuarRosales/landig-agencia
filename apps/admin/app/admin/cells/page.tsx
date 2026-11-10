@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Server, Database, Activity, ShieldCheck } from "lucide-react";
+import { Server, Database, Activity, ShieldCheck, GitBranch, CheckCircle2 } from "lucide-react";
 import type { AdminCellDto, CellHostDto } from "@mocter/domain";
 import { CreateCellForm } from "./create-cell-form";
 import { CellActions } from "./cell-actions";
@@ -76,6 +76,26 @@ async function fetchCellHosts(): Promise<{ ok: boolean; data?: CellHostDto[]; er
   }
 }
 
+async function fetchCellMigrationStatus(
+  apiUrl: string,
+  cellId: string,
+): Promise<{ ok: boolean; data?: { appliedCount: number; pendingCount: number } }> {
+  try {
+    const res = await adminFetch(`${apiUrl}/admin/cells/${cellId}/migrations`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!res.ok) {
+      return { ok: false };
+    }
+
+    return await res.json();
+  } catch {
+    return { ok: false };
+  }
+}
+
 /**
  * Vista de administración de celdas de datos multi-inquilino (DAT-001 §3.3).
  *
@@ -85,8 +105,25 @@ async function fetchCellHosts(): Promise<{ ok: boolean; data?: CellHostDto[]; er
 export default function AdminCellsPage(): React.JSX.Element {
   const [cellsList, setCellsList] = useState<AdminCellDto[]>([]);
   const [hostsList, setHostsList] = useState<CellHostDto[]>([]);
+  const [migrationsMap, setMigrationsMap] = useState<Record<string, { appliedCount: number; pendingCount: number }>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const loadMigrations = async (cells: AdminCellDto[]) => {
+    const map: Record<string, { appliedCount: number; pendingCount: number }> = {};
+    await Promise.allSettled(
+      cells.map(async (c) => {
+        const mRes = await fetchCellMigrationStatus(getApiUrl(), c.id);
+        if (mRes.ok && mRes.data) {
+          map[c.id] = {
+            appliedCount: mRes.data.appliedCount,
+            pendingCount: mRes.data.pendingCount,
+          };
+        }
+      }),
+    );
+    setMigrationsMap(map);
+  };
 
   const refresh = async () => {
     setLoading(true);
@@ -96,7 +133,9 @@ export default function AdminCellsPage(): React.JSX.Element {
       if (!cellsRes.ok) {
         setError(cellsRes.error || "Error desconocido");
       } else {
-        setCellsList(cellsRes.data || []);
+        const cells = cellsRes.data || [];
+        setCellsList(cells);
+        await loadMigrations(cells);
       }
       if (hostsRes.ok && hostsRes.data) {
         setHostsList(hostsRes.data);
@@ -119,7 +158,11 @@ export default function AdminCellsPage(): React.JSX.Element {
         if (!cellsRes.ok) {
           setError(cellsRes.error || "Error desconocido");
         } else {
-          setCellsList(cellsRes.data || []);
+          const cells = cellsRes.data || [];
+          setCellsList(cells);
+          if (!cancelled) {
+            await loadMigrations(cells);
+          }
         }
         if (hostsRes.ok && hostsRes.data) {
           setHostsList(hostsRes.data);
@@ -149,7 +192,7 @@ export default function AdminCellsPage(): React.JSX.Element {
   );
 
   return (
-    <div className="space-y-6 p-4 md:p-8 max-w-7xl mx-auto">
+    <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
       {/* Encabezado */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--dsn-border)] pb-5">
         <div>
@@ -263,6 +306,7 @@ export default function AdminCellsPage(): React.JSX.Element {
                   <th className="py-3 px-4 font-semibold">Capacidad</th>
                   <th className="py-3 px-4 font-semibold">Región</th>
                   <th className="py-3 px-4 font-semibold">Estado</th>
+                  <th className="py-3 px-4 font-semibold">Esquema</th>
                   <th className="py-3 px-4 font-semibold text-right">Acciones</th>
                 </tr>
               </thead>
@@ -339,6 +383,23 @@ export default function AdminCellsPage(): React.JSX.Element {
                         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-mono font-medium ${getStatusBadge(c.status)}`}>
                           <Activity className="h-3 w-3" /> {c.status}
                         </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {migrationsMap[c.id] ? (
+                          migrationsMap[c.id].pendingCount > 0 ? (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-mono font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                              <GitBranch className="h-3 w-3" /> Actualización Pendiente ({migrationsMap[c.id].pendingCount})
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <CheckCircle2 className="h-3 w-3" /> Al día
+                            </span>
+                          )
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-mono font-medium bg-zinc-500/10 text-zinc-400 border border-zinc-500/20">
+                            Verificando...
+                          </span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <CellActions cell={c} hosts={hostsList} apiUrl={getApiUrl()} onRefresh={refresh} />

@@ -2,6 +2,8 @@ import { eq, and, sql, isNull, desc } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 import { err, ok, type Result } from "../types/result";
 import { getDb } from "../db/client";
+import { withTenantCellTransaction } from "../db/cell-client";
+import type { TenantCellTxRunner } from "./tenant-products-and-media.service";
 import { clients } from "../db/schemas/admin/clients";
 import { plans } from "../db/schemas/admin/plans";
 import { users } from "../db/schemas/admin/users";
@@ -432,13 +434,16 @@ export class InMemoryTenantContactsAndUsersRepository
 export class DrizzleTenantContactsAndUsersRepository
   implements ITenantContactsAndUsersRepository
 {
-  constructor(private readonly dbProvider: () => any = () => getDb()) {}
+  constructor(
+    private readonly portalDb: any = getDb(),
+    private readonly cellTxRunner: TenantCellTxRunner = withTenantCellTransaction,
+  ) {}
 
   async getPlanQuota(
     clientId: string,
     dimension: PlanLimitDimensionKey,
   ): Promise<{ mode: "LIMITED" | "UNLIMITED"; value: number | null }> {
-    const db = this.dbProvider();
+    const db = this.portalDb;
     const now = new Date();
 
     const [override] = await db
@@ -488,51 +493,53 @@ export class DrizzleTenantContactsAndUsersRepository
   }
 
   async countActiveContacts(clientId: string): Promise<number> {
-    const db = this.dbProvider();
-    const [row] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(cellContacts)
-      .where(and(eq(cellContacts.clientId, clientId), isNull(cellContacts.deletedAt)));
-    return row?.count ?? 0;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const [row] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(cellContacts)
+        .where(and(eq(cellContacts.clientId, clientId), isNull(cellContacts.deletedAt)));
+      return row?.count ?? 0;
+    });
   }
 
   async findExistingContact(
     clientId: string,
     criteria: { chatwootContactId?: number | null; email?: string | null; phoneMobile?: string | null },
   ): Promise<CellContact | null> {
-    const db = this.dbProvider();
-    const conditions = [eq(cellContacts.clientId, clientId), isNull(cellContacts.deletedAt)];
+    return this.cellTxRunner(clientId, async (tx) => {
+      const conditions = [eq(cellContacts.clientId, clientId), isNull(cellContacts.deletedAt)];
 
-    if (criteria.chatwootContactId) {
-      const [byCw] = await db
-        .select()
-        .from(cellContacts)
-        .where(and(...conditions, eq(cellContacts.chatwootContactId, criteria.chatwootContactId)))
-        .limit(1);
-      if (byCw) return byCw;
-    }
+      if (criteria.chatwootContactId) {
+        const [byCw] = await tx
+          .select()
+          .from(cellContacts)
+          .where(and(...conditions, eq(cellContacts.chatwootContactId, criteria.chatwootContactId)))
+          .limit(1);
+        if (byCw) return byCw;
+      }
 
-    if (criteria.email) {
-      const normEmail = criteria.email.trim().toLowerCase();
-      const [byEmail] = await db
-        .select()
-        .from(cellContacts)
-        .where(and(...conditions, sql`lower(${cellContacts.email}) = ${normEmail}`))
-        .limit(1);
-      if (byEmail) return byEmail;
-    }
+      if (criteria.email) {
+        const normEmail = criteria.email.trim().toLowerCase();
+        const [byEmail] = await tx
+          .select()
+          .from(cellContacts)
+          .where(and(...conditions, sql`lower(${cellContacts.email}) = ${normEmail}`))
+          .limit(1);
+        if (byEmail) return byEmail;
+      }
 
-    if (criteria.phoneMobile) {
-      const normPhone = criteria.phoneMobile.trim();
-      const [byPhone] = await db
-        .select()
-        .from(cellContacts)
-        .where(and(...conditions, eq(cellContacts.phoneMobile, normPhone)))
-        .limit(1);
-      if (byPhone) return byPhone;
-    }
+      if (criteria.phoneMobile) {
+        const normPhone = criteria.phoneMobile.trim();
+        const [byPhone] = await tx
+          .select()
+          .from(cellContacts)
+          .where(and(...conditions, eq(cellContacts.phoneMobile, normPhone)))
+          .limit(1);
+        if (byPhone) return byPhone;
+      }
 
-    return null;
+      return null;
+    });
   }
 
   async createContact(
@@ -540,36 +547,37 @@ export class DrizzleTenantContactsAndUsersRepository
     input: TenantContactInput,
     actor: string,
   ): Promise<CellContact> {
-    const db = this.dbProvider();
-    const [inserted] = await db
-      .insert(cellContacts)
-      .values({
-        clientId,
-        fullName: input.fullName,
-        documentType: input.documentType ?? null,
-        documentNumber: input.documentNumber ?? null,
-        email: input.email ? input.email.trim().toLowerCase() : null,
-        phoneMobile: input.phoneMobile ? input.phoneMobile.trim() : null,
-        phoneLandline: input.phoneLandline ?? null,
-        country: input.country ?? null,
-        state: input.state ?? null,
-        city: input.city ?? null,
-        addressLine: input.addressLine ?? null,
-        postalCode: input.postalCode ?? null,
-        source: input.source ?? "manual",
-        channel: input.channel ?? null,
-        chatwootContactId: input.chatwootContactId ?? null,
-        assignedUserId: input.assignedUserId ?? null,
-        stage: input.stage ?? "new",
-        tags: input.tags ?? [],
-        notes: input.notes ?? null,
-        firstContactedAt: new Date(),
-        lastSeenAt: new Date(),
-        createdBy: actor,
-        updatedBy: actor,
-      })
-      .returning();
-    return inserted;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const [inserted] = await tx
+        .insert(cellContacts)
+        .values({
+          clientId,
+          fullName: input.fullName,
+          documentType: input.documentType ?? null,
+          documentNumber: input.documentNumber ?? null,
+          email: input.email ? input.email.trim().toLowerCase() : null,
+          phoneMobile: input.phoneMobile ? input.phoneMobile.trim() : null,
+          phoneLandline: input.phoneLandline ?? null,
+          country: input.country ?? null,
+          state: input.state ?? null,
+          city: input.city ?? null,
+          addressLine: input.addressLine ?? null,
+          postalCode: input.postalCode ?? null,
+          source: input.source ?? "manual",
+          channel: input.channel ?? null,
+          chatwootContactId: input.chatwootContactId ?? null,
+          assignedUserId: input.assignedUserId ?? null,
+          stage: input.stage ?? "new",
+          tags: input.tags ?? [],
+          notes: input.notes ?? null,
+          firstContactedAt: new Date(),
+          lastSeenAt: new Date(),
+          createdBy: actor,
+          updatedBy: actor,
+        })
+        .returning();
+      return inserted;
+    });
   }
 
   async updateContact(
@@ -578,76 +586,82 @@ export class DrizzleTenantContactsAndUsersRepository
     updates: Partial<TenantContactInput>,
     actor: string,
   ): Promise<CellContact | null> {
-    const db = this.dbProvider();
-    const [updated] = await db
-      .update(cellContacts)
-      .set({
-        ...(updates.fullName ? { fullName: updates.fullName } : {}),
-        ...(updates.email !== undefined ? { email: updates.email ? updates.email.trim().toLowerCase() : null } : {}),
-        ...(updates.phoneMobile !== undefined ? { phoneMobile: updates.phoneMobile ? updates.phoneMobile.trim() : null } : {}),
-        ...(updates.phoneLandline !== undefined ? { phoneLandline: updates.phoneLandline } : {}),
-        ...(updates.documentType !== undefined ? { documentType: updates.documentType } : {}),
-        ...(updates.documentNumber !== undefined ? { documentNumber: updates.documentNumber } : {}),
-        ...(updates.country !== undefined ? { country: updates.country } : {}),
-        ...(updates.state !== undefined ? { state: updates.state } : {}),
-        ...(updates.city !== undefined ? { city: updates.city } : {}),
-        ...(updates.addressLine !== undefined ? { addressLine: updates.addressLine } : {}),
-        ...(updates.postalCode !== undefined ? { postalCode: updates.postalCode } : {}),
-        ...(updates.stage !== undefined ? { stage: updates.stage } : {}),
-        ...(updates.tags !== undefined ? { tags: updates.tags } : {}),
-        ...(updates.notes !== undefined ? { notes: updates.notes } : {}),
-        ...(updates.chatwootContactId !== undefined ? { chatwootContactId: updates.chatwootContactId } : {}),
-        ...(updates.assignedUserId !== undefined ? { assignedUserId: updates.assignedUserId } : {}),
-        updatedAt: new Date(),
-        updatedBy: actor,
-      })
-      .where(and(eq(cellContacts.clientId, clientId), eq(cellContacts.id, contactId), isNull(cellContacts.deletedAt)))
-      .returning();
-    return updated ?? null;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const [updated] = await tx
+        .update(cellContacts)
+        .set({
+          ...(updates.fullName ? { fullName: updates.fullName } : {}),
+          ...(updates.email !== undefined ? { email: updates.email ? updates.email.trim().toLowerCase() : null } : {}),
+          ...(updates.phoneMobile !== undefined ? { phoneMobile: updates.phoneMobile ? updates.phoneMobile.trim() : null } : {}),
+          ...(updates.phoneLandline !== undefined ? { phoneLandline: updates.phoneLandline } : {}),
+          ...(updates.documentType !== undefined ? { documentType: updates.documentType } : {}),
+          ...(updates.documentNumber !== undefined ? { documentNumber: updates.documentNumber } : {}),
+          ...(updates.country !== undefined ? { country: updates.country } : {}),
+          ...(updates.state !== undefined ? { state: updates.state } : {}),
+          ...(updates.city !== undefined ? { city: updates.city } : {}),
+          ...(updates.addressLine !== undefined ? { addressLine: updates.addressLine } : {}),
+          ...(updates.postalCode !== undefined ? { postalCode: updates.postalCode } : {}),
+          ...(updates.stage !== undefined ? { stage: updates.stage } : {}),
+          ...(updates.tags !== undefined ? { tags: updates.tags } : {}),
+          ...(updates.notes !== undefined ? { notes: updates.notes } : {}),
+          ...(updates.chatwootContactId !== undefined ? { chatwootContactId: updates.chatwootContactId } : {}),
+          ...(updates.assignedUserId !== undefined ? { assignedUserId: updates.assignedUserId } : {}),
+          updatedAt: new Date(),
+          updatedBy: actor,
+        })
+        .where(and(eq(cellContacts.clientId, clientId), eq(cellContacts.id, contactId), isNull(cellContacts.deletedAt)))
+        .returning();
+      return updated ?? null;
+    });
   }
 
   async deleteContact(clientId: string, contactId: string, actor: string): Promise<boolean> {
-    const db = this.dbProvider();
-    const [updated] = await db
-      .update(cellContacts)
-      .set({
-        deletedAt: new Date(),
-        deletedBy: actor,
-        updatedAt: new Date(),
-        updatedBy: actor,
-      })
-      .where(and(eq(cellContacts.clientId, clientId), eq(cellContacts.id, contactId), isNull(cellContacts.deletedAt)))
-      .returning({ id: cellContacts.id });
-    return Boolean(updated);
+    return this.cellTxRunner(clientId, async (tx) => {
+      const [updated] = await tx
+        .update(cellContacts)
+        .set({
+          deletedAt: new Date(),
+          deletedBy: actor,
+          updatedAt: new Date(),
+          updatedBy: actor,
+        })
+        .where(and(eq(cellContacts.clientId, clientId), eq(cellContacts.id, contactId), isNull(cellContacts.deletedAt)))
+        .returning({ id: cellContacts.id });
+      return Boolean(updated);
+    });
   }
 
   async listContacts(clientId: string): Promise<CellContact[]> {
-    const db = this.dbProvider();
-    return await db
-      .select()
-      .from(cellContacts)
-      .where(and(eq(cellContacts.clientId, clientId), isNull(cellContacts.deletedAt)))
-      .orderBy(desc(cellContacts.createdAt));
+    return this.cellTxRunner(clientId, async (tx) => {
+      return await tx
+        .select()
+        .from(cellContacts)
+        .where(and(eq(cellContacts.clientId, clientId), isNull(cellContacts.deletedAt)))
+        .orderBy(desc(cellContacts.createdAt));
+    });
   }
 
   async getContactById(clientId: string, contactId: string): Promise<CellContact | null> {
-    const db = this.dbProvider();
-    const [found] = await db
-      .select()
-      .from(cellContacts)
-      .where(and(eq(cellContacts.clientId, clientId), eq(cellContacts.id, contactId), isNull(cellContacts.deletedAt)))
-      .limit(1);
-    return found ?? null;
+    return this.cellTxRunner(clientId, async (tx) => {
+      const [found] = await tx
+        .select()
+        .from(cellContacts)
+        .where(and(eq(cellContacts.clientId, clientId), eq(cellContacts.id, contactId), isNull(cellContacts.deletedAt)))
+        .limit(1);
+      return found ?? null;
+    });
   }
 
   async countTenantUsers(clientId: string): Promise<{ activeUsers: number; pendingInvitations: number }> {
-    const db = this.dbProvider();
-    const [userRow] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(cellTenantUsers)
-      .where(and(eq(cellTenantUsers.clientId, clientId), eq(cellTenantUsers.status, "active")));
+    const userRow = await this.cellTxRunner(clientId, async (tx) => {
+      const [row] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(cellTenantUsers)
+        .where(and(eq(cellTenantUsers.clientId, clientId), eq(cellTenantUsers.status, "active")));
+      return row;
+    });
 
-    const [invRow] = await db
+    const [invRow] = await this.portalDb
       .select({ count: sql<number>`count(*)::int` })
       .from(tenantInvitations)
       .where(
@@ -675,7 +689,7 @@ export class DrizzleTenantContactsAndUsersRepository
     },
     actor: string,
   ): Promise<TenantInvitationRecord> {
-    const db = this.dbProvider();
+    const db = this.portalDb;
     const [inserted] = await db
       .insert(tenantInvitations)
       .values({
@@ -704,7 +718,7 @@ export class DrizzleTenantContactsAndUsersRepository
   }
 
   async listInvitations(clientId: string): Promise<TenantInvitationRecord[]> {
-    const db = this.dbProvider();
+    const db = this.portalDb;
     const rows = await db
       .select()
       .from(tenantInvitations)
@@ -726,7 +740,7 @@ export class DrizzleTenantContactsAndUsersRepository
   }
 
   async findInvitationByTokenHash(tokenHash: Buffer): Promise<TenantInvitationRecord | null> {
-    const db = this.dbProvider();
+    const db = this.portalDb;
     const [row] = await db
       .select()
       .from(tenantInvitations)
@@ -749,7 +763,7 @@ export class DrizzleTenantContactsAndUsersRepository
   }
 
   async revokeInvitation(clientId: string, invitationId: string, actor: string): Promise<boolean> {
-    const db = this.dbProvider();
+    const db = this.portalDb;
     const [updated] = await db
       .update(tenantInvitations)
       .set({
@@ -774,7 +788,7 @@ export class DrizzleTenantContactsAndUsersRepository
     userId: string;
     acceptedAt: Date;
   }): Promise<boolean> {
-    const db = this.dbProvider();
+    const db = this.portalDb;
     const [updated] = await db
       .update(tenantInvitations)
       .set({
@@ -801,70 +815,74 @@ export class DrizzleTenantContactsAndUsersRepository
     role: "tenant_agent" | "tenant_owner";
     invitedBy?: string | null;
   }): Promise<TenantMemberRecord> {
-    const db = this.dbProvider();
-    const [inserted] = await db
-      .insert(cellTenantUsers)
-      .values({
-        clientId: params.clientId,
-        userId: params.userId,
-        role: params.role,
-        status: "active",
-        invitedBy: params.invitedBy ?? null,
-      })
-      .returning();
+    return this.cellTxRunner(params.clientId, async (tx) => {
+      const [inserted] = await tx
+        .insert(cellTenantUsers)
+        .values({
+          clientId: params.clientId,
+          userId: params.userId,
+          role: params.role,
+          status: "active",
+          invitedBy: params.invitedBy ?? null,
+        })
+        .returning();
 
-    return {
-      id: inserted.id,
-      clientId: inserted.clientId,
-      userId: inserted.userId,
-      role: inserted.role as any,
-      status: inserted.status as any,
-      joinedAt: inserted.joinedAt,
-    };
+      return {
+        id: inserted.id,
+        clientId: inserted.clientId,
+        userId: inserted.userId,
+        role: inserted.role as any,
+        status: inserted.status as any,
+        joinedAt: inserted.joinedAt,
+      };
+    });
   }
 
   async listTenantMembers(clientId: string): Promise<TenantMemberRecord[]> {
-    const db = this.dbProvider();
-    const rows = await db
-      .select()
-      .from(cellTenantUsers)
-      .where(and(eq(cellTenantUsers.clientId, clientId), eq(cellTenantUsers.status, "active")))
-      .orderBy(cellTenantUsers.joinedAt);
+    return this.cellTxRunner(clientId, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(cellTenantUsers)
+        .where(and(eq(cellTenantUsers.clientId, clientId), eq(cellTenantUsers.status, "active")))
+        .orderBy(cellTenantUsers.joinedAt);
 
-    return rows.map((r: any) => ({
-      id: r.id,
-      clientId: r.clientId,
-      userId: r.userId,
-      role: r.role,
-      status: r.status,
-      joinedAt: r.joinedAt,
-      leftAt: r.leftAt,
-    }));
+      return rows.map((r: any) => ({
+        id: r.id,
+        clientId: r.clientId,
+        userId: r.userId,
+        role: r.role,
+        status: r.status,
+        joinedAt: r.joinedAt,
+        leftAt: r.leftAt,
+      }));
+    });
   }
 
   async removeTenantMember(clientId: string, memberId: string, actor: string): Promise<boolean> {
-    const db = this.dbProvider();
-    const [updated] = await db
-      .update(cellTenantUsers)
-      .set({
-        status: "left",
-        leftAt: new Date(),
-        updatedAt: new Date(),
-        updatedBy: actor,
-      })
-      .where(
-        and(
-          eq(cellTenantUsers.clientId, clientId),
-          eq(cellTenantUsers.id, memberId),
-          eq(cellTenantUsers.status, "active"),
-        ),
-      )
-      .returning({ id: cellTenantUsers.id, userId: cellTenantUsers.userId });
+    const updated = await this.cellTxRunner(clientId, async (tx) => {
+      const [res] = await tx
+        .update(cellTenantUsers)
+        .set({
+          status: "left",
+          leftAt: new Date(),
+          updatedAt: new Date(),
+          updatedBy: actor,
+        })
+        .where(
+          and(
+            eq(cellTenantUsers.clientId, clientId),
+            eq(cellTenantUsers.id, memberId),
+            eq(cellTenantUsers.status, "active"),
+          ),
+        )
+        .returning({ id: cellTenantUsers.id, userId: cellTenantUsers.userId });
+      return res;
+    });
 
     if (!updated) return false;
 
-    // Si era el active_client_id del usuario, limpiarlo
-    await db
+    // Si era el active_client_id del usuario, limpiarlo en Router Global (db-portal)
+    await this.portalDb
       .update(users)
       .set({ activeClientId: null })
       .where(and(eq(users.id, updated.userId), eq(users.activeClientId, clientId)));
@@ -873,7 +891,7 @@ export class DrizzleTenantContactsAndUsersRepository
   }
 
   async getUserActiveClientId(userId: string): Promise<string | null> {
-    const db = this.dbProvider();
+    const db = this.portalDb;
     const [user] = await db
       .select({ activeClientId: users.activeClientId })
       .from(users)
@@ -883,7 +901,7 @@ export class DrizzleTenantContactsAndUsersRepository
   }
 
   async setUserActiveClientId(userId: string, clientId: string | null): Promise<void> {
-    const db = this.dbProvider();
+    const db = this.portalDb;
     await db
       .update(users)
       .set({ activeClientId: clientId })

@@ -715,7 +715,7 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
             ? [
                 {
                   label: "Comercio / Inquilino",
-                  value: tenantToReset.clientName || tenantToReset.clientId,
+                  value: tenantToReset.clientDisplayName || tenantToReset.clientId,
                 },
                 {
                   label: "Identificador Slug",

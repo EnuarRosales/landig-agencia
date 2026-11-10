@@ -132,3 +132,5 @@ export function createStripeWebhookHandler(
   };
 }
 
+export const POST = createStripeWebhookHandler({} as any, process.env.STRIPE_WEBHOOK_SECRET || "");
+

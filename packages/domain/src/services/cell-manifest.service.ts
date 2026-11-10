@@ -73,7 +73,9 @@ export class CellManifestService {
           resolvedProfile = host.deploymentProfile as CellDeploymentProfile;
         }
       } catch (err) {
-        appLogger.warn(`[CellManifestService.generateManifest] No se pudo resolver host ${cell.hostId}`, err);
+        appLogger.warn(`[CellManifestService.generateManifest] No se pudo resolver host ${cell.hostId}`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 

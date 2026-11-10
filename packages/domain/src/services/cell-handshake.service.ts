@@ -458,8 +458,8 @@ export class CellHandshakeService {
       return this.recordFailure(db, cell, errorMsg);
     }
 
-    // 4. Ejecutar Probes en paralelo
-    const timeoutMs = options?.timeoutMs || 5000;
+    // 4. Ejecutar Probes en paralelo (en desarrollo local toleramos compilación JIT en frío hasta 15s)
+    const timeoutMs = options?.timeoutMs || (cell.topologyType === "local_compose" ? 15000 : 5000);
     const { probeHost, probeAppUrl } = resolveLocalProbeTarget({
       topologyType: cell.topologyType,
       host: cell.pgbouncerHost,

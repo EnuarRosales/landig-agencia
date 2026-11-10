@@ -17,6 +17,7 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:e2e": "node tests/e2e/run.mjs",
     "e2e": "turbo run e2e",
     "db:generate": "pnpm --filter @mocter/domain db:generate",
     "db:migrate": "pnpm --filter @mocter/domain db:migrate",

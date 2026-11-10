@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { getDb } from "../db/client";
+import { getCellDb } from "../db/cell-client";
 import * as schema from "../db/schemas";
 import {
   cellOrders,
@@ -38,12 +38,12 @@ import { CellUnavailableError } from "./cell-auth.repository.interface";
  */
 export class DrizzleOrdersRepository implements IOrdersRepository {
   constructor(
-    private readonly dbProvider: CellDatabaseProvider = () => getDb(),
+    private readonly dbProvider: CellDatabaseProvider = (cellId?: string) => getCellDb(cellId ?? "cell-01"),
     private readonly cellHealthChecker?: CellConnectionChecker,
   ) {}
 
-  private getDbForCell(cellId: string): PostgresJsDatabase<typeof schema> {
-    return this.dbProvider(cellId);
+  private async getDbForCell(cellId: string): Promise<PostgresJsDatabase<typeof schema>> {
+    return await this.dbProvider(cellId);
   }
 
   private async ensureCellAvailable(cellId: string): Promise<void> {
@@ -61,7 +61,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     period: string,
   ): Promise<string> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
@@ -94,7 +94,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     chatwootConversationId: number,
   ): Promise<OrderWithDetails | null> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
@@ -159,7 +159,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     orderId: string,
   ): Promise<OrderWithDetails | null> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
@@ -223,7 +223,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     number: string,
   ): Promise<OrderWithDetails | null> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
@@ -287,7 +287,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     params: CreateOrderParams,
   ): Promise<OrderWithDetails> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
@@ -342,7 +342,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     carrierUpdate?: { carrierId?: string; carrierName?: string; trackingCode?: string },
   ): Promise<OrderWithDetails> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
@@ -432,7 +432,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     paymentStatus: string,
   ): Promise<CellOrder> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
@@ -466,7 +466,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     event?: Omit<NewCellOrderEvent, "clientId" | "orderId">,
   ): Promise<CellOrderReturn> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
@@ -500,7 +500,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     clientId: string,
   ): Promise<CellShippingCarrier[]> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
@@ -524,7 +524,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     carrier: Omit<NewCellShippingCarrier, "clientId">,
   ): Promise<CellShippingCarrier> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
@@ -547,7 +547,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     filters?: ListOrdersFilter,
   ): Promise<{ items: CellOrder[]; total: number }> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);
@@ -622,7 +622,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     totalReturnsCents: number;
   }> {
     await this.ensureCellAvailable(cellId);
-    const db = this.getDbForCell(cellId);
+    const db = await this.getDbForCell(cellId);
 
     return await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('app.current_client_id', ${clientId}, true)`);

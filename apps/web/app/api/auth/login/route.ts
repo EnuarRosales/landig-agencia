@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { unstable_rethrow } from "next/navigation";
-import { authService, authRateLimiter, RedisUnavailableError } from "@mocter/domain";
+import {
+  authService,
+  authRateLimiter,
+  RedisUnavailableError,
+  getClientLifecycleStatus,
+} from "@mocter/domain";
 import { isValidOrigin } from "@/lib/origin";
 import { env } from "@/env";
 import { getRequestLogger } from "@/lib/logger";
@@ -279,6 +284,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       durationMs,
     });
 
+    let lifecycleStatus: string | null = null;
+    if (result.data.clientId) {
+      try {
+        lifecycleStatus = await getClientLifecycleStatus(result.data.clientId);
+      } catch (dbErr) {
+        log.warn({
+          event: "auth.login_client_lifecycle_lookup_failed",
+          clientId: result.data.clientId,
+          err: serializeError(dbErr),
+        });
+      }
+    }
+
     const sidCookieName = "mocter_sid";
     const csrfCookieName = "mocter_csrf";
 
@@ -289,6 +307,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           user: result.data.user,
           emailVerified: result.data.emailVerified,
           clientId: result.data.clientId,
+          lifecycleStatus,
           expiresAt: result.data.expiresAt,
         },
       },
