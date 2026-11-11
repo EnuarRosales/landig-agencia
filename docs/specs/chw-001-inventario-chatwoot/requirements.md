@@ -29,7 +29,7 @@ Producir la referencia técnica verificable de Chatwoot que permita a `mocter-ad
 ### Excluye
 
 - Modificar Chatwoot, su esquema o sus migraciones.
-- Diseñar o implementar `mocter-admin` (corresponde a `ADM-001`).
+- Diseñar o implementar `mocter-admin` (corresponde a `ADM-001`; la estabilización de la interoperabilidad e implementación operativa y administrativa se gobierna en [CHW-002](../chw-002-estabilizacion-interoperabilidad-chatwoot/requirements.md)).
 - Documentar capacidades enterprise o sugerir su activación.
 - Decidir la estrategia de particionado de `mocter-admin` (corresponde a `ADM-001`); este inventario solo debe exponer qué tablas son `account`-scoped.
 - Ejecutar pruebas de carga o de seguridad sobre Chatwoot.
