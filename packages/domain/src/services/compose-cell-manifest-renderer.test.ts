@@ -199,7 +199,7 @@ describe("ComposeCellManifestRenderer · Perfiles de Despliegue CEL-001 §3.2 (C
 
     it("configura healthcheck estricto de PgBouncer con pg_isready (CEL-RF-011)", () => {
       expect(artifacts.dockerComposeContent).toContain(
-        'test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432"]'
+        'test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U $$POSTGRES_USER -d $$POSTGRES_DB"]'
       );
     });
 

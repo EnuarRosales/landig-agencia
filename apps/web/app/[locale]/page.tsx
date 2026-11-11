@@ -13,10 +13,21 @@ import { Footer } from "@/components/sections/footer";
 import { WhatsappFab } from "@/components/sections/whatsapp-fab";
 import { ServiceWorkerRegistrar } from "@/components/service-worker-registrar";
 import { getPublicPlans, type PublicPlanDto } from "@mocter/domain";
+import { redirect } from "next/navigation";
 
 export const instant = false;
 
-export default async function LandingPage() {
+interface LandingPageProps {
+  params?: Promise<{ locale?: string }>;
+}
+
+export default async function LandingPage({ params }: LandingPageProps) {
+  if (process.env.CELL_CODE) {
+    const resolvedParams = params ? await params : undefined;
+    const locale = resolvedParams?.locale === "en" ? "en" : "es";
+    redirect(`/${locale}/login`);
+  }
+
   let publicPlans: PublicPlanDto[] = [];
   try {
     publicPlans = await getPublicPlans();
