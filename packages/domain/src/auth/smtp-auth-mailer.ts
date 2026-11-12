@@ -297,7 +297,7 @@ export class DbBackedAuthMailer implements IAuthMailer {
     const recipientName = name ? name.trim() : "Estimado(a) usuario(a)";
 
     try {
-      await sendSystemNotificationEmail({
+      const res = await sendSystemNotificationEmail({
         eventKey: "auth.verify_email",
         recipient: to,
         variables: {
@@ -306,6 +306,14 @@ export class DbBackedAuthMailer implements IAuthMailer {
           expires_minutes: "30",
         },
       });
+      if (!res.success) {
+        const { appLogger } = await import("../utils/logger");
+        appLogger.warn("[AuthMailer.sendVerificationEmail] Notificación no entregada vía SMTP", {
+          recipient: to,
+          status: res.status,
+          error: res.error,
+        });
+      }
     } catch (e) {
       const { appLogger } = await import("../utils/logger");
       appLogger.error("[AuthMailer] Error enviando verificación", e);

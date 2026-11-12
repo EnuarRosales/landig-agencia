@@ -4,6 +4,9 @@ import {
   saveSystemUser,
   saveSystemRole,
   toggleRolePermission,
+  resendUserVerificationEmail,
+  sendUserPasswordResetLink,
+  toggleUserStatus,
 } from "@mocter/domain";
 
 /**
@@ -27,6 +30,49 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         displayName: body.displayName,
         role: body.role,
         status: body.status || "active",
+      });
+
+      if (!result.ok) {
+        return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, data: result.data });
+    }
+
+    if (action === "resend_verification") {
+      if (!body.userId) {
+        return NextResponse.json({ ok: false, error: "Identificador de usuario (userId) es obligatorio" }, { status: 400 });
+      }
+      const result = await resendUserVerificationEmail({
+        userId: body.userId,
+      });
+
+      if (!result.ok) {
+        return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, data: result.data });
+    }
+
+    if (action === "send_password_reset") {
+      if (!body.userId) {
+        return NextResponse.json({ ok: false, error: "Identificador de usuario (userId) es obligatorio" }, { status: 400 });
+      }
+      const result = await sendUserPasswordResetLink({
+        userId: body.userId,
+      });
+
+      if (!result.ok) {
+        return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, data: result.data });
+    }
+
+    if (action === "toggle_status") {
+      if (!body.userId || !body.status) {
+        return NextResponse.json({ ok: false, error: "userId y status ('active' | 'disabled') son obligatorios" }, { status: 400 });
+      }
+      const result = await toggleUserStatus({
+        userId: body.userId,
+        status: body.status,
       });
 
       if (!result.ok) {

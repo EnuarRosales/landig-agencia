@@ -1699,9 +1699,12 @@ function encryptSmtpSecret(providerName: string, plainSecret: string): { ciphert
 }
 
 function decryptSmtpSecret(providerName: string, ciphertext: Buffer, keyId: string): string {
-  const masterKey = createHash("sha256")
-    .update(process.env.ENCRYPTION_KEY || process.env.CHATWOOT_SSO_SECRET || "mocter-saas-platform-secure-key-32b")
-    .digest();
+  const candidateKeys = [
+    process.env.ENCRYPTION_KEY,
+    "mocter-saas-platform-secure-key-32b",
+    process.env.CHATWOOT_SSO_SECRET,
+  ].filter((k): k is string => Boolean(k && k.trim() !== ""));
+
   const iv = ciphertext.subarray(0, 12);
   const tag = ciphertext.subarray(12, 28);
   const enc = ciphertext.subarray(28);
@@ -1710,17 +1713,21 @@ function decryptSmtpSecret(providerName: string, ciphertext: Buffer, keyId: stri
     Buffer.from(`smtp_provider:${providerName}:k1`, "utf8"),
     Buffer.from(`smtp_provider:${providerName}:${keyId}`, "utf8"),
   ];
-  for (const aad of aads) {
-    try {
-      const decipher = createDecipheriv("aes-256-gcm", masterKey, iv);
-      decipher.setAAD(aad);
-      decipher.setAuthTag(tag);
-      return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
-    } catch {
-      // try next
+
+  for (const rawKey of candidateKeys) {
+    const masterKey = createHash("sha256").update(rawKey).digest();
+    for (const aad of aads) {
+      try {
+        const decipher = createDecipheriv("aes-256-gcm", masterKey, iv);
+        decipher.setAAD(aad);
+        decipher.setAuthTag(tag);
+        return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
+      } catch {
+        // intentar con siguiente AAD / clave
+      }
     }
   }
-  throw new Error("No se pudo descifrar la contraseña SMTP");
+  throw new Error("No se pudo descifrar la contraseña SMTP con ninguna clave maestra registrada");
 }
 
 export interface ActiveSmtpConfig {
@@ -1828,11 +1835,14 @@ export async function sendTestEmail(to: string): Promise<{ messageId: string | n
   return { messageId: info.messageId || null };
 }
 
-export async function getActiveSmtpConfig(): Promise<ActiveSmtpConfig | null> {
+export async function getActiveSmtpConfig(preferredProviderId?: string): Promise<ActiveSmtpConfig | null> {
   try {
     const db = getDb();
     const providers = await db.select().from(emailProviderConfigs);
-    const active = providers.find((p) => p.status === "active") || providers[0];
+    let active = preferredProviderId ? providers.find((p) => p.id === preferredProviderId) : undefined;
+    if (!active) {
+      active = providers.find((p) => p.status === "active") || providers[0];
+    }
     if (!active) return null;
     let password = "";
     if (active.passwordCiphertext && active.keyId) {
@@ -1842,7 +1852,12 @@ export async function getActiveSmtpConfig(): Promise<ActiveSmtpConfig | null> {
         // fallback: maybe stored as buffer already
         try {
           password = decryptSmtpSecret(active.name, active.passwordCiphertext as unknown as Buffer, active.keyId);
-        } catch {
+        } catch (errDec) {
+          appLogger.warn("[getActiveSmtpConfig] No se pudo descifrar la credencial SMTP", {
+            providerId: active.id,
+            providerName: active.name,
+            error: errDec instanceof Error ? errDec.message : String(errDec),
+          });
           password = "";
         }
       }
@@ -3316,12 +3331,14 @@ export async function sendSystemNotificationEmail(
   let senderEmail = "soporte@mocter.co";
   let senderName = "Mocter";
   let resolvedSenderId = senderId;
+  let resolvedProviderId: string | undefined;
 
   if (senderId) {
     const sRows = await db.select().from(emailSenders).where(eq(emailSenders.id, senderId)).limit(1);
     if (sRows.length > 0) {
       senderEmail = sRows[0].fromEmail;
       senderName = sRows[0].fromName;
+      resolvedProviderId = sRows[0].providerId;
     }
   } else {
     const defSenders = await db
@@ -3333,12 +3350,14 @@ export async function sendSystemNotificationEmail(
       resolvedSenderId = defSenders[0].id;
       senderEmail = defSenders[0].fromEmail;
       senderName = defSenders[0].fromName;
+      resolvedProviderId = defSenders[0].providerId;
     } else {
       const anySender = await db.select().from(emailSenders).where(eq(emailSenders.status, "active")).limit(1);
       if (anySender.length > 0) {
         resolvedSenderId = anySender[0].id;
         senderEmail = anySender[0].fromEmail;
         senderName = anySender[0].fromName;
+        resolvedProviderId = anySender[0].providerId;
       }
     }
   }
@@ -3385,8 +3404,41 @@ export async function sendSystemNotificationEmail(
   }
 
   // 5. Envío inmediato si SMTP está activo
-  const smtpConfig = await getActiveSmtpConfig();
+  const smtpConfig = await getActiveSmtpConfig(resolvedProviderId);
   if (smtpConfig && smtpConfig.host && smtpConfig.user) {
+    if (!smtpConfig.password) {
+      const errorMsg = "La pasarela SMTP activa no cuenta con credenciales o contraseña válida descifrada";
+      appLogger.warn("[sendSystemNotificationEmail] Falla de credenciales SMTP", {
+        eventKey: input.eventKey,
+        recipient: input.recipient,
+        error: errorMsg,
+      });
+
+      if (deliveryCreated) {
+        await db
+          .update(emailDeliveries)
+          .set({
+            status: "failed",
+            lastError: errorMsg,
+            attempts: 1,
+            updatedBy: actor,
+            updatedAt: new Date(),
+          })
+          .where(eq(emailDeliveries.id, deliveryId));
+      }
+
+      return {
+        success: false,
+        deliveryId,
+        eventKey: input.eventKey,
+        recipient: input.recipient,
+        renderedSubject,
+        renderedHtml,
+        status: "failed",
+        error: errorMsg,
+      };
+    }
+
     try {
       const nodemailer = await import("nodemailer");
       const isExplicitSecure = smtpConfig.port === 465 || (smtpConfig.secure && smtpConfig.port !== 587);

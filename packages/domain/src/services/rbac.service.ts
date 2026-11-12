@@ -23,6 +23,12 @@ export interface UserWithRolesDto {
   status: string;
   identityLocation: string;
   roles: string[];
+  scope: "platform" | "tenant";
+  emailVerified: boolean;
+  emailVerifiedAt: string | null;
+  clientId?: string | null;
+  clientName?: string | null;
+  clientSlug?: string | null;
   createdAt: string;
 }
 
@@ -51,8 +57,12 @@ export interface RbacOverviewDto {
     activeUsers: number;
     totalRoles: number;
     totalPermissions: number;
+    platformUsersCount: number;
+    tenantUsersCount: number;
   };
   users: UserWithRolesDto[];
+  platformUsers: UserWithRolesDto[];
+  tenantUsers: UserWithRolesDto[];
   roles: RoleWithPermissionsDto[];
   permissionModules: Array<{
     module: string;
@@ -423,6 +433,7 @@ export async function fetchRbacOverview(): Promise<RbacOverviewDto> {
         status: users.status,
         identityLocation: users.identityLocation,
         activeClientId: users.activeClientId,
+        emailVerifiedAt: users.emailVerifiedAt,
         createdAt: users.createdAt,
       })
       .from(users)
@@ -431,12 +442,19 @@ export async function fetchRbacOverview(): Promise<RbacOverviewDto> {
     const activeClients = await db
       .select({
         id: clients.id,
+        slug: clients.slug,
+        displayName: clients.displayName,
         ownerUserId: clients.ownerUserId,
       })
       .from(clients)
       .where(sql`${clients.lifecycleStatus} <> 'baja'`);
 
-    const ownerUserIds = new Set(activeClients.map((c) => c.ownerUserId));
+    const clientByOwner = new Map<string, (typeof activeClients)[0]>();
+    const clientById = new Map<string, (typeof activeClients)[0]>();
+    for (const c of activeClients) {
+      clientByOwner.set(c.ownerUserId, c);
+      clientById.set(c.id, c);
+    }
 
     const allCells = await db
       .select({
@@ -469,8 +487,11 @@ export async function fetchRbacOverview(): Promise<RbacOverviewDto> {
     const usersDto: UserWithRolesDto[] = allUsers.map((u) => {
       const platformRoles = userRolesMap.get(u.id) || [];
       const roles: string[] = [...platformRoles];
+      const client = clientByOwner.get(u.id) || (u.activeClientId ? clientById.get(u.activeClientId) : undefined);
 
-      if (ownerUserIds.has(u.id)) {
+      const scope: "platform" | "tenant" = platformRoles.length > 0 ? "platform" : "tenant";
+
+      if (clientByOwner.has(u.id)) {
         if (!roles.includes("tenant_owner")) {
           roles.push("tenant_owner");
           roleUserCountMap.set("tenant_owner", (roleUserCountMap.get("tenant_owner") || 0) + 1);
@@ -480,6 +501,9 @@ export async function fetchRbacOverview(): Promise<RbacOverviewDto> {
           roles.push("tenant_agent");
           roleUserCountMap.set("tenant_agent", (roleUserCountMap.get("tenant_agent") || 0) + 1);
         }
+      } else if (platformRoles.length === 0) {
+        roles.push("tenant_owner");
+        roleUserCountMap.set("tenant_owner", (roleUserCountMap.get("tenant_owner") || 0) + 1);
       }
 
       if (roles.length === 0) {
@@ -495,9 +519,18 @@ export async function fetchRbacOverview(): Promise<RbacOverviewDto> {
         status: u.status,
         identityLocation,
         roles,
+        scope,
+        emailVerified: Boolean(u.emailVerifiedAt),
+        emailVerifiedAt: u.emailVerifiedAt ? new Date(u.emailVerifiedAt).toISOString() : null,
+        clientId: client?.id || u.activeClientId || null,
+        clientName: client?.displayName || (scope === "tenant" ? "Pendiente De Onboarding" : null),
+        clientSlug: client?.slug || null,
         createdAt: u.createdAt ? new Date(u.createdAt).toISOString().split("T")[0] : "—",
       };
     });
+
+    const platformUsers = usersDto.filter((u) => u.scope === "platform");
+    const tenantUsers = usersDto.filter((u) => u.scope === "tenant");
 
     // 5. Consultar Roles y sus Permisos
     const allRoles = await db.select().from(systemRoles).orderBy(asc(systemRoles.name));
@@ -550,8 +583,12 @@ export async function fetchRbacOverview(): Promise<RbacOverviewDto> {
         activeUsers: allUsers.filter((u) => u.status === "active").length,
         totalRoles: allRoles.length,
         totalPermissions: allPerms.length,
+        platformUsersCount: platformUsers.length,
+        tenantUsersCount: tenantUsers.length,
       },
       users: usersDto,
+      platformUsers,
+      tenantUsers,
       roles: rolesDto,
       permissionModules,
     };
@@ -559,8 +596,17 @@ export async function fetchRbacOverview(): Promise<RbacOverviewDto> {
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[fetchRbacOverview Failed] ${msg}`, error);
     return {
-      kpis: { totalUsers: 0, activeUsers: 0, totalRoles: 0, totalPermissions: 0 },
+      kpis: {
+        totalUsers: 0,
+        activeUsers: 0,
+        totalRoles: 0,
+        totalPermissions: 0,
+        platformUsersCount: 0,
+        tenantUsersCount: 0,
+      },
       users: [],
+      platformUsers: [],
+      tenantUsers: [],
       roles: [],
       permissionModules: [],
     };
@@ -595,21 +641,23 @@ export async function saveSystemUser(
         })
         .where(eq(users.id, input.id));
 
-      // 2. Actualizar rol en platform_user_roles
-      // Revocar roles anteriores
-      await db
-        .update(platformUserRoles)
-        .set({ revokedAt: new Date(), updatedBy: actor, updatedAt: new Date() })
-        .where(and(eq(platformUserRoles.userId, input.id), sql`revoked_at IS NULL`));
+      // 2. Actualizar rol en platform_user_roles si corresponde a un rol de plataforma
+      if (input.role.startsWith("platform_")) {
+        // Revocar roles anteriores
+        await db
+          .update(platformUserRoles)
+          .set({ revokedAt: new Date(), updatedBy: actor, updatedAt: new Date() })
+          .where(and(eq(platformUserRoles.userId, input.id), sql`revoked_at IS NULL`));
 
-      // Asignar nuevo rol
-      await db.insert(platformUserRoles).values({
-        userId: input.id,
-        role: input.role,
-        grantedByUserId: null,
-        createdBy: actor,
-        updatedBy: actor,
-      });
+        // Asignar nuevo rol
+        await db.insert(platformUserRoles).values({
+          userId: input.id,
+          role: input.role,
+          grantedByUserId: null,
+          createdBy: actor,
+          updatedBy: actor,
+        });
+      }
 
       return ok({ id: input.id });
     } else {
@@ -642,6 +690,124 @@ export async function saveSystemUser(
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[saveSystemUser Failed] ${msg}`, error);
     return err(`Error al guardar usuario: ${msg}`);
+  }
+}
+
+/**
+ * Reenvía el correo de verificación transaccional a un usuario (`auth.verify_email`).
+ */
+export async function resendUserVerificationEmail(input: {
+  userId: string;
+  actorUserId?: string;
+}): Promise<Result<{ message: string }, string>> {
+  try {
+    const db = getDb();
+    const [user] = await db.select().from(users).where(eq(users.id, input.userId)).limit(1);
+    if (!user) {
+      return err("Usuario no encontrado.");
+    }
+    if (user.emailVerifiedAt) {
+      return err("La dirección de correo electrónico ya ha sido verificada.");
+    }
+
+    const { authService } = await import("./auth.service");
+    const res = await authService.requestEmailVerification(user.email);
+    if (!res.ok) {
+      const errText = typeof res.error === "string" ? res.error : (res.error as any)?.message || "Error al solicitar reenvío de verificación";
+      return err(errText);
+    }
+
+    return ok({ message: `Correo de verificación reenviado exitosamente a ${user.email}` });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[resendUserVerificationEmail Failed] ${msg}`, error);
+    return err(`Error al reenviar verificación: ${msg}`);
+  }
+}
+
+/**
+ * Despacha un correo transaccional de restablecimiento de contraseña (`auth.reset_password`).
+ */
+export async function sendUserPasswordResetLink(input: {
+  userId: string;
+  actorUserId?: string;
+}): Promise<Result<{ message: string }, string>> {
+  try {
+    const db = getDb();
+    const [user] = await db.select().from(users).where(eq(users.id, input.userId)).limit(1);
+    if (!user) {
+      return err("Usuario no encontrado.");
+    }
+
+    const { authService } = await import("./auth.service");
+    const res = await authService.forgotPassword({ email: user.email });
+    if (!res.ok) {
+      const errText = typeof res.error === "string" ? res.error : (res.error as any)?.message || "Error al enviar enlace de recuperación";
+      return err(errText);
+    }
+
+    return ok({ message: `Enlace de restablecimiento de contraseña enviado a ${user.email}` });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[sendUserPasswordResetLink Failed] ${msg}`, error);
+    return err(`Error al enviar recuperación de contraseña: ${msg}`);
+  }
+}
+
+/**
+ * Suspende o activa un usuario en el plano de control (`admin.users.status`).
+ * Incluye salvaguarda de gobernanza para impedir la desactivación del único Platform Owner activo.
+ */
+export async function toggleUserStatus(input: {
+  userId: string;
+  status: "active" | "disabled";
+  actorUserId?: string;
+}): Promise<Result<{ id: string; status: string }, string>> {
+  try {
+    const db = getDb();
+    const actor = input.actorUserId || "platform_owner";
+
+    const [user] = await db.select().from(users).where(eq(users.id, input.userId)).limit(1);
+    if (!user) {
+      return err("Usuario no encontrado.");
+    }
+
+    if (input.status === "disabled") {
+      const activeOwnerRoles = await db
+        .select()
+        .from(platformUserRoles)
+        .where(
+          and(
+            eq(platformUserRoles.userId, input.userId),
+            eq(platformUserRoles.role, "platform_owner"),
+            sql`revoked_at IS NULL`
+          )
+        );
+      if (activeOwnerRoles.length > 0) {
+        const totalOwners = await db
+          .select()
+          .from(platformUserRoles)
+          .where(and(eq(platformUserRoles.role, "platform_owner"), sql`revoked_at IS NULL`));
+        if (totalOwners.length <= 1) {
+          return err("No se puede desactivar al único Platform Owner activo del sistema.");
+        }
+      }
+    }
+
+    await db
+      .update(users)
+      .set({
+        status: input.status,
+        updatedBy: actor,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, input.userId));
+
+    return ok({ id: input.userId, status: input.status });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[toggleUserStatus Failed] ${msg}`, error);
+    return err(`Error al cambiar estado de usuario: ${msg}`);
   }
 }
 

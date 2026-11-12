@@ -95,6 +95,7 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-mocter-saas-platform-secure-key-32b}
       SETUP_OWNER_TOKEN: ${SETUP_OWNER_TOKEN}
       PORT: 3001
       # File watching over a Windows bind mount requires polling.
@@ -126,6 +127,8 @@ services:
       REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-control:6379/0"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       PORT: 3003
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-mocter-saas-platform-secure-key-32b}
+      CHATWOOT_SSO_SECRET: ${CHATWOOT_SSO_SECRET}
       NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-http://localhost:3003}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
       CHATWOOT_INTERNAL_URL: ${CHATWOOT_INTERNAL_URL:-http://mocter-chatwoot-rails-1:3000}
