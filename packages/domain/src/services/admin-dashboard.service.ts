@@ -1683,10 +1683,17 @@ export interface SaveAdminEmailTemplateInput {
   createdBy?: string;
 }
 
+function deriveMasterKey(rawKey: string): Buffer {
+  if (rawKey.length === 64 && /^[0-9a-fA-F]+$/.test(rawKey)) {
+    return Buffer.from(rawKey, "hex");
+  }
+  return createHash("sha256").update(rawKey).digest();
+}
+
 function encryptSmtpSecret(providerName: string, plainSecret: string): { ciphertext: Buffer; keyId: string } {
-  const masterKey = createHash("sha256")
-    .update(process.env.ENCRYPTION_KEY || process.env.CHATWOOT_SSO_SECRET || "mocter-saas-platform-secure-key-32b")
-    .digest();
+  const rawKey =
+    process.env.ENCRYPTION_KEY || process.env.CHATWOOT_SSO_SECRET || "mocter-saas-platform-secure-key-32b";
+  const masterKey = deriveMasterKey(rawKey);
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", masterKey, iv);
   cipher.setAAD(Buffer.from("smtp_provider:k1", "utf8"));
@@ -1715,15 +1722,22 @@ function decryptSmtpSecret(providerName: string, ciphertext: Buffer, keyId: stri
   ];
 
   for (const rawKey of candidateKeys) {
-    const masterKey = createHash("sha256").update(rawKey).digest();
-    for (const aad of aads) {
-      try {
-        const decipher = createDecipheriv("aes-256-gcm", masterKey, iv);
-        decipher.setAAD(aad);
-        decipher.setAuthTag(tag);
-        return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
-      } catch {
-        // intentar con siguiente AAD / clave
+    const keyDerivations: Buffer[] = [];
+    if (rawKey.length === 64 && /^[0-9a-fA-F]+$/.test(rawKey)) {
+      keyDerivations.push(Buffer.from(rawKey, "hex"));
+    }
+    keyDerivations.push(createHash("sha256").update(rawKey).digest());
+
+    for (const masterKey of keyDerivations) {
+      for (const aad of aads) {
+        try {
+          const decipher = createDecipheriv("aes-256-gcm", masterKey, iv);
+          decipher.setAAD(aad);
+          decipher.setAuthTag(tag);
+          return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
+        } catch {
+          // intentar con siguiente AAD / clave
+        }
       }
     }
   }
