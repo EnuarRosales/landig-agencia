@@ -3,9 +3,9 @@
 | Atributo | Valor |
 |---|---|
 | ID | CHW-002 |
-| Versión | 1.0 |
-| Estado | Aprobada (Fase de Planeamiento `/grill-me`) |
-| Fecha | 2026-11-10 |
+| Versión | 1.1 |
+| Estado | Aprobada · Revisión y remediación SDD cerrada en `/grill-me` |
+| Fecha | 2026-11-11 |
 | Documentos | [`requirements.md`](requirements.md) · `design.md` (este) · [`tasks.md`](tasks.md) |
 | Depende de | [CHW-001](../chw-001-inventario-chatwoot/design.md) · [ADM-001](../adm-001-mocter-admin/design.md) · [TNT-001](../tnt-001-entorno-operativo-inquilino/design.md) · [AUTH-001](../auth-001-autenticacion-hibrida/design.md) · [DAT-001](../dat-001-arquitectura-datos-multiinquilino/design.md) |
 
@@ -13,278 +13,285 @@
 
 ## 1. Arquitectura General y Topología de Red
 
-La interoperabilidad entre Mocter y Chatwoot v4.19.1 opera bajo una **separación estricta de planos de tráfico** para eliminar colisiones de red, evitar puertos fijos y blindar la aplicación frente a restricciones de navegadores modernos (same-site cookies, partitioning CHIPS, CSP frame-ancestors).
+La interoperabilidad entre Mocter y Chatwoot Community `v4.19.1` opera bajo una **separación estricta de planos de tráfico y de superficies de usuario**:
+1. **Backoffice Administrativo SaaS (`/admin/conversations` y `/admin/tenants`):** Exclusivo para `platform_owner` y `platform_admin` sobre el plano de control (`db-portal`) y la consola global `/super_admin` de Chatwoot.
+2. **Backoffice Operativo del Inquilino (`/workspace/conversations`):** Exclusivo para `tenant_owner` y `tenant_agent` sobre su celda asignada (`pg-cell-XX`) y su bandeja operativa `/app/accounts/:account_id/dashboard`.
 
 ```mermaid
 flowchart TD
     subgraph Browser ["Navegador del Usuario (Cliente Web)"]
-        BrowserAdmin["Operador SaaS (/admin)"]
-        BrowserTenant["Inquilino (/workspace)"]
+        BrowserAdmin["Operador SaaS (/admin/conversations · /admin/tenants)"]
+        BrowserTenant["Miembro del Inquilino (/workspace/conversations)"]
     end
 
-    subgraph Ingress ["Plano de Ingress Público (Traefik / TLS 443)"]
-        TraefikAdmin["admin.mocter.co"]
-        TraefikChat["chat.mocter.co"]
+    subgraph Ingress ["Plano de Ingress Público (Traefik v2.11 / TLS 443)"]
+        TraefikAdmin["admin.mocter.co (Local: localhost:3003)"]
+        TraefikChat["chatapp.mocter.co (Local: localhost:3001)"]
     end
 
-    subgraph ControlPlane ["Plano de Control Mocter (Red Privada Docker)"]
+    subgraph ControlPlane ["Plano de Control Mocter"]
         AdminPortal["apps/admin (mocter-admin :3003)"]
         DbPortal[("PostgreSQL (db-portal)")]
-        RedisControl[("Redis Control")]
     end
 
-    subgraph ChatwootStack ["Stack Oficial Chatwoot (Red Privada Docker)"]
+    subgraph ChatwootStack ["Stack Oficial Chatwoot v4.19.1"]
         ChatwootRails["chatwoot-rails (:3000)"]
-        ChatwootSidekiq["chatwoot-sidekiq"]
         PgChatwoot[("PostgreSQL (pg-chatwoot)")]
         RedisChatwoot[("Redis (redis-chatwoot)")]
     end
 
-    subgraph DataPlane ["Plano de Celdas (Plano de Datos)"]
-        PgCell[("PgBouncer (pg-cell-01)")]
+    subgraph DataPlane ["Plano de Celdas (Datos del Inquilino)"]
+        PgCell[("PgBouncer / PostgreSQL (pg-cell-XX)")]
     end
 
     %% Flujos de Navegador
     BrowserAdmin -->|HTTPS| TraefikAdmin
     BrowserTenant -->|HTTPS| TraefikAdmin
-    BrowserTenant -.->|Iframe Same-Site / WSS| TraefikChat
-    BrowserAdmin -.->|Iframe Same-Site / WSS| TraefikChat
+    BrowserAdmin -.->|"Iframe Super Admin (/super_admin)"| TraefikChat
+    BrowserTenant -.->|"Iframe Operativo (/app/accounts/:id/dashboard)"| TraefikChat
 
-    %% Tráfico Interno Ingress
+    %% Tráfico Ingress
     TraefikAdmin --> AdminPortal
     TraefikChat --> ChatwootRails
 
-    %% Tráfico Servidor a Servidor (Platform API y Webhooks)
-    AdminPortal -->|CHATWOOT_INTERNAL_URL / Platform API| ChatwootRails
-    ChatwootRails -->|POST /api/webhooks/chatwoot| AdminPortal
+    %% Tráfico Servidor a Servidor
+    AdminPortal -->|"CHATWOOT_INTERNAL_URL (Platform & Account API)"| ChatwootRails
+    ChatwootRails -->|"CHATWOOT_WEBHOOK_URL (POST /api/webhooks/chatwoot)"| AdminPortal
     AdminPortal --> DbPortal
-    AdminPortal --> PgCell
+    AdminPortal -->|"CellDatabasePoolManager"| PgCell
     ChatwootRails --> PgChatwoot
+    ChatwootRails --> RedisChatwoot
 ```
 
-### 1.1 Contrato de Doble URL en `env.ts`
+### 1.1 Contrato de Variables de Entorno en `env.ts` y `.env.example`
 
-Se definen dos variables de entorno tipadas mediante `@t3-oss/env-nextjs` y `zod`:
+Todas las variables se tipan y validan mediante `@t3-oss/env-nextjs` / `zod` en `apps/admin/env.ts` y `packages/domain/src/utils/env.ts` (`AGENTS.md` §4.12):
 
-| Variable | Ámbito | Propósito | Valor en Desarrollo Local | Valor en Producción (Traefik) |
+| Variable | Ámbito | Propósito | Valor en Desarrollo Local (`docker-compose.yml`) | Valor en Producción (`production-services.md`) |
 |---|---|---|---|---|
-| `CHATWOOT_INTERNAL_URL` | Servidor (`server`) | Llamadas HTTP backend a Platform API de Chatwoot (`fetch`) | `http://mocter-chatwoot-rails-1:3000` (o `http://host.docker.internal:3000`) | `http://chatwoot-rails:3000` (red Docker privada interna) |
-| `NEXT_PUBLIC_CHATWOOT_URL` | Cliente / Servidor (`client` y `server`) | URL pública que el navegador del usuario carga dentro del `<iframe>` | `http://localhost:3000` | `https://chat.mocter.co` |
-| `CHATWOOT_PLATFORM_TOKEN` | Servidor (`server`) | Token de acceso maestro de la `PlatformApp` para gestionar cuentas y usuarios | Token configurado en el stack de Chatwoot | Docker secret compartido inyectado como variable de entorno |
+| `CHATWOOT_INTERNAL_URL` | Servidor (`server`) | Llamadas HTTP servidor-a-servidor desde `mocter-admin` hacia Chatwoot (`Platform API` y `Account API`) | `http://chatwoot-rails:3000` (con fallback a `CHATWOOT_BASE_URL`) | `https://chatapp.mocter.co` |
+| `NEXT_PUBLIC_CHATWOOT_URL` | Cliente y Servidor (`client` / `server`) | Origen público al que el navegador se conecta dentro del `<iframe>` tras el redirect SSO | `http://localhost:3001` | `https://chatapp.mocter.co` |
+| `CHATWOOT_PLATFORM_TOKEN` | Servidor (`server`) | Token maestro de `PlatformApp` para `/platform/api/v1/*` | Token local de `PlatformApp` en `pg-chatwoot` | Secreto de plataforma inyectado en entorno |
+| `CHATWOOT_WEBHOOK_URL` | Servidor (`server`) | URL destino que `chatwoot-rails` invoca al emitir eventos de webhook hacia `mocter-admin` | `http://admin-portal:3003/api/webhooks/chatwoot` | `https://admin.mocter.co/api/webhooks/chatwoot` |
+| `CHATWOOT_SUPER_ADMIN_USER_ID` | Servidor (`server`) | ID numérico del usuario `SuperAdmin` en Chatwoot empleado para el SSO de `/admin/conversations` | `1` (por defecto) | ID numérico del `SuperAdmin` en producción (ej. `1`) |
 
 ---
 
-## 2. Contrato de Datos y Detección de Habilitación
+## 2. Modelo de Datos Existente y Reglas de Habilitación
 
-### 2.1 Tabla de Correlación: `admin.chatwoot_accounts`
+### 2.1 Esquema Drizzle Real: `admin.chatwoot_accounts` (`db-portal`)
 
-La correlación entre el inquilino de Mocter y Chatwoot vive exclusivamente en el Plano de Control de Mocter (`db-portal`):
+No se requieren migraciones DDL nuevas. El diseño respeta exactamente la definición vigente en [`packages/domain/src/db/schemas/admin/chatwoot-media-onboarding.ts`](../../../../packages/domain/src/db/schemas/admin/chatwoot-media-onboarding.ts):
 
-```sql
-CREATE TABLE admin.chatwoot_accounts (
-    client_id UUID PRIMARY KEY REFERENCES admin.clients(id) ON DELETE CASCADE,
-    chatwoot_account_id INTEGER UNIQUE,
-    service_user_id INTEGER,
-    service_token_ciphertext TEXT,
-    service_token_key_id VARCHAR(32) NOT NULL DEFAULT 'k1',
-    webchat_inbox_id INTEGER,
-    webchat_website_token VARCHAR(255),
-    state VARCHAR(32) NOT NULL DEFAULT 'pending', -- pending | provisioning | active | failed
-    idempotency_key VARCHAR(128) NOT NULL UNIQUE,
-    last_error TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    synced_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
+- `id`: `uuid("id").primaryKey().defaultRandom()`
+- `clientId`: `uuid("client_id").notNull().unique()` (FK a `admin.clients.id` con `ON DELETE CASCADE`)
+- `chatwootAccountId`: `integer("chatwoot_account_id").unique()`
+- `serviceUserId`: `integer("service_user_id")`
+- `serviceTokenCiphertext`: `bytea("service_token_ciphertext")` (`Buffer` cifrado con AES-256-GCM y AAD `client_id`)
+- `serviceTokenKeyId`: `varchar("service_token_key_id", { length: 32 })` (sujeto al check constraint `(service_token_ciphertext IS NULL) = (service_token_key_id IS NULL)`)
+- `webchatInboxId`: `integer("webchat_inbox_id")`
+- `webchatWebsiteToken`: `varchar("webchat_website_token", { length: 128 })`
+- `state`: `varchar("state", { length: 24 })` (`'pending' | 'provisioning' | 'active' | 'failed'`)
+- `lastError`: `text("last_error")`
+- `idempotencyKey`: `varchar("idempotency_key", { length: 128 }).notNull().unique()`
+- `syncedAt`, `createdAt`, `updatedAt`: `timestamp(..., { withTimezone: true })`
 
-### 2.2 Algoritmo de Habilitación de Atención (`isChatwootEnabledForPlan`)
+### 2.2 Corrección de `TenantCapabilityGateService` y `buildChatwootFeaturesAndLimitsForPlan`
 
-Se erradica la dependencia con la columna fantasma `plan.chatwootEnabled`. La función canónica de dominio evalúa:
+#### A. Derivación de `chatwoot_inboxes` en `TenantCapabilityGateService`
+En [`packages/domain/src/services/tenant-capability-gate.service.ts`](../../../../packages/domain/src/services/tenant-capability-gate.service.ts):
+1. Además de leer `admin.plan_capability_values`, consulta `admin.plan_limits` para el `planId` activo del inquilino.
+2. Si la fila con `dimension = 'chatwoot_inboxes'` tiene `mode === 'UNLIMITED'` o `(mode === 'NUMERIC' && (value ?? 0) > 0)`, establece `capabilities['chatwoot_inboxes'] = true` antes de aplicar `admin.client_feature_overrides`.
+3. Esto desbloquea de forma consistente tanto `WorkspaceConversationsPage` como `GET /api/auth/chatwoot/embed`.
 
-```typescript
-/**
- * Determina autoritativamente si un plan comercial incluye atención integrada con Chatwoot.
- *
- * @param planId - Identificador UUID del plan.
- * @param db - Instancia de base de datos Drizzle.
- * @returns Booleano indicando si el plan tiene cuota de agentes o capacidades activas de atención.
- */
-export async function isChatwootEnabledForPlan(planId: string, db: any): Promise<boolean> {
-  // 1. Verificar límite numérico en chatwoot_agents
-  const [agentsLimit] = await db
-    .select()
-    .from(planLimits)
-    .where(and(eq(planLimits.planId, planId), eq(planLimits.dimension, "chatwoot_agents")))
-    .limit(1);
-
-  if (agentsLimit && (agentsLimit.mode === "UNLIMITED" || (agentsLimit.value ?? 0) > 0)) {
-    return true;
-  }
-
-  // 2. Verificar capacidades de atención activas en el catálogo de capabilities
-  const activeCapabilities = await db
-    .select()
-    .from(planCapabilityValues)
-    .where(and(eq(planCapabilityValues.planId, planId), eq(planCapabilityValues.enabled, true)))
-    .limit(1);
-
-  return activeCapabilities.length > 0;
-}
-```
+#### B. Corrección del Mapeo de Límites y Habilitación en `ChatwootProvisioningService`
+En [`packages/domain/src/services/chatwoot-provisioning.service.ts`](../../../../packages/domain/src/services/chatwoot-provisioning.service.ts):
+1. En `buildChatwootFeaturesAndLimitsForPlan(planId)`:
+   - Se corrige la lectura de `admin.plan_limits` usando los códigos canónicos de [`PLAN_DIMENSION_KEYS`](../../../../packages/domain/src/db/schemas/admin/plan-catalogs.ts) y la propiedad real `row.mode`:
+     ```typescript
+     for (const row of limitRows) {
+       const resolvedLimit =
+         row.mode === "UNLIMITED" ? null : row.mode === "DISABLED" ? 0 : (row.value ?? null);
+       if (row.dimension === "chatwoot_agents") {
+         limits.agents = resolvedLimit;
+       } else if (row.dimension === "chatwoot_inboxes") {
+         limits.inboxes = resolvedLimit;
+       }
+     }
+     ```
+2. En `isChatwootEnabledForPlan(planId)`:
+   - Evalúa si el plan tiene alguna capacidad activa en `admin.plan_capability_values` (`enabled = true`) **o** si en `admin.plan_limits` las dimensiones `'chatwoot_agents'` o `'chatwoot_inboxes'` tienen `mode === 'UNLIMITED'` o `(mode === 'NUMERIC' && (value ?? 0) > 0)`.
 
 ---
 
-## 3. Flujo de Aprovisionamiento Automatizado (Fail-Soft)
+## 3. Flujo de Aprovisionamiento Automatizado (Fail-Soft) y Sincronización Celular
 
-El aprovisionamiento se dispara en dos puntos de entrada:
-1. **Alta Manual (`/admin/tenants`):** dentro de `createAdminTenant`.
-2. **Alta Autónoma (`/onboarding`):** al guardar el **Paso 1** del Wizard.
+El aprovisionamiento se ejecuta a través de `provisionOrRetryAccount` en tres puntos de entrada:
+1. **Alta Manual (`/admin/tenants`):** invocado al final de `createAdminTenant` en [`admin-dashboard.service.ts`](../../../../packages/domain/src/services/admin-dashboard.service.ts).
+2. **Paso 1 del Onboarding Unificado (`/onboarding`):** invocado en `completeStep1Business` en [`tenant-onboarding.service.ts`](../../../../packages/domain/src/services/tenant-onboarding.service.ts) tanto en el Caso B (alta autónoma de nuevo cliente) como en el Caso A (`existingClient` proveniente de alta manual cuya cuenta de Chatwoot aún no exista o esté en estado `pending` / `failed`).
+3. **Acción Manual en Backoffice SaaS (`/admin/tenants`):** invocada vía `POST /api/admin/tenants/[id]/chatwoot/provision`.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Admin as Operador SaaS / Prospecto
-    participant Portal as apps/admin (Backend)
-    participant Db as PostgreSQL (db-portal)
-    participant Gateway as ChatwootPlatformGateway
+    actor Actor as Operador SaaS / Inquilino en Paso 1
+    participant Service as Servicio de Dominio (Mocter)
+    participant DbPortal as PostgreSQL (db-portal)
+    participant Gateway as ChatwootHttpPlatformGateway
     participant Chatwoot as Chatwoot Rails (:3000)
+    participant PgCell as Celda del Inquilino (pg-cell-XX)
 
-    Admin->>Portal: Confirmar Alta de Inquilino (Plan seleccionado)
-    Portal->>Db: Insertar admin.clients & admin.client_plans
-    Portal->>Portal: isChatwootEnabledForPlan(planId)
-    
-    alt Chatwoot no habilitado en el plan
-        Portal-->>Admin: Alta completada (sin atención integrada)
-    else Chatwoot habilitado
-        Portal->>Db: UPSERT admin.chatwoot_accounts (state = 'provisioning')
-        
-        critical Transacción de Aprovisionamiento (Fail-Soft)
-            Portal->>Gateway: createAccount(tenantName, locale, features, limits)
+    Actor->>Service: Alta Manual / Paso 1 Onboarding / Reintento Manual
+    Service->>DbPortal: Verificar plan e idempotencia en admin.chatwoot_accounts
+    alt Cuenta ya en state = 'active' y chatwoot_account_id presente
+        Service-->>Actor: Retornar cuenta activa existente (Idempotente)
+    else Requiere aprovisionamiento (pending, failed o inexistente)
+        Service->>DbPortal: UPSERT admin.chatwoot_accounts (state = 'provisioning')
+        critical Bloque Fail-Soft (No revierte el alta del inquilino si falla)
+            Service->>Gateway: createAccount / updateAccount (name, locale, features, limits)
             Gateway->>Chatwoot: POST /platform/api/v1/accounts
-            Chatwoot-->>Gateway: 200 OK (accountId, enabledFeatures)
-            
-            Portal->>Gateway: ensureServiceUser(accountId, clientId)
-            Gateway->>Chatwoot: POST /platform/api/v1/users (service-user)
-            Chatwoot-->>Gateway: 200 OK (userId)
-            Gateway->>Chatwoot: POST /platform/api/v1/accounts/:id/account_users (role: administrator)
-            Gateway->>Chatwoot: POST /platform/api/v1/users/:id/token
-            Chatwoot-->>Gateway: 200 OK (rawServiceToken)
-            
-            Portal->>Portal: Cifrar rawServiceToken con AES-256-GCM
-            
-            Portal->>Gateway: ensureWebchatInbox(accountId, serviceToken)
-            Gateway->>Chatwoot: POST /api/v1/accounts/:id/inboxes (channel: web_widget)
-            Chatwoot-->>Gateway: 200 OK (inboxId, websiteToken)
-            
-            Portal->>Gateway: seedReservedLabels(accountId, serviceToken)
-            Gateway->>Chatwoot: POST /api/v1/accounts/:id/labels (4 etiquetas reservadas)
-            
-            Portal->>Gateway: registerWebhook(accountId, serviceToken)
-            Gateway->>Chatwoot: POST /api/v1/accounts/:id/webhooks (url: /api/webhooks/chatwoot)
-            
-            Portal->>Db: UPDATE admin.chatwoot_accounts (state = 'active', synced_at = now())
-        option Falla de Red / Timeout / Error de Chatwoot
-            Portal->>Db: UPDATE admin.chatwoot_accounts (state = 'failed', last_error = error.message)
-            Portal->>Portal: Registrar LogEvent estructurado (warn)
+            Chatwoot-->>Gateway: accountId
+            Service->>Gateway: createOrUpdateServiceUser + attachUserToAccount(administrator)
+            Gateway->>Chatwoot: POST /platform/api/v1/users & account_users
+            Chatwoot-->>Gateway: serviceUserId + rawAccessToken
+            Service->>Service: Cifrar rawAccessToken (AES-256-GCM, AAD = clientId)
+            Service->>Gateway: ensureDefaultWebchatInbox(accountId, serviceToken, tenantName)
+            Gateway->>Chatwoot: GET/POST /api/v1/accounts/:id/inboxes
+            Chatwoot-->>Gateway: inboxId, websiteToken
+            loop 6 Etiquetas Reservadas (lead-frio, lead-tibio, lead-caliente, compra-realizada, soporte, escalation-humano)
+                Service->>Gateway: pushLabelToChatwoot(accountId, serviceToken, label)
+                Gateway->>Chatwoot: POST /api/v1/accounts/:id/labels
+                Chatwoot-->>Gateway: chatwootLabelId
+                Service->>PgCell: UPDATE admin.tenant_labels SET chatwoot_label_id = :id WHERE client_id = :clientId AND code = :code
+            end
+            Service->>Gateway: ensureAccountWebhook(accountId, serviceToken, CHATWOOT_WEBHOOK_URL)
+            Gateway->>Chatwoot: GET/POST /api/v1/accounts/:id/webhooks
+            Service->>DbPortal: UPDATE admin.chatwoot_accounts (state = 'active', last_error = null, synced_at = now())
+        option Error de Red / Timeout / HTTP 4xx-5xx
+            Service->>DbPortal: UPDATE admin.chatwoot_accounts (state = 'failed', last_error = mensaje)
+            Service->>Service: Emitir appLogger.warn({ event: 'chatwoot.provisioning.failed', ... })
         end
-        
-        Portal-->>Admin: Inquilino creado exitosamente (con estado de atención)
+        Service-->>Actor: Respuesta exitosa con estado de vinculación Chatwoot
     end
 ```
 
 ---
 
-## 4. Flujo de Acceso Transparente y SSO (Iframe Same-Site)
+## 4. Diseño de Acceso Transparente SSO y Separación de Vistas (`/workspace` vs `/admin`)
 
-### 4.1 Handoff SSO para Inquilino (`/workspace/conversations`)
+### 4.1 Handoff SSO Operativo para el Inquilino (`/workspace/conversations`)
+
+En la vista operativa del inquilino en la celda (`scope=workspace`), ningún miembro utiliza el `service_user_id` técnico para su sesión interactiva, garantizando que `tenant_agent` opere con rol `agent` y `tenant_owner` con rol `administrator`.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Tenant as Usuario Inquilino (Navegador)
-    participant Shell as TenantWorkspaceShell
-    participant EmbedRoute as Route Handler (/api/auth/chatwoot/embed)
-    participant Chatwoot as Chatwoot Rails (:3000)
+    actor Member as Miembro del Inquilino (tenant_owner / tenant_agent)
+    participant WorkspaceUI as /workspace/conversations (Vista Celular)
+    participant EmbedAPI as GET /api/auth/chatwoot/embed?scope=workspace
+    participant Gateway as ChatwootHttpPlatformGateway
+    participant Chatwoot as Chatwoot Rails
 
-    Tenant->>Shell: Accede a /workspace/conversations
-    Shell->>Tenant: Renderiza marco con <iframe src="/api/auth/chatwoot/embed">
-    Tenant->>EmbedRoute: GET /api/auth/chatwoot/embed (Cookie: mocter_sid)
-    
-    EmbedRoute->>EmbedRoute: Validar sesión, inquilino activo y capacidad chatwoot_inboxes
-    EmbedRoute->>Chatwoot: GET /platform/api/v1/users/:user_id/login (via CHATWOOT_INTERNAL_URL)
-    Chatwoot-->>EmbedRoute: 200 OK {"url": "https://chat.mocter.co/app/login?email=...&sso_auth_token=..."}
-    
-    EmbedRoute->>Tenant: HTTP 307 Redirect a la URL de SSO (adaptada a NEXT_PUBLIC_CHATWOOT_URL)
-    Tenant->>Chatwoot: Carga URL SSO dentro del iframe
-    Chatwoot->>Chatwoot: Valida y consume sso_auth_token en Redis
-    Chatwoot->>Tenant: Establece cookie de sesión Same-Site y renderiza panel de la cuenta
+    Member->>WorkspaceUI: Abre /workspace/conversations
+    WorkspaceUI->>Member: Renderiza contenedor operativo celular con <iframe src="/api/auth/chatwoot/embed?scope=workspace">
+    Member->>EmbedAPI: GET /api/auth/chatwoot/embed?scope=workspace (Cookie: mocter_sid)
+    EmbedAPI->>EmbedAPI: Validar sesión, membresía activa y capability chatwoot_inboxes
+    EmbedAPI->>EmbedAPI: Mapear rol: tenant_owner -> 'administrator', tenant_agent -> 'agent'
+    EmbedAPI->>Gateway: ensureMemberAccountUser(chatwootAccountId, email, fullName, mappedRole)
+    Gateway->>Chatwoot: POST /platform/api/v1/users + POST /platform/api/v1/accounts/:id/account_users
+    Chatwoot-->>Gateway: chatwootMemberUserId
+    EmbedAPI->>Gateway: getUserSsoLoginUrl(chatwootMemberUserId)
+    Gateway->>Chatwoot: GET /platform/api/v1/users/:chatwootMemberUserId/login
+    Chatwoot-->>Gateway: { url: "http://.../app/login?email=...&sso_auth_token=..." }
+    EmbedAPI->>EmbedAPI: Reescribir origen a NEXT_PUBLIC_CHATWOOT_URL y anexar destino /app/accounts/:accountId/dashboard
+    EmbedAPI-->>Member: HTTP 307 Temporary Redirect
 ```
 
-### 4.2 Acceso Administrativo Global del Platform Owner (`/admin/conversations`)
+### 4.2 Consola Administrativa del Backoffice SaaS (`/admin/conversations`)
 
-1. Para el **Platform Owner**: existe un usuario maestro pre-registrado en Chatwoot con rol `super_admin`.
-2. La vista `/admin/conversations` consulta el enlace de acceso SSO de este usuario maestro mediante `GET /platform/api/v1/users/:super_admin_id/login`.
-3. El iframe se redirige a la consola solicitada por el selector de vistas:
-   - **Super Admin Global:** `/super_admin`
-   - **Ajustes de Plataforma:** `/app/accounts/1/settings`
-   - **Bandeja Maestra:** `/app/accounts/1/inbox`
-4. **Soporte / Inspección de Inquilinos:** En `/admin/tenants/[id]`, el botón «Inspeccionar Bandeja de Chatwoot» emite un token de login como administrador en la cuenta del inquilino, abriendo la sesión confinada a dicho comercio.
+La vista `/admin/conversations` es exclusiva del Backoffice SaaS (`platform_owner` y `platform_admin`) y mantiene una arquitectura completamente diferenciada de `/workspace/conversations`:
 
----
-
-## 5. Endpoints y Superficie de Rutas
-
-### 5.1 Route Handlers en `apps/admin`
-
-| Método | Ruta | Autenticación | Propósito |
-|---|---|---|---|
-| `GET` | `/api/auth/chatwoot/embed` | Cookie `mocter_sid` | Endpoint de handoff SSO para el iframe del inquilino y del administrador. Obtiene el token de la Platform API y redirige con HTTP 307. |
-| `POST` | `/api/admin/tenants/[id]/chatwoot/provision` | `platform_owner`, `platform_admin` | Acción manual para aprovisionar por primera vez o reintentar la creación de la cuenta de Chatwoot de un inquilino. |
-| `GET` | `/api/admin/tenants/[id]/chatwoot/status` | `platform_owner`, `platform_admin` | Consulta el estado actual de aprovisionamiento, cuenta y última sincronización en `admin.chatwoot_accounts`. |
-| `GET` | `/api/admin/tenants/[id]/chatwoot/impersonate` | `platform_owner` | Emite una URL de SSO temporal para inspeccionar la cuenta de Chatwoot del inquilino en sesión de soporte. |
-| `POST` | `/api/webhooks/chatwoot` | Secreto / Header Chatwoot | Recibe eventos de mensajería y contactos de Chatwoot y los ingesta en el CRM celular (`CrmService`). |
+1. **Plano de Gobierno SaaS (Cabecera y Panel de Control):**
+   - Muestra KPIs globales de cuentas en `admin.chatwoot_accounts` (Total vinculadas, Activas, Fallidas/Pendientes, Capacidades del catálogo de 42 códigos).
+   - Selector de vista de plataforma:
+     - **Consola Super Admin Global:** carga `/super_admin` en el visor.
+     - **Directorio de Cuentas en Chatwoot:** carga `/super_admin/accounts` en el visor.
+     - **Ficha Administrativa de Cuenta (`?accountId=<chatwootAccountId>`):** cuando el operador navega desde `/admin/tenants`, carga `/super_admin/accounts/<chatwootAccountId>` para auditar la cuenta en la consola de infraestructura de Chatwoot sin abrir la bandeja operativa de mensajes del comercio.
+2. **Handoff SSO Super Admin (`/api/auth/chatwoot/embed?scope=admin&targetPath=...`):**
+   - Verifica que el usuario autenticado tenga rol global `platform_owner` o `platform_admin`.
+   - Invoca `GET /platform/api/v1/users/:super_admin_id/login` usando `CHATWOOT_SUPER_ADMIN_USER_ID`.
+   - Reescribe el origen de la URL efímera con `NEXT_PUBLIC_CHATWOOT_URL` e incorpora el `targetPath` validado (restringido exclusivamente a rutas bajo `/super_admin*`), respondiendo con `HTTP 307 Temporary Redirect`.
 
 ---
 
-## 6. Mapeo de Capacidades y Límites (Mocter ↔ Chatwoot)
+## 5. Contratos de Endpoints y Métodos de Gateway
 
-Mocter traduce atómicamente la configuración del plan a los atributos admitidos por Chatwoot Community `v4.19.1`:
+### 5.1 Nuevos Métodos en `ChatwootPlatformGateway` (`packages/domain/src/services/chatwoot-provisioning.service.ts`)
 
 ```typescript
-export interface ChatwootAccountPayload {
-  name: string;
-  locale: "es" | "en";
-  features: {
-    channel_email?: boolean;
-    channel_facebook?: boolean;
-    channel_instagram?: boolean;
-    channel_tiktok?: boolean;
-    channel_website?: boolean;
-    agent_bots?: boolean;
-    automations?: boolean;
-    crm?: boolean;
-    custom_attributes?: boolean;
-    inbox_management?: boolean;
-    reports?: boolean;
-    help_center?: boolean;
-    // ... 42 códigos canónicos
-  };
-  limits: {
-    agents: number | null;
-    inboxes: number | null;
-    emails: number | null;
-  };
+export interface ChatwootWebhookRegistrationResult {
+  id: number;
+  url: string;
+}
+
+export interface ChatwootPlatformGateway {
+  // Métodos existentes conservados...
+  createAccount(input: { name: string; locale: "es" | "en"; features: Record<string, boolean>; limits: Record<string, number | null> }): Promise<{ accountId: number }>;
+  updateAccount(accountId: number, input: { name?: string; locale?: "es" | "en"; features: Record<string, boolean>; limits: Record<string, number | null> }): Promise<void>;
+  createOrUpdateServiceUser(input: { email: string; name: string; password: string }): Promise<{ userId: number; accessToken: string }>;
+  attachUserToAccount(input: { accountId: number; userId: number; role: "administrator" | "agent" }): Promise<void>;
+  ensureDefaultWebchatInbox(input: { accountId: number; serviceToken: string; websiteName: string }): Promise<{ inboxId: number; websiteToken: string }>;
+  pushLabelToChatwoot(input: { accountId: number; serviceToken: string; title: string; description: string | null; color: string; showOnSidebar: boolean }): Promise<{ labelId: number }>;
+
+  // Nuevos métodos requeridos por CHW-002:
+  /**
+   * Registra de forma idempotente el webhook de la cuenta hacia mocter-admin.
+   */
+  ensureAccountWebhook(input: {
+    accountId: number;
+    serviceToken: string;
+    webhookUrl: string;
+    subscriptions?: string[];
+  }): Promise<ChatwootWebhookRegistrationResult>;
+
+  /**
+   * Asegura que el miembro del inquilino exista en Chatwoot y esté vinculado a la cuenta con su rol.
+   */
+  ensureMemberUserInAccount(input: {
+    accountId: number;
+    email: string;
+    name: string;
+    role: "administrator" | "agent";
+  }): Promise<{ userId: number }>;
+
+  /**
+   * Obtiene la URL efímera de inicio de sesión SSO (5 minutos, single-use) desde la Platform API.
+   */
+  getUserSsoLoginUrl(input: {
+    userId: number;
+  }): Promise<{ url: string }>;
 }
 ```
 
+### 5.2 Superficie de Route Handlers en `apps/admin`
+
+| Método | Ruta | Roles Autorizados | Propósito |
+|---|---|---|---|
+| `GET` | `/api/auth/chatwoot/embed` | `tenant_owner`, `tenant_agent` (`scope=workspace`) · `platform_owner`, `platform_admin` (`scope=admin`) | Resuelve el usuario de Chatwoot correspondiente al ámbito (`workspace` o `admin`), obtiene la URL SSO efímera desde `GET /platform/api/v1/users/:id/login`, adapta el origen a `NEXT_PUBLIC_CHATWOOT_URL` y redirige con HTTP 307. Envuelto en `handle()` (RFC 9457). |
+| `POST` | `/api/admin/tenants/[id]/chatwoot/provision` | `platform_owner`, `platform_admin` | Ejecuta bajo demanda `provisionOrRetryAccount(id)` para aprovisionar por primera vez o reintentar una cuenta en estado `failed` / `pending`, sincronizando etiquetas en `pg-cell-XX` y webhook. Envuelto en `handle()`. |
+| `GET` | `/api/admin/tenants/[id]/chatwoot/status` | `platform_owner`, `platform_admin` | Retorna el registro actual de `admin.chatwoot_accounts` para el inquilino indicado. Envuelto en `handle()`. |
+| `POST` | `/api/webhooks/chatwoot` | Webhook público validado | Recibe los eventos de conversaciones, mensajes y contactos emitidos por Chatwoot hacia `CHATWOOT_WEBHOOK_URL`. |
+
 ---
 
-## 7. Medidas de Seguridad y Blindaje de Navegadores
+## 6. Componentes de UI y Reglas de Presentación
 
-1. **Same-Site Cookie Boundary:** Al compartir el dominio principal `mocter.co` (`admin.mocter.co` y `chat.mocter.co`), la cookie de sesión emitida por Chatwoot es considerada `SameSite=Lax` o `SameSite=None; Secure`, previniendo bloqueos de almacenamiento particionado en Chrome, Safari y Firefox.
-2. **CSP Frame Ancestors:** Chatwoot se configura para emitir:
-   `Content-Security-Policy: frame-ancestors 'self' https://admin.mocter.co https://*.mocter.co http://localhost:3003;`
-3. **Cifrado de Credenciales:** Los tokens de acceso de la API de Chatwoot se cifran con AES-256-GCM con autenticación AAD en reposo.
-4. **Expiración Estricta:** Las URLs de SSO emitidas por la Platform API expiran en exactamente 5 minutos en Redis y se eliminan atómicamente tras su primer uso (`single-use`).
-
+1. **Directorio de Inquilinos (`apps/admin/app/admin/tenants/page.tsx` y `tenant-actions.tsx`):**
+   - Muestra en cada fila el badge semántico de estado de Chatwoot (`Activo`, `Aprovisionando`, `Pendiente`, `Fallido`, `Sin Vincular`) y un tooltip/texto con `lastError` cuando `state === 'failed'`.
+   - En `TenantActions`, incorpora el botón en Title Case **«Aprovisionar En Chatwoot»** (cuando no tiene cuenta o está `pending`) o **«Reintentar Sincronización»** (cuando está `failed`), el cual abre un modal de confirmación accesible (`role="dialog"`, `aria-modal="true"`, tokens `--dsn-*`, cero `window.confirm()`) que invoca `POST /api/admin/tenants/[id]/chatwoot/provision`.
+   - Cuando la cuenta tiene `chatwootAccountId`, ofrece la acción **«Ver Cuenta En Super Admin»** que navega a `/admin/conversations?accountId=<chatwootAccountId>`.
+2. **Consola Administrativa SaaS (`apps/admin/app/admin/conversations/page.tsx` + cliente dedicado):**
+   - Vista exclusiva de Backoffice SaaS: barra superior de telemetría de cuentas aprovisionadas, selector de destino Super Admin (`/super_admin`, `/super_admin/accounts`, `/super_admin/accounts/:id`) e iframe conectado a `/api/auth/chatwoot/embed?scope=admin&targetPath=...`.
+   - Ningún identificador de especificación (`CHW-001`, `CHW-002`, `ADM-001`, `D-32`, etc.) se expone en badges, títulos ni textos visibles (`AGENTS.md` §4.15).
+3. **Consola Operativa Celular del Inquilino (`apps/admin/app/workspace/conversations/page.tsx` + cliente dedicado):**
+   - Vista exclusiva de operación del inquilino en su celda: verifica `capabilities.chatwoot_inboxes`, verifica que la cuenta en `admin.chatwoot_accounts` esté `active` y renderiza el iframe hacia `/api/auth/chatwoot/embed?scope=workspace` a pantalla completa dentro del layout celular.

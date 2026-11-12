@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   TenantCapabilityGateService,
   InMemoryTenantCapabilityGateRepository,
+  DrizzleTenantCapabilityGateRepository,
 } from "./tenant-capability-gate.service";
 
 describe("TenantCapabilityGateService (T9 / CA-008 / S10)", () => {
@@ -66,6 +67,65 @@ describe("TenantCapabilityGateService (T9 / CA-008 / S10)", () => {
         "/admin/campaigns",
       ]);
       expect(filtered.some((item) => item.href === "/admin/reports")).toBe(false);
+    });
+  });
+
+  describe("DrizzleTenantCapabilityGateRepository (CHW-002 T-03)", () => {
+    it("deriva chatwoot_inboxes = true a partir de plan_limits cuando mode = UNLIMITED o value > 0", async () => {
+      let step = 0;
+      const mockDb = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockImplementation(() => {
+              step += 1;
+              let rows: any[] = [];
+              if (step === 1) rows = [{ planId: "plan-pro-1" }];
+              else if (step === 2) rows = [{ capabilityCode: "crm", enabled: true }];
+              else if (step === 3) rows = [{ mode: "LIMITED", value: 3 }];
+              else if (step === 4) rows = [];
+
+              const promise = Promise.resolve(rows);
+              return Object.assign(promise, {
+                limit: vi.fn().mockImplementation(() => Promise.resolve(rows.slice(0, 1))),
+              });
+            }),
+          }),
+        }),
+      };
+
+      const drizzleRepo = new DrizzleTenantCapabilityGateRepository(() => mockDb);
+      const caps = await drizzleRepo.getTenantCapabilities("client-pro-1");
+
+      expect(caps.crm).toBe(true);
+      expect(caps.chatwoot_inboxes).toBe(true);
+    });
+
+    it("permite que client_feature_overrides sobreescriba chatwoot_inboxes", async () => {
+      let step = 0;
+      const mockDb = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockImplementation(() => {
+              step += 1;
+              let rows: any[] = [];
+              if (step === 1) rows = [{ planId: "plan-pro-1" }];
+              else if (step === 2) rows = [];
+              else if (step === 3) rows = [{ mode: "UNLIMITED", value: null }];
+              else if (step === 4) rows = [{ featureKey: "chatwoot_inboxes", enabled: false }];
+
+              const promise = Promise.resolve(rows);
+              return Object.assign(promise, {
+                limit: vi.fn().mockImplementation(() => Promise.resolve(rows.slice(0, 1))),
+              });
+            }),
+          }),
+        }),
+      };
+
+      const drizzleRepo = new DrizzleTenantCapabilityGateRepository(() => mockDb);
+      const caps = await drizzleRepo.getTenantCapabilities("client-pro-1");
+
+      expect(caps.chatwoot_inboxes).toBe(false);
     });
   });
 });

@@ -4,7 +4,7 @@ import { getDb } from "../db/client";
 import { clients } from "../db/schemas/admin/clients";
 import { plans } from "../db/schemas/admin/plans";
 import { planCapabilityValues } from "../db/schemas/admin/chatwoot-capabilities";
-import { clientFeatureOverrides } from "../db/schemas/admin/plan-catalogs";
+import { clientFeatureOverrides, planLimits } from "../db/schemas/admin/plan-catalogs";
 
 export interface ITenantCapabilityGateRepository {
   isCapabilityEnabled(clientId: string, capabilityCode: string): Promise<boolean>;
@@ -68,6 +68,27 @@ export class DrizzleTenantCapabilityGateRepository
     const map: Record<string, boolean> = {};
     for (const c of planCaps) {
       map[c.capabilityCode] = Boolean(c.enabled);
+    }
+
+    // 2b. Derivar chatwoot_inboxes desde admin.plan_limits (CHW-002 T-03, D-05)
+    const [inboxLimitRow] = await db
+      .select({
+        mode: planLimits.mode,
+        value: planLimits.value,
+      })
+      .from(planLimits)
+      .where(
+        and(
+          eq(planLimits.planId, clientRow.planId),
+          eq(planLimits.dimension, "chatwoot_inboxes"),
+        ),
+      )
+      .limit(1);
+
+    if (inboxLimitRow) {
+      const mode = inboxLimitRow.mode;
+      const val = inboxLimitRow.value ?? 0;
+      map["chatwoot_inboxes"] = mode === "UNLIMITED" || (mode !== "DISABLED" && val > 0);
     }
 
     // 3. Aplicar overrides vigentes del inquilino si existen

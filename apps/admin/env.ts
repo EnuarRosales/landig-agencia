@@ -15,8 +15,21 @@ export const env = createEnv({
     DATABASE_URL: z.string().min(1, "DATABASE_URL es requerida"),
     REDIS_URL: z.string().optional(),
     REDIS_PASSWORD: z.string().optional(),
-    CHATWOOT_BASE_URL: z.string().url().default("http://localhost:3000"),
+    CHATWOOT_INTERNAL_URL: z
+      .string()
+      .url()
+      .default("http://mocter-chatwoot-rails-1:3000"),
+    CHATWOOT_BASE_URL: z.string().url().default("http://localhost:3002"),
     CHATWOOT_PLATFORM_TOKEN: z.string().optional(),
+    CHATWOOT_WEBHOOK_URL: z
+      .string()
+      .url()
+      .default("http://admin-portal:3003/api/webhooks/chatwoot"),
+    CHATWOOT_SUPER_ADMIN_USER_ID: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1),
     IMGPROXY_KEY: z.string().optional(),
     IMGPROXY_SALT: z.string().optional(),
     IMGPROXY_BASE_URL: z.string().optional(),
@@ -33,7 +46,7 @@ export const env = createEnv({
     NEXT_PUBLIC_CHATWOOT_URL: z
       .string()
       .url()
-      .default("http://localhost:3000"),
+      .default("http://localhost:3002"),
     NEXT_PUBLIC_SAAS_BRAND_NAME: z
       .string()
       .default("Mocter"),
@@ -46,8 +59,11 @@ export const env = createEnv({
     DATABASE_URL: process.env.DATABASE_URL,
     REDIS_URL: process.env.REDIS_URL,
     REDIS_PASSWORD: process.env.REDIS_PASSWORD,
+    CHATWOOT_INTERNAL_URL: process.env.CHATWOOT_INTERNAL_URL,
     CHATWOOT_BASE_URL: process.env.CHATWOOT_BASE_URL,
     CHATWOOT_PLATFORM_TOKEN: process.env.CHATWOOT_PLATFORM_TOKEN,
+    CHATWOOT_WEBHOOK_URL: process.env.CHATWOOT_WEBHOOK_URL,
+    CHATWOOT_SUPER_ADMIN_USER_ID: process.env.CHATWOOT_SUPER_ADMIN_USER_ID,
     IMGPROXY_KEY: process.env.IMGPROXY_KEY,
     IMGPROXY_SALT: process.env.IMGPROXY_SALT,
     IMGPROXY_BASE_URL: process.env.IMGPROXY_BASE_URL,

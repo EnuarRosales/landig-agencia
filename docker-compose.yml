@@ -128,8 +128,12 @@ services:
       PORT: 3003
       NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-http://localhost:3003}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
-      CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:-http://localhost:3000}
-      NEXT_PUBLIC_CHATWOOT_URL: ${NEXT_PUBLIC_CHATWOOT_URL:-http://localhost:3000}
+      CHATWOOT_INTERNAL_URL: ${CHATWOOT_INTERNAL_URL:-http://mocter-chatwoot-rails-1:3000}
+      CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:-http://localhost:3002}
+      NEXT_PUBLIC_CHATWOOT_URL: ${NEXT_PUBLIC_CHATWOOT_URL:-http://localhost:3002}
+      CHATWOOT_PLATFORM_TOKEN: ${CHATWOOT_PLATFORM_TOKEN}
+      CHATWOOT_WEBHOOK_URL: ${CHATWOOT_WEBHOOK_URL:-http://admin-portal:3003/api/webhooks/chatwoot}
+      CHATWOOT_SUPER_ADMIN_USER_ID: ${CHATWOOT_SUPER_ADMIN_USER_ID:-1}
       CELL_SECRETS_ACTIVE_KEY_ID: ${CELL_SECRETS_ACTIVE_KEY_ID:-k1}
       CELL_SECRETS_DIR: ${CELL_SECRETS_DIR:-/run/secrets}
       CELL_SECRETS_KEY: ${CELL_SECRETS_KEY}
@@ -138,6 +142,9 @@ services:
       TOTP_KEY: ${TOTP_KEY}
       # File watching over a Windows bind mount requires polling.
       WATCHPACK_POLLING: "true"
+    networks:
+      - default
+      - chatwoot-net
     ports:
       - "3003:3003"
     volumes:
@@ -168,3 +175,9 @@ volumes:
   admin-next:
   admin-web-node-modules:
   admin-domain-node-modules:
+
+networks:
+  default:
+  chatwoot-net:
+    name: mocter-chatwoot_default
+    external: true

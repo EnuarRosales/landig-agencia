@@ -1,13 +1,59 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { err, ok, type Result } from "../types/result";
 import { getDb } from "../db/client";
+import { withTenantCellTransaction } from "../db/cell-client";
 import { chatwootAccounts } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { clients } from "../db/schemas/admin/clients";
 import { plans } from "../db/schemas/admin/plans";
 import { planLimits } from "../db/schemas/admin/plan-catalogs";
 import { chatwootCapabilityDefinitions, planCapabilityValues } from "../db/schemas/admin/chatwoot-capabilities";
+import { cellTenantLabels } from "../db/schemas/tenant";
 import { RESERVED_MOCTER_LEAD_LABELS } from "./onboarding-and-limits.service";
+import { appLogger } from "../utils/logger";
+import { env } from "../utils/env";
+
+/**
+ * Catálogo canónico de las 6 etiquetas reservadas de Chatwoot (CHW-002 RF-02.5, D-08).
+ */
+export const RESERVED_CANONICAL_LABELS = [
+  {
+    title: "lead-frio",
+    description: "Prospecto con bajo interés inicial",
+    color: "#64748B",
+    showOnSidebar: true,
+  },
+  {
+    title: "lead-tibio",
+    description: "Prospecto con interés moderado",
+    color: "#F59E0B",
+    showOnSidebar: true,
+  },
+  {
+    title: "lead-caliente",
+    description: "Prospecto con alta intención de compra",
+    color: "#EF4444",
+    showOnSidebar: true,
+  },
+  {
+    title: "compra-realizada",
+    description: "Cliente que completó una transacción",
+    color: "#10B981",
+    showOnSidebar: true,
+  },
+  {
+    title: "soporte",
+    description: "Atención y soporte post-venta",
+    color: "#3B82F6",
+    showOnSidebar: true,
+  },
+  {
+    title: "escalation-humano",
+    description: "Escalamiento a agente humano",
+    color: "#8B5CF6",
+    showOnSidebar: true,
+  },
+] as const;
 
 /**
  * Estados de la máquina de aprovisionamiento de Chatwoot (`ADM-001 T-11`, `design.md` §8).
@@ -61,6 +107,11 @@ export interface TenantLabelRecord {
   syncedAt: Date;
 }
 
+export interface ChatwootWebhookRegistrationResult {
+  id: number;
+  url: string;
+}
+
 /**
  * Puerto del adaptador HTTP hacia la Platform API y Account API de Chatwoot v4.19.1 (`ADM-001 RF-03.1`).
  *
@@ -102,11 +153,54 @@ export interface IChatwootPlatformGateway {
     color: string;
     showOnSidebar: boolean;
   }): Promise<{ chatwootLabelId: number }>;
+
+  ensureAccountWebhook?(params: {
+    accountId: number;
+    serviceToken: string;
+    webhookUrl: string;
+    subscriptions?: string[];
+  }): Promise<ChatwootWebhookRegistrationResult>;
+
+  ensureMemberUserInAccount?(params: {
+    accountId: number;
+    email: string;
+    name: string;
+    role: "administrator" | "agent";
+  }): Promise<{ userId: number }>;
+
+  getUserSsoLoginUrl?(params: {
+    userId: number;
+  }): Promise<{ url: string }>;
 }
 
 export interface ChatwootHttpPlatformGatewayOptions {
   baseUrl?: string;
   platformToken?: string;
+}
+
+/**
+ * Resuelve la configuración HTTP para el gateway de Chatwoot priorizando CHATWOOT_INTERNAL_URL.
+ */
+export function getChatwootHttpConfig(options?: ChatwootHttpPlatformGatewayOptions): {
+  baseUrl: string;
+  platformToken: string;
+} {
+  const baseUrl = (
+    options?.baseUrl ||
+    env.CHATWOOT_INTERNAL_URL ||
+    env.CHATWOOT_BASE_URL ||
+    process.env.CHATWOOT_INTERNAL_URL ||
+    process.env.CHATWOOT_BASE_URL ||
+    "http://localhost:3000"
+  ).replace(/\/+$/, "");
+
+  const platformToken =
+    options?.platformToken ||
+    env.CHATWOOT_PLATFORM_TOKEN ||
+    process.env.CHATWOOT_PLATFORM_TOKEN ||
+    "";
+
+  return { baseUrl, platformToken };
 }
 
 /**
@@ -117,8 +211,9 @@ export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
   private readonly platformToken: string;
 
   constructor(options?: ChatwootHttpPlatformGatewayOptions) {
-    this.baseUrl = (options?.baseUrl || process.env.CHATWOOT_BASE_URL || "http://localhost:3002").replace(/\/+$/, "");
-    this.platformToken = options?.platformToken || process.env.CHATWOOT_PLATFORM_TOKEN || "";
+    const config = getChatwootHttpConfig(options);
+    this.baseUrl = config.baseUrl;
+    this.platformToken = config.platformToken;
   }
 
   async createAccount(params: {
@@ -211,6 +306,27 @@ export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
     if (userRes.ok) {
       const userData = (await userRes.json()) as { id: number };
       userId = userData.id;
+    } else if (userRes.status === 422) {
+      // Si el usuario técnico ya existe en Chatwoot (reintento o aprovisionamiento idempotente), localizarlo
+      const listRes = await fetch(`${this.baseUrl}/platform/api/v1/users`, {
+        headers: { api_access_token: this.platformToken },
+      });
+      if (listRes.ok) {
+        const usersList: any = await listRes.json();
+        const usersArray: Array<{ id: number; email: string }> = Array.isArray(usersList)
+          ? usersList
+          : (usersList?.payload || []);
+        const found = usersArray.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+        if (found) {
+          userId = found.id;
+        } else {
+          const text = await userRes.text();
+          throw new Error(`Chatwoot Platform API service user creation error (${userRes.status}): ${text}`);
+        }
+      } else {
+        const text = await userRes.text();
+        throw new Error(`Chatwoot Platform API service user creation error (${userRes.status}): ${text}`);
+      }
     } else {
       const text = await userRes.text();
       throw new Error(`Chatwoot Platform API user creation error (${userRes.status}): ${text}`);
@@ -228,7 +344,7 @@ export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
       }),
     });
 
-    if (!linkRes.ok) {
+    if (!linkRes.ok && linkRes.status !== 422) {
       const linkText = await linkRes.text();
       throw new Error(`Chatwoot Platform API account_users link error (${linkRes.status}): ${linkText}`);
     }
@@ -257,6 +373,29 @@ export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
     websiteName: string;
     websiteUrl?: string;
   }): Promise<{ inboxId: number; websiteToken: string }> {
+    // 1. Consultar inboxes existentes para garantizar idempotencia en reintentos
+    const listRes = await fetch(`${this.baseUrl}/api/v1/accounts/${params.accountId}/inboxes`, {
+      method: "GET",
+      headers: {
+        api_access_token: params.serviceToken,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (listRes.ok) {
+      const listData: any = await listRes.json();
+      const inboxes: any[] = Array.isArray(listData) ? listData : (listData?.payload || []);
+      const existingWebWidget = inboxes.find(
+        (i) => i.channel_type === "Channel::WebWidget" || i.channel?.type === "web_widget",
+      );
+      if (existingWebWidget) {
+        const websiteToken =
+          existingWebWidget.channel?.website_token || existingWebWidget.website_token || "";
+        return { inboxId: existingWebWidget.id, websiteToken };
+      }
+    }
+
+    // 2. Crear inbox por defecto si no existe
     const res = await fetch(`${this.baseUrl}/api/v1/accounts/${params.accountId}/inboxes`, {
       method: "POST",
       headers: {
@@ -304,17 +443,194 @@ export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
       }),
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Chatwoot API label creation error (${res.status}): ${text}`);
+    if (res.ok) {
+      const data = (await res.json()) as { id?: number; payload?: { id: number } };
+      const chatwootLabelId = data.payload?.id ?? data.id;
+      if (typeof chatwootLabelId === "number") {
+        return { chatwootLabelId };
+      }
     }
 
-    const data = (await res.json()) as { id: number };
-    return { chatwootLabelId: data.id };
+    if (res.status === 422) {
+      // Si la etiqueta ya existe en Chatwoot (reintento idempotente), consultar para obtener su ID
+      const listRes = await fetch(`${this.baseUrl}/api/v1/accounts/${params.accountId}/labels`, {
+        method: "GET",
+        headers: {
+          api_access_token: params.serviceToken,
+          "Content-Type": "application/json",
+        },
+      });
+      if (listRes.ok) {
+        const listData: any = await listRes.json();
+        const labels: any[] = Array.isArray(listData) ? listData : (listData?.payload || []);
+        const found = labels.find((l) => l.title?.toLowerCase() === params.title.toLowerCase());
+        if (found && typeof found.id === "number") {
+          return { chatwootLabelId: found.id };
+        }
+      }
+    }
+
+    const text = await res.text();
+    throw new Error(`Chatwoot API label creation error (${res.status}): ${text}`);
+  }
+
+  async ensureAccountWebhook(params: {
+    accountId: number;
+    serviceToken: string;
+    webhookUrl: string;
+    subscriptions?: string[];
+  }): Promise<ChatwootWebhookRegistrationResult> {
+    const defaultSubscriptions = [
+      "conversation_created",
+      "conversation_status_changed",
+      "conversation_updated",
+      "message_created",
+      "message_updated",
+    ];
+    const subscriptions = params.subscriptions || defaultSubscriptions;
+
+    // 1. Consultar si ya existe un webhook registrado con esa URL
+    const listRes = await fetch(`${this.baseUrl}/api/v1/accounts/${params.accountId}/webhooks`, {
+      method: "GET",
+      headers: {
+        api_access_token: params.serviceToken,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (listRes.ok) {
+      const listData: any = await listRes.json();
+      const webhooks: Array<{ id: number; url: string }> = Array.isArray(listData)
+        ? listData
+        : (listData?.payload || []);
+      const existing = webhooks.find((w) => w.url === params.webhookUrl);
+      if (existing) {
+        return { id: existing.id, url: existing.url };
+      }
+    }
+
+    // 2. Registrar el webhook vía POST
+    const createRes = await fetch(`${this.baseUrl}/api/v1/accounts/${params.accountId}/webhooks`, {
+      method: "POST",
+      headers: {
+        api_access_token: params.serviceToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        webhook: {
+          url: params.webhookUrl,
+          subscriptions,
+        },
+      }),
+    });
+
+    if (!createRes.ok) {
+      const text = await createRes.text();
+      throw new Error(`Chatwoot API webhook registration error (${createRes.status}): ${text}`);
+    }
+
+    const data: any = await createRes.json();
+    const created = data?.payload?.webhook || data?.payload || data;
+    return { id: created.id, url: created.url || params.webhookUrl };
+  }
+
+  async ensureMemberUserInAccount(params: {
+    accountId: number;
+    email: string;
+    name: string;
+    role: "administrator" | "agent";
+  }): Promise<{ userId: number }> {
+    let userId: number;
+
+    const userRes = await fetch(`${this.baseUrl}/platform/api/v1/users`, {
+      method: "POST",
+      headers: {
+        api_access_token: this.platformToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: params.name,
+        email: params.email,
+        password: `${randomBytes(24).toString("hex")}A1!`,
+        custom_attributes: { mocter_member: true },
+      }),
+    });
+
+    if (userRes.ok) {
+      const userData = (await userRes.json()) as { id: number };
+      userId = userData.id;
+    } else if (userRes.status === 422) {
+      // El usuario ya existe en Chatwoot; buscar su ID
+      const listRes = await fetch(`${this.baseUrl}/platform/api/v1/users`, {
+        headers: { api_access_token: this.platformToken },
+      });
+      if (listRes.ok) {
+        const usersList: any = await listRes.json();
+        const usersArray: Array<{ id: number; email: string }> = Array.isArray(usersList)
+          ? usersList
+          : (usersList?.payload || []);
+        const found = usersArray.find((u) => u.email?.toLowerCase() === params.email.toLowerCase());
+        if (found) {
+          userId = found.id;
+        } else {
+          const text = await userRes.text();
+          throw new Error(`Chatwoot user already exists but could not be located (${userRes.status}): ${text}`);
+        }
+      } else {
+        const text = await userRes.text();
+        throw new Error(`Chatwoot Platform API user creation error (${userRes.status}): ${text}`);
+      }
+    } else {
+      const text = await userRes.text();
+      throw new Error(`Chatwoot Platform API user creation error (${userRes.status}): ${text}`);
+    }
+
+    // Vincular usuario a la cuenta con su rol correspondiente
+    const linkRes = await fetch(
+      `${this.baseUrl}/platform/api/v1/accounts/${params.accountId}/account_users`,
+      {
+        method: "POST",
+        headers: {
+          api_access_token: this.platformToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          role: params.role,
+        }),
+      },
+    );
+
+    if (!linkRes.ok && linkRes.status !== 422) {
+      const linkText = await linkRes.text();
+      throw new Error(`Chatwoot Platform API account_users link error (${linkRes.status}): ${linkText}`);
+    }
+
+    return { userId };
+  }
+
+  async getUserSsoLoginUrl(params: {
+    userId: number;
+  }): Promise<{ url: string }> {
+    const res = await fetch(`${this.baseUrl}/platform/api/v1/users/${params.userId}/login`, {
+      method: "GET",
+      headers: {
+        api_access_token: this.platformToken,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Chatwoot Platform API user login error (${res.status}): ${text}`);
+    }
+
+    const data = (await res.json()) as { url: string };
+    return { url: data.url };
   }
 }
 
-const RESERVED_SLUGS = new Set(RESERVED_MOCTER_LEAD_LABELS.map((l) => l.title));
+const RESERVED_SLUGS = new Set<string>(RESERVED_CANONICAL_LABELS.map((l) => l.title));
 
 /**
  * Servicio de aprovisionamiento idempotente de cuentas de Chatwoot, cifrado de token de servicio,
@@ -332,6 +648,45 @@ export class ChatwootProvisioningService {
     private readonly activeKeyId: string = "k1",
     private readonly db?: any,
   ) {}
+
+  /**
+   * Obtiene el registro de aprovisionamiento de Chatwoot para un inquilino.
+   */
+  async getAccountRecord(clientId: string): Promise<ChatwootAccountRecord | null> {
+    const memRecord = this.accountsByClient.get(clientId);
+    if (memRecord) {
+      return memRecord;
+    }
+    if (this.db) {
+      try {
+        const [dbRow] = await this.db
+          .select()
+          .from(chatwootAccounts)
+          .where(eq(chatwootAccounts.clientId, clientId))
+          .limit(1);
+        if (dbRow) {
+          const record: ChatwootAccountRecord = {
+            clientId: dbRow.clientId,
+            chatwootAccountId: dbRow.chatwootAccountId,
+            serviceUserId: dbRow.serviceUserId,
+            serviceTokenCiphertext: dbRow.serviceTokenCiphertext,
+            serviceTokenKeyId: dbRow.serviceTokenKeyId,
+            webchatInboxId: dbRow.webchatInboxId,
+            webchatWebsiteToken: dbRow.webchatWebsiteToken,
+            state: dbRow.state as ChatwootProvisioningState,
+            idempotencyKey: dbRow.idempotencyKey,
+            lastError: dbRow.lastError,
+            syncedAt: dbRow.syncedAt,
+          };
+          this.accountsByClient.set(clientId, record);
+          return record;
+        }
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
 
   private async persistAccountToDb(record: ChatwootAccountRecord, actor = "system") {
     if (!this.db) return;
@@ -514,15 +869,109 @@ export class ChatwootProvisioningService {
         record.webchatWebsiteToken = inbox.websiteToken;
       }
 
+      // 1. Sembrar etiquetas reservadas en Chatwoot y sincronizar en pg-cell-XX (CHW-002 T-04, RF-02.5, D-08)
+      this.seedReservedLabelsIfMissing(params.clientId);
+      if (this.gateway.pushLabelToChatwoot) {
+        for (const label of RESERVED_CANONICAL_LABELS) {
+          try {
+            const pushed = await this.gateway.pushLabelToChatwoot({
+              accountId: record.chatwootAccountId,
+              serviceToken: rawServiceToken,
+              title: label.title,
+              description: label.description,
+              color: label.color,
+              showOnSidebar: label.showOnSidebar,
+            });
+
+            const clientMap = this.labelsByClient.get(params.clientId);
+            if (clientMap) {
+              const existingLabel = clientMap.get(label.title);
+              if (existingLabel) {
+                existingLabel.chatwootLabelId = pushed.chatwootLabelId;
+              } else {
+                const isMocterLead = RESERVED_MOCTER_LEAD_LABELS.some((m) => m.title === label.title);
+                clientMap.set(label.title, {
+                  id: `019a0000-0000-7000-8004-${String(clientMap.size + 1).padStart(12, "0")}`,
+                  clientId: params.clientId,
+                  chatwootLabelId: pushed.chatwootLabelId,
+                  title: label.title,
+                  description: label.description,
+                  color: label.color,
+                  showOnSidebar: label.showOnSidebar,
+                  origin: isMocterLead ? "mocter_default" : "chatwoot_default",
+                  state: "active",
+                  syncedAt: new Date(),
+                });
+              }
+            }
+
+            if (this.db) {
+              try {
+                const isMocterLead = RESERVED_MOCTER_LEAD_LABELS.some((m) => m.title === label.title);
+                await withTenantCellTransaction(params.clientId, async (tx) => {
+                  await tx
+                    .insert(cellTenantLabels)
+                    .values({
+                      clientId: params.clientId,
+                      title: label.title,
+                      description: label.description,
+                      color: label.color,
+                      showOnSidebar: label.showOnSidebar,
+                      origin: isMocterLead ? "mocter_default" : "chatwoot_default",
+                      chatwootLabelId: pushed.chatwootLabelId,
+                      state: "active",
+                      syncedAt: new Date(),
+                      createdBy: params.actor || "system",
+                      updatedBy: params.actor || "system",
+                    })
+                    .onConflictDoUpdate({
+                      target: [cellTenantLabels.clientId, cellTenantLabels.title],
+                      set: {
+                        chatwootLabelId: pushed.chatwootLabelId,
+                        syncedAt: new Date(),
+                        updatedAt: new Date(),
+                      },
+                    });
+                });
+              } catch {
+                // Fail-soft si la celda aún no tiene asignación activa o no responde
+              }
+            }
+          } catch (labelErr) {
+            appLogger.warn(`[runProvisioningFlow] Error sembrando etiqueta '${label.title}' en Chatwoot`, {
+              clientId: params.clientId,
+              error: labelErr instanceof Error ? labelErr.message : String(labelErr),
+            });
+          }
+        }
+      }
+
+      // 2. Registrar webhook de la cuenta hacia mocter-admin (CHW-002 T-04, RF-02.6)
+      if (this.gateway.ensureAccountWebhook) {
+        const webhookUrl =
+          env.CHATWOOT_WEBHOOK_URL ||
+          process.env.CHATWOOT_WEBHOOK_URL ||
+          "http://admin-portal:3003/api/webhooks/chatwoot";
+
+        await this.gateway.ensureAccountWebhook({
+          accountId: record.chatwootAccountId,
+          serviceToken: rawServiceToken,
+          webhookUrl,
+        });
+      }
+
       record.state = "active";
       record.syncedAt = new Date();
-      this.seedReservedLabelsIfMissing(params.clientId);
       await this.persistAccountToDb(record, params.actor);
 
       return ok({ ...record });
     } catch (error) {
       record.state = "failed";
       record.lastError = error instanceof Error ? error.message : String(error);
+      appLogger.warn("[ChatwootProvisioningService.runProvisioningFlow] Fallo en aprovisionamiento de Chatwoot (Fail-Soft)", {
+        clientId: params.clientId,
+        error: record.lastError,
+      });
       await this.persistAccountToDb(record, params.actor);
       return err(record.lastError, "CHATWOOT_PROVISIONING_FAILED");
     }
@@ -606,8 +1055,8 @@ export class ChatwootProvisioningService {
   }
 
   /**
-   * Siembra las 4 etiquetas reservadas de Mocter (`lead-frio`, `lead-tibio`, `lead-caliente`, `compra-realizada`)
-   * con `origin = 'mocter_default'` (`ADM-001 RF-03.7, T-12`).
+   * Siembra las 4 etiquetas reservadas de clasificación de prospectos (ADM-001 RF-03.7, T-12)
+   * con `origin = 'mocter_default'`.
    */
   seedReservedLabelsIfMissing(clientId: string): TenantLabelRecord[] {
     let clientMap = this.labelsByClient.get(clientId);
@@ -821,6 +1270,62 @@ export class ChatwootProvisioningService {
 }
 
 /**
+ * Evalúa si un plan tiene Chatwoot habilitado según sus límites (chatwoot_agents o chatwoot_inboxes),
+ * capacidades activas en plan_capability_values, o la bandera directa plan.chatwootEnabled (CHW-002 RF-01.1).
+ */
+export async function isChatwootEnabledForPlan(planId: string, customDb?: any): Promise<boolean> {
+  const db = customDb || getDb();
+
+  // 1. Consultar si tiene plan.chatwootEnabled
+  try {
+    const [plan]: any = await db
+      .select()
+      .from(plans)
+      .where(eq(plans.id, planId))
+      .limit(1);
+
+    if (plan && typeof plan.chatwootEnabled === "boolean") {
+      return plan.chatwootEnabled;
+    }
+  } catch {
+    // Si la tabla o columna no está disponible, continuar con limits y capacidades
+  }
+
+  // 2. Consultar dimensiones en plan_limits: chatwoot_agents o chatwoot_inboxes
+  try {
+    const limitsRows = await db
+      .select({ dimension: planLimits.dimension, mode: planLimits.mode, value: planLimits.value })
+      .from(planLimits)
+      .where(eq(planLimits.planId, planId));
+
+    if (Array.isArray(limitsRows)) {
+      for (const row of limitsRows) {
+        if (row.dimension === "chatwoot_agents" || row.dimension === "chatwoot_inboxes") {
+          if (row.mode === "UNLIMITED" || (row.mode !== "DISABLED" && (row.value ?? 0) > 0)) {
+            return true;
+          }
+        }
+      }
+    }
+  } catch {
+    // Fallback
+  }
+
+  // 3. Consultar capacidades activas en plan_capability_values
+  try {
+    const caps = await db
+      .select({ enabled: planCapabilityValues.enabled })
+      .from(planCapabilityValues)
+      .where(and(eq(planCapabilityValues.planId, planId), eq(planCapabilityValues.enabled, true)))
+      .limit(1);
+
+    return Array.isArray(caps) && caps.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Construye el mapa de características (features) y límites compatibles con Chatwoot v4.19.1 a partir de un plan.
  */
 export async function buildChatwootFeaturesAndLimitsForPlan(planId: string, customDb?: any): Promise<{
@@ -829,16 +1334,28 @@ export async function buildChatwootFeaturesAndLimitsForPlan(planId: string, cust
 }> {
   const db = customDb || getDb();
 
-  // 1. Plan limits: agents, inboxes
+  // 1. Plan limits: agents, inboxes (CHW-002 T-03, RF-02.1)
   const limitsRows = await db
     .select()
     .from(planLimits)
     .where(eq(planLimits.planId, planId));
 
   const limits: Record<string, number | null> = {};
-  for (const row of limitsRows) {
-    if (row.dimension === "agents" || row.dimension === "inboxes") {
-      limits[row.dimension] = row.limitMode === "UNLIMITED" ? null : (row.value ?? null);
+  if (Array.isArray(limitsRows)) {
+    for (const row of limitsRows) {
+      const rawMode = (row.mode || row.limitMode) as string | undefined;
+      const resolvedLimit =
+        rawMode === "UNLIMITED"
+          ? null
+          : rawMode === "DISABLED"
+            ? 0
+            : (row.value ?? null);
+
+      if (row.dimension === "chatwoot_agents" || row.dimension === "agents") {
+        limits.agents = resolvedLimit;
+      } else if (row.dimension === "chatwoot_inboxes" || row.dimension === "inboxes") {
+        limits.inboxes = resolvedLimit;
+      }
     }
   }
 
@@ -849,17 +1366,19 @@ export async function buildChatwootFeaturesAndLimitsForPlan(planId: string, cust
     .where(eq(planCapabilityValues.planId, planId));
 
   const features: Record<string, boolean> = {};
-  for (const row of capabilityRows) {
-    const code = row.capabilityCode;
-    // Excluir Mocter-owned (channel_whatsapp) y técnicos (chatwoot_v4)
-    if (code === "channel_whatsapp" || code === "chatwoot_v4") {
-      continue;
-    }
-    const def = chatwootCapabilityDefinitions.find((c) => c.code === code);
-    if (!def) continue;
+  if (Array.isArray(capabilityRows)) {
+    for (const row of capabilityRows) {
+      const code = row.capabilityCode;
+      // Excluir Mocter-owned (channel_whatsapp) y técnicos (chatwoot_v4)
+      if (code === "channel_whatsapp" || code === "chatwoot_v4") {
+        continue;
+      }
+      const def = chatwootCapabilityDefinitions.find((c) => c.code === code);
+      if (!def) continue;
 
-    if (def.commercialStatus === "commercial" && def.providerCode) {
-      features[def.providerCode] = Boolean(row.enabled);
+      if (def.commercialStatus === "commercial" && def.providerCode) {
+        features[def.providerCode] = Boolean(row.enabled);
+      }
     }
   }
 
@@ -891,7 +1410,8 @@ export async function provisionTenantChatwootAccount(params: {
     return err(`Plan '${params.planId}' no encontrado.`, "PLAN_NOT_FOUND");
   }
 
-  if (!plan.chatwootEnabled) {
+  const isEnabled = (plan as any).chatwootEnabled ?? (await isChatwootEnabledForPlan(params.planId, db));
+  if (!isEnabled) {
     return ok({ skipped: true });
   }
 
@@ -914,7 +1434,10 @@ export async function provisionTenantChatwootAccount(params: {
   });
 
   if (!provResult.ok) {
-    return err("El plan se guardó, pero la configuración de atención no pudo sincronizarse.", "CHATWOOT_SYNC_FAILED");
+    return err(
+      provResult.error || "El plan se guardó, pero la configuración de atención no pudo sincronizarse.",
+      provResult.code || "CHATWOOT_SYNC_FAILED",
+    );
   }
 
   return ok(provResult.data);
@@ -962,7 +1485,8 @@ export async function syncAllAccountsForPlan(params: {
     return err(`Plan '${params.planId}' no encontrado.`, "PLAN_NOT_FOUND");
   }
 
-  if (!plan.chatwootEnabled) {
+  const isEnabled = (plan as any).chatwootEnabled ?? (await isChatwootEnabledForPlan(params.planId, db));
+  if (!isEnabled) {
     return ok({ total: 0, synced: 0, failed: 0, errors: [] });
   }
 
@@ -1002,4 +1526,40 @@ export async function syncAllAccountsForPlan(params: {
     errors,
   });
 }
+
+/**
+ * Consulta el estado y registro de aprovisionamiento de Chatwoot para un inquilino en la base de datos administrativa.
+ */
+export async function getTenantChatwootAccount(params: {
+  clientId: string;
+  db?: any;
+}): Promise<ChatwootAccountRecord | null> {
+  const db = params.db || getDb();
+  try {
+    const [dbRow] = await db
+      .select()
+      .from(chatwootAccounts)
+      .where(eq(chatwootAccounts.clientId, params.clientId))
+      .limit(1);
+
+    if (!dbRow) return null;
+
+    return {
+      clientId: dbRow.clientId,
+      chatwootAccountId: dbRow.chatwootAccountId,
+      serviceUserId: dbRow.serviceUserId,
+      serviceTokenCiphertext: dbRow.serviceTokenCiphertext,
+      serviceTokenKeyId: dbRow.serviceTokenKeyId,
+      webchatInboxId: dbRow.webchatInboxId,
+      webchatWebsiteToken: dbRow.webchatWebsiteToken,
+      state: dbRow.state as ChatwootProvisioningState,
+      idempotencyKey: dbRow.idempotencyKey,
+      lastError: dbRow.lastError,
+      syncedAt: dbRow.syncedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
 

@@ -9,6 +9,7 @@ import {
   plans,
   cells,
   onboardingSessions,
+  chatwootAccounts,
 } from "../db/schemas/admin";
 import {
   cellProducts,
@@ -19,6 +20,12 @@ import {
 import { withTenantCellTransaction } from "../db/cell-client";
 import { provisionTenantInCellDataPlane } from "./admin-dashboard.service";
 import { RESERVED_MOCTER_LEAD_LABELS } from "./onboarding-and-limits.service";
+import {
+  ChatwootProvisioningService,
+  ChatwootHttpPlatformGateway,
+  buildChatwootFeaturesAndLimitsForPlan,
+  isChatwootEnabledForPlan,
+} from "./chatwoot-provisioning.service";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 
@@ -131,6 +138,8 @@ export interface CompleteStep3BotAndActivateOutcome {
  * 2. Alta Autónoma: Prospecto que se registra con activeClientId = NULL; se aprovisiona al confirmar Paso 1.
  */
 export class TenantOnboardingService {
+  constructor(private readonly chatwootProvisioningService?: ChatwootProvisioningService) {}
+
   /**
    * Resuelve el estado actual de onboarding para el usuario autenticado.
    */
@@ -364,10 +373,12 @@ export class TenantOnboardingService {
       const planCode = input.planCode || "free";
 
       let clientId = existingClient?.id;
+      let effectivePlanId: string | null = null;
 
       if (existingClient) {
         // CASO A: Actualización de inquilino existente (Alta Manual)
         clientId = existingClient.id;
+        effectivePlanId = existingClient.planId || null;
         await db
           .update(clients)
           .set({
@@ -421,6 +432,7 @@ export class TenantOnboardingService {
           return err("No hay planes comerciales disponibles para asignación.", "NO_ACTIVE_PLAN_FOUND");
         }
 
+        effectivePlanId = selectedPlan.id;
         clientId = randomUUID();
 
         // 1. Insertar cliente en Router Global
@@ -531,6 +543,50 @@ export class TenantOnboardingService {
             updatedBy: user.email,
           },
         });
+
+      // 5. Aprovisionamiento idempotente y fail-soft en Chatwoot (CHW-002 T-05, RF-01.4, D-02)
+      try {
+        let shouldProvision = true;
+        if (clientId) {
+          const [existingCw] = await db
+            .select({
+              state: chatwootAccounts.state,
+              chatwootAccountId: chatwootAccounts.chatwootAccountId,
+            })
+            .from(chatwootAccounts)
+            .where(eq(chatwootAccounts.clientId, clientId))
+            .limit(1);
+
+          if (existingCw && existingCw.state === "active" && existingCw.chatwootAccountId !== null) {
+            shouldProvision = false;
+          }
+
+          if (shouldProvision && effectivePlanId) {
+            const isPlanEnabled = await isChatwootEnabledForPlan(effectivePlanId, db);
+            if (isPlanEnabled) {
+              const { features, limits } = await buildChatwootFeaturesAndLimitsForPlan(effectivePlanId, db);
+              const cwService =
+                this.chatwootProvisioningService ||
+                new ChatwootProvisioningService(new ChatwootHttpPlatformGateway(), undefined, "k1", db);
+
+              await cwService.provisionOrRetryAccount({
+                clientId,
+                tenantName: displayName,
+                locale: locale === "en" ? "en" : "es",
+                idempotencyKey: `cw_prov_${clientId}`,
+                features,
+                limits,
+                actor: user.email,
+              });
+            }
+          }
+        }
+      } catch (cwErr) {
+        appLogger.warn("[completeStep1Business] Fallo en aprovisionamiento automático de Chatwoot (Fail-Soft)", {
+          clientId,
+          error: cwErr instanceof Error ? cwErr.message : String(cwErr),
+        });
+      }
 
       return ok({
         clientId: clientId!,

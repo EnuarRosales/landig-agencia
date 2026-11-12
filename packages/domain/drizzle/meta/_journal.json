@@ -204,6 +204,13 @@
       "when": 1794096102279,
       "tag": "0028_cell_hosts_and_placement",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794443800000,
+      "tag": "0029_seed_canonical_cell_hosts",
+      "breakpoints": true
     }
   ]
 }

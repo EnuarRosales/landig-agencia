@@ -247,7 +247,11 @@ export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellForm
                     id="cell-topology"
                     value={formData.topologyType}
                     onChange={(e) =>
-                      setFormData({ ...formData, topologyType: e.target.value as "remote_vps" | "local_compose" })
+                      setFormData({
+                        ...formData,
+                        topologyType: e.target.value as "remote_vps" | "local_compose",
+                        hostId: "",
+                      })
                     }
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
                   >
@@ -270,11 +274,19 @@ export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellForm
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
                   >
                     <option value="">Sin Asignar (Borrador)</option>
-                    {hosts.map((h) => (
-                      <option key={h.id} value={h.id} disabled={h.status !== "ready"}>
-                        {h.code} · {h.deploymentProfile} {h.status !== "ready" ? `(${h.status})` : ""}
-                      </option>
-                    ))}
+                    {hosts.map((h) => {
+                      const isCompatible =
+                        formData.topologyType === "local_compose"
+                          ? h.deploymentProfile === "local_development"
+                          : h.deploymentProfile !== "local_development";
+                      const isDisabled = h.status !== "ready" || !isCompatible;
+                      const compatibilitySuffix = !isCompatible ? " (Incompatible)" : "";
+                      return (
+                        <option key={h.id} value={h.id} disabled={isDisabled}>
+                          {h.code} · {h.deploymentProfile} {h.status !== "ready" ? `(${h.status})` : ""}{compatibilitySuffix}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>

@@ -17,7 +17,7 @@ services:
       - cell-backend
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -25,13 +25,14 @@ services:
   cell-migrator:
     image: node:24-alpine
     working_dir: /app
-    command: [ "node", "packages/domain/scripts/migrate.mjs", "--target=cell" ]
+    command: ["node", "packages/domain/scripts/migrate.mjs", "--target=cell"]
     volumes:
-      - ..:/app
+      - ${REPO_DIR:-..}:/app
       - mocter-core_root-node-modules:/app/node_modules
       - mocter-core_domain-node-modules:/app/packages/domain/node_modules
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pg-cell:5432/${POSTGRES_DB}
+      POSTGRES_HEALTHCHECK_PASSWORD: ${POSTGRES_HEALTHCHECK_PASSWORD}
     networks:
       - cell-backend
     depends_on:
@@ -47,6 +48,7 @@ services:
       DB_NAME: ${POSTGRES_DB}
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_URLS: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pg-cell:5432/${POSTGRES_DB},postgres://mocter_healthcheck:${POSTGRES_HEALTHCHECK_PASSWORD}@pg-cell:5432/*"
       LISTEN_PORT: 6432
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 100
@@ -55,7 +57,7 @@ services:
     ports:
       - "127.0.0.1:${PGBOUNCER_PORT}:6432"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432" ]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -71,13 +73,13 @@ services:
   tenant-app:
     image: node:24-alpine
     working_dir: /app/apps/web
-    command: [ "./node_modules/.bin/next", "dev", "-p", "3000", "--hostname", "0.0.0.0" ]
+    command: ["./node_modules/.bin/next", "dev", "-p", "3000"]
     volumes:
-      - ..:/app
+      - ${REPO_DIR:-..}:/app
       - mocter-core_root-node-modules:/app/node_modules
       - mocter-core_web-node-modules:/app/apps/web/node_modules
       - mocter-core_domain-node-modules:/app/packages/domain/node_modules
-      - cell-01-web-next:/app/apps/web/.next
+      - cell-cell-01-web-next:/app/apps/web/.next
     environment:
       CELL_CODE: ${CELL_CODE}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer-cell:6432/${POSTGRES_DB}
@@ -95,7 +97,7 @@ services:
 
 volumes:
   pgdata-cell-01:
-  cell-01-web-next:
+  cell-cell-01-web-next:
   mocter-core_root-node-modules:
     external: true
   mocter-core_domain-node-modules:

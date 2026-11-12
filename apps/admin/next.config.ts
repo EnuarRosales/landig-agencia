@@ -24,6 +24,17 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // Permitir que la ruta de handoff SSO de Chatwoot sea embebida en marcos legítimos de la misma app (CHW-002 RF-03.4)
+        source: "/api/auth/chatwoot/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'self' http://localhost:3003 https://admin.mocter.co",
+          },
+        ],
+      },
     ];
   },
 };

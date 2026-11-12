@@ -2,8 +2,8 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
-  AlertTriangle,
   CheckCircle,
   Loader2,
   PlayCircle,
@@ -14,6 +14,9 @@ import {
   X,
   Store,
   Check,
+  MessageSquare,
+  RotateCw,
+  ExternalLink,
 } from "lucide-react";
 import type { AdminTenantItemDto } from "@mocter/domain";
 import { ConfirmationModal } from "@/components/confirmation-modal";
@@ -69,12 +72,15 @@ export function TenantActions({
   const [editLoading, setEditLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
+  const [chatwootLoading, setChatwootLoading] = useState(false);
+  const [chatwootModalOpen, setChatwootModalOpen] = useState(false);
 
   // Mensajes de error en modales
   const [editError, setEditError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [resendError, setResendError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [chatwootError, setChatwootError] = useState<string | null>(null);
 
   // Formulario de edición
   const [editForm, setEditForm] = useState({
@@ -179,6 +185,38 @@ export function TenantActions({
     }
   }
 
+  // Manejador de aprovisionamiento o reintento de Chatwoot (CHW-002 T-09, D-08)
+  async function handleExecuteChatwootProvision() {
+    setChatwootLoading(true);
+    setChatwootError(null);
+
+    try {
+      const res = await fetch(`/api/admin/tenants/${id}/chatwoot/provision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "No fue posible sincronizar el comercio con Chatwoot.");
+      }
+
+      setChatwootModalOpen(false);
+      setInfoModal({
+        isOpen: true,
+        title: "Sincronización De Chatwoot Exitosa",
+        subtitle: "Configuración de atención omnicanal completada.",
+        variant: "neutral",
+        message: `La cuenta de Chatwoot para ${name} ha sido aprovisionada exitosamente. Se configuraron los buzones, cuotas y etiquetas canónicas.`,
+      });
+      router.refresh();
+    } catch (err) {
+      setChatwootError(err instanceof Error ? err.message : "Error al sincronizar con Chatwoot.");
+    } finally {
+      setChatwootLoading(false);
+    }
+  }
+
   // 3. Manejador de Edición de Inquilino
   async function handleSaveEdit(e: React.FormEvent) {
     e.preventDefault();
@@ -277,6 +315,43 @@ export function TenantActions({
         {resendLoading ? <Loader2 className="h-3 w-3 animate-spin text-[var(--dsn-accent)]" /> : <Mail className="h-3 w-3 text-cyan-400" />}
         <span className="hidden sm:inline">Onboarding</span>
       </button>
+
+      {/* Botón Aprovisionar / Reintentar en Chatwoot (CHW-002 T-09, D-08) */}
+      {status !== "baja" && (
+        <button
+          type="button"
+          disabled={chatwootLoading}
+          onClick={() => {
+            setChatwootError(null);
+            setChatwootModalOpen(true);
+          }}
+          title={tenant?.chatwoot?.state === "failed" ? "Reintentar sincronización en Chatwoot" : "Aprovisionar en Chatwoot"}
+          className="inline-flex items-center gap-1 rounded border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors disabled:opacity-40"
+        >
+          {chatwootLoading ? (
+            <Loader2 className="h-3 w-3 animate-spin text-[var(--dsn-accent)]" />
+          ) : tenant?.chatwoot?.state === "failed" ? (
+            <RotateCw className="h-3 w-3 text-amber-400" />
+          ) : (
+            <MessageSquare className="h-3 w-3 text-cyan-400" />
+          )}
+          <span className="hidden sm:inline">
+            {tenant?.chatwoot?.state === "failed" ? "Reintentar Sincronización" : "Aprovisionar En Chatwoot"}
+          </span>
+        </button>
+      )}
+
+      {/* Enlace directo a la Ficha en Super Admin si ya existe chatwootAccountId (CHW-002 T-09, D-08) */}
+      {Boolean(tenant?.chatwoot?.chatwootAccountId) && (
+        <Link
+          href={`/admin/conversations?accountId=${tenant!.chatwoot!.chatwootAccountId}`}
+          title="Ver ficha de cuenta en consola Super Admin de Chatwoot"
+          className="inline-flex items-center gap-1 rounded border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
+        >
+          <ExternalLink className="h-3 w-3 text-indigo-400" />
+          <span className="hidden sm:inline">Ver Cuenta En Super Admin</span>
+        </Link>
+      )}
 
       {/* Botón Editar Inquilino */}
       <button
@@ -607,6 +682,36 @@ export function TenantActions({
         confirmLoadingText="Enviando..."
         loading={resendLoading}
         error={resendError}
+      />
+
+      {/* MODAL DE CONFIRMACIÓN DE APROVISIONAMIENTO / REINTENTO CHATWOOT (Regla 4.17) */}
+      <ConfirmationModal
+        isOpen={chatwootModalOpen}
+        onClose={() => {
+          setChatwootModalOpen(false);
+          setChatwootError(null);
+        }}
+        onConfirm={handleExecuteChatwootProvision}
+        title={tenant?.chatwoot?.state === "failed" ? "Reintentar Sincronización" : "Aprovisionar En Chatwoot"}
+        subtitle="Sincronización del buzón de atención omnicanal, etiquetas canónicas y límites de agentes."
+        variant="neutral"
+        icon={<MessageSquare className="h-5 w-5 text-cyan-400" />}
+        details={[
+          { label: "Comercio", value: tenant?.displayName || name },
+          { label: "Slug", value: tenant?.slug || editForm.slug, mono: true },
+          { label: "Plan", value: tenant?.planName || "Plan Comercial" },
+          { label: "Estado Actual", value: tenant?.chatwoot?.state || "Sin Aprovisionar" },
+        ]}
+        warningTitle="Sincronización De Plataforma"
+        warningMessage={
+          <p>
+            Se conectará con la API de Chatwoot para aprovisionar o actualizar la cuenta corporativa, registrar el buzón webchat, sincronizar las 6 etiquetas comerciales canónicas y registrar el webhook de eventos.
+          </p>
+        }
+        confirmText={tenant?.chatwoot?.state === "failed" ? "Reintentar Sincronización" : "Aprovisionar En Chatwoot"}
+        confirmLoadingText="Sincronizando..."
+        loading={chatwootLoading}
+        error={chatwootError}
       />
 
       {/* MODAL DE CONFIRMACIÓN DE SUSPENSIÓN CANÓNICO (Regla 4.17) */}

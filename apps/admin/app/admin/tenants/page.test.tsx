@@ -138,4 +138,38 @@ describe("ADM-001 §6 / DAT-001 · Directorio y Gestión de Inquilinos y Comerci
     );
     expect(React.isValidElement(actionsElement)).toBe(true);
   });
+
+  it("renderiza TenantActions con botón de aprovisionamiento de Chatwoot y enlace a Super Admin", () => {
+    const actionsWithCw = (
+      <TenantActions
+        tenant={{
+          id: "tenant-02",
+          slug: "tienda-cw",
+          displayName: "Tienda Chatwoot",
+          contactEmail: "cw@tienda.com",
+          phone: "+573009876543",
+          lifecycleStatus: "activo",
+          locale: "es",
+          currency: "COP",
+          planId: "plan-pro",
+          planCode: "growth",
+          planName: "Plan Crecimiento",
+          cellId: "cell-01",
+          cellCode: "cell-primary",
+          cellTier: "standard",
+          ownerUserId: "usr-02",
+          ownerName: "Ana Silva",
+          ownerEmail: "ana@tienda.com",
+          createdAt: "2026-11-01T12:00:00.000Z",
+          updatedAt: "2026-11-01T12:00:00.000Z",
+          chatwoot: {
+            state: "active",
+            chatwootAccountId: 77,
+            lastError: null,
+          },
+        }}
+      />
+    );
+    expect(React.isValidElement(actionsWithCw)).toBe(true);
+  });
 });

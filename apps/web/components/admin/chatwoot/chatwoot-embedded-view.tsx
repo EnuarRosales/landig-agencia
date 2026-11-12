@@ -123,7 +123,7 @@ export function ChatwootEmbeddedView({ clientId, t }: ChatwootEmbeddedViewProps)
           src={embedUrl}
           title="Chatwoot Bandeja de Atención"
           className="w-full h-full border-0"
-          allow="camera; microphone; fullscreen; clipboard-read; clipboard-write"
+          allow="camera; microphone; fullscreen; clipboard-read; clipboard-write; keyboard-map"
           onLoad={() => {
             setIsLoading(false);
             setHasError(false);

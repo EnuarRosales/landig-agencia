@@ -220,6 +220,110 @@ describe("TenantOnboardingService", () => {
         expect(res.data.slug).toBe("synergia-market-updated");
       }
     });
+
+    it("dispara provisionOrRetryAccount en reintento de alta manual si la cuenta no está activa (CHW-002 T-05)", async () => {
+      const mockUser = { id: "user-1", email: "owner@test.com", activeClientId: "client-1" };
+      const mockClient = { id: "client-1", slug: "old-slug", displayName: "Old Name", planId: "p-cw" };
+      let selectCount = 0;
+      const mockDb = {
+        select: vi.fn().mockImplementation(() => ({
+          from: vi.fn().mockImplementation(() => ({
+            where: vi.fn().mockImplementation(() => ({
+              limit: vi.fn().mockImplementation(async () => {
+                selectCount++;
+                if (selectCount === 1) return [mockUser];
+                if (selectCount === 2) return [mockClient];
+                if (selectCount === 3) return []; // slug collision check
+                if (selectCount === 4) return [{ state: "failed", chatwootAccountId: null }]; // chatwootAccounts
+                if (selectCount === 5) return [{ chatwootEnabled: true }]; // plans
+                return [];
+              }),
+            })),
+          })),
+        })),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue({}),
+          }),
+        }),
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            onConflictDoUpdate: vi.fn().mockResolvedValue({}),
+          }),
+        }),
+      };
+      vi.spyOn(dbModule, "getDb").mockReturnValue(mockDb as any);
+
+      const mockChatwootService = {
+        provisionOrRetryAccount: vi.fn().mockResolvedValue(ok({ state: "active", chatwootAccountId: 999 })),
+      };
+
+      const onboardingService = new TenantOnboardingService(mockChatwootService as any);
+
+      const res = await onboardingService.completeStep1Business("user-1", {
+        displayName: "Synergia Market",
+        slug: "synergia-market-cw",
+      });
+
+      expect(res.ok).toBe(true);
+      expect(mockChatwootService.provisionOrRetryAccount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientId: "client-1",
+          tenantName: "Synergia Market",
+        }),
+      );
+    });
+
+    it("completa el Paso 1 de forma fail-soft si Chatwoot arroja excepción (CHW-002 T-05)", async () => {
+      const mockUser = { id: "user-1", email: "owner@test.com", activeClientId: "client-1" };
+      const mockClient = { id: "client-1", slug: "old-slug", displayName: "Old Name", planId: "p-cw" };
+      let selectCount = 0;
+      const mockDb = {
+        select: vi.fn().mockImplementation(() => ({
+          from: vi.fn().mockImplementation(() => ({
+            where: vi.fn().mockImplementation(() => ({
+              limit: vi.fn().mockImplementation(async () => {
+                selectCount++;
+                if (selectCount === 1) return [mockUser];
+                if (selectCount === 2) return [mockClient];
+                if (selectCount === 3) return [];
+                if (selectCount === 4) return []; // chatwootAccounts
+                if (selectCount === 5) return [{ chatwootEnabled: true }];
+                return [];
+              }),
+            })),
+          })),
+        })),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue({}),
+          }),
+        }),
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            onConflictDoUpdate: vi.fn().mockResolvedValue({}),
+          }),
+        }),
+      };
+      vi.spyOn(dbModule, "getDb").mockReturnValue(mockDb as any);
+
+      const mockChatwootService = {
+        provisionOrRetryAccount: vi.fn().mockRejectedValue(new Error("Chatwoot HTTP 500 timeout")),
+      };
+
+      const onboardingService = new TenantOnboardingService(mockChatwootService as any);
+
+      const res = await onboardingService.completeStep1Business("user-1", {
+        displayName: "Tienda Resiliente",
+        slug: "tienda-resiliente",
+      });
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.nextStep).toBe(2);
+      }
+      expect(mockChatwootService.provisionOrRetryAccount).toHaveBeenCalled();
+    });
   });
 
   describe("completeStep2FirstProduct", () => {

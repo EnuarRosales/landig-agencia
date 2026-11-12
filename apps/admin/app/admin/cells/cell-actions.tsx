@@ -745,11 +745,19 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
                   >
                     <option value="">Sin Asignar (Borrador)</option>
-                    {hosts.map((h) => (
-                      <option key={h.id} value={h.id} disabled={h.status !== "ready" && h.id !== cell.hostId}>
-                        {h.code} · {h.deploymentProfile} {h.status !== "ready" ? `(${h.status})` : ""}
-                      </option>
-                    ))}
+                    {hosts.map((h) => {
+                      const isCompatible =
+                        editFormData.topologyType === "local_compose"
+                          ? h.deploymentProfile === "local_development"
+                          : h.deploymentProfile !== "local_development";
+                      const isDisabled = (h.status !== "ready" && h.id !== cell.hostId) || !isCompatible;
+                      const compatibilitySuffix = !isCompatible ? " (Incompatible)" : "";
+                      return (
+                        <option key={h.id} value={h.id} disabled={isDisabled}>
+                          {h.code} · {h.deploymentProfile} {h.status !== "ready" ? `(${h.status})` : ""}{compatibilitySuffix}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>

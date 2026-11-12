@@ -67,8 +67,8 @@ try {
         ELSE
           ALTER ROLE mocter_healthcheck WITH PASSWORD '${healthPassword}';
         END IF;
+        EXECUTE format('GRANT CONNECT ON DATABASE %I TO mocter_healthcheck', current_database());
       END $$;
-      GRANT CONNECT ON DATABASE current_database() TO mocter_healthcheck;
       GRANT USAGE ON SCHEMA public, drizzle TO mocter_healthcheck;
       GRANT SELECT ON ALL TABLES IN SCHEMA drizzle TO mocter_healthcheck;
     `);

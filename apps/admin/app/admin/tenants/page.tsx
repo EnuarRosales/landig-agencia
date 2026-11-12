@@ -131,6 +131,7 @@ export default async function AdminTenantsPage() {
                   <th className="py-3 px-4 font-semibold">Plan Suscrito</th>
                   <th className="py-3 px-4 font-semibold">Célula De Datos</th>
                   <th className="py-3 px-4 font-semibold">Estado</th>
+                  <th className="py-3 px-4 font-semibold">Atención Chatwoot</th>
                   <th className="py-3 px-4 font-semibold">Fecha De Alta</th>
                   <th className="py-3 px-4 font-semibold text-right">Acciones</th>
                 </tr>
@@ -194,6 +195,30 @@ export default async function AdminTenantsPage() {
                       {t.lifecycleStatus === "baja" && (
                         <span className="rounded-full bg-zinc-500/10 px-2 py-0.5 text-[11px] font-medium text-zinc-400 border border-zinc-500/20">
                           Baja
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Atención Chatwoot */}
+                    <td className="py-3 px-4">
+                      {t.chatwoot?.state === "active" ? (
+                        <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">
+                          Activa (#{t.chatwoot.chatwootAccountId})
+                        </span>
+                      ) : t.chatwoot?.state === "failed" ? (
+                        <span
+                          className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-400 border border-rose-500/20"
+                          title={t.chatwoot.lastError || "Fallo en sincronización"}
+                        >
+                          Con Fallo
+                        </span>
+                      ) : t.chatwoot?.state === "pending" || t.chatwoot?.state === "provisioning" ? (
+                        <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-400 border border-cyan-500/20">
+                          En Configuración
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-zinc-500/10 px-2 py-0.5 text-[11px] font-medium text-zinc-400 border border-zinc-500/20">
+                          Sin Aprovisionar
                         </span>
                       )}
                     </td>

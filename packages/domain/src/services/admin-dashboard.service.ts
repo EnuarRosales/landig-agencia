@@ -44,6 +44,7 @@ import {
   planLimits,
   planDimensions,
   chatwootCapabilities,
+  chatwootAccounts,
   planCapabilityValues,
   PLAN_DIMENSION_KEYS,
   type PlanLimitDimensionKey,
@@ -69,7 +70,7 @@ import { INITIAL_AI_ASSIST_FIELDS, INITIAL_AI_ASSIST_PROMPTS } from "./ai-assist
 import { createCipheriv, createDecipheriv, randomBytes, createHash, randomUUID } from "node:crypto";
 import { cellSecretsCryptoService } from "./cell-secrets.service";
 import { authorizeCellProvision } from "./cell-authorization.service";
-import { provisionTenantChatwootAccount, syncAllAccountsForPlan } from "./chatwoot-provisioning.service";
+import { provisionTenantChatwootAccount, syncAllAccountsForPlan, isChatwootEnabledForPlan } from "./chatwoot-provisioning.service";
 import { generateSecureToken, hashToken } from "../auth/tokens";
 import { defaultAuthMailer } from "../auth/auth-mailer.interface";
 
@@ -2425,6 +2426,11 @@ export interface AdminTenantItemDto {
   ownerEmail: string;
   createdAt: string;
   updatedAt: string;
+  chatwoot?: {
+    state: "pending" | "provisioning" | "active" | "failed";
+    chatwootAccountId: number | null;
+    lastError: string | null;
+  };
 }
 
 export interface AdminTenantsOverviewDto {
@@ -2497,6 +2503,9 @@ export async function fetchAdminTenantsOverview(): Promise<AdminTenantsOverviewD
         ownerUserId: users.id,
         ownerDisplayName: users.displayName,
         ownerEmail: users.email,
+        chatwootState: chatwootAccounts.state,
+        chatwootAccountId: chatwootAccounts.chatwootAccountId,
+        chatwootLastError: chatwootAccounts.lastError,
         createdAt: clients.createdAt,
         updatedAt: clients.updatedAt,
       })
@@ -2505,6 +2514,7 @@ export async function fetchAdminTenantsOverview(): Promise<AdminTenantsOverviewD
       .innerJoin(plans, eq(clients.planId, plans.id))
       .leftJoin(clientRouting, eq(clients.id, clientRouting.clientId))
       .leftJoin(cells, eq(clientRouting.cellId, cells.id))
+      .leftJoin(chatwootAccounts, eq(clients.id, chatwootAccounts.clientId))
       .orderBy(desc(clients.createdAt));
 
     let activeTenants = 0;
@@ -2540,6 +2550,13 @@ export async function fetchAdminTenantsOverview(): Promise<AdminTenantsOverviewD
         ownerEmail: r.ownerEmail,
         createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString(),
         updatedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : new Date().toISOString(),
+        chatwoot: r.chatwootState
+          ? {
+              state: r.chatwootState as "pending" | "provisioning" | "active" | "failed",
+              chatwootAccountId: r.chatwootAccountId,
+              lastError: r.chatwootLastError,
+            }
+          : undefined,
       };
     });
 
@@ -3075,13 +3092,8 @@ export async function createAdminTenant(input: CreateAdminTenantInput): Promise<
         updatedBy: actor,
       });
 
-    // 10. Aprovisionar automáticamente cuenta en Chatwoot (S9, T4)
-    const cwLimits = await db
-      .select()
-      .from(planLimits)
-      .where(and(eq(planLimits.planId, selectedPlan.id), eq(planLimits.dimension, "chatwoot_agents")))
-      .limit(1);
-    const chatwootEnabled = cwLimits.length > 0 && (cwLimits[0].mode === "UNLIMITED" || (cwLimits[0].value ?? 0) > 0);
+    // 10. Aprovisionar automáticamente cuenta en Chatwoot (CHW-002 RF-01.1, RF-01.3)
+    const chatwootEnabled = await isChatwootEnabledForPlan(selectedPlan.id, db);
     if (chatwootEnabled) {
       try {
         const provRes = await provisionTenantChatwootAccount({
@@ -5143,3 +5155,61 @@ export async function resetAdminTenantBranding(clientId: string): Promise<Result
     return err(`Error interno al restaurar marca de inquilino: ${msg}`, "RESET_BRANDING_ERROR");
   }
 }
+
+/**
+ * Resumen de métricas y gobernanza SaaS para Chatwoot (CHW-002 T-08, D-06).
+ */
+export interface AdminChatwootOverviewDto {
+  kpis: {
+    totalAccounts: number;
+    activeAccounts: number;
+    failedOrPendingAccounts: number;
+    catalogCapabilitiesCount: number;
+  };
+}
+
+/**
+ * Consulta los indicadores globales del plano de control SaaS para Chatwoot (CHW-002 T-08, D-06).
+ */
+export async function fetchAdminChatwootOverview(): Promise<AdminChatwootOverviewDto> {
+  const db = getDb();
+  try {
+    const rows = await db
+      .select({
+        state: chatwootAccounts.state,
+      })
+      .from(chatwootAccounts);
+
+    let activeAccounts = 0;
+    let failedOrPendingAccounts = 0;
+
+    for (const r of rows) {
+      if (r.state === "active") {
+        activeAccounts++;
+      } else {
+        failedOrPendingAccounts++;
+      }
+    }
+
+    return {
+      kpis: {
+        totalAccounts: rows.length,
+        activeAccounts,
+        failedOrPendingAccounts,
+        catalogCapabilitiesCount: CHATWOOT_CAPABILITY_CODES.length,
+      },
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.warn(`[fetchAdminChatwootOverview Warning] ${msg}`);
+    return {
+      kpis: {
+        totalAccounts: 0,
+        activeAccounts: 0,
+        failedOrPendingAccounts: 0,
+        catalogCapabilitiesCount: CHATWOOT_CAPABILITY_CODES.length,
+      },
+    };
+  }
+}
+

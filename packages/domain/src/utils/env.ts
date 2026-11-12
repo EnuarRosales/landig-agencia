@@ -21,8 +21,12 @@ export const envSchema = z.object({
   FACEBOOK_APP_SECRET: z.string().optional(),
   FACEBOOK_REDIRECT_URI: z.string().optional(),
   CHATWOOT_SSO_SECRET: z.string().optional(),
+  CHATWOOT_INTERNAL_URL: z.string().url().optional(),
   CHATWOOT_BASE_URL: z.string().url().optional(),
   CHATWOOT_PLATFORM_TOKEN: z.string().optional(),
+  CHATWOOT_WEBHOOK_URL: z.string().url().optional(),
+  CHATWOOT_SUPER_ADMIN_USER_ID: z.coerce.number().int().positive().default(1),
+  NEXT_PUBLIC_CHATWOOT_URL: z.string().url().optional(),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().optional(),
   SMTP_USER: z.string().optional(),
@@ -71,8 +75,12 @@ export const env = createEnv({
     FACEBOOK_APP_SECRET: z.string().optional(),
     FACEBOOK_REDIRECT_URI: z.string().optional(),
     CHATWOOT_SSO_SECRET: z.string().optional(),
+    CHATWOOT_INTERNAL_URL: z.string().url().optional(),
     CHATWOOT_BASE_URL: z.string().url().optional(),
     CHATWOOT_PLATFORM_TOKEN: z.string().optional(),
+    CHATWOOT_WEBHOOK_URL: z.string().url().optional(),
+    CHATWOOT_SUPER_ADMIN_USER_ID: z.coerce.number().int().positive().default(1),
+    NEXT_PUBLIC_CHATWOOT_URL: z.string().url().optional(),
     SMTP_HOST: z.string().optional(),
     SMTP_PORT: z.string().optional(),
     SMTP_USER: z.string().optional(),
@@ -137,6 +145,7 @@ export function getValidatedEnv(
         DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/mocter_dummy",
         NODE_ENV: (process.env.NODE_ENV as any) || "development",
         AUTH_RATE_LIMIT_PEPPER: "mocter-dev-pepper",
+        CHATWOOT_SUPER_ADMIN_USER_ID: 1,
       };
     }
     const issues = result.error.issues.map((issue) => ({
