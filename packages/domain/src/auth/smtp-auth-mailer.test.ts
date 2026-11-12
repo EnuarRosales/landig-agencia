@@ -53,7 +53,7 @@ describe("AUTH-001 · SmtpAuthMailer (Nodemailer)", () => {
     const callArgs = sendMail.mock.calls[0][0];
     expect(callArgs.to).toBe("usuario@empresa.com");
     expect(callArgs.subject).toContain("Verifica tu cuenta");
-    expect(callArgs.html).toContain("https://mocter.co/auth/email/verify/confirm?token=token-raw-123");
+    expect(callArgs.html).toContain("https://mocter.co/verify-email?token=token-raw-123");
     expect(callArgs.html).toContain("Carlos Gómez");
   });
 

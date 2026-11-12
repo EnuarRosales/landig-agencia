@@ -13,9 +13,18 @@ import { serializeError } from "@/lib/logger/serialize-error";
  * Aplica limitación de tasa distribuida en Redis (5 confirmaciones por IP en 15 min).
  * Marca `email_verified_at = now()` y consume el token atómicamente.
  *
- * - **Método:** `POST`
+ * - **Métodos:** `GET` (redirección a UI), `POST` (consumo atómico de token)
  * - **Ruta:** `/api/auth/email/verify/confirm`
  */
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const token = req.nextUrl.searchParams.get("token");
+  const target = new URL("/verify-email", req.nextUrl.origin);
+  if (token) {
+    target.searchParams.set("token", token);
+  }
+  return NextResponse.redirect(target, 307);
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const log = await getRequestLogger();
   const start = performance.now();

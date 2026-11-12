@@ -62,7 +62,7 @@ export class SmtpAuthMailer implements IAuthMailer {
   }
 
   async sendVerificationEmail(to: string, rawToken: string, name?: string): Promise<void> {
-    const verificationUrl = `${this.config.baseUrl}/auth/email/verify/confirm?token=${rawToken}`;
+    const verificationUrl = `${this.config.baseUrl}/verify-email?token=${rawToken}`;
 
     appLogger.info("[AuthMailer.sendVerificationEmail] Preparando correo de verificación", {
       to,
@@ -243,7 +243,7 @@ export function createDefaultAuthMailer(): IAuthMailer {
       appLogger.info("[AuthMailer] Enlace de verificación generado", {
         to,
         name,
-        verificationUrl: `/auth/email/verify/confirm?token=${rawToken}`,
+        verificationUrl: `/verify-email?token=${rawToken}`,
       });
     },
     async sendPasswordSetupEmail(to: string, rawToken: string, name?: string) {
@@ -293,7 +293,7 @@ export class DbBackedAuthMailer implements IAuthMailer {
 
   async sendVerificationEmail(to: string, rawToken: string, name?: string): Promise<void> {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001";
-    const verificationUrl = `${baseUrl.replace(/\/+$/, "")}/auth/email/verify/confirm?token=${rawToken}`;
+    const verificationUrl = `${baseUrl.replace(/\/+$/, "")}/verify-email?token=${rawToken}`;
     const recipientName = name ? name.trim() : "Estimado(a) usuario(a)";
 
     try {

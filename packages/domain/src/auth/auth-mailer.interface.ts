@@ -51,7 +51,7 @@ export class LogAuthMailer implements IAuthMailer {
     appLogger.info("[AuthMailer] Enlace de verificación generado", {
       to,
       name,
-      verificationUrl: `/auth/email/verify/confirm?token=${rawToken}`,
+      verificationUrl: `/verify-email?token=${rawToken}`,
     });
   }
 

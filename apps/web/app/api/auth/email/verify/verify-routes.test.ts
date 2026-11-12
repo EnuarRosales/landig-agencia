@@ -7,7 +7,7 @@ import {
   createMockRedisClient,
 } from "@mocter/domain";
 import { POST as requestRoute } from "./request/route";
-import { POST as confirmRoute } from "./confirm/route";
+import { POST as confirmRoute, GET as confirmGetRoute } from "./confirm/route";
 
 vi.mock("@mocter/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@mocter/domain")>();
@@ -216,6 +216,28 @@ describe("AUTH-001 T-09, T-12 · Rutas de verificación de correo con Redis Rate
 
       expect(res.status).toBe(400);
       expect(data.ok).toBe(false);
+    });
+  });
+
+  describe("GET /api/auth/email/verify/confirm", () => {
+    it("redirige 307 hacia /verify-email preservando el token", async () => {
+      const req = new NextRequest("http://localhost:3001/api/auth/email/verify/confirm?token=token-123", {
+        method: "GET",
+      });
+      const res = await confirmGetRoute(req);
+
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toBe("http://localhost:3001/verify-email?token=token-123");
+    });
+
+    it("redirige 307 hacia /verify-email sin token cuando no se suministra", async () => {
+      const req = new NextRequest("http://localhost:3001/api/auth/email/verify/confirm", {
+        method: "GET",
+      });
+      const res = await confirmGetRoute(req);
+
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toBe("http://localhost:3001/verify-email");
     });
   });
 });
