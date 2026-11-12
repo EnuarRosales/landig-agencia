@@ -5,6 +5,7 @@
       <stop offset="100%" stop-color="#22d3ee" />
     </linearGradient>
   </defs>
+  <!-- Chip base en tono claro con borde sutil -->
   <rect
     x="16"
     y="16"
@@ -15,6 +16,7 @@
     stroke="rgba(0,0,0,0.08)"
     stroke-width="12"
   />
+  <!-- Tinte sutil del gradiente corporativo (16% opacidad) -->
   <rect
     x="16"
     y="16"
@@ -24,6 +26,7 @@
     fill="url(#mocter-chip-glow)"
     opacity="0.16"
   />
+  <!-- Glifo M en trazo redondeado con gradiente corporativo -->
   <path
     d="M132 376V152L256 300 380 152v224"
     fill="none"
