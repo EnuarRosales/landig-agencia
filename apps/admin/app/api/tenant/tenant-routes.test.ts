@@ -85,7 +85,7 @@ describe("Tenant Workspace Route Handlers", () => {
         slug: "shop",
         planName: "Plan Pro",
         currency: "COP",
-        cellCode: "cell-01",
+        logoUrl: null,
       },
       metrics: {
         productsCount: 5,

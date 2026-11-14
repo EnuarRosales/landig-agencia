@@ -206,6 +206,17 @@ export const adminDictionaries = {
       suspendAction: "Suspender",
       reactivateAction: "Reactivar",
     },
+    workspace: {
+      connectedStatus: "Conectado",
+      operatingCurrencyLabel: "Moneda Operativa",
+      dashboardProductActionDesc: "Publica fotos, videos y ficha de tus productos.",
+      productsBadge: "Catálogo Comercial",
+      productsSubtitle: "Administra tu portafolio de productos, precios, inventario y galería multimedia para tus canales de venta.",
+      contactsBadge: "Directorio De Clientes",
+      ordersBadge: "Gestión De Pedidos",
+      teamBadge: "Usuarios",
+      botSaveSuccess: "Configuración del asistente actualizada exitosamente.",
+    },
   },
   en: {
     shell: {
@@ -411,6 +422,17 @@ export const adminDictionaries = {
       emptyTenants: "No registered merchants found on the platform.",
       suspendAction: "Suspend",
       reactivateAction: "Reactivate",
+    },
+    workspace: {
+      connectedStatus: "Connected",
+      operatingCurrencyLabel: "Operating Currency",
+      dashboardProductActionDesc: "Publish photos, videos, and details of your products.",
+      productsBadge: "Commercial Catalog",
+      productsSubtitle: "Manage your product portfolio, pricing, inventory, and media gallery for your sales channels.",
+      contactsBadge: "Customer Directory",
+      ordersBadge: "Order Management",
+      teamBadge: "Users",
+      botSaveSuccess: "Assistant configuration updated successfully.",
     },
   },
 } as const;

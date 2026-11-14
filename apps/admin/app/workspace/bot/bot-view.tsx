@@ -124,7 +124,7 @@ export function BotView({ initialConfig }: BotViewProps) {
       {success && (
         <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 p-3 text-xs text-emerald-400 border border-emerald-500/20">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>Configuración del asistente actualizada exitosamente en la celda física.</span>
+          <span>Configuración del asistente actualizada exitosamente.</span>
         </div>
       )}
 

@@ -57,7 +57,7 @@ export function OrdersView({ initialOrders }: OrdersViewProps) {
               Pedidos Y Ventas
             </h1>
             <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-mono font-medium text-amber-400 border border-amber-500/20">
-              Ventas Celulares
+              Gestión De Pedidos
             </span>
           </div>
           <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">

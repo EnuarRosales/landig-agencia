@@ -7,6 +7,17 @@ import {
   IMGPROXY_DEFAULTS,
 } from "./tenant-workspace.service";
 
+vi.mock("../db/client", () => ({
+  getDb: vi.fn(),
+}));
+
+vi.mock("../db/cell-client", () => ({
+  withTenantCellTransaction: vi.fn(),
+}));
+
+import { getDb } from "../db/client";
+import { withTenantCellTransaction } from "../db/cell-client";
+
 describe("TenantWorkspaceService Unit & Media Suite", () => {
   describe("Media Security & Magic Bytes Validation (D-T2.3)", () => {
     it("should accept valid JPEG header (FF D8 FF)", () => {
@@ -140,6 +151,164 @@ describe("TenantWorkspaceService Unit & Media Suite", () => {
     it("should instantiate with default services", () => {
       const service = new TenantWorkspaceService();
       expect(service).toBeDefined();
+    });
+  });
+
+  describe("TenantWorkspaceService.getDashboard() (SPEC-01 · logoUrl & Zero cellCode)", () => {
+    function setupPortalAndCellMocks(options: {
+      client?: Record<string, unknown>;
+      plan?: Record<string, unknown> | null;
+      branding?: Record<string, unknown> | null;
+      media?: Record<string, unknown> | null;
+      storageLimit?: Record<string, unknown> | null;
+    }) {
+      const clientRow = options.client ?? {
+        id: "client-uuid-1",
+        name: "Tienda Demo",
+        slug: "tienda-demo",
+        currency: "COP",
+        planId: "plan-pro",
+        logoMediaId: null,
+      };
+
+      const responses: unknown[][] = [
+        [clientRow],
+        options.plan === null ? [] : [options.plan ?? { name: { es: "Plan Pro" } }],
+        options.branding === null ? [] : options.branding ? [options.branding] : [],
+      ];
+
+      if (!(options.branding as { logoUrl?: string } | undefined)?.logoUrl && clientRow.logoMediaId) {
+        responses.push(options.media === null ? [] : options.media ? [options.media] : []);
+      }
+
+      responses.push(
+        options.storageLimit === null ? [] : [options.storageLimit ?? { value: 104857600, mode: "LIMITED" }],
+      );
+
+      let callIndex = 0;
+      const mockPortalDb = {
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn(async () => responses[callIndex++] ?? []),
+            })),
+          })),
+        })),
+      };
+
+      vi.mocked(getDb).mockReturnValue(mockPortalDb as never);
+
+      const cellResponses: unknown[][] = [
+        [{ count: 4 }],
+        [{ count: 10 }],
+        [{ count: 2 }],
+        [{ used: 2048 }],
+        [{ botPreset: "natural_rhythm", remindersEnabled: true, faqs: [{ question: "Q", answer: "A" }] }],
+      ];
+      let cellIdx = 0;
+      const mockTx = {
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => {
+              const current = cellResponses[cellIdx++];
+              return {
+                limit: vi.fn(async () => current ?? []),
+                then: (resolve: (val: unknown) => void) => resolve(current ?? []),
+              };
+            }),
+          })),
+        })),
+      };
+
+      vi.mocked(withTenantCellTransaction).mockImplementation(async (_clientId, fn) => {
+        return fn(mockTx as never);
+      });
+    }
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      vi.stubEnv("S3_BUCKET", "media");
+      vi.stubEnv("IMGPROXY_KEY", "11".repeat(32));
+      vi.stubEnv("IMGPROXY_SALT", "22".repeat(32));
+      vi.stubEnv("IMGPROXY_PUBLIC_URL", "https://media.mocter.co");
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it("resuelve logoUrl desde clientBrandings.logoUrl y omite cellCode en tenant", async () => {
+      setupPortalAndCellMocks({
+        branding: { logoUrl: "https://cdn.mocter.co/brands/tienda-demo.png" },
+      });
+
+      const service = new TenantWorkspaceService();
+      const result = await service.getDashboard("client-uuid-1");
+
+      expect(result.tenant.logoUrl).toBe("https://cdn.mocter.co/brands/tienda-demo.png");
+      expect("cellCode" in result.tenant).toBe(false);
+      expect((result.tenant as Record<string, unknown>).cellCode).toBeUndefined();
+      expect(result.metrics.productsCount).toBe(4);
+      expect(result.bot.faqsCount).toBe(1);
+    });
+
+    it("hace fallback a clients.logoMediaId -> mediaCatalog -> buildImgproxyUrl cuando no hay branding.logoUrl", async () => {
+      setupPortalAndCellMocks({
+        client: {
+          id: "client-uuid-2",
+          name: "Comercio Con Logo Media",
+          slug: "comercio-media",
+          currency: "USD",
+          planId: "plan-pro",
+          logoMediaId: "media-uuid-99",
+        },
+        branding: null,
+        media: { storageKey: "logos/client-uuid-2/logo.png" },
+      });
+
+      const service = new TenantWorkspaceService();
+      const result = await service.getDashboard("client-uuid-2");
+
+      expect(result.tenant.logoUrl).not.toBeNull();
+      expect(result.tenant.logoUrl).toContain("https://media.mocter.co/");
+      expect(result.tenant.logoUrl).toContain("/resize:fit:200:200:0/plain/s3://media/logos/client-uuid-2/logo.png@webp");
+      expect("cellCode" in result.tenant).toBe(false);
+    });
+
+    it("retorna logoUrl: null de forma segura cuando no existe branding ni logoMediaId", async () => {
+      setupPortalAndCellMocks({
+        branding: null,
+      });
+
+      const service = new TenantWorkspaceService();
+      const result = await service.getDashboard("client-uuid-1");
+
+      expect(result.tenant.logoUrl).toBeNull();
+      expect("cellCode" in result.tenant).toBe(false);
+    });
+
+    it("retorna logoUrl: null de forma segura cuando buildImgproxyUrl falla por configuración faltante", async () => {
+      vi.stubEnv("IMGPROXY_PUBLIC_URL", "");
+      vi.stubEnv("IMGPROXY_BASE_URL", "");
+
+      setupPortalAndCellMocks({
+        client: {
+          id: "client-uuid-3",
+          name: "Comercio Sin Imgproxy",
+          slug: "comercio-sin-imgproxy",
+          currency: "COP",
+          planId: "plan-pro",
+          logoMediaId: "media-uuid-100",
+        },
+        branding: null,
+        media: { storageKey: "logos/client-uuid-3/logo.png" },
+      });
+
+      const service = new TenantWorkspaceService();
+      const result = await service.getDashboard("client-uuid-3");
+
+      expect(result.tenant.logoUrl).toBeNull();
+      expect("cellCode" in result.tenant).toBe(false);
     });
   });
 });

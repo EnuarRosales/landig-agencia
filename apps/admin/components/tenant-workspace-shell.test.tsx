@@ -27,7 +27,6 @@ const mockTenantInfo = {
   id: "client-synergia-uuid",
   name: "Synergia Market",
   slug: "synergia-market",
-  cellCode: "pg-cell-01",
   planName: "Plan Pro",
 };
 
@@ -47,7 +46,7 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
     vi.clearAllMocks();
   });
 
-  it("1. Renderiza la identidad visual del comercio (nombre, slug, badge Comercio e indicador de celda)", () => {
+  it("1. Renderiza la identidad visual del comercio (nombre, slug, badge Comercio e indicador Conectado sin exponer celda)", () => {
     render(
       <TenantWorkspaceShell
         currentUser={mockTenantUser}
@@ -60,7 +59,9 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
     expect(screen.getAllByText("Synergia Market").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("synergia-market").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Comercio").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/pg-cell-01/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Conectado").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/pg-cell/i)).toBeNull();
+    expect(screen.queryByText(/Celda de datos/i)).toBeNull();
     expect(screen.getByText("Contenido Del Workspace")).toBeDefined();
   });
 
@@ -197,7 +198,7 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
     }
   });
 
-  it("8. Abre el modal informativo de Cambio de Comercio con advertencia de aislamiento celular (D-15)", () => {
+  it("8. Abre el modal informativo de Cambio de Comercio con advertencia de espacio dedicado (D-15)", () => {
     render(
       <TenantWorkspaceShell
         currentUser={mockTenantUser}
@@ -217,7 +218,7 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
       fireEvent.click(switchBtn);
 
       expect(screen.getByText("Cambio De Comercio")).toBeDefined();
-      expect(screen.getByText(/Aislamiento Celular Y Membresía Única/i)).toBeDefined();
+      expect(screen.getByText(/Espacio Dedicado Y Membresía Única/i)).toBeDefined();
     }
   });
 });

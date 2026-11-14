@@ -67,7 +67,7 @@ export function ContactsView({ initialContacts }: ContactsViewProps) {
               Contactos Y Clientes CRM
             </h1>
             <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-mono font-medium text-emerald-400 border border-emerald-500/20">
-              CRM Celular
+              Directorio De Clientes
             </span>
           </div>
           <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">

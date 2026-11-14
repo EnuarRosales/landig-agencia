@@ -8,8 +8,7 @@ import { plans } from "../db/schemas/admin/plans";
 import { planLimits, planFeatureValues } from "../db/schemas/admin/plan-catalogs";
 import { clientPlanOverrides } from "../db/schemas/admin/plan-catalogs";
 import { clientFeatureOverrides } from "../db/schemas/admin/plan-catalogs";
-import { cells } from "../db/schemas/admin/cells";
-import { clientRouting } from "../db/schemas/admin/client-routing";
+import { clientBrandings } from "../db/schemas/admin/client-brandings";
 import { mediaCatalog } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { tenantInvitations } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { users } from "../db/schemas/admin/users";
@@ -183,7 +182,7 @@ export interface WorkspaceDashboardDto {
     slug: string;
     planName: string;
     currency: string;
-    cellCode: string;
+    logoUrl: string | null;
   };
   metrics: {
     productsCount: number;
@@ -383,6 +382,7 @@ export class TenantWorkspaceService {
         slug: clients.slug,
         currency: clients.currency,
         planId: clients.planId,
+        logoMediaId: clients.logoMediaId,
       })
       .from(clients)
       .where(eq(clients.id, clientId))
@@ -402,17 +402,33 @@ export class TenantWorkspaceService {
 
     const planName = plan?.name ? ((plan.name as any).es || (plan.name as any).en || "Plan Pro") : "Plan Pro";
 
-    // 2. Celda física asignada
-    const [routing] = await portalDb
+    // 2. Logotipo comercial del inquilino (branding personalizado o mediaCatalog)
+    let logoUrl: string | null = null;
+    const [branding] = await portalDb
       .select({
-        cellCode: cells.code,
+        logoUrl: clientBrandings.logoUrl,
       })
-      .from(clientRouting)
-      .innerJoin(cells, eq(cells.id, clientRouting.cellId))
-      .where(eq(clientRouting.clientId, clientId))
+      .from(clientBrandings)
+      .where(eq(clientBrandings.clientId, clientId))
       .limit(1);
 
-    const cellCode = routing?.cellCode || "cell-01";
+    if (branding?.logoUrl) {
+      logoUrl = branding.logoUrl;
+    } else if (client.logoMediaId) {
+      const [logoMedia] = await portalDb
+        .select({ storageKey: mediaCatalog.storageKey })
+        .from(mediaCatalog)
+        .where(eq(mediaCatalog.id, client.logoMediaId))
+        .limit(1);
+
+      if (logoMedia?.storageKey) {
+        try {
+          logoUrl = buildImgproxyUrl(logoMedia.storageKey, { width: 200, height: 200 });
+        } catch {
+          logoUrl = null;
+        }
+      }
+    }
 
     // 3. Cuotas y almacenamiento
     const [storageLimit] = await portalDb
@@ -480,7 +496,7 @@ export class TenantWorkspaceService {
         slug: client.slug,
         planName,
         currency: client.currency || "COP",
-        cellCode,
+        logoUrl,
       },
       metrics: {
         productsCount: cellMetrics.productsCount,

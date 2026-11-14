@@ -20,7 +20,7 @@ export function TeamView({ initialMembers }: TeamViewProps) {
               Equipo Y Colaboradores
             </h1>
             <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-xs font-mono font-medium text-[var(--dsn-accent)] border border-cyan-500/20">
-              Membresías Celulares
+              Usuarios
             </span>
           </div>
           <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">

@@ -22,11 +22,12 @@ interface WorkspaceDashboardViewProps {
 
 export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewProps) {
   const [data] = useState<WorkspaceDashboardDto | null>(initialData);
+  const [logoLoadError, setLogoLoadError] = useState(false);
 
   const tenantName = data?.tenant.name || "Mi Comercio";
   const planName = data?.tenant.planName || "Plan Pro";
   const currency = data?.tenant.currency || "COP";
-  const cellCode = data?.tenant.cellCode || "pg-cell-01";
+  const logoUrl = data?.tenant.logoUrl?.trim() || null;
 
   const metrics = data?.metrics || {
     productsCount: 0,
@@ -50,9 +51,18 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
       <header className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30">
-              <Store className="h-6 w-6" />
-            </div>
+            {logoUrl && !logoLoadError ? (
+              <img
+                src={logoUrl}
+                alt={tenantName}
+                onError={() => setLogoLoadError(true)}
+                className="h-12 w-12 shrink-0 rounded-xl object-contain border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]"
+              />
+            ) : (
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30">
+                <Store className="h-6 w-6" />
+              </div>
+            )}
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
@@ -63,7 +73,7 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
                 </span>
               </div>
               <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-0.5 font-mono">
-                Nodo Celular: {cellCode} · Moneda Operativa: {currency}
+                Moneda Operativa: {currency}
               </p>
             </div>
           </div>
@@ -246,7 +256,7 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
                     Publicar Producto
                   </p>
                   <p className="text-[11px] text-[var(--dsn-text-secondary)] mt-0.5">
-                    Sube fotos a SeaweedFS con firma automática.
+                    Publica fotos, videos y ficha de tus productos.
                   </p>
                 </div>
                 <span className="text-[10px] text-[var(--dsn-accent)] mt-3 inline-flex items-center gap-1 font-semibold">

@@ -186,11 +186,11 @@ export function ProductsView({ initialProducts }: ProductsViewProps) {
               Productos Y Catálogo Comercial
             </h1>
             <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-xs font-mono font-medium text-[var(--dsn-accent)] border border-cyan-500/20">
-              Catálogo Celular
+              Catálogo Comercial
             </span>
           </div>
           <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">
-            Gestión transaccional de productos con imágenes alojadas en SeaweedFS y optimización con imgproxy.
+            Administra tu portafolio de productos, precios, inventario y galería multimedia para tus canales de venta.
           </p>
         </div>
 
@@ -470,7 +470,7 @@ export function ProductsView({ initialProducts }: ProductsViewProps) {
         </div>
       )}
 
-      {/* Modal de Carga Multimedia (SeaweedFS S3 + imgproxy) */}
+      {/* Modal de Carga Multimedia */}
       {uploadModalOpen && selectedProduct && (
         <div
           role="dialog"

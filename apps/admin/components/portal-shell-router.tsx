@@ -84,7 +84,6 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
     user,
     role,
     activeClient,
-    activeCellCode,
     planName,
     capabilities,
   } = portalContext;
@@ -149,7 +148,6 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
           id: activeClient?.id || "",
           name: activeClient?.displayName || activeClient?.name || "Mi Comercio",
           slug: activeClient?.slug || "comercio",
-          cellCode: activeCellCode || "pg-cell-01",
           planName: planName || "Plan Pro",
         }}
         capabilities={capabilities}

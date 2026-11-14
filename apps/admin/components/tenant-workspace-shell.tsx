@@ -42,7 +42,6 @@ export interface TenantWorkspaceShellProps {
     id: string;
     name: string;
     slug: string;
-    cellCode?: string;
     logoUrl?: string;
     planName?: string;
   };
@@ -62,7 +61,7 @@ interface NavItem {
  * Shell operativo persistente del backoffice del comercio e inquilino (ADM-001 D-35, TNT-001 R2/R4).
  *
  * Características:
- * 1. Identidad visual del comercio con soporte para logotipo o avatar e indicador de celda física.
+ * 1. Identidad visual del comercio con soporte para logotipo o avatar e indicador de estado conectado.
  * 2. 7 módulos base universales para todos los planes gobernados por cuotas de negocio.
  * 3. 4 módulos dinámicos filtrados por capacidades efectivas del plan (TenantCapabilityGateService).
  * 4. Ficha de perfil HUD del comercio, selector informativo de comercio (D-15) y modal de confirmación de logout (Regla 4.17).
@@ -87,9 +86,6 @@ export function TenantWorkspaceShell({
     id: tenant?.id || "tenant-default-id",
     name: tenant?.name || "Mi Comercio",
     slug: tenant?.slug || "comercio",
-    cellCode: tenant?.cellCode
-      ? (tenant.cellCode.startsWith("pg-") ? tenant.cellCode : `pg-${tenant.cellCode}`)
-      : "pg-cell-01",
     logoUrl: tenant?.logoUrl,
     planName: tenant?.planName || "Plan Pro",
   };
@@ -290,7 +286,7 @@ export function TenantWorkspaceShell({
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--dsn-surface-secondary)] text-[10px] font-mono text-emerald-400 border border-emerald-500/20">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{tenantInfo.cellCode}</span>
+            <span>Conectado</span>
           </div>
           <ThemeToggle />
         </div>
@@ -395,8 +391,11 @@ export function TenantWorkspaceShell({
             {/* Pie Drawer Móvil */}
             <div className="border-t border-[var(--dsn-border)] pt-4 space-y-3">
               <div className="flex items-center justify-between px-1">
-                <span className="text-xs text-[var(--dsn-text-secondary)]">Celda de datos</span>
-                <span className="text-xs font-mono text-emerald-400">{tenantInfo.cellCode}</span>
+                <span className="text-xs text-[var(--dsn-text-secondary)]">Estado del servicio</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Conectado
+                </span>
               </div>
 
               <div className="relative">
@@ -507,9 +506,9 @@ export function TenantWorkspaceShell({
               </div>
             </Link>
 
-            <div className="flex items-center gap-1.5 shrink-0" title={`Conectado a ${tenantInfo.cellCode}`}>
+            <div className="flex items-center gap-1.5 shrink-0" title="Conectado">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-mono text-emerald-400">{tenantInfo.cellCode}</span>
+              <span className="text-[10px] font-mono text-emerald-400">Conectado</span>
             </div>
           </div>
 
@@ -659,7 +658,7 @@ export function TenantWorkspaceShell({
                     Ficha De Perfil Del Comercio
                   </h2>
                   <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
-                    Backoffice operativo en celda dedicada
+                    Panel operativo de tu comercio
                   </p>
                 </div>
               </div>
@@ -711,10 +710,10 @@ export function TenantWorkspaceShell({
                   <p className="font-mono text-xs mt-0.5 text-[var(--dsn-text)] truncate">{tenantInfo.slug}</p>
                 </div>
                 <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">Celda De Datos Asignada</span>
+                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">Estado Operativo</span>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <p className="font-mono text-xs text-emerald-400 font-semibold">{tenantInfo.cellCode}</p>
+                    <p className="font-mono text-xs text-emerald-400 font-semibold">Conectado</p>
                   </div>
                 </div>
                 <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
@@ -792,7 +791,7 @@ export function TenantWorkspaceShell({
 
             <div className="space-y-4 text-xs text-[var(--dsn-text)]">
               <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4">
-                <span className="text-[10px] text-[var(--dsn-text-secondary)] uppercase tracking-wider font-semibold">
+                <span className="text-[10px] text-[var(--dsn-text-secondary)] tracking-wider font-semibold">
                   Comercio Vinculado Actualmente
                 </span>
                 <div className="flex items-center justify-between mt-2">
@@ -801,7 +800,7 @@ export function TenantWorkspaceShell({
                     <p className="text-[10px] font-mono text-[var(--dsn-text-secondary)] mt-0.5">{tenantInfo.slug}</p>
                   </div>
                   <span className="rounded bg-emerald-500/15 px-2 py-1 text-[10px] font-mono text-emerald-400 font-semibold border border-emerald-500/30">
-                    {tenantInfo.cellCode}
+                    Conectado
                   </span>
                 </div>
               </div>
@@ -809,7 +808,7 @@ export function TenantWorkspaceShell({
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-200">
                 <div className="flex items-center gap-2 font-semibold text-xs mb-1">
                   <Shield className="h-4 w-4 text-amber-400" />
-                  <span>Aislamiento Celular Y Membresía Única</span>
+                  <span>Espacio Dedicado Y Membresía Única</span>
                 </div>
                 <p className="text-[11px] leading-relaxed text-amber-200/90">
                   Tu cuenta se encuentra anclada de manera autoritativa al espacio de datos dedicado de este comercio.
@@ -847,7 +846,7 @@ export function TenantWorkspaceShell({
           { label: "Comercio", value: tenantInfo.name },
           { label: "Operador", value: user.displayName || "Propietario Del Comercio" },
           { label: "Correo Electrónico", value: user.email, mono: true },
-          { label: "Celda De Datos", value: tenantInfo.cellCode, mono: true },
+          { label: "Identificador Del Comercio", value: tenantInfo.slug, mono: true },
         ]}
         warningTitle="Finalización De Sesión Segura"
         warningMessage="Se revocará el token de autenticación del servidor y deberás volver a ingresar credenciales para acceder al backoffice."

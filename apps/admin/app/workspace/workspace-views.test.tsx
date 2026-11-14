@@ -20,7 +20,7 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
               slug: "cafeteria-especial",
               planName: "Plan Pro",
               currency: "COP",
-              cellCode: "cell-01",
+              logoUrl: null,
             },
             metrics: {
               productsCount: 12,
@@ -40,9 +40,47 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
 
       expect(screen.getByText("Cafetería Especial")).toBeDefined();
       expect(screen.getByText("Plan Pro")).toBeDefined();
+      expect(screen.getByText("Moneda Operativa: COP")).toBeDefined();
+      expect(screen.queryByText(/Nodo Celular/i)).toBeNull();
       expect(screen.getByText("12")).toBeDefined();
       expect(screen.getByText("45")).toBeDefined();
       expect(screen.getByText("8")).toBeDefined();
+    });
+
+    it("renders commercial logo when logoUrl is provided and falls back safely on error", () => {
+      render(
+        <WorkspaceDashboardView
+          initialData={{
+            tenant: {
+              id: "client-logo",
+              name: "Tienda Aurora",
+              slug: "tienda-aurora",
+              planName: "Plan Pro",
+              currency: "USD",
+              logoUrl: "https://media.mocter.co/logo.png",
+            },
+            metrics: {
+              productsCount: 1,
+              contactsCount: 2,
+              ordersCount: 3,
+              storageBytesUsed: 0,
+              storageQuotaBytes: null,
+            },
+            bot: {
+              preset: "natural_rhythm",
+              remindersEnabled: false,
+              faqsCount: 0,
+            },
+          }}
+        />,
+      );
+
+      const img = screen.getByAltText("Tienda Aurora") as HTMLImageElement;
+      expect(img).toBeDefined();
+      expect(img.getAttribute("src")).toBe("https://media.mocter.co/logo.png");
+
+      fireEvent.error(img);
+      expect(screen.queryByAltText("Tienda Aurora")).toBeNull();
     });
 
     it("renders quick action links to catalog and contacts", () => {
