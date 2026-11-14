@@ -1,13 +1,113 @@
+import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { tenantWorkspaceService, appLogger } from "@mocter/domain";
+import { tenantWorkspaceService, appLogger, MediaUploadError } from "@mocter/domain";
 import { resolveTenantSession } from "@/lib/tenant-auth";
 
+const PROBLEM_HEADERS = { "Content-Type": "application/problem+json" };
+
+/**
+ * Mapea errores de dominio y almacenamiento a respuestas RFC 9457 Problem Details sin exponer secretos internos (`SPEC-00 §9.1, §10`).
+ */
+function mapUploadError(error: unknown): {
+  status: number;
+  type: string;
+  title: string;
+  detail: string;
+} {
+  if (error instanceof MediaUploadError) {
+    if (error.httpStatus === 400) {
+      return {
+        status: 400,
+        type: "https://mocter.co/errors/media-validation-failed",
+        title: "Media Validation Failed",
+        detail: error.message,
+      };
+    }
+    if (error.httpStatus === 404) {
+      return {
+        status: 404,
+        type: "https://mocter.co/errors/product-not-found",
+        title: "Product Not Found",
+        detail: error.message,
+      };
+    }
+    if (error.httpStatus === 422) {
+      return {
+        status: 422,
+        type: "https://mocter.co/errors/storage-quota-exceeded",
+        title: "Storage Quota Exceeded",
+        detail: error.message,
+      };
+    }
+    return {
+      status: 503,
+      type: "https://mocter.co/errors/media-storage-unavailable",
+      title: "Service Unavailable",
+      detail: "No pudimos almacenar tu archivo en este momento. Intenta nuevamente en unos segundos.",
+    };
+  }
+
+  const msg = error instanceof Error ? error.message : String(error);
+
+  if (/l[ií]mite/i.test(msg)) {
+    return {
+      status: 422,
+      type: "https://mocter.co/errors/storage-quota-exceeded",
+      title: "Storage Quota Exceeded",
+      detail: msg,
+    };
+  }
+
+  if (/formato|ejecutables|elf|peque[ñn]o|vac[ií]o|inv[áa]lido|tama[ñn]o m[áa]ximo/i.test(msg)) {
+    return {
+      status: 400,
+      type: "https://mocter.co/errors/media-validation-failed",
+      title: "Media Validation Failed",
+      detail: msg,
+    };
+  }
+
+  if (/pertenece|no existe/i.test(msg)) {
+    return {
+      status: 404,
+      type: "https://mocter.co/errors/product-not-found",
+      title: "Product Not Found",
+      detail: msg,
+    };
+  }
+
+  if (/almacenar el archivo multimedia|configuraci[óo]n incompleta de imgproxy|bucket/i.test(msg)) {
+    return {
+      status: 503,
+      type: "https://mocter.co/errors/media-storage-unavailable",
+      title: "Service Unavailable",
+      detail: "No pudimos almacenar tu archivo en este momento. Intenta nuevamente en unos segundos.",
+    };
+  }
+
+  return {
+    status: 500,
+    type: "https://mocter.co/errors/internal-server-error",
+    title: "Internal Server Error",
+    detail: "Error interno al procesar y almacenar el archivo multimedia.",
+  };
+}
+
+/**
+ * Route Handler para carga de archivos multimedia del inquilino (`SPEC-00 §9.1`).
+ */
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const startedAt = Date.now();
+  const requestId = req.headers?.get("x-request-id") ?? crypto.randomUUID();
+  let clientIdForLog: string | undefined;
+  let sizeBytesForLog = 0;
+
   try {
     const auth = await resolveTenantSession(req);
     if (!auth.ok) {
       return auth.response;
     }
+    clientIdForLog = auth.clientId;
 
     const formData = await req.formData().catch(() => null);
     if (!formData) {
@@ -18,12 +118,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           status: 400,
           detail: "Se requiere un cuerpo multipart/form-data válido.",
         },
-        { status: 400, headers: { "Content-Type": "application/problem+json" } },
+        { status: 400, headers: PROBLEM_HEADERS },
       );
     }
 
     const file = formData.get("file");
-    const productId = formData.get("productId") as string;
+    const productId = formData.get("productId");
 
     if (!file || typeof file === "string") {
       return NextResponse.json(
@@ -33,7 +133,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           status: 400,
           detail: "El campo 'file' es obligatorio y debe ser un archivo binario.",
         },
-        { status: 400, headers: { "Content-Type": "application/problem+json" } },
+        { status: 400, headers: PROBLEM_HEADERS },
       );
     }
 
@@ -45,15 +145,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           status: 400,
           detail: "El parámetro 'productId' es obligatorio para vincular la imagen al catálogo.",
         },
-        { status: 400, headers: { "Content-Type": "application/problem+json" } },
+        { status: 400, headers: PROBLEM_HEADERS },
       );
     }
 
     const blob = file as Blob;
     const arrayBuffer = await blob.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+    sizeBytesForLog = buffer.byteLength;
     const mimeType = blob.type || "image/jpeg";
-    const originalFilename = (file as any).name || "archivo.jpg";
+    const originalFilename = file instanceof File && file.name ? file.name : "archivo.jpg";
 
     const actor = auth.context.user?.email || auth.clientId;
     const result = await tenantWorkspaceService.uploadProductMedia(
@@ -67,31 +168,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       actor,
     );
 
+    appLogger.info("[POST /api/tenant/media/upload] Multimedia almacenado", {
+      requestId,
+      clientId: auth.clientId,
+      mediaKind: result.mediaKind,
+      sizeBytes: result.sizeBytes,
+      latencyMs: Date.now() - startedAt,
+    });
+
     return NextResponse.json({ ok: true, data: result }, { status: 201 });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    appLogger.error(`[POST /api/tenant/media/upload Failed] ${msg}`, error);
+    const mapped = mapUploadError(error);
 
-    const isDomainError =
-      error instanceof Error &&
-      (error.message.includes("límite") ||
-        error.message.includes("Formato") ||
-        error.message.includes("pertenece") ||
-        error.message.includes("inválido"));
-
-    const status = isDomainError ? 400 : 500;
-    const detail = isDomainError ? error.message : "Error interno al procesar y almacenar el archivo multimedia.";
+    appLogger.error(`[POST /api/tenant/media/upload Failed] ${msg}`, error, {
+      requestId,
+      clientId: clientIdForLog,
+      sizeBytes: sizeBytesForLog,
+      status: mapped.status,
+      latencyMs: Date.now() - startedAt,
+    });
 
     return NextResponse.json(
       {
-        type: isDomainError
-          ? "https://mocter.co/errors/media-validation-failed"
-          : "https://mocter.co/errors/internal-server-error",
-        title: isDomainError ? "Media Validation Failed" : "Internal Server Error",
-        status,
-        detail,
+        type: mapped.type,
+        title: mapped.title,
+        status: mapped.status,
+        detail: mapped.detail,
       },
-      { status, headers: { "Content-Type": "application/problem+json" } },
+      { status: mapped.status, headers: PROBLEM_HEADERS },
     );
   }
 }

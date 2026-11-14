@@ -49,8 +49,7 @@ export interface ComposeCellArtifacts {
  * la diferenciación por perfil se introduce en la Etapa 2. Servicio puro: sin I/O ni estado.
  */
 export class ComposeCellManifestRenderer
-  implements CellManifestRenderer<ComposeCellRenderContext, ComposeCellArtifacts>
-{
+  implements CellManifestRenderer<ComposeCellRenderContext, ComposeCellArtifacts> {
   /**
    * Genera `.env`, Compose e instrucciones operativas para una celda.
    *
@@ -100,22 +99,22 @@ export class ComposeCellManifestRenderer
     const instructions =
       spec.profile === "local_development"
         ? [
-            `Crear un subdirectorio dedicado para la célula dentro del repositorio: mkdir -p ${workingDir} && cd ${workingDir}`,
-            `Guardar los archivos .env y docker-compose.yml generados dentro de esa carpeta`,
-            `Levantar el stack celular local: docker compose up -d`,
-            `Verificar que el inicializador cell-migrator aplique las 10 migraciones y termine con éxito (exited 0)`,
-            `Comprobar que pg-cell y pgbouncer-cell estén saludables en loopback 127.0.0.1`,
-            `Regresar a mocter-admin (/admin/cells) y presionar el botón «Verificar Conexión» (Handshake)`,
-          ]
+          `Crear un subdirectorio dedicado para la célula dentro del repositorio: mkdir -p ${workingDir} && cd ${workingDir}`,
+          `Guardar los archivos .env y docker-compose.yml generados dentro de esa carpeta`,
+          `Levantar el stack celular local: docker compose up -d`,
+          `Verificar que el inicializador cell-migrator aplique las 10 migraciones y termine con éxito (exited 0)`,
+          `Comprobar que pg-cell y pgbouncer-cell estén saludables en loopback 127.0.0.1`,
+          `Regresar a mocter-admin (/admin/cells) y presionar el botón «Verificar Conexión» (Handshake)`,
+        ]
         : [
-            `Conectarse al servidor VPS o host destino con el usuario de despliegue: ssh deploy@<host>`,
-            `Crear y posicionarse en el directorio canónico: mkdir -p ${workingDir} && cd ${workingDir}`,
-            `Crear el archivo .env con el contenido generado y otorgarle permisos estrictos: chmod 0600 .env`,
-            `Crear el archivo docker-compose.yml con el contenido del manifiesto`,
-            `Levantar el stack celular: docker compose up -d`,
-            `Verificar que el inicializador cell-migrator finalice con éxito y pg-cell esté saludable`,
-            `Regresar a mocter-admin (/admin/cells) y ejecutar la acción «Verificar y Activar Handshake»`,
-          ];
+          `Conectarse al servidor VPS o host destino con el usuario de despliegue: ssh deploy@<host>`,
+          `Crear y posicionarse en el directorio canónico: mkdir -p ${workingDir} && cd ${workingDir}`,
+          `Crear el archivo .env con el contenido generado y otorgarle permisos estrictos: chmod 0600 .env`,
+          `Crear el archivo docker-compose.yml con el contenido del manifiesto`,
+          `Levantar el stack celular: docker compose up -d`,
+          `Verificar que el inicializador cell-migrator finalice con éxito y pg-cell esté saludable`,
+          `Regresar a mocter-admin (/admin/cells) y ejecutar la acción «Verificar y Activar Handshake»`,
+        ];
 
     // Diferenciación de manifiestos por Perfil de Despliegue (CEL-RF-006, CEL-RF-007, CEL-RF-008, CEL-RF-009)
     if (spec.profile === "control_plane_vps") {
@@ -170,7 +169,7 @@ export class ComposeCellManifestRenderer
         `    networks:`,
         `      - cell-backend`,
         `    healthcheck:`,
-        `      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p ${pool.listenPort} -U \$\$POSTGRES_USER -d \$\$POSTGRES_DB"]`,
+        `      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p ${pool.listenPort} -U \$\$DB_USER -d \$\$DB_NAME"]`,
         `      interval: 5s`,
         `      timeout: 3s`,
         `      retries: 5`,
@@ -272,7 +271,7 @@ export class ComposeCellManifestRenderer
         `    networks:`,
         `      - cell-backend`,
         `    healthcheck:`,
-        `      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p ${pool.listenPort} -U \$\$POSTGRES_USER -d \$\$POSTGRES_DB"]`,
+        `      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p ${pool.listenPort} -U \$\$DB_USER -d \$\$DB_NAME"]`,
         `      interval: 5s`,
         `      timeout: 3s`,
         `      retries: 5`,
@@ -369,7 +368,7 @@ export class ComposeCellManifestRenderer
         `    ports:`,
         `      - "127.0.0.1:\${PGBOUNCER_PORT}:${pool.listenPort}"`,
         `    healthcheck:`,
-        `      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p ${pool.listenPort} -U \$\$POSTGRES_USER -d \$\$POSTGRES_DB"]`,
+        `      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p ${pool.listenPort} -U \$\$DB_USER -d \$\$DB_NAME"]`,
         `      interval: 5s`,
         `      timeout: 3s`,
         `      retries: 5`,

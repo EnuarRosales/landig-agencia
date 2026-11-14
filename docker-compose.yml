@@ -143,11 +143,22 @@ services:
       TOTP_ACTIVE_KEY_ID: ${TOTP_ACTIVE_KEY_ID:-k1}
       TOTP_SECRETS_DIR: ${TOTP_SECRETS_DIR:-/run/secrets}
       TOTP_KEY: ${TOTP_KEY}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://seaweedfs:8333}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-media}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      IMGPROXY_KEY: ${IMGPROXY_KEY}
+      IMGPROXY_SALT: ${IMGPROXY_SALT}
+      IMGPROXY_PUBLIC_URL: ${IMGPROXY_PUBLIC_URL:-http://localhost:8081}
+      IMGPROXY_BASE_URL: ${IMGPROXY_BASE_URL:-http://localhost:8081}
       # File watching over a Windows bind mount requires polling.
       WATCHPACK_POLLING: "true"
     networks:
       - default
       - chatwoot-net
+      - media_network
     ports:
       - "3003:3003"
     volumes:
@@ -183,4 +194,6 @@ networks:
   default:
   chatwoot-net:
     name: mocter-chatwoot_default
+    external: true
+  media_network:
     external: true

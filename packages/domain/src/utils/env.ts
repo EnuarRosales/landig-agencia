@@ -43,17 +43,82 @@ export const envSchema = z.object({
   CELL_PRIVATE_ALLOWED_CIDRS: z.string().optional(),
   HANDSHAKE_SECRET: z.string().optional(),
   CELL_CODE: z.string().optional(),
-  IMGPROXY_PUBLIC_URL: z.string().optional(),
-  IMGPROXY_BASE_URL: z.string().optional(),
-  IMGPROXY_KEY: z.string().optional(),
-  IMGPROXY_SALT: z.string().optional(),
-  S3_ENDPOINT: z.string().optional(),
-  S3_REGION: z.string().optional(),
-  S3_BUCKET: z.string().optional(),
-  S3_FORCE_PATH_STYLE: z.string().optional(),
-  S3_ACCESS_KEY_ID: z.string().optional(),
-  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  IMGPROXY_PUBLIC_URL: z
+    .string()
+    .url("IMGPROXY_PUBLIC_URL debe ser una URL válida")
+    .optional(),
+  IMGPROXY_BASE_URL: z
+    .string()
+    .url("IMGPROXY_BASE_URL debe ser una URL válida")
+    .optional(),
+  IMGPROXY_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]+$/, "IMGPROXY_KEY debe ser una cadena hexadecimal válida")
+    .min(2, "IMGPROXY_KEY debe tener al menos 2 caracteres hexadecimales")
+    .optional(),
+  IMGPROXY_SALT: z
+    .string()
+    .regex(/^[0-9a-fA-F]+$/, "IMGPROXY_SALT debe ser una cadena hexadecimal válida")
+    .min(2, "IMGPROXY_SALT debe tener al menos 2 caracteres hexadecimales")
+    .optional(),
+  S3_ENDPOINT: z
+    .string()
+    .url("S3_ENDPOINT debe ser una URL válida")
+    .default("http://seaweedfs:8333"),
+  S3_REGION: z.string().min(1, "S3_REGION es requerida").default("us-east-1"),
+  S3_BUCKET: z.string().min(1, "S3_BUCKET es requerido").default("media"),
+  S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).default("true"),
+  S3_ACCESS_KEY_ID: z.string().min(1, "S3_ACCESS_KEY_ID no puede estar vacío").optional(),
+  S3_SECRET_ACCESS_KEY: z.string().min(1, "S3_SECRET_ACCESS_KEY no puede estar vacío").optional(),
 });
+
+/**
+ * Esquema estricto para validar las variables obligatorias de almacenamiento S3 y firma imgproxy.
+ *
+ * Se utiliza para verificar que todas las credenciales y endpoints requeridos estén presentes
+ * antes de inicializar servicios multimedia en runtime.
+ */
+export const mediaEnvSchema = z.object({
+  S3_ENDPOINT: z.string().url("S3_ENDPOINT debe ser una URL válida"),
+  S3_REGION: z.string().min(1, "S3_REGION es requerida"),
+  S3_BUCKET: z.string().min(1, "S3_BUCKET es requerido"),
+  S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).default("true"),
+  S3_ACCESS_KEY_ID: z.string().min(1, "S3_ACCESS_KEY_ID es requerida"),
+  S3_SECRET_ACCESS_KEY: z.string().min(1, "S3_SECRET_ACCESS_KEY es requerida"),
+  IMGPROXY_KEY: z
+    .string()
+    .regex(/^[0-9a-fA-F]+$/, "IMGPROXY_KEY debe ser una cadena hexadecimal válida")
+    .min(2, "IMGPROXY_KEY es requerida"),
+  IMGPROXY_SALT: z
+    .string()
+    .regex(/^[0-9a-fA-F]+$/, "IMGPROXY_SALT debe ser una cadena hexadecimal válida")
+    .min(2, "IMGPROXY_SALT es requerida"),
+  IMGPROXY_PUBLIC_URL: z.string().url("IMGPROXY_PUBLIC_URL debe ser una URL válida"),
+});
+
+/**
+ * Tipo inferido para la configuración multimedia obligatoria de S3 e imgproxy.
+ */
+export type MediaEnvConfig = z.infer<typeof mediaEnvSchema>;
+
+/**
+ * Evalúa si `SKIP_ENV_VALIDATION` solicita explícitamente omitir la validación.
+ */
+function hasExplicitSkipEnvValidationFlag(): boolean {
+  const skipFlag = process.env.SKIP_ENV_VALIDATION?.trim().toLowerCase();
+  return Boolean(skipFlag) && skipFlag !== "false" && skipFlag !== "0" && skipFlag !== "no";
+}
+
+/**
+ * Determina si debe omitirse la validación de `createEnv` (flag explícito, tests o build de Next.js).
+ */
+function shouldSkipEnvValidation(): boolean {
+  return (
+    hasExplicitSkipEnvValidationFlag() ||
+    process.env.NODE_ENV === "test" ||
+    process.env.NEXT_PHASE === "phase-production-build"
+  );
+}
 
 /**
  * Instancia tipada centralizada de variables de entorno para @mocter/domain vía @t3-oss/env-core.
@@ -97,21 +162,36 @@ export const env = createEnv({
     CELL_PRIVATE_ALLOWED_CIDRS: z.string().optional(),
     HANDSHAKE_SECRET: z.string().optional(),
     CELL_CODE: z.string().optional(),
-    IMGPROXY_PUBLIC_URL: z.string().optional(),
-    IMGPROXY_BASE_URL: z.string().optional(),
-    IMGPROXY_KEY: z.string().optional(),
-    IMGPROXY_SALT: z.string().optional(),
-    S3_ENDPOINT: z.string().optional(),
-    S3_REGION: z.string().optional(),
-    S3_BUCKET: z.string().optional(),
-    S3_FORCE_PATH_STYLE: z.string().optional(),
-    S3_ACCESS_KEY_ID: z.string().optional(),
-    S3_SECRET_ACCESS_KEY: z.string().optional(),
+    IMGPROXY_PUBLIC_URL: z
+      .string()
+      .url("IMGPROXY_PUBLIC_URL debe ser una URL válida")
+      .optional(),
+    IMGPROXY_BASE_URL: z
+      .string()
+      .url("IMGPROXY_BASE_URL debe ser una URL válida")
+      .optional(),
+    IMGPROXY_KEY: z
+      .string()
+      .regex(/^[0-9a-fA-F]+$/, "IMGPROXY_KEY debe ser una cadena hexadecimal válida")
+      .min(2, "IMGPROXY_KEY debe tener al menos 2 caracteres hexadecimales")
+      .optional(),
+    IMGPROXY_SALT: z
+      .string()
+      .regex(/^[0-9a-fA-F]+$/, "IMGPROXY_SALT debe ser una cadena hexadecimal válida")
+      .min(2, "IMGPROXY_SALT debe tener al menos 2 caracteres hexadecimales")
+      .optional(),
+    S3_ENDPOINT: z
+      .string()
+      .url("S3_ENDPOINT debe ser una URL válida")
+      .default("http://seaweedfs:8333"),
+    S3_REGION: z.string().min(1, "S3_REGION es requerida").default("us-east-1"),
+    S3_BUCKET: z.string().min(1, "S3_BUCKET es requerido").default("media"),
+    S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).default("true"),
+    S3_ACCESS_KEY_ID: z.string().min(1, "S3_ACCESS_KEY_ID no puede estar vacío").optional(),
+    S3_SECRET_ACCESS_KEY: z.string().min(1, "S3_SECRET_ACCESS_KEY no puede estar vacío").optional(),
   },
   runtimeEnv: process.env,
-  skipValidation: Boolean(
-    process.env.SKIP_ENV_VALIDATION || process.env.NODE_ENV === "test",
-  ),
+  skipValidation: shouldSkipEnvValidation(),
 });
 
 /**
@@ -140,12 +220,16 @@ export function getValidatedEnv(
   const result = envSchema.safeParse(source);
 
   if (!result.success) {
-    if (process.env.SKIP_ENV_VALIDATION) {
+    if (!customEnv && (hasExplicitSkipEnvValidationFlag() || process.env.NEXT_PHASE === "phase-production-build")) {
       return {
         DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/mocter_dummy",
         NODE_ENV: (process.env.NODE_ENV as any) || "development",
         AUTH_RATE_LIMIT_PEPPER: "mocter-dev-pepper",
         CHATWOOT_SUPER_ADMIN_USER_ID: 1,
+        S3_ENDPOINT: "http://seaweedfs:8333",
+        S3_REGION: "us-east-1",
+        S3_BUCKET: "media",
+        S3_FORCE_PATH_STYLE: "true",
       };
     }
     const issues = result.error.issues.map((issue) => ({
@@ -161,5 +245,29 @@ export function getValidatedEnv(
     validatedEnv = result.data;
   }
 
+  return result.data;
+}
+
+/**
+ * Valida estrictamente todas las credenciales y URLs requeridas para el pipeline multimedia (SeaweedFS S3 + imgproxy).
+ *
+ * @param customEnv - Diccionario opcional de variables para pruebas unitarias.
+ * @returns Configuración multimedia validada y lista para firmar peticiones SigV4 y URLs HMAC-SHA256.
+ * @throws {Error} Si falta alguna credencial o URL requerida (`S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `IMGPROXY_KEY`, `IMGPROXY_SALT`, `IMGPROXY_PUBLIC_URL`, etc.).
+ */
+export function getValidatedMediaEnv(
+  customEnv?: Record<string, string | undefined>,
+): MediaEnvConfig {
+  const source = customEnv ?? process.env;
+  const result = mediaEnvSchema.safeParse(source);
+  if (!result.success) {
+    const issues = result.error.issues.map((issue) => ({
+      path: issue.path.join("."),
+      message: issue.message,
+    }));
+    throw new Error(
+      `[Media Config Error] Variables de entorno S3/imgproxy inválidas o ausentes: ${JSON.stringify(issues)}`,
+    );
+  }
   return result.data;
 }

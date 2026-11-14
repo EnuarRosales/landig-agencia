@@ -2,6 +2,21 @@ import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
 /**
+ * Determina si debe omitirse la validación de variables de entorno (tests, flag explícito o build de Next.js).
+ */
+function shouldSkipEnvValidation(): boolean {
+  const skipFlag = process.env.SKIP_ENV_VALIDATION?.trim().toLowerCase();
+  const hasExplicitSkipFlag =
+    Boolean(skipFlag) && skipFlag !== "false" && skipFlag !== "0" && skipFlag !== "no";
+
+  return (
+    hasExplicitSkipFlag ||
+    process.env.NODE_ENV === "test" ||
+    process.env.NEXT_PHASE === "phase-production-build"
+  );
+}
+
+/**
  * Módulo centralizado de variables de entorno para @mocter/admin.
  *
  * Valida y tipa estrictamente las variables de servidor y cliente
@@ -30,9 +45,27 @@ export const env = createEnv({
       .int()
       .positive()
       .default(1),
-    IMGPROXY_KEY: z.string().optional(),
-    IMGPROXY_SALT: z.string().optional(),
-    IMGPROXY_BASE_URL: z.string().optional(),
+    IMGPROXY_KEY: z
+      .string()
+      .regex(/^[0-9a-fA-F]+$/, "IMGPROXY_KEY debe ser hexadecimal")
+      .min(2, "IMGPROXY_KEY es requerida"),
+    IMGPROXY_SALT: z
+      .string()
+      .regex(/^[0-9a-fA-F]+$/, "IMGPROXY_SALT debe ser hexadecimal")
+      .min(2, "IMGPROXY_SALT es requerida"),
+    IMGPROXY_PUBLIC_URL: z
+      .string()
+      .url("IMGPROXY_PUBLIC_URL debe ser una URL válida"),
+    IMGPROXY_BASE_URL: z.string().url().optional(),
+    S3_ENDPOINT: z
+      .string()
+      .url("S3_ENDPOINT debe ser una URL válida")
+      .default("http://seaweedfs:8333"),
+    S3_REGION: z.string().min(1, "S3_REGION es requerida").default("us-east-1"),
+    S3_BUCKET: z.string().min(1, "S3_BUCKET es requerido").default("media"),
+    S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).default("true"),
+    S3_ACCESS_KEY_ID: z.string().min(1, "S3_ACCESS_KEY_ID es requerida"),
+    S3_SECRET_ACCESS_KEY: z.string().min(1, "S3_SECRET_ACCESS_KEY es requerida"),
   },
   client: {
     NEXT_PUBLIC_ADMIN_URL: z
@@ -66,14 +99,19 @@ export const env = createEnv({
     CHATWOOT_SUPER_ADMIN_USER_ID: process.env.CHATWOOT_SUPER_ADMIN_USER_ID,
     IMGPROXY_KEY: process.env.IMGPROXY_KEY,
     IMGPROXY_SALT: process.env.IMGPROXY_SALT,
+    IMGPROXY_PUBLIC_URL: process.env.IMGPROXY_PUBLIC_URL,
     IMGPROXY_BASE_URL: process.env.IMGPROXY_BASE_URL,
+    S3_ENDPOINT: process.env.S3_ENDPOINT,
+    S3_REGION: process.env.S3_REGION,
+    S3_BUCKET: process.env.S3_BUCKET,
+    S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE,
+    S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
+    S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
     NEXT_PUBLIC_ADMIN_URL: process.env.NEXT_PUBLIC_ADMIN_URL,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_CHATWOOT_URL: process.env.NEXT_PUBLIC_CHATWOOT_URL,
     NEXT_PUBLIC_SAAS_BRAND_NAME: process.env.NEXT_PUBLIC_SAAS_BRAND_NAME,
     NEXT_PUBLIC_SAAS_LOGO_URL: process.env.NEXT_PUBLIC_SAAS_LOGO_URL,
   },
-  skipValidation: Boolean(
-    process.env.SKIP_ENV_VALIDATION || process.env.NODE_ENV === "test",
-  ),
+  skipValidation: shouldSkipEnvValidation(),
 });

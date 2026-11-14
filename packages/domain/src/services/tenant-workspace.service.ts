@@ -36,24 +36,42 @@ import { env } from "../utils/env";
 export type AllowedMediaKind = "image" | "pdf";
 
 /**
- * Constantes de firma y límites de imgproxy.
+ * Configuración dinámica de firma y límites de `imgproxy` leída desde variables de entorno validadas.
+ * Se resuelven por getter para reflejar cambios de entorno en runtime/test sin valores fijos inseguros.
  */
 export const IMGPROXY_DEFAULTS = {
   maxDimensionPx: 4096,
-  bucket: "media",
-  keyHex: env.IMGPROXY_KEY || "9b8c2d1e0f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c",
-  saltHex: env.IMGPROXY_SALT || "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
-  baseUrl: (env.IMGPROXY_BASE_URL || env.IMGPROXY_PUBLIC_URL || "http://localhost:8081").replace(/\/+$/, ""),
+  get bucket(): string {
+    return env.S3_BUCKET ?? "media";
+  },
+  get keyHex(): string {
+    return env.IMGPROXY_KEY ?? "";
+  },
+  get saltHex(): string {
+    return env.IMGPROXY_SALT ?? "";
+  },
+  get baseUrl(): string {
+    return (env.IMGPROXY_PUBLIC_URL || env.IMGPROXY_BASE_URL || "").replace(/\/+$/, "");
+  },
 };
 
 /**
  * Genera la firma HMAC-SHA256 URL-safe en base64 para un path de imgproxy (CEL-RF-019, D-T1.4).
+ *
+ * @param path - Ruta relativa de transformación de imgproxy (debe iniciar con `/`).
+ * @param keyHex - Clave HMAC hexadecimal; por defecto se lee desde `IMGPROXY_KEY`.
+ * @param saltHex - Sal HMAC hexadecimal; por defecto se lee desde `IMGPROXY_SALT`.
+ * @returns Firma codificada en Base64 URL-safe sin relleno `=`.
  */
 export function signImgproxyPath(
   path: string,
   keyHex: string = IMGPROXY_DEFAULTS.keyHex,
   saltHex: string = IMGPROXY_DEFAULTS.saltHex,
 ): string {
+  if (!keyHex || !saltHex) {
+    throw new Error("Configuración incompleta de imgproxy: IMGPROXY_KEY e IMGPROXY_SALT son obligatorios.");
+  }
+
   const keyBin = Buffer.from(keyHex, "hex");
   const saltBin = Buffer.from(saltHex, "hex");
   const pathBin = Buffer.from(path, "utf8");
@@ -70,7 +88,11 @@ export function signImgproxyPath(
 }
 
 /**
- * Construye la URL completa firmada para imgproxy.
+ * Construye la URL pública completa y firmada para servir recursos mediante imgproxy.
+ *
+ * @param storageKey - Clave del objeto almacenado en el bucket S3.
+ * @param options - Opciones de redimensionamiento y formato de salida.
+ * @returns URL firmada lista para consumo del navegador.
  */
 export function buildImgproxyUrl(
   storageKey: string,
@@ -87,12 +109,17 @@ export function buildImgproxyUrl(
     throw new Error(`Dimensiones (${width}x${height}) exceden el límite máximo de ${IMGPROXY_DEFAULTS.maxDimensionPx}px.`);
   }
 
+  const baseUrl = IMGPROXY_DEFAULTS.baseUrl;
+  if (!baseUrl) {
+    throw new Error("Configuración incompleta de imgproxy: IMGPROXY_PUBLIC_URL es obligatorio.");
+  }
+
   const resizingType = options.resizingType || "fit";
   const format = options.format || "webp";
   const cleanKey = storageKey.replace(/^\/+/, "");
   const path = `/resize:${resizingType}:${width}:${height}:0/plain/s3://${IMGPROXY_DEFAULTS.bucket}/${cleanKey}@${format}`;
   const signature = signImgproxyPath(path);
-  return `${IMGPROXY_DEFAULTS.baseUrl}/${signature}${path}`;
+  return `${baseUrl}/${signature}${path}`;
 }
 
 /**
@@ -294,12 +321,41 @@ export interface WorkspaceBillingDto {
 
 export interface MediaUploadResult {
   id: string;
+  mediaId: string;
+  mediaKind: AllowedMediaKind;
   storageKey: string;
   signedUrl: string;
   originalFilename: string;
   mimeType: string;
   sizeBytes: number;
 }
+
+/**
+ * Error de dominio tipado para el flujo de carga multimedia (`SPEC-00 §9.1`).
+ */
+export class MediaUploadError extends Error {
+  constructor(
+    message: string,
+    public readonly code: "VALIDATION" | "QUOTA_EXCEEDED" | "NOT_FOUND" | "STORAGE_UNAVAILABLE",
+    public readonly httpStatus: 400 | 404 | 422 | 503,
+  ) {
+    super(message);
+    this.name = "MediaUploadError";
+  }
+}
+
+const MIME_EXTENSION_MAP: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "application/pdf": "pdf",
+};
+
+const MAX_UPLOAD_BYTES_BY_KIND: Record<AllowedMediaKind, number> = {
+  image: 10 * 1024 * 1024, // 10 MB
+  pdf: 25 * 1024 * 1024, // 25 MB
+};
 
 /**
  * Servicio unificado de backoffice del inquilino (`TenantWorkspaceService`, TNT-001 R4, ADM-001 T-42).
@@ -659,10 +715,21 @@ export class TenantWorkspaceService {
     },
     actor: string,
   ): Promise<MediaUploadResult> {
-    // 1. Validar magic bytes (D-T2.3)
+    // 1. Validar magic bytes y tamaño máximo antes de contactar a SeaweedFS (RN-SPEC-00-06)
     const magic = validateMediaMagicBytes(file.buffer);
     if (!magic.valid) {
-      throw new Error(magic.error || "Formato de archivo inválido.");
+      throw new MediaUploadError(magic.error || "Formato de archivo inválido.", "VALIDATION", 400);
+    }
+
+    const mime = magic.detectedMime || file.mimeType;
+    const mediaKind: AllowedMediaKind = mime.startsWith("image/") ? "image" : "pdf";
+    const maxBytes = MAX_UPLOAD_BYTES_BY_KIND[mediaKind];
+    if (file.buffer.byteLength > maxBytes) {
+      throw new MediaUploadError(
+        `El archivo supera el tamaño máximo permitido de ${Math.round(maxBytes / (1024 * 1024))} MB.`,
+        "VALIDATION",
+        400,
+      );
     }
 
     // 2. Validar pertenencia del producto al inquilino bajo RLS
@@ -675,7 +742,7 @@ export class TenantWorkspaceService {
       return !!p;
     });
     if (!isOwned) {
-      throw new Error("El producto indicado no existe o no pertenece al inquilino.");
+      throw new MediaUploadError("El producto indicado no existe o no pertenece al inquilino.", "NOT_FOUND", 404);
     }
 
     // 3. Validar cuota de almacenamiento del plan (CEL-RF-016, CA-TNT-04)
@@ -704,24 +771,44 @@ export class TenantWorkspaceService {
         });
 
         if (currentBytes + file.buffer.byteLength > limit.value) {
-          throw new Error(`Has alcanzado el límite de almacenamiento de ${Math.round(limit.value / (1024 * 1024))} MB de tu plan.`);
+          throw new MediaUploadError(
+            `Has alcanzado el límite de almacenamiento de ${Math.round(limit.value / (1024 * 1024))} MB de tu plan.`,
+            "QUOTA_EXCEEDED",
+            422,
+          );
         }
       }
     }
 
-    const mime = magic.detectedMime || file.mimeType;
-    const ext = file.originalFilename.split(".").pop() || "webp";
+    const ext = MIME_EXTENSION_MAP[mime] || "bin";
     const contentHash = createHash("sha256").update(file.buffer).digest("hex");
     const storageKey = `products/${clientId}/${contentHash}.${ext}`;
 
-    // 4. Subir a SeaweedFS S3
-    const uploadRes = await this.s3Service.putObject(storageKey, file.buffer, mime);
-    if (!uploadRes.ok) {
-      appLogger.error(`[uploadProductMedia] Falló la subida a S3: ${uploadRes.error}`);
-      throw new Error(`Error al almacenar el archivo multimedia en S3: ${uploadRes.error}`);
+    // 4. Pre-firmar URL de imgproxy antes de mutar S3 o BD para evitar escrituras huérfanas si falta configuración
+    let signedUrl: string;
+    try {
+      signedUrl = buildImgproxyUrl(storageKey, { width: 600, height: 600 });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new MediaUploadError(msg, "STORAGE_UNAVAILABLE", 503);
     }
 
-    // 5. Registrar en catálogo de medios de control plane
+    // 5. Subir a SeaweedFS S3
+    const uploadRes = await this.s3Service.putObject(storageKey, file.buffer, mime);
+    if (!uploadRes.ok) {
+      appLogger.error(`[uploadProductMedia] Falló la subida a S3: ${uploadRes.error}`, undefined, {
+        clientId,
+        mediaKind,
+        sizeBytes: file.buffer.byteLength,
+      });
+      throw new MediaUploadError(
+        `Error al almacenar el archivo multimedia en S3: ${uploadRes.error}`,
+        "STORAGE_UNAVAILABLE",
+        503,
+      );
+    }
+
+    // 6. Registrar en catálogo de medios de control plane
     const storagePoolId = "seaweedfs-main";
     const mediaId = sql`uuidv7()`;
     const [catItem] = await portalDb
@@ -732,7 +819,7 @@ export class TenantWorkspaceService {
         storagePoolId,
         storageKey,
         sizeBytes: file.buffer.byteLength,
-        mediaKind: mime.startsWith("image/") ? "image" : "pdf",
+        mediaKind,
         mimeType: mime,
         sourceFormat: ext,
         originalFilename: file.originalFilename,
@@ -759,7 +846,7 @@ export class TenantWorkspaceService {
         .limit(1)
         .then((r) => r[0]?.id));
 
-    // 6. Vincular archivo en la celda y actualizar consumo (D-T2.4)
+    // 7. Vincular archivo en la celda y actualizar consumo (D-T2.4)
     await withTenantCellTransaction(clientId, async (tx) => {
       // Registrar en client_media
       await tx
@@ -806,11 +893,10 @@ export class TenantWorkspaceService {
         });
     });
 
-    // 5. Generar URL firmada de imgproxy
-    const signedUrl = buildImgproxyUrl(storageKey, { width: 600, height: 600 });
-
     return {
       id: actualMediaId,
+      mediaId: actualMediaId,
+      mediaKind,
       storageKey,
       signedUrl,
       originalFilename: file.originalFilename,

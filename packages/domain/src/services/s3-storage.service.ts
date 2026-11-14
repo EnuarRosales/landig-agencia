@@ -1,5 +1,11 @@
 import { createHash, createHmac } from "node:crypto";
 import { appLogger } from "../utils/logger";
+import { env } from "../utils/env";
+
+/**
+ * Tiempo máximo de espera por intento HTTP hacia SeaweedFS S3 (SPEC-00 §12).
+ */
+const S3_REQUEST_TIMEOUT_MS = 10_000;
 
 /**
  * Configuración para el cliente de almacenamiento compatible con S3 (CEL-RF-016).
@@ -15,6 +21,9 @@ export interface S3StorageConfig {
 
 /**
  * Genera la firma AWS SigV4 para una petición HTTP hacia el gateway S3 de SeaweedFS.
+ *
+ * @param params - Parámetros HTTP, ruta canónica, digest SHA-256 del cuerpo y credenciales S3.
+ * @returns Cabeceras HTTP listas para enviar incluyendo `Authorization`, `x-amz-date` y `x-amz-content-sha256`.
  */
 export function generateSigV4Headers(params: {
   method: string;
@@ -34,8 +43,13 @@ export function generateSigV4Headers(params: {
   const url = new URL(params.endpoint);
   const host = url.host;
 
+  const normalizedInputHeaders: Record<string, string> = {};
+  for (const [key, value] of Object.entries(params.headers)) {
+    normalizedInputHeaders[key.toLowerCase()] = value;
+  }
+
   const rawHeaders: Record<string, string> = {
-    ...params.headers,
+    ...normalizedInputHeaders,
     host,
     "x-amz-date": amzDate,
     "x-amz-content-sha256": params.payloadSha256,
@@ -91,34 +105,180 @@ export function generateSigV4Headers(params: {
 }
 
 /**
- * Cliente de almacenamiento S3 de bajo nivel optimizado para SeaweedFS (CEL-RF-016).
+ * Cliente de almacenamiento S3 de bajo nivel optimizado para SeaweedFS (CEL-RF-016, SPEC-00).
  *
- * Aplica reintentos exponenciales para tolerancia a fallos transitorios en el stack local y productivo.
+ * Lee su configuración exclusivamente desde {@link env}, inicializa el bucket de forma idempotente
+ * mediante {@link ensureBucketExists} y aplica reintentos exponenciales con timeout acotado.
  */
 export class S3StorageService {
-  private readonly endpoint: string;
-  private readonly region: string;
-  private readonly bucket: string;
-  private readonly accessKeyId: string;
-  private readonly secretAccessKey: string;
+  private static initializedBuckets = new Set<string>();
 
+  /**
+   * Crea una instancia de {@link S3StorageService}.
+   *
+   * @param configOverrides - Sobreescritura parcial opcional (principalmente para pruebas unitarias).
+   * @param fetchImpl - Implementación de `fetch` inyectable para pruebas.
+   */
   constructor(
-    config?: Partial<S3StorageConfig>,
+    private readonly configOverrides?: Partial<S3StorageConfig>,
     private readonly fetchImpl: typeof fetch = fetch,
-  ) {
-    this.endpoint = (config?.endpoint || process.env.S3_ENDPOINT || "http://localhost:8333").replace(/\/+$/, "");
-    this.region = config?.region || process.env.S3_REGION || "us-east-1";
-    this.bucket = config?.bucket || process.env.S3_BUCKET || "media";
-    this.accessKeyId = config?.accessKeyId || process.env.S3_ACCESS_KEY_ID || "";
-    this.secretAccessKey = config?.secretAccessKey || process.env.S3_SECRET_ACCESS_KEY || "";
+  ) {}
+
+  private get endpoint(): string {
+    return (this.configOverrides?.endpoint ?? env.S3_ENDPOINT ?? "http://seaweedfs:8333").replace(/\/+$/, "");
+  }
+
+  private get region(): string {
+    return this.configOverrides?.region ?? env.S3_REGION ?? "us-east-1";
+  }
+
+  private get bucket(): string {
+    return this.configOverrides?.bucket ?? env.S3_BUCKET ?? "media";
+  }
+
+  private get accessKeyId(): string {
+    return this.configOverrides?.accessKeyId ?? env.S3_ACCESS_KEY_ID ?? "";
+  }
+
+  private get secretAccessKey(): string {
+    return this.configOverrides?.secretAccessKey ?? env.S3_SECRET_ACCESS_KEY ?? "";
+  }
+
+  /**
+   * Limpia la caché en memoria de buckets inicializados.
+   */
+  static clearBucketCache(): void {
+    S3StorageService.initializedBuckets.clear();
+  }
+
+  /**
+   * Ejecuta una sonda no bloqueante de conectividad contra el gateway S3 de SeaweedFS (`SPEC-00 §9.2`).
+   *
+   * @param timeoutMs - Tiempo máximo de espera en milisegundos (por defecto `1500`).
+   * @returns `"ok"` si el gateway S3 responde con credenciales válidas (`200` o `404`), o `"degraded"` ante fallos/timeouts.
+   */
+  async checkConnectivity(timeoutMs: number = 1_500): Promise<"ok" | "degraded"> {
+    if (!this.accessKeyId || !this.secretAccessKey) {
+      return "degraded";
+    }
+
+    const path = `/${this.bucket}`;
+    const targetUrl = `${this.endpoint}${path}`;
+    const emptySha256 = createHash("sha256").update("").digest("hex");
+
+    try {
+      const headers = generateSigV4Headers({
+        method: "HEAD",
+        endpoint: this.endpoint,
+        path,
+        headers: {},
+        payloadSha256: emptySha256,
+        region: this.region,
+        accessKeyId: this.accessKeyId,
+        secretAccessKey: this.secretAccessKey,
+      });
+
+      const res = await this.fetchImpl(targetUrl, {
+        method: "HEAD",
+        headers,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      return res.ok || res.status === 404 ? "ok" : "degraded";
+    } catch {
+      return "degraded";
+    }
+  }
+
+  /**
+   * Garantiza de forma idempotente que el bucket configurado exista en SeaweedFS.
+   *
+   * Consulta `HEAD /{bucket}` firmado con SigV4; si responde `404`, crea el bucket con `PUT /{bucket}`
+   * y cachea el resultado por proceso para evitar peticiones repetidas en cargas subsecuentes.
+   *
+   * @throws {Error} Si faltan credenciales S3 o SeaweedFS devuelve un error inesperado.
+   */
+  async ensureBucketExists(): Promise<void> {
+    const cacheKey = `${this.endpoint}/${this.bucket}`;
+    if (S3StorageService.initializedBuckets.has(cacheKey)) {
+      return;
+    }
+
+    if (!this.accessKeyId || !this.secretAccessKey) {
+      throw new Error("Credenciales S3 (S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY) no configuradas.");
+    }
+
+    const path = `/${this.bucket}`;
+    const targetUrl = `${this.endpoint}${path}`;
+    const emptySha256 = createHash("sha256").update("").digest("hex");
+
+    const headHeaders = generateSigV4Headers({
+      method: "HEAD",
+      endpoint: this.endpoint,
+      path,
+      headers: {},
+      payloadSha256: emptySha256,
+      region: this.region,
+      accessKeyId: this.accessKeyId,
+      secretAccessKey: this.secretAccessKey,
+    });
+
+    const headRes = await this.fetchImpl(targetUrl, {
+      method: "HEAD",
+      headers: headHeaders,
+      signal: AbortSignal.timeout(S3_REQUEST_TIMEOUT_MS),
+    });
+
+    if (headRes.ok) {
+      S3StorageService.initializedBuckets.add(cacheKey);
+      return;
+    }
+
+    if (headRes.status !== 404) {
+      const body = typeof headRes.text === "function" ? await headRes.text().catch(() => "") : "";
+      throw new Error(
+        `Error al verificar bucket "${this.bucket}": HTTP ${headRes.status}${body ? `: ${body}` : headRes.statusText ? `: ${headRes.statusText}` : ""}`,
+      );
+    }
+
+    const putHeaders = generateSigV4Headers({
+      method: "PUT",
+      endpoint: this.endpoint,
+      path,
+      headers: {},
+      payloadSha256: emptySha256,
+      region: this.region,
+      accessKeyId: this.accessKeyId,
+      secretAccessKey: this.secretAccessKey,
+    });
+
+    const putRes = await this.fetchImpl(targetUrl, {
+      method: "PUT",
+      headers: putHeaders,
+      signal: AbortSignal.timeout(S3_REQUEST_TIMEOUT_MS),
+    });
+
+    if (putRes.ok || putRes.status === 409) {
+      S3StorageService.initializedBuckets.add(cacheKey);
+      return;
+    }
+
+    const putBody = typeof putRes.text === "function" ? await putRes.text().catch(() => "") : "";
+    throw new Error(
+      `Error al crear bucket "${this.bucket}": HTTP ${putRes.status}${putBody ? `: ${putBody}` : putRes.statusText ? `: ${putRes.statusText}` : ""}`,
+    );
   }
 
   /**
    * Sube un binario al bucket privado de SeaweedFS mediante PutObject S3 con reintentos exponenciales.
    *
+   * Garantiza la existencia del bucket mediante {@link ensureBucketExists} antes de escribir el objeto.
+   *
    * @param key - Clave relativa dentro del bucket (ej. `products/2026/img-123.webp`).
    * @param buffer - Contenido binario del archivo.
    * @param mimeType - Tipo MIME del contenido.
+   * @param maxRetries - Número máximo de intentos ante fallos transitorios (por defecto `3`).
+   * @returns Resultado tipado con `ok: true` o `ok: false` y detalle técnico del fallo.
    */
   async putObject(
     key: string,
@@ -126,6 +286,10 @@ export class S3StorageService {
     mimeType: string,
     maxRetries: number = 3,
   ): Promise<{ ok: boolean; error?: string }> {
+    if (!this.accessKeyId || !this.secretAccessKey) {
+      return { ok: false, error: "Credenciales S3 (S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY) no configuradas." };
+    }
+
     const cleanKey = key.replace(/^\/+/, "");
     const path = `/${this.bucket}/${cleanKey}`;
     const targetUrl = `${this.endpoint}${path}`;
@@ -134,7 +298,10 @@ export class S3StorageService {
     let lastError: string | undefined;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const startedAt = Date.now();
       try {
+        await this.ensureBucketExists();
+
         const headers = generateSigV4Headers({
           method: "PUT",
           endpoint: this.endpoint,
@@ -152,19 +319,38 @@ export class S3StorageService {
         const res = await this.fetchImpl(targetUrl, {
           method: "PUT",
           headers,
-          body: buffer as any,
+          body: new Uint8Array(buffer),
+          signal: AbortSignal.timeout(S3_REQUEST_TIMEOUT_MS),
         });
 
         if (res.ok) {
+          appLogger.info(`[S3StorageService.putObject] Objeto persistido en S3`, {
+            bucket: this.bucket,
+            key: cleanKey,
+            sizeBytes: buffer.byteLength,
+            attempt,
+            latencyMs: Date.now() - startedAt,
+          });
           return { ok: true };
         }
 
-        const body = await res.text().catch(() => "");
+        const body = typeof res.text === "function" ? await res.text().catch(() => "") : "";
         lastError = `HTTP ${res.status}: ${body || res.statusText}`;
-        appLogger.warn(`[S3StorageService.putObject] Intento ${attempt} falló para "${key}": ${lastError}`);
+        appLogger.warn(`[S3StorageService.putObject] Intento ${attempt} falló para "${key}": ${lastError}`, {
+          bucket: this.bucket,
+          key: cleanKey,
+          attempt,
+          status: res.status,
+          latencyMs: Date.now() - startedAt,
+        });
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
-        appLogger.warn(`[S3StorageService.putObject] Excepción en intento ${attempt} para "${key}": ${lastError}`);
+        appLogger.warn(`[S3StorageService.putObject] Excepción en intento ${attempt} para "${key}": ${lastError}`, {
+          bucket: this.bucket,
+          key: cleanKey,
+          attempt,
+          latencyMs: Date.now() - startedAt,
+        });
       }
 
       if (attempt < maxRetries) {
@@ -178,8 +364,15 @@ export class S3StorageService {
 
   /**
    * Elimina un objeto del bucket privado de SeaweedFS.
+   *
+   * @param key - Clave relativa del objeto dentro del bucket.
+   * @returns Resultado tipado indicando si la eliminación fue exitosa o idempotente (`404`).
    */
   async deleteObject(key: string): Promise<{ ok: boolean; error?: string }> {
+    if (!this.accessKeyId || !this.secretAccessKey) {
+      return { ok: false, error: "Credenciales S3 (S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY) no configuradas." };
+    }
+
     const cleanKey = key.replace(/^\/+/, "");
     const path = `/${this.bucket}/${cleanKey}`;
     const targetUrl = `${this.endpoint}${path}`;
@@ -200,13 +393,14 @@ export class S3StorageService {
       const res = await this.fetchImpl(targetUrl, {
         method: "DELETE",
         headers,
+        signal: AbortSignal.timeout(S3_REQUEST_TIMEOUT_MS),
       });
 
       if (res.ok || res.status === 204 || res.status === 404) {
         return { ok: true };
       }
 
-      const body = await res.text().catch(() => "");
+      const body = typeof res.text === "function" ? await res.text().catch(() => "") : "";
       return { ok: false, error: `HTTP ${res.status}: ${body || res.statusText}` };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };

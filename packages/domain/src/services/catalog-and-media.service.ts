@@ -1,6 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { S3StorageService } from "./s3-storage.service";
 import { err, ok, type Result } from "../types/result";
+import { env } from "../utils/env";
 
 /**
  * Configuración por defecto de los atributos del producto que componen el texto vectorizado (`ADM-001 T-13, RF-05.7, §9.0`).
@@ -121,7 +122,7 @@ export class CatalogAndMediaService {
     { clientId: string; productId: string; mediaId: string; altText: string | null }
   >();
 
-  constructor(
+  constructor (
     private readonly imgproxyKeyPairs: Array<{ keyHex: string; saltHex: string }> = [
       {
         keyHex: "30".repeat(32),
@@ -129,12 +130,12 @@ export class CatalogAndMediaService {
       },
     ],
     private readonly imgproxyBaseUrl: string = (
-      process.env.IMGPROXY_PUBLIC_URL ||
-      process.env.IMGPROXY_BASE_URL ||
-      "http://localhost:8081"
+      env.IMGPROXY_PUBLIC_URL ||
+      env.IMGPROXY_BASE_URL ||
+      ""
     ).replace(/\/+$/, ""),
     private readonly s3Storage?: S3StorageService,
-  ) {}
+  ) { }
 
   /**
    * Crea un producto exigiendo únicamente `name`, `description` y `priceCents`, heredando la moneda

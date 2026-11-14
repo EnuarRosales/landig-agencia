@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   TenantWorkspaceService,
   validateMediaMagicBytes,
@@ -71,6 +71,18 @@ describe("TenantWorkspaceService Unit & Media Suite", () => {
   });
 
   describe("imgproxy HMAC-SHA256 URL Signing (D-T1.4 & D-T2.2)", () => {
+    beforeEach(() => {
+      vi.stubEnv("S3_BUCKET", "media");
+      vi.stubEnv("IMGPROXY_KEY", "11".repeat(32));
+      vi.stubEnv("IMGPROXY_SALT", "22".repeat(32));
+      vi.stubEnv("IMGPROXY_PUBLIC_URL", "https://media.mocter.co");
+      vi.stubEnv("IMGPROXY_BASE_URL", "http://imgproxy:8080");
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
     it("should generate URL-safe base64 signature without +, / or =", () => {
       const path = "/resize:fill:300:300:0/plain/s3://media/products/sample.webp";
       const sig = signImgproxyPath(path);
@@ -82,7 +94,7 @@ describe("TenantWorkspaceService Unit & Media Suite", () => {
       expect(sig.includes("=")).toBe(false);
     });
 
-    it("should build valid full imgproxy URL with dimensions and format", () => {
+    it("should build valid full imgproxy URL prioritizing IMGPROXY_PUBLIC_URL over IMGPROXY_BASE_URL", () => {
       const url = buildImgproxyUrl("products/client-1/item-123.jpg", {
         width: 600,
         height: 600,
@@ -91,7 +103,30 @@ describe("TenantWorkspaceService Unit & Media Suite", () => {
       });
 
       expect(url).toContain("/resize:fill:600:600:0/plain/s3://media/products/client-1/item-123.jpg@webp");
+      expect(url.startsWith("https://media.mocter.co/")).toBe(true);
       expect(url.startsWith(IMGPROXY_DEFAULTS.baseUrl)).toBe(true);
+    });
+
+    it("should reflect updated IMGPROXY_KEY and IMGPROXY_SALT dynamically without hardcoded fallback", () => {
+      const path = "/resize:fit:400:400:0/plain/s3://media/products/test.png@webp";
+      const sigA = signImgproxyPath(path);
+      vi.stubEnv("IMGPROXY_KEY", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+      const sigB = signImgproxyPath(path);
+
+      expect(sigA).not.toBe(sigB);
+    });
+
+    it("should throw explicit error when IMGPROXY_KEY or IMGPROXY_SALT are missing", () => {
+      vi.stubEnv("IMGPROXY_KEY", "");
+      expect(() => signImgproxyPath("/resize:fit:400:400:0/plain/s3://media/a.png@webp")).toThrow(
+        /IMGPROXY_KEY e IMGPROXY_SALT son obligatorios/,
+      );
+    });
+
+    it("should throw explicit error when IMGPROXY_PUBLIC_URL and IMGPROXY_BASE_URL are missing", () => {
+      vi.stubEnv("IMGPROXY_PUBLIC_URL", "");
+      vi.stubEnv("IMGPROXY_BASE_URL", "");
+      expect(() => buildImgproxyUrl("products/a.png")).toThrow(/IMGPROXY_PUBLIC_URL es obligatorio/);
     });
 
     it("should throw error when requested dimensions exceed 4096px platform limit (D-T2.2)", () => {

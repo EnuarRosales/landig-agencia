@@ -145,6 +145,16 @@ describe("ComposeCellManifestRenderer · Perfiles de Despliegue CEL-001 §3.2 (C
       );
     });
 
+    it("configura healthcheck de PgBouncer con $$DB_USER y $$DB_NAME sin POSTGRES_USER/POSTGRES_DB (INC-01)", () => {
+      const pgbouncerSection = artifacts.dockerComposeContent.split("pgbouncer-cell:")[1].split("tenant-app:")[0];
+      const healthcheckSection = pgbouncerSection.split("    healthcheck:\n")[1].split("    depends_on:")[0];
+      expect(healthcheckSection).toContain(
+        'test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U $$DB_USER -d $$DB_NAME"]'
+      );
+      expect(healthcheckSection).not.toContain("POSTGRES_USER");
+      expect(healthcheckSection).not.toContain("POSTGRES_DB");
+    });
+
     it("cumple sintaxis Compose válida (verificada con docker compose config)", () => {
       validateComposeSyntax(artifacts.dockerComposeContent, artifacts.envContent.split("\n"));
     });
@@ -173,6 +183,16 @@ describe("ComposeCellManifestRenderer · Perfiles de Despliegue CEL-001 §3.2 (C
       );
     });
 
+    it("configura healthcheck de PgBouncer con $$DB_USER y $$DB_NAME sin POSTGRES_USER/POSTGRES_DB (INC-01)", () => {
+      const pgbouncerSection = artifacts.dockerComposeContent.split("pgbouncer-cell:")[1].split("tenant-app:")[0];
+      const healthcheckSection = pgbouncerSection.split("    healthcheck:\n")[1].split("    depends_on:")[0];
+      expect(healthcheckSection).toContain(
+        'test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U $$DB_USER -d $$DB_NAME"]'
+      );
+      expect(healthcheckSection).not.toContain("POSTGRES_USER");
+      expect(healthcheckSection).not.toContain("POSTGRES_DB");
+    });
+
     it("cumple sintaxis Compose válida (verificada con docker compose config)", () => {
       validateComposeSyntax(artifacts.dockerComposeContent, artifacts.envContent.split("\n"));
     });
@@ -197,10 +217,14 @@ describe("ComposeCellManifestRenderer · Perfiles de Despliegue CEL-001 §3.2 (C
       expect(artifacts.dockerComposeContent).toContain("image: node:24-alpine");
     });
 
-    it("configura healthcheck estricto de PgBouncer con pg_isready (CEL-RF-011)", () => {
-      expect(artifacts.dockerComposeContent).toContain(
-        'test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U $$POSTGRES_USER -d $$POSTGRES_DB"]'
+    it("configura healthcheck estricto de PgBouncer con pg_isready usando $$DB_USER y $$DB_NAME (CEL-RF-011, INC-01)", () => {
+      const pgbouncerSection = artifacts.dockerComposeContent.split("pgbouncer-cell:")[1].split("tenant-app:")[0];
+      const healthcheckSection = pgbouncerSection.split("    healthcheck:\n")[1].split("    networks:")[0];
+      expect(healthcheckSection).toContain(
+        'test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U $$DB_USER -d $$DB_NAME"]'
       );
+      expect(healthcheckSection).not.toContain("POSTGRES_USER");
+      expect(healthcheckSection).not.toContain("POSTGRES_DB");
     });
 
     it("establece dependencia tenant-app -> pgbouncer-cell condition service_healthy", () => {
