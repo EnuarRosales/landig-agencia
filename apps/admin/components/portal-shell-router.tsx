@@ -156,6 +156,7 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
           id: activeClient?.id || "",
           name: activeClient?.displayName || activeClient?.name || "Mi Comercio",
           slug: activeClient?.slug || "comercio",
+          logoUrl: activeClient?.logoUrl || undefined,
           planName: planName || "Plan Pro",
         }}
         capabilities={capabilities}

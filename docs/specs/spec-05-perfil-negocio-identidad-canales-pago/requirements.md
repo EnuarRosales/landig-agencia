@@ -47,12 +47,12 @@ Centralizar en el módulo **«Perfil Del Negocio» (`/workspace/profile`)** toda
 ## 5. Alcance y Fuera de alcance
 
 ### Dentro del alcance
-- Extensión de `admin.clients` con `commercialEmail` (y verificación/normalización de campos existentes: `displayName`, `slug`, `phone`, `websiteUrl`, `locale`, `currency`, `timezone`, `country`, `state`, `city`, `addressLine`, `postalCode`, `industry`, `taxId`, `logoMediaId`, `socialLinks`).
-- Creación de tabla estructurada en celda (`pg-cell-XX`): `tenant_payment_channels` (o `cell_tenant_payment_methods`) dentro de `packages/domain/src/db/schemas/tenant/orders.ts` (o `tenancy-catalog.ts`) con aislamiento estricto `client_id` + RLS.
-- Creación de endpoints `/api/tenant/profile` (`GET`, `PATCH`) y `/api/tenant/payment-channels` (`GET`, `POST`, `PATCH`, `DELETE`) con manejo `Result` + RFC 9457.
-- Flujo de carga del logo comercial del inquilino conectado a SeaweedFS + imgproxy (`SPEC-00`), disponible desde Onboarding Paso 1 y `/workspace/profile` **sin restricción al plan Enterprise** (diferenciado de la marca blanca avanzada en `/workspace/branding` de `SPEC-07`).
-- Creación de la vista `/workspace/profile` (`apps/admin/app/workspace/profile/page.tsx` [Nuevo] + `profile-view.tsx` [Nuevo]) y entrada clara en navegación lateral del workspace para `tenancy_owner`.
-- Propagación de `clients.locale` actualizado como idioma por defecto del comercio (afectando UI para usuarios sin preferencia individual y el idioma base de respuesta comercial).
+- Extensión de `admin.clients` con `commercialEmail` (y verificación/normalización de campos existentes: `displayName`, `slug` de solo lectura tras el onboarding, `phone`, `websiteUrl`, `locale`, `currency`, `timezone`, `country`, `state`, `city`, `addressLine`, `postalCode`, `industry`, `taxId`, `logoMediaId`, `socialLinks`).
+- Creación de tabla estructurada en celda (`pg-cell-XX`): `tenant_payment_channels` dentro de `packages/domain/src/db/schemas/tenant/orders.ts` con aislamiento estricto `client_id` + RLS, más columna nullable `payment_channel_id` en `admin.orders` (`cell_orders`) para trazabilidad de pedidos futuros.
+- Creación de endpoints `/api/tenant/profile` (`GET`, `PATCH`), `/api/tenant/profile/logo` (`POST`, `DELETE`) y `/api/tenant/payment-channels` (`GET`, `POST`, `PATCH`, `DELETE`) con manejo `Result` + RFC 9457.
+- Flujo de carga/eliminación del logo comercial del inquilino conectado a SeaweedFS + imgproxy (`SPEC-00`), disponible desde Onboarding Paso 1 y `/workspace/profile` **sin restricción al plan Enterprise** y **exento de cuota `storage_bytes`** (diferenciado de la marca blanca avanzada en `/workspace/branding` de `SPEC-07`).
+- Creación de la vista `/workspace/profile` (`apps/admin/app/workspace/profile/page.tsx` [Nuevo] + `profile-view.tsx` [Nuevo]), oculta del menú lateral para `tenant_agent` (en acceso directo por URL muestra modo solo lectura) y completamente editable para `tenant_owner` (`tenancy_owner`).
+- Propagación de `clients.locale` actualizado como idioma por defecto del comercio (afectando UI para usuarios sin preferencia individual, header/shell y el idioma base de respuesta comercial).
 
 ### Fuera de alcance
 - Personalización de paleta de colores global, eliminación del footer/marca Mocter (`removeMocterBranding`), favicon institucional y dominio propio (corresponde a `SPEC-07` — Marca Blanca Enterprise).
@@ -66,9 +66,9 @@ Centralizar en el módulo **«Perfil Del Negocio» (`/workspace/profile`)** toda
 
 | Actor / Rol | Operación | Permitido | Condición |
 | --- | --- | --- | --- |
-| `tenancy_owner` | Consultar y editar todos los campos de perfil comercial, idioma, logo y canales de pago del comercio | Sí | Solo su `client_id` |
-| `tenancy_users` (`tenant_agent`) | Consultar lectura operativa (ej. canales de pago activos para registrar pedidos) | Sí | Solo lectura no destructiva |
-| `tenancy_users` (`tenant_agent`) | Modificar perfil del negocio, idioma base, logo o activar/eliminar canales de pago | No | Denegado (`403 Forbidden`) |
+| `tenant_owner` (`tenancy_owner`) | Consultar y editar todos los campos de perfil comercial, idioma, logo y canales de pago del comercio | Sí | Solo su `client_id` |
+| `tenant_agent` (`tenancy_users`) | Consultar lectura operativa (ej. `GET /api/tenant/profile`, `GET /api/tenant/payment-channels` y acceso directo en modo solo lectura) | Sí | Solo lectura no destructiva; oculto en menú lateral |
+| `tenant_agent` (`tenancy_users`) | Modificar perfil del negocio, idioma base, logo o activar/eliminar canales de pago | No | Denegado (`403 Forbidden`) |
 | `platform_owner` / `platform_admin` | Consultar datos básicos del comercio en `/admin/tenants` | Sí | Solo soporte/administración SaaS |
 
 ---
@@ -79,7 +79,7 @@ Centralizar en el módulo **«Perfil Del Negocio» (`/workspace/profile`)** toda
 - **`commercial_email`**: `VARCHAR(255)` nullable en BD (obligatorio en formulario de Onboarding Paso 1 y Perfil desde la remediación), formato email válido. Correo público comercial visible en catálogos, confirmaciones y pies de página hacia compradores finales (distinto de `contact_email` administrativo/facturación).
 - Campos existentes aprovechados y validados:
   - `display_name`: `VARCHAR(160)` `NOT NULL`, min 2 caracteres.
-  - `slug`: `VARCHAR(80)` único, formato `^[a-z0-9-]+$` (solo editable mientras no rompa enlaces activos o bajo regla controlada de slug).
+  - `slug`: `VARCHAR(80)` único, formato `^[a-z0-9-]+$` (**solo lectura en `/workspace/profile`**; definido durante el onboarding para no romper enlaces públicos o códigos QR compartidos).
   - `phone`: `VARCHAR(32)` (formato E.164 o teléfono nacional validado).
   - `website_url`: `TEXT` nullable (validación HTTP/HTTPS `https://...`).
   - `locale`: `VARCHAR(10)` `NOT NULL`, enum `'es' | 'en'`, default `'es'`.
@@ -100,7 +100,7 @@ Centralizar en el módulo **«Perfil Del Negocio» (`/workspace/profile`)** toda
 - `is_active`: `BOOLEAN` `NOT NULL`, default `true`.
 - `sort_order`: `INTEGER` `NOT NULL`, default `0`.
 - `created_at`, `updated_at`: `TIMESTAMPTZ` `NOT NULL`.
-- **Estrategia de eliminación:** Si el canal ya fue referenciado históricamente por pedidos en `cell_orders`, solo se permite **inactivar (`is_active = false`)** o si nunca se ha usado se permite eliminación física previa confirmación modal `--dsn-*`; en todo caso `cell_orders` conserva snapshot de método usado (`payment_method`).
+- **Estrategia de eliminación e integridad histórica:** Se incorpora `payment_channel_id UUID` nullable en `admin.orders` (`cell_orders`). Si el canal ya fue referenciado históricamente por pedidos en `admin.orders` (ya sea por `payment_channel_id = channel.id` o coincidencia case-insensitive con el snapshot `payment_method` respecto a `channel_code`/`display_name`), solo se permite **inactivar (`is_active = false`)** y el `DELETE` retorna `409 CHANNEL_USED_IN_ORDERS`; si nunca se ha usado se permite eliminación física previa confirmación modal `--dsn-*`. En todo caso `admin.orders` conserva snapshot de método usado (`payment_method`).
 - **Sincronización transitoria:** Al guardar cambios en `tenant_payment_channels`, actualizar también la proyección resumida en `cell_client_business_info.payment_methods` para retrocompatibilidad inmediata con módulos que aún lean la lista resumida hasta migrar totalmente a esta tabla.
 
 ---
@@ -116,7 +116,7 @@ Centralizar en el módulo **«Perfil Del Negocio» (`/workspace/profile`)** toda
   - `displayName` obligatorio (`2..160` caracteres), prohibido truncar su visualización en shell o tarjetas (`TAB-01`).
 - **RN-SPEC-05-04 (Canales de pago informativos únicamente — sin intermediación financiera):** Todo canal configurado en `tenant_payment_channels` es meramente informativo para que el bot y el comercio comuniquen al cliente final cómo pagar directamente al comercio. El sistema prohíbe capturar credenciales bancarias secretas (`passwords`, `tokens privados`, `CVV`) en estos campos y advierte explícitamente sobre ello.
 - **RN-SPEC-05-05 (Fuente única de métodos de pago entre Onboarding, Perfil, Pedidos y Bot):** Al activar o editar canales en Onboarding Paso 4 (`SPEC-06`), se persisten directamente en `tenant_payment_channels`, quedando de inmediato disponibles en `/workspace/profile`, en el selector de creación de pedidos (`/workspace/orders`, `PED-03`) y en las respuestas del bot comercial (`SPEC-10`).
-- **RN-SPEC-05-06 (Protección de archivos de logo):** Solo se admiten imágenes (`PNG`, `JPG`, `WEBP`, `SVG` sanitizado o preferiblemente raster `PNG`/`WEBP`/`JPG`) `<= 5 MiB`, procesadas por SeaweedFS + imgproxy (`SPEC-00`) para generar variantes optimizadas para header y ficha pública.
+- **RN-SPEC-05-06 (Protección de archivos de logo y exención de cuota):** Solo se admiten imágenes raster (`PNG`, `JPG`, `WEBP`, prohibiendo `SVG` por seguridad anti-XSS) `<= 5 MiB` validadas por magic bytes (`validateMediaMagicBytes`), procesadas por SeaweedFS + imgproxy (`SPEC-00`) mediante `/api/tenant/profile/logo` (y opcionalmente `purpose=logo` en `/api/tenant/media/upload`) para generar variantes optimizadas para header y ficha pública, **exentas del consumo de cuota `storage_bytes`** para no bloquear planes gratuitos.
 
 ---
 
@@ -147,7 +147,12 @@ Centralizar en el módulo **«Perfil Del Negocio» (`/workspace/profile`)** toda
     }
   }
   ```
-- **Response `200 OK`:** Objeto consolidado del comercio incluyendo `logoResolvedUrl` generado vía imgproxy (`SPEC-00`). Si cambia `locale`, emite cookie/cabecera de sincronización UI en respuesta.
+- **Response `200 OK`:** Objeto consolidado del comercio incluyendo `logoResolvedUrl` generado vía imgproxy (`SPEC-00`). Si cambia `locale`, emite cookie `mocter_locale` y cabecera de sincronización UI en respuesta.
+
+### 9.1.1 `POST / DELETE /api/tenant/profile/logo` [Nuevo]
+- **Autenticación:** Sesión autenticada exclusiva de `tenant_owner` (`tenancy_owner`) → `403` para `tenant_agent`.
+- **`POST` (`multipart/form-data`):** Recibe campo `file` binario (imágenes raster `PNG`/`JPG`/`WEBP`, máx. `5 MiB`, validadas por `validateMediaMagicBytes`, sin `SVG`), almacena en SeaweedFS bajo prefijo `logos/{clientId}/...`, registra en `admin.media_catalog` y actualiza `admin.clients.logo_media_id` **sin descontar cuota `storage_bytes`**. Retorna `{ ok: true, data: { logoMediaId, logoResolvedUrl } }`.
+- **`DELETE`:** Establece `admin.clients.logo_media_id = null` y retorna `{ ok: true, data: { logoMediaId: null, logoResolvedUrl: null } }`.
 
 ### 9.2 `GET / POST /api/tenant/payment-channels` y `PATCH / DELETE /api/tenant/payment-channels/[id]` [Nuevos]
 - **Autenticación:** `GET` (`tenancy_owner` | `tenant_agent`), `POST`/`PATCH`/`DELETE` (`tenancy_owner`).
@@ -169,9 +174,9 @@ Centralizar en el módulo **«Perfil Del Negocio» (`/workspace/profile`)** toda
 
 ## 10. Especificación de UI/UX
 
-- **Navegación (`tenant-workspace-shell.tsx`):** Agregar enlace accesible **«Perfil Del Negocio»** (`/workspace/profile`) en la zona de configuración del comercio, separado de «Marca Blanca» (`/workspace/branding`).
+- **Navegación (`tenant-workspace-shell.tsx`):** Agregar enlace accesible **«Perfil Del Negocio»** (`/workspace/profile`) en la zona de configuración del comercio, separado de «Marca Blanca» (`/workspace/branding`), visible en menú únicamente para `tenant_owner` (`tenancy_owner`) y oculto para `tenant_agent` (en acceso directo por URL muestra modo solo lectura).
 - **Secciones en `/workspace/profile` (Mobile First, cards con tokens `--dsn-*`, todos los labels en Title Case sin `uppercase`):**
-  1. **Identidad Visual Y Datos Generales:** Carga/cambio/eliminación de **Logo Comercial** (preview instantáneo + botón «Subir Logo» / «Quitar Logo» con modal de confirmación `--dsn-*`), Nombre Comercial, URL Pública (`mocter.co/{slug}` solo lectura o edición segura), Correo Comercial, Teléfono De Contacto, Sitio Web, NIT/RUT/Tax ID, Industria.
+  1. **Identidad Visual Y Datos Generales:** Carga/cambio/eliminación de **Logo Comercial** (preview instantáneo + botón «Subir Logo» / «Quitar Logo» con modal de confirmación `--dsn-*`), Nombre Comercial, URL Pública (`mocter.co/{slug}` solo lectura), Correo Comercial, Teléfono De Contacto, Sitio Web, NIT/RUT/Tax ID, Industria.
   2. **Localización E Idioma:** Selector **Idioma Del Comercio** (`Español` / `English`), País, Ciudad, Dirección Física, Moneda y Zona Horaria. Al guardar nuevo idioma, refresca la interfaz en el idioma elegido (`router.refresh()`).
   3. **Redes Sociales:** Instagram, Facebook, TikTok, WhatsApp Comercial.
   4. **Canales De Pago Para Tus Clientes (`PED-03`):** Tabla/lista responsiva con activación rápida (`switch`), modal de creación/edición en Title Case («Canal De Pago», «Nombre Visible», «Número De Cuenta O Llave», «Titular», «Instrucciones Para El Cliente») y modal `--dsn-*` para eliminar/inactivar (cero `window.confirm`). Aviso informativo claro: *«Mocter no procesa ni retiene dinero de tus ventas; estos datos solo se muestran a tus clientes para que te paguen directamente.»*

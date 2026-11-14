@@ -169,6 +169,7 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
     );
 
     expect(screen.getAllByText("Conversaciones Omnicanal").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/Chatwoot/i)).toBeNull();
     expect(screen.getAllByText("Identidad Y Marca Blanca").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Comunidad De Comercios").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Informes Y Analítica").length).toBeGreaterThanOrEqual(1);

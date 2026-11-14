@@ -1,0 +1,3 @@
+ALTER TABLE "admin"."clients" ADD COLUMN "commercial_email" text;--> statement-breakpoint
+ALTER TABLE "admin"."clients" ADD CONSTRAINT "clients_commercial_email_lowercase_check" CHECK (commercial_email IS NULL OR commercial_email = lower(commercial_email));--> statement-breakpoint
+COMMENT ON COLUMN "admin"."clients"."commercial_email" IS 'Public commercial contact email displayed to the tenant customers in catalogs and confirmations (SPEC-05).';

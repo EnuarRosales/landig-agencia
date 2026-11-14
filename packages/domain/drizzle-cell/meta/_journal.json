@@ -71,6 +71,20 @@
       "when": 1793479757300,
       "tag": "0009_cell_phase4_conversation_state_rls_grants_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794694488766,
+      "tag": "0010_cell_phase5_payment_channels",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794694501072,
+      "tag": "0011_cell_phase5_payment_channels_rls_grants_comments",
+      "breakpoints": true
     }
   ]
 }

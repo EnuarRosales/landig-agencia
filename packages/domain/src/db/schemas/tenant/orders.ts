@@ -43,6 +43,8 @@ export const cellOrders = cellAdminSchema.table(
     status: text("status").notNull().default("registered"),
     /** Método de pago acordado (snapshot del contexto comercial). */
     paymentMethod: text("payment_method").notNull(),
+    /** Identificador opcional del canal de pago estructurado utilizado (`admin.tenant_payment_channels`). */
+    paymentChannelId: uuid("payment_channel_id"),
     /** Estado del cobro del pedido. */
     paymentStatus: text("payment_status").notNull().default("pending"),
     /** Método de entrega o despacho ('home' para domicilio u 'office' para reclamo en agencia). */
@@ -267,6 +269,44 @@ export const cellShippingCarriers = cellAdminSchema.table(
   ],
 );
 
+export const cellTenantPaymentChannels = cellAdminSchema.table(
+  "tenant_payment_channels",
+  {
+    /** Identificador UUIDv7 del canal de pago del comercio. */
+    id: uuid("id").notNull().default(sql`uuidv7()`),
+    /** Identificador del inquilino propietario en la celda. */
+    clientId: uuid("client_id").notNull(),
+    /** Código normalizado del canal (`nequi`, `daviplata`, `bancolombia`, `bre_b`, `pse`, `card_link`, `cash_on_delivery`, `efecty`, `bank_transfer`, `other`). */
+    channelCode: text("channel_code").notNull(),
+    /** Nombre visible del canal para clientes finales y bot (p. ej. Transferencia Nequi). */
+    displayName: text("display_name").notNull(),
+    /** Número de cuenta, teléfono, llave Bre-B o enlace informativo del comercio. */
+    accountIdentifier: text("account_identifier"),
+    /** Nombre del titular o razón social receptora del pago. */
+    accountHolderName: text("account_holder_name"),
+    /** Instrucciones de pago comunicadas al comprador (máx. 1,000 caracteres). */
+    instructions: text("instructions"),
+    /** Indica si el canal está activo para pedidos y respuestas del asistente AI. */
+    isActive: boolean("is_active").notNull().default(true),
+    /** Orden ascendente de presentación. */
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...auditColumns(),
+  },
+  (table) => [
+    primaryKey({
+      name: "cell_tenant_payment_channels_pkey",
+      columns: [table.clientId, table.id],
+    }),
+    index("tenant_payment_channels_client_active_sort_idx").on(
+      table.clientId,
+      table.isActive,
+      table.sortOrder,
+    ),
+    check("tenant_payment_channels_code_lowercase_check", sql.raw("channel_code = lower(channel_code)")),
+    check("tenant_payment_channels_sort_order_check", sql.raw("sort_order >= 0")),
+  ],
+);
+
 export type CellOrder = typeof cellOrders.$inferSelect;
 export type NewCellOrder = typeof cellOrders.$inferInsert;
 export type CellOrderItem = typeof cellOrderItems.$inferSelect;
@@ -279,3 +319,5 @@ export type CellOrderSequence = typeof cellOrderSequences.$inferSelect;
 export type NewCellOrderSequence = typeof cellOrderSequences.$inferInsert;
 export type CellShippingCarrier = typeof cellShippingCarriers.$inferSelect;
 export type NewCellShippingCarrier = typeof cellShippingCarriers.$inferInsert;
+export type CellTenantPaymentChannel = typeof cellTenantPaymentChannels.$inferSelect;
+export type NewCellTenantPaymentChannel = typeof cellTenantPaymentChannels.$inferInsert;

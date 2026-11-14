@@ -34,6 +34,7 @@ export const clients = adminSchema.table(
     slug: text("slug").notNull().unique(),
     displayName: text("display_name").notNull(),
     contactEmail: text("contact_email").notNull(),
+    commercialEmail: text("commercial_email"),
     phone: text("phone"),
     websiteUrl: text("website_url"),
     lifecycleStatus: text("lifecycle_status").notNull().default("alta"),
@@ -68,6 +69,10 @@ export const clients = adminSchema.table(
     ),
     check("clients_locale_check", sql.raw("locale IN ('es', 'en')")),
     check("clients_contact_email_lowercase_check", sql.raw("contact_email = lower(contact_email)")),
+    check(
+      "clients_commercial_email_lowercase_check",
+      sql.raw("commercial_email IS NULL OR commercial_email = lower(commercial_email)"),
+    ),
     check("clients_quota_version_check", sql.raw("quota_version > 0")),
     check("clients_social_links_object_check", sql.raw("jsonb_typeof(social_links) = 'object'")),
   ],

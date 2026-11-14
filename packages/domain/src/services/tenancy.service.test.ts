@@ -122,6 +122,7 @@ describe("TenancyService · ADM-001 T-05 & T-06", () => {
           slug: input.client.slug,
           displayName: input.client.displayName,
           contactEmail: input.client.contactEmail,
+          commercialEmail: input.client.commercialEmail ?? null,
           phone: input.client.phone ?? null,
           websiteUrl: input.client.websiteUrl ?? null,
           lifecycleStatus: input.client.lifecycleStatus ?? "alta",

@@ -116,5 +116,7 @@ export * from "./services/s3-storage.service";
 export * from "./services/session-context.service";
 export * from "./services/tenant-onboarding.service";
 export * from "./services/tenant-workspace.service";
+export * from "./services/tenant-profile.service";
+export * from "./services/tenant-payment-channels.service";
 export * from "./services/cell-migration.service";
 export { eq, and, or, sql, desc, asc, isNull, isNotNull, inArray } from "drizzle-orm";

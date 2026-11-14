@@ -246,6 +246,13 @@
       "when": 1794691224544,
       "tag": "0034_goofy_mother_askani",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794694487036,
+      "tag": "0035_add_client_commercial_email",
+      "breakpoints": true
     }
   ]
 }

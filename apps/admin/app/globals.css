@@ -2,6 +2,7 @@
 
 :root,
 .dark {
+  color-scheme: dark;
   /* Capa 1: Primitivos (DSN-001 §3.1) */
   --primitive-space-1: 0.25rem;
   --primitive-space-2: 0.5rem;
@@ -26,12 +27,14 @@
   --dsn-border: #27272a;
   --dsn-accent: #14b8a6;
   --dsn-accent-hover: #0d9488;
+  --dsn-accent-fg: #ffffff;
   --dsn-success: #22c55e;
   --dsn-warning: #f59e0b;
   --dsn-error: #ef4444;
 }
 
 .light {
+  color-scheme: light;
   --dsn-background: #f9f9f9;
   --dsn-surface: #ffffff;
   --dsn-surface-secondary: #f3f4f6;
@@ -41,6 +44,7 @@
   --dsn-border: #e5e7eb;
   --dsn-accent: #0f766e;
   --dsn-accent-hover: #115e59;
+  --dsn-accent-fg: #ffffff;
   --dsn-success: #15803d;
   --dsn-warning: #a16207;
   --dsn-error: #dc2626;

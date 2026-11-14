@@ -27,6 +27,7 @@ import {
   Copy,
   Check,
   KeyRound,
+  Building2,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 import { ConfirmationModal } from "./confirmation-modal";
@@ -67,6 +68,7 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   capabilityCode?: string;
   capabilityAliases?: string[];
+  ownerOnly?: boolean;
 }
 
 /**
@@ -199,6 +201,12 @@ export function TenantWorkspaceShell({
       icon: ShieldCheck,
     },
     {
+      href: "/workspace/profile",
+      label: dict.navProfile || "Perfil Del Negocio",
+      icon: Building2,
+      ownerOnly: true,
+    },
+    {
       href: "/workspace/billing",
       label: "Mi Plan Y Cuotas",
       icon: CreditCard,
@@ -208,7 +216,6 @@ export function TenantWorkspaceShell({
     {
       href: "/workspace/conversations",
       label: "Conversaciones Omnicanal",
-      badge: "Chatwoot",
       icon: MessageSquare,
       capabilityCode: "chatwoot_inboxes",
       capabilityAliases: ["conversations"],
@@ -240,10 +247,14 @@ export function TenantWorkspaceShell({
   ];
 
   const isExpiredLocked = Boolean(subscriptionAlert?.subscriptionExpiredLocked);
+  const isOwnerRole = user.role !== "tenant_agent";
 
   const visibleNavItems = navItems.filter((item) => {
     if (isExpiredLocked) {
       return item.href === "/workspace/billing";
+    }
+    if (item.ownerOnly && !isOwnerRole) {
+      return false;
     }
     if (!item.capabilityCode) return true;
     if (!capabilities) return false;
@@ -517,12 +528,12 @@ export function TenantWorkspaceShell({
                   <Store className="h-4 w-4" />
                 </div>
               )}
-              <div className="flex flex-col min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold tracking-tight text-[var(--dsn-text)] text-sm truncate max-w-[120px]">
+              <div className="flex flex-col min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-1.5">
+                  <span className="font-bold tracking-tight text-[var(--dsn-text)] text-sm break-words leading-tight">
                     {tenantInfo.name}
                   </span>
-                  <span className="rounded bg-[var(--dsn-accent)]/15 px-1.5 py-0.2 text-[10px] font-mono font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/20 shrink-0">
+                  <span className="rounded bg-[var(--dsn-accent)]/15 px-1.5 py-0.2 text-[10px] font-mono font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/20 shrink-0 mt-0.5">
                     Comercio
                   </span>
                 </div>

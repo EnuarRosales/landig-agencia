@@ -26,6 +26,7 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
     source: "bot",
     status: "registered",
     paymentMethod: "contraentrega",
+    paymentChannelId: null,
     paymentStatus: "pending",
     shippingMethod: "home",
     carrierId: null,

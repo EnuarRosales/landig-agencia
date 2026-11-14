@@ -120,7 +120,7 @@ export default async function WorkspaceConversationsPage() {
       <div className="flex-1 w-full rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden">
         <iframe
           src="/api/auth/chatwoot/embed?scope=workspace"
-          title="Bandeja De Atención Chatwoot"
+          title="Bandeja De Atención Omnicanal"
           className="w-full h-full border-0"
           allow="camera; microphone; clipboard-read; clipboard-write; autoplay; keyboard-map"
         />

@@ -2,6 +2,7 @@ import { eq, and, ne } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { users, clients, clientRouting, cells, plans } from "../db/schemas/admin";
 import { subscriptions, billingManualPaymentReports } from "../db/schemas/admin/billing";
+import { mediaCatalog } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { cellTenantUsers } from "../db/schemas/tenant";
 import { withTenantCellTransaction } from "../db/cell-client";
 import { authService } from "./auth.service";
@@ -49,6 +50,8 @@ export interface PortalContextClient {
   lifecycleStatus: string;
   planId: string;
   locale?: string;
+  logoMediaId?: string | null;
+  logoUrl?: string | null;
 }
 
 /**
@@ -207,6 +210,7 @@ export async function resolveAuthenticatedPortalContext(
         lifecycleStatus: clients.lifecycleStatus,
         planId: clients.planId,
         locale: clients.locale,
+        logoMediaId: clients.logoMediaId,
       })
       .from(clients)
       .where(eq(clients.id, targetClientId))
@@ -303,6 +307,27 @@ export async function resolveAuthenticatedPortalContext(
       }
     }
 
+    let resolvedLogoUrl: string | null = null;
+    if (clientRecord.logoMediaId) {
+      try {
+        const [logoMedia] = await db
+          .select({ storageKey: mediaCatalog.storageKey })
+          .from(mediaCatalog)
+          .where(eq(mediaCatalog.id, clientRecord.logoMediaId))
+          .limit(1);
+        if (logoMedia?.storageKey) {
+          const { buildImgproxyUrl } = await import("./tenant-workspace.service");
+          resolvedLogoUrl = buildImgproxyUrl(logoMedia.storageKey, {
+            width: 160,
+            height: 160,
+            resizingType: "fit",
+          });
+        }
+      } catch {
+        resolvedLogoUrl = null;
+      }
+    }
+
     const portalClient: PortalContextClient = {
       id: clientRecord.id,
       slug: clientRecord.slug,
@@ -311,6 +336,8 @@ export async function resolveAuthenticatedPortalContext(
       lifecycleStatus: clientRecord.lifecycleStatus,
       planId: clientRecord.planId,
       locale: clientRecord.locale,
+      logoMediaId: clientRecord.logoMediaId ?? null,
+      logoUrl: resolvedLogoUrl,
     };
 
     // Caso A: Inquilino en estado 'alta' (onboarding pendiente)
