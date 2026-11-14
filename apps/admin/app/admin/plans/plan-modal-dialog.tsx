@@ -145,6 +145,8 @@ function getInitialFormData(plan?: Plan | null) {
       currency: "COP",
       priceMonthlyCop: 149000,
       priceAnnualCop: 1430400,
+      priceMonthlyUsd: 39,
+      priceAnnualUsd: 374,
       annualDiscountPct: 20,
       cycleMonthly: true,
       cycleAnnual: true,
@@ -171,6 +173,8 @@ function getInitialFormData(plan?: Plan | null) {
     currency: plan.currency || "COP",
     priceMonthlyCop: Math.round(Number(plan.priceMonthlyCents || 0) / 100),
     priceAnnualCop: Math.round(Number(plan.priceAnnualCents || 0) / 100),
+    priceMonthlyUsd: Number(Number(plan.priceMonthlyUsdCents || 0) / 100),
+    priceAnnualUsd: Number(Number(plan.priceAnnualUsdCents || 0) / 100),
     annualDiscountPct: computeAnnualDiscount(
       Math.round(Number(plan.priceMonthlyCents || 0) / 100),
       Math.round(Number(plan.priceAnnualCents || 0) / 100)
@@ -329,6 +333,8 @@ function PlanModalDialogContent({
               const pFeat = data.marketingFeatures as { es?: string[]; en?: string[] } | null;
               const monthly = Math.round(Number(data.priceMonthlyCents || 0) / 100);
               const annual = Math.round(Number(data.priceAnnualCents || 0) / 100);
+              const monthlyUsd = Number(Number(data.priceMonthlyUsdCents || 0) / 100);
+              const annualUsd = Number(Number(data.priceAnnualUsdCents || 0) / 100);
               setFormData((prev) => ({
                 ...prev,
                 nameEs: pName?.es || prev.nameEs,
@@ -337,6 +343,8 @@ function PlanModalDialogContent({
                 descriptionEn: pDesc?.en || prev.descriptionEn,
                 priceMonthlyCop: monthly || prev.priceMonthlyCop,
                 priceAnnualCop: annual || prev.priceAnnualCop,
+                priceMonthlyUsd: monthlyUsd > 0 ? monthlyUsd : prev.priceMonthlyUsd,
+                priceAnnualUsd: annualUsd > 0 ? annualUsd : prev.priceAnnualUsd,
                 annualDiscountPct: computeAnnualDiscount(monthly || prev.priceMonthlyCop, annual || prev.priceAnnualCop),
                 featuresRaw: pFeat?.es ? pFeat.es.join(", ") : prev.featuresRaw,
                 featuresEnRaw: pFeat?.en ? pFeat.en.join(", ") : prev.featuresEnRaw,
@@ -485,9 +493,11 @@ function PlanModalDialogContent({
         nameEn: formData.nameEn || formData.nameEs,
         descriptionEs: formData.descriptionEs,
         descriptionEn: formData.descriptionEn || formData.descriptionEs,
-        currency: formData.currency,
+        currency: "COP",
         priceMonthlyCop: Number(formData.priceMonthlyCop),
         priceAnnualCop: Number(formData.priceAnnualCop),
+        priceMonthlyUsd: Number(formData.priceMonthlyUsd),
+        priceAnnualUsd: Number(formData.priceAnnualUsd),
         billingCycles,
         trialDays: Number(formData.trialDays),
         isPublic: formData.isPublic,
@@ -795,13 +805,13 @@ function PlanModalDialogContent({
 
                 <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4 space-y-4">
                   <h3 className="text-xs font-semibold text-[var(--dsn-text)]">
-                    Precios Y Ciclos Habilitados
+                    Precios Colombia (COP) Y Ciclos Habilitados
                   </h3>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div>
                       <label htmlFor="plan-price-monthly" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Precio Ciclo Mensual ({formData.currency})
+                        Precio Ciclo Mensual (COP)
                       </label>
                       <input
                         id="plan-price-monthly"
@@ -842,7 +852,7 @@ function PlanModalDialogContent({
 
                     <div>
                       <label htmlFor="plan-price-annual" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Precio Ciclo Anual ({formData.currency})
+                        Precio Ciclo Anual (COP)
                       </label>
                       <input
                         id="plan-price-annual"
@@ -858,6 +868,52 @@ function PlanModalDialogContent({
                         }}
                         className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
                       />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-[var(--dsn-border)]/60 pt-4 space-y-3">
+                    <h4 className="text-xs font-semibold text-[var(--dsn-text)]">
+                      Precios Internacional (USD)
+                    </h4>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <label htmlFor="plan-price-monthly-usd" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                          Precio Mensual Internacional (USD)
+                        </label>
+                        <input
+                          id="plan-price-monthly-usd"
+                          type="number"
+                          min="0"
+                          step="1"
+                          required
+                          value={formData.priceMonthlyUsd}
+                          onChange={(e) => {
+                            const monthlyUsd = Number(e.target.value);
+                            const annualUsd = Math.round(monthlyUsd * 12 * (1 - formData.annualDiscountPct / 100));
+                            setFormData({ ...formData, priceMonthlyUsd: monthlyUsd, priceAnnualUsd: annualUsd });
+                          }}
+                          className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="plan-price-annual-usd" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                          Precio Anual Internacional (USD)
+                        </label>
+                        <input
+                          id="plan-price-annual-usd"
+                          type="number"
+                          min="0"
+                          step="1"
+                          required
+                          value={formData.priceAnnualUsd}
+                          onChange={(e) => {
+                            const annualUsd = Number(e.target.value);
+                            setFormData({ ...formData, priceAnnualUsd: annualUsd });
+                          }}
+                          className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1773,8 +1829,10 @@ function PlanModalDialogContent({
                     </div>
                     <div className="flex justify-between text-[var(--dsn-text-secondary)]">
                       <span>Precios:</span>
-                      <span className="font-mono text-[var(--dsn-text)]">
-                        {formData.priceMonthlyCop.toLocaleString()} {formData.currency}/mes · {formData.priceAnnualCop.toLocaleString()} {formData.currency}/año ({formData.annualDiscountPct}% ahorro)
+                      <span className="font-mono text-right text-[var(--dsn-text)]">
+                        {formData.priceMonthlyCop.toLocaleString()} COP/mes · {formData.priceAnnualCop.toLocaleString()} COP/año
+                        <br />
+                        US$ {formData.priceMonthlyUsd.toLocaleString()} USD/mes · US$ {formData.priceAnnualUsd.toLocaleString()} USD/año
                       </span>
                     </div>
                     <div className="flex justify-between text-[var(--dsn-text-secondary)]">

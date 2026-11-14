@@ -8,7 +8,9 @@ import {
   payments,
   paymentReceipts,
   subscriptionChanges,
+  billingManualPaymentReports,
 } from "./billing";
+import { paymentGatewaysConfig } from "./payment-gateways-config";
 
 describe("BILL-001 T-02 · Esquemas de Facturación SaaS, Pagos y Suscripciones", () => {
   it("client_billing_profiles declara los campos fiscales requeridos por Matías API", () => {
@@ -93,6 +95,43 @@ describe("BILL-001 T-02 · Esquemas de Facturación SaaS, Pagos y Suscripciones"
     expect(changeCols.toPlanId).toBeDefined();
     expect(changeCols.remainingDays).toBeDefined();
     expect(changeCols.netCents).toBeDefined();
+  });
+
+  it("SPEC-04 extiende payment_gateways_config y subscriptions y define billing_manual_payment_reports", () => {
+    const gwCols = getTableColumns(paymentGatewaysConfig);
+    expect(gwCols.supportedCountries).toBeDefined();
+    expect(gwCols.breBKeyType).toBeDefined();
+    expect(gwCols.breBKeyValue).toBeDefined();
+    expect(gwCols.breBRecipientName).toBeDefined();
+    expect(gwCols.breBQrPayloadTemplate).toBeDefined();
+
+    const subCols = getTableColumns(subscriptions);
+    expect(subCols.pendingUpgradePlanId).toBeDefined();
+    expect(subCols.pendingUpgradeCycle).toBeDefined();
+    expect(subCols.d5ReminderSentAt).toBeDefined();
+    expect(subCols.d0ReminderSentAt).toBeDefined();
+
+    const reportCols = getTableColumns(billingManualPaymentReports);
+    expect(reportCols.id).toBeDefined();
+    expect(reportCols.clientId).toBeDefined();
+    expect(reportCols.subscriptionId).toBeDefined();
+    expect(reportCols.invoiceId).toBeDefined();
+    expect(reportCols.targetPlanId).toBeDefined();
+    expect(reportCols.targetCycle).toBeDefined();
+    expect(reportCols.operationKind).toBeDefined();
+    expect(reportCols.channel).toBeDefined();
+    expect(reportCols.expectedAmountCents).toBeDefined();
+    expect(reportCols.reportedAmountCents).toBeDefined();
+    expect(reportCols.currency).toBeDefined();
+    expect(reportCols.voucherMediaKey).toBeDefined();
+    expect(reportCols.voucherMimeType).toBeDefined();
+    expect(reportCols.dynamicQrPayload).toBeDefined();
+    expect(reportCols.breBKeySnapshot).toBeDefined();
+    expect(reportCols.status).toBeDefined();
+    expect(reportCols.submittedByUserId).toBeDefined();
+    expect(reportCols.reviewedByUserId).toBeDefined();
+    expect(reportCols.reviewedAt).toBeDefined();
+    expect(reportCols.rejectionReason).toBeDefined();
   });
 });
 

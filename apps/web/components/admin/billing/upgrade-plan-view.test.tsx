@@ -28,6 +28,8 @@ describe("LND-001 T-08 / CA-LND-05 · UpgradePlanView Component", () => {
       billingCycles: ["monthly", "annual"],
       priceMonthlyCents: 9900000,
       priceAnnualCents: 99000000,
+      priceMonthlyUsdCents: 2500,
+      priceAnnualUsdCents: 25000,
       currency: "COP",
       marketingFeatures: {
         es: ["1 número WhatsApp", "500 conversaciones/mes"],
@@ -55,6 +57,8 @@ describe("LND-001 T-08 / CA-LND-05 · UpgradePlanView Component", () => {
       billingCycles: ["monthly", "annual"],
       priceMonthlyCents: 19900000,
       priceAnnualCents: 199000000,
+      priceMonthlyUsdCents: 5000,
+      priceAnnualUsdCents: 50000,
       currency: "COP",
       marketingFeatures: {
         es: ["3 números WhatsApp", "Conversaciones ilimitadas", "Soporte prioritario"],

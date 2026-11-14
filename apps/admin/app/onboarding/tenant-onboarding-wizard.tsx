@@ -16,12 +16,14 @@ import {
   AlertCircle,
   Loader2,
 } from "lucide-react";
-import type { TenantOnboardingStateDto } from "@mocter/domain";
+import type { TenantOnboardingStateDto, WorkspaceBillingDto } from "@mocter/domain";
 import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
 import { CatalogQuotaBanner, formatStorageBytes } from "@/components/catalog-quota-banner";
+import { BillingCheckoutPanel } from "@/components/billing-checkout-panel";
 
 export interface TenantOnboardingWizardProps {
   initialState: TenantOnboardingStateDto;
+  initialBilling?: WorkspaceBillingDto | null;
 }
 
 /**
@@ -34,8 +36,12 @@ export interface TenantOnboardingWizardProps {
  * - Cero diálogos nativos del navegador (Regla 4.17).
  * - Cero códigos de especificaciones en vistas visibles (Regla 4.15).
  */
-export function TenantOnboardingWizard({ initialState }: TenantOnboardingWizardProps) {
+export function TenantOnboardingWizard({
+  initialState,
+  initialBilling = null,
+}: TenantOnboardingWizardProps) {
   const router = useRouter();
+  const [billingDetails, setBillingDetails] = useState<WorkspaceBillingDto | null>(initialBilling);
 
   const [step, setStep] = useState<1 | 2 | 3>(
     initialState.step === "completed" ? 3 : (initialState.step as 1 | 2 | 3),
@@ -172,6 +178,20 @@ export function TenantOnboardingWizard({ initialState }: TenantOnboardingWizardP
       const json = await res.json();
       if (!res.ok || !json.ok) {
         throw new Error(json.detail || json.error || "No se pudo registrar el primer producto.");
+      }
+
+      if (!billingDetails) {
+        try {
+          const billingRes = await fetch("/api/tenant/billing", { cache: "no-store" });
+          if (billingRes && billingRes.ok) {
+            const billingJson = await billingRes.json();
+            if (billingJson?.ok && billingJson.data) {
+              setBillingDetails(billingJson.data as WorkspaceBillingDto);
+            }
+          }
+        } catch {
+          // Mantiene transición al Paso 3 aunque falle carga opcional
+        }
       }
 
       setStep(3);
@@ -766,6 +786,29 @@ export function TenantOnboardingWizard({ initialState }: TenantOnboardingWizardP
                 className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)]"
               />
             </div>
+
+            {billingDetails &&
+              ((billingDetails.availablePlans && billingDetails.availablePlans.length > 0) ||
+                (billingDetails.availableChannels &&
+                  billingDetails.availableChannels.length > 0)) && (
+                <div className="pt-2">
+                  <BillingCheckoutPanel
+                    clientId={billingDetails.tenant?.id || initialState.client?.id || ""}
+                    country={billingDetails.tenant?.country}
+                    currency={billingDetails.tenant?.currency || currency}
+                    customerEmail={billingDetails.tenant?.email}
+                    currentPlanId={billingDetails.plan.id}
+                    subscription={billingDetails.subscription}
+                    pendingBreBReport={billingDetails.pendingBreBReport}
+                    latestRejectedBreBReport={billingDetails.latestRejectedBreBReport}
+                    availablePlans={billingDetails.availablePlans || []}
+                    availableChannels={billingDetails.availableChannels || []}
+                    locale="es"
+                    mode="onboarding"
+                    isOwner
+                  />
+                </div>
+              )}
           </div>
 
           <div className="pt-4 border-t border-[var(--dsn-border)] flex items-center justify-between">

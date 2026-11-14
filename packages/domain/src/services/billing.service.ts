@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 import { getDb } from "../db/client";
@@ -6,6 +7,8 @@ import type {
   IBillingRepository,
   SubscriptionDetail,
   BillingOverviewMetrics,
+  SupportedPaymentGatewayId,
+  ManualPaymentReportDetail,
 } from "../repositories/billing.repository.interface";
 import { defaultTotpCryptoService, type TotpCryptoService } from "../auth/totp-crypto";
 import type {
@@ -17,11 +20,34 @@ import type {
   Invoice,
   Payment,
   PaymentReceipt,
+  BillingManualPaymentReport,
 } from "../db/schemas/admin/billing";
 import type { PaymentGatewayConfigRow } from "../db/schemas/admin/payment-gateways-config";
+import { validateMediaMagicBytes } from "../utils/media-magic-bytes";
+import { S3StorageService } from "./s3-storage.service";
+import { BreBQrService, defaultBreBQrService } from "./breb-qr.service";
+import { getTransactionalNotificationsService } from "./notifications-and-leads.service";
+import { env } from "../utils/env";
+
+export const MAX_VOUCHER_SIZE_BYTES = 10 * 1024 * 1024; // 10 MiB
+
+const ALLOWED_VOUCHER_MIME_EXTENSIONS: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "application/pdf": "pdf",
+};
+
+const VALID_BRE_B_KEY_TYPES = new Set([
+  "phone",
+  "email",
+  "document",
+  "alphanumeric",
+  "merchant_code",
+]);
 
 export interface PaymentGatewayPublicView {
-  id: "wompi" | "stripe";
+  id: SupportedPaymentGatewayId;
   displayName: string;
   isEnabled: boolean;
   environment: "sandbox" | "production";
@@ -29,11 +55,16 @@ export interface PaymentGatewayPublicView {
   hasSecretKey: boolean;
   hasWebhookSecret: boolean;
   webhookUrl: string;
+  supportedCountries: string[];
+  breBKeyType: string | null;
+  breBKeyValue: string | null;
+  breBRecipientName: string | null;
+  breBQrPayloadTemplate: string | null;
   updatedAt: Date;
 }
 
 export interface UpdatePaymentGatewayInput {
-  id: "wompi" | "stripe";
+  id: SupportedPaymentGatewayId;
   displayName?: string;
   isEnabled: boolean;
   environment: "sandbox" | "production";
@@ -41,13 +72,52 @@ export interface UpdatePaymentGatewayInput {
   secretKey?: string;
   webhookSecret?: string;
   webhookUrl?: string;
+  supportedCountries?: string[];
+  breBKeyType?: string | null;
+  breBKeyValue?: string | null;
+  breBRecipientName?: string | null;
+  breBQrPayloadTemplate?: string | null;
   actor: string;
+}
+
+export interface ActivateTrialInput {
+  clientId: string;
+  planId?: string;
+  cycle?: "monthly" | "annual";
+  executedBy: string;
+}
+
+export interface SubmitManualBreBReportInput {
+  clientId: string;
+  invoiceId: string;
+  targetPlanId: string;
+  targetCycle: "monthly" | "annual";
+  operationKind: "new_subscription" | "renewal" | "upgrade";
+  paymentReference?: string | null;
+  reportedAmountCents: number;
+  fileBuffer: Buffer;
+  submittedByUserId: string;
+}
+
+export interface ReviewManualBreBReportInput {
+  reportId: string;
+  action: "approve" | "reject";
+  rejectionReason?: string;
+  reviewerUserId: string;
+}
+
+export interface ReviewManualBreBReportOutput {
+  report: BillingManualPaymentReport;
+  subscription: Subscription;
+  payment?: Payment;
+  receipt?: PaymentReceipt;
+  invoice?: Invoice;
 }
 
 export interface RegisterPaymentInput {
   clientId: string;
   invoiceId: string;
-  gateway: "wompi" | "stripe";
+  gateway: "wompi" | "stripe" | "bre_b";
   gatewayReference: string;
   amountCents: number;
   currency: "COP" | "USD";
@@ -84,23 +154,32 @@ export interface IBillingNotificationDispatcher {
     receiptNumber: string;
     receiptPdfUrl?: string;
   }): Promise<{ dispatched: boolean; deliveryId?: string }>;
+
+  dispatchBreBReviewResult?(params: {
+    clientId: string;
+    tenantName: string;
+    recipientEmail: string;
+    locale: string;
+    action: "approve" | "reject";
+    planName: string;
+    amountFormattedCop: string;
+    receiptNumber?: string;
+    rejectionReason?: string;
+    reportId: string;
+  }): Promise<{ dispatched: boolean; deliveryId?: string }>;
 }
 
 /**
- * Servicio de Dominio para el ciclo de Facturación SaaS y Conciliación de Pagos (BILL-001 §3, RF-01 a RF-04).
- *
- * Principios:
- * 1. Idempotencia absoluta por `gatewayReference` para webhooks de Wompi y Stripe.
- * 2. Prorrateo determinista por días restantes: net = charge - credit.
- * 3. En v1 `tax_cents = 0` (sin retenciones de renta ni IVA).
- * 4. Generación de comprobante interno (`payment_receipts`) y despacho de email vía NTF-001 (T-07).
+ * Servicio de Dominio para el ciclo de Facturación SaaS y Conciliación de Pagos (BILL-001, SPEC-04).
  */
 export class BillingService {
-  constructor(
+  constructor (
     private readonly repository: IBillingRepository,
     private readonly notificationDispatcher?: IBillingNotificationDispatcher,
     private readonly totpCrypto: TotpCryptoService = defaultTotpCryptoService,
-  ) {}
+    private readonly storageService: Pick<S3StorageService, "putObject" | "getObject"> = new S3StorageService(),
+    private readonly breBQrService: BreBQrService = defaultBreBQrService,
+  ) { }
 
   /**
    * Calcula el prorrateo financiero por cambio de plan a mitad de ciclo (RF-01.5).
@@ -352,6 +431,11 @@ export class BillingService {
           hasSecretKey: false,
           hasWebhookSecret: false,
           webhookUrl: "/api/webhooks/wompi",
+          supportedCountries: ["CO"],
+          breBKeyType: null,
+          breBKeyValue: null,
+          breBRecipientName: null,
+          breBQrPayloadTemplate: null,
           updatedAt: new Date(),
         },
         {
@@ -363,6 +447,27 @@ export class BillingService {
           hasSecretKey: false,
           hasWebhookSecret: false,
           webhookUrl: "/api/webhooks/stripe",
+          supportedCountries: ["*"],
+          breBKeyType: null,
+          breBKeyValue: null,
+          breBRecipientName: null,
+          breBQrPayloadTemplate: null,
+          updatedAt: new Date(),
+        },
+        {
+          id: "bre_b",
+          displayName: "Bre-B (Colombia / COP)",
+          isEnabled: false,
+          environment: "production",
+          publicKey: null,
+          hasSecretKey: false,
+          hasWebhookSecret: false,
+          webhookUrl: "/api/tenant/billing/bre-b/report",
+          supportedCountries: ["CO"],
+          breBKeyType: null,
+          breBKeyValue: null,
+          breBRecipientName: null,
+          breBQrPayloadTemplate: null,
           updatedAt: new Date(),
         },
       ];
@@ -371,21 +476,29 @@ export class BillingService {
         const idx = views.findIndex((v) => v.id === row.id);
         if (idx !== -1) {
           views[idx] = {
-            id: row.id as "wompi" | "stripe",
-            displayName: row.displayName || views[idx].displayName,
+            id: row.id as SupportedPaymentGatewayId,
+            displayName: row.displayName || views[idx]!.displayName,
             isEnabled: row.isEnabled,
             environment: (row.environment as "sandbox" | "production") || "sandbox",
             publicKey: row.publicKey ?? null,
             hasSecretKey: Boolean(row.secretKeyEncrypted && row.secretKeyId),
             hasWebhookSecret: Boolean(row.webhookSecretEncrypted && row.secretKeyId),
-            webhookUrl: row.webhookUrl || views[idx].webhookUrl,
+            webhookUrl: row.webhookUrl || views[idx]!.webhookUrl,
+            supportedCountries:
+              row.supportedCountries && row.supportedCountries.length > 0
+                ? row.supportedCountries
+                : views[idx]!.supportedCountries,
+            breBKeyType: row.breBKeyType ?? null,
+            breBKeyValue: row.breBKeyValue ?? null,
+            breBRecipientName: row.breBRecipientName ?? null,
+            breBQrPayloadTemplate: row.breBQrPayloadTemplate ?? null,
             updatedAt: row.updatedAt,
           };
         }
       }
 
       return ok(views);
-    } catch (error: any) {
+    } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[BillingService.listPaymentGatewaysPublicConfig] Error: ${msg}`, error);
       return err(msg, "GATEWAYS_CONFIG_ERROR");
@@ -393,13 +506,53 @@ export class BillingService {
   }
 
   /**
-   * Actualiza o crea la configuración de una pasarela con cifrado AES-256-GCM.
+   * Actualiza o crea la configuración de una pasarela o canal (`wompi`, `stripe`, `bre_b`).
    */
   async upsertPaymentGatewayConfig(
     input: UpdatePaymentGatewayInput,
   ): Promise<Result<PaymentGatewayPublicView>> {
     try {
       const existing = await this.repository.getPaymentGatewayConfig(input.id);
+
+      if (input.id === "bre_b" && input.supportedCountries && input.supportedCountries.length > 0) {
+        const normalized = input.supportedCountries.map((c) => c.trim().toUpperCase());
+        if (normalized.some((c) => c !== "CO")) {
+          return err(
+            "El canal de cobro Bre-B está restringido exclusivamente a Colombia (CO).",
+            "BRE_B_COLOMBIA_ONLY",
+          );
+        }
+      }
+
+      const resolvedKeyType =
+        input.breBKeyType !== undefined ? input.breBKeyType : existing?.breBKeyType ?? null;
+      const resolvedKeyValue =
+        input.breBKeyValue !== undefined ? input.breBKeyValue : existing?.breBKeyValue ?? null;
+      const resolvedRecipientName =
+        input.breBRecipientName !== undefined
+          ? input.breBRecipientName
+          : existing?.breBRecipientName ?? null;
+      const resolvedQrTemplate =
+        input.breBQrPayloadTemplate !== undefined
+          ? input.breBQrPayloadTemplate
+          : existing?.breBQrPayloadTemplate ?? null;
+
+      if (resolvedKeyType && !VALID_BRE_B_KEY_TYPES.has(resolvedKeyType)) {
+        return err(
+          `Tipo de llave Bre-B inválido: "${resolvedKeyType}".`,
+          "INVALID_BRE_B_KEY_TYPE",
+        );
+      }
+
+      if (input.id === "bre_b" && input.isEnabled) {
+        if (!resolvedKeyType?.trim() || !resolvedKeyValue?.trim() || !resolvedRecipientName?.trim()) {
+          return err(
+            "Para habilitar Bre-B debes configurar tipo de llave, valor de llave y nombre del titular receptor.",
+            "BRE_B_NOT_CONFIGURED",
+          );
+        }
+      }
+
       let secretKeyEncrypted = existing?.secretKeyEncrypted ?? null;
       let webhookSecretEncrypted = existing?.webhookSecretEncrypted ?? null;
       let secretKeyId = existing?.secretKeyId ?? null;
@@ -422,17 +575,39 @@ export class BillingService {
         secretKeyId = encrypted.keyId;
       }
 
+      const defaultDisplayNames: Record<SupportedPaymentGatewayId, string> = {
+        wompi: "Wompi (Colombia / COP)",
+        stripe: "Stripe (Internacional / USD)",
+        bre_b: "Bre-B (Colombia / COP)",
+      };
+      const defaultWebhookUrls: Record<SupportedPaymentGatewayId, string> = {
+        wompi: "/api/webhooks/wompi",
+        stripe: "/api/webhooks/stripe",
+        bre_b: "/api/tenant/billing/bre-b/report",
+      };
+      const resolvedCountries =
+        input.id === "bre_b"
+          ? ["CO"]
+          : input.supportedCountries && input.supportedCountries.length > 0
+            ? input.supportedCountries
+            : existing?.supportedCountries ?? (input.id === "wompi" ? ["CO"] : ["*"]);
+
       const now = new Date();
       const saved = await this.repository.upsertPaymentGatewayConfig({
         id: input.id,
-        displayName: input.displayName || (input.id === "wompi" ? "Wompi (Colombia / COP)" : "Stripe (Internacional / USD)"),
+        displayName: input.displayName || defaultDisplayNames[input.id],
         isEnabled: input.isEnabled,
         environment: input.environment,
         publicKey: input.publicKey !== undefined ? input.publicKey : existing?.publicKey ?? null,
         secretKeyEncrypted,
         webhookSecretEncrypted,
         secretKeyId,
-        webhookUrl: input.webhookUrl || (input.id === "wompi" ? "/api/webhooks/wompi" : "/api/webhooks/stripe"),
+        webhookUrl: input.webhookUrl || defaultWebhookUrls[input.id],
+        supportedCountries: resolvedCountries,
+        breBKeyType: input.id === "bre_b" ? resolvedKeyType : null,
+        breBKeyValue: input.id === "bre_b" ? resolvedKeyValue : null,
+        breBRecipientName: input.id === "bre_b" ? resolvedRecipientName : null,
+        breBQrPayloadTemplate: input.id === "bre_b" ? resolvedQrTemplate : null,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
         createdBy: existing?.createdBy ?? input.actor,
@@ -440,30 +615,539 @@ export class BillingService {
       });
 
       return ok({
-        id: saved.id as "wompi" | "stripe",
+        id: saved.id as SupportedPaymentGatewayId,
         displayName: saved.displayName,
         isEnabled: saved.isEnabled,
         environment: saved.environment as "sandbox" | "production",
         publicKey: saved.publicKey ?? null,
         hasSecretKey: Boolean(saved.secretKeyEncrypted && saved.secretKeyId),
         hasWebhookSecret: Boolean(saved.webhookSecretEncrypted && saved.secretKeyId),
-        webhookUrl: saved.webhookUrl || (input.id === "wompi" ? "/api/webhooks/wompi" : "/api/webhooks/stripe"),
+        webhookUrl: saved.webhookUrl || defaultWebhookUrls[input.id],
+        supportedCountries: saved.supportedCountries ?? resolvedCountries,
+        breBKeyType: saved.breBKeyType ?? null,
+        breBKeyValue: saved.breBKeyValue ?? null,
+        breBRecipientName: saved.breBRecipientName ?? null,
+        breBQrPayloadTemplate: saved.breBQrPayloadTemplate ?? null,
         updatedAt: saved.updatedAt,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[BillingService.upsertPaymentGatewayConfig] Error: ${msg}`, error);
       return err(msg, "GATEWAYS_UPDATE_ERROR");
+    }
+  }
+
+  /**
+   * Inicia o retorna idempotentemente el periodo de prueba (`trialing`) para un espacio (SPEC-04 §3.2).
+   */
+  async activateTrialForTenant(input: ActivateTrialInput): Promise<Result<Subscription>> {
+    try {
+      const client = await this.repository.getClientBillingSummary?.(input.clientId);
+      if (!client) {
+        return err("Espacio de inquilino no encontrado.", "CLIENT_NOT_FOUND");
+      }
+
+      const targetPlanId = input.planId || client.planId;
+      if (!targetPlanId) {
+        return err("El espacio no tiene un plan asignado para iniciar el periodo de prueba.", "PLAN_NOT_FOUND");
+      }
+
+      const plan = await this.repository.getPlanById?.(targetPlanId);
+      if (!plan) {
+        return err("El plan seleccionado no existe.", "PLAN_NOT_FOUND");
+      }
+
+      if (!plan.trialDays || plan.trialDays <= 0) {
+        return err(
+          "El plan seleccionado no incluye días de prueba gratuita.",
+          "TRIAL_NOT_AVAILABLE",
+        );
+      }
+
+      const now = new Date();
+      const existingSub = await this.repository.getSubscriptionByClientId(input.clientId);
+
+      if (existingSub) {
+        if (
+          existingSub.status === "trialing" &&
+          existingSub.trialEndsAt &&
+          existingSub.trialEndsAt.getTime() > now.getTime()
+        ) {
+          return ok(existingSub);
+        }
+        if (existingSub.status === "active") {
+          return err(
+            "El espacio ya cuenta con una suscripción activa pagada.",
+            "ALREADY_ACTIVE_SUBSCRIPTION",
+          );
+        }
+        return err(
+          "Este espacio ya consumió su periodo de prueba anteriormente.",
+          "TRIAL_ALREADY_USED",
+        );
+      }
+
+      if (!this.repository.upsertTrialSubscription) {
+        return err("Repositorio de facturación sin soporte de trial.", "UNSUPPORTED_OPERATION");
+      }
+
+      const trialEndsAt = new Date(now.getTime() + plan.trialDays * 86_400_000);
+      const sub = await this.repository.upsertTrialSubscription({
+        clientId: input.clientId,
+        planId: targetPlanId,
+        cycle: input.cycle ?? "monthly",
+        trialEndsAt,
+        currentPeriodStart: now,
+        currentPeriodEnd: trialEndsAt,
+        actor: input.executedBy,
+      });
+
+      appLogger.info("[BillingService.activateTrialForTenant] Periodo de prueba activado", {
+        clientId: input.clientId,
+        planId: targetPlanId,
+        trialDays: plan.trialDays,
+        trialEndsAt: trialEndsAt.toISOString(),
+      });
+
+      return ok(sub);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[BillingService.activateTrialForTenant] Error: ${msg}`, error);
+      return err(msg, "TRIAL_ACTIVATION_ERROR");
+    }
+  }
+
+  /**
+   * Registra un reporte de pago manual vía Bre-B con carga privada del comprobante a SeaweedFS
+   * y **garantía estricta de continuidad operativa** (`SPEC-04 RN-SPEC-04-06`).
+   */
+  async submitManualBreBReport(
+    input: SubmitManualBreBReportInput,
+  ): Promise<Result<{ report: BillingManualPaymentReport; subscription: Subscription }>> {
+    try {
+      if (!input.fileBuffer || input.fileBuffer.byteLength === 0) {
+        return err("Debes adjuntar el comprobante de pago Bre-B.", "INVALID_VOUCHER_FILE");
+      }
+
+      if (input.fileBuffer.byteLength > MAX_VOUCHER_SIZE_BYTES) {
+        return err(
+          "El comprobante supera el límite máximo permitido de 10 MB.",
+          "INVALID_VOUCHER_FILE",
+        );
+      }
+
+      const magic = validateMediaMagicBytes(input.fileBuffer);
+      const extension = magic.detectedMime ? ALLOWED_VOUCHER_MIME_EXTENSIONS[magic.detectedMime] : undefined;
+      if (!magic.valid || !magic.detectedMime || !extension) {
+        return err(
+          magic.error || "Formato de comprobante no admitido. Usa PNG, JPG, WEBP o PDF.",
+          "INVALID_VOUCHER_FILE",
+        );
+      }
+
+      if (!Number.isInteger(input.reportedAmountCents) || input.reportedAmountCents <= 0) {
+        return err("El monto reportado del pago Bre-B debe ser mayor a cero.", "INVALID_AMOUNT");
+      }
+
+      const breBConfig = await this.repository.getPaymentGatewayConfig("bre_b");
+      if (!breBConfig || !breBConfig.isEnabled) {
+        return err(
+          "El canal de pago inmediato Bre-B no está habilitado en la plataforma.",
+          "GATEWAY_DISABLED",
+        );
+      }
+
+      const client = await this.repository.getClientBillingSummary?.(input.clientId);
+      if (!client) {
+        return err("Espacio de inquilino no encontrado.", "CLIENT_NOT_FOUND");
+      }
+
+      const invoice = await this.repository.getInvoiceById(input.invoiceId);
+      if (!invoice) {
+        return err("La orden/factura seleccionada no existe.", "INVOICE_NOT_FOUND");
+      }
+
+      if (invoice.clientId !== input.clientId) {
+        return err("La factura no pertenece a este espacio.", "FORBIDDEN_INVOICE_ACCESS");
+      }
+
+      if (invoice.status === "paid") {
+        return err("Esta factura ya se encuentra pagada.", "INVOICE_ALREADY_PAID");
+      }
+
+      if (client.country.toUpperCase() !== "CO" || invoice.currency.toUpperCase() !== "COP") {
+        return err(
+          "Bre-B es exclusivo para comercios en Colombia (CO) con facturación en COP.",
+          "BRE_B_COLOMBIA_ONLY",
+        );
+      }
+
+      const pendingForInvoice = await this.repository.getPendingManualReportByInvoiceId?.(input.invoiceId);
+      const pendingForClient = await this.repository.getPendingManualReportByClientId?.(input.clientId);
+      if (pendingForInvoice || pendingForClient) {
+        return err(
+          "Ya existe un comprobante Bre-B en revisión para este espacio o factura.",
+          "PENDING_BRE_B_REVIEW_EXISTS",
+        );
+      }
+
+      const targetPlan = await this.repository.getPlanById?.(input.targetPlanId);
+      if (!targetPlan) {
+        return err("El plan destino seleccionado no existe.", "PLAN_NOT_FOUND");
+      }
+
+      const qrResult = this.breBQrService.buildDynamicBreBPaymentPayload({
+        config: {
+          isEnabled: breBConfig.isEnabled,
+          supportedCountries: breBConfig.supportedCountries ?? ["CO"],
+          breBKeyType: breBConfig.breBKeyType ?? null,
+          breBKeyValue: breBConfig.breBKeyValue ?? null,
+          breBRecipientName: breBConfig.breBRecipientName ?? null,
+        },
+        country: client.country,
+        currency: "COP",
+        amountCents: invoice.totalCents > 0 ? invoice.totalCents : input.reportedAmountCents,
+        invoiceNumber: invoice.invoiceNumber,
+        referenceCode: invoice.invoiceNumber,
+      });
+
+      if (!qrResult.ok) {
+        return qrResult;
+      }
+
+      // 1. Almacenamiento privado en SeaweedFS antes de persistir referencia contable
+      const mediaKey = `billing-vouchers/${input.clientId}/${input.invoiceId}-${randomUUID()}.${extension}`;
+      const uploadRes = await this.storageService.putObject(
+        mediaKey,
+        input.fileBuffer,
+        magic.detectedMime,
+      );
+
+      if (!uploadRes.ok) {
+        appLogger.error("[BillingService.submitManualBreBReport] Error subiendo comprobante S3", {
+          clientId: input.clientId,
+          invoiceId: input.invoiceId,
+          error: uploadRes.error,
+        });
+        return err(
+          "No se pudo guardar el comprobante en el repositorio seguro. Intenta nuevamente.",
+          "STORAGE_UPLOAD_ERROR",
+        );
+      }
+
+      // 2. Garantía de continuidad:
+      // - Nuevo inquilino (sin suscripción) -> arranca en 'trialing' para operar de inmediato.
+      // - Inquilino existente -> conserva planId, status y cuotas intactos y marca pendingUpgrade*.
+      const now = new Date();
+      let subscription = await this.repository.getSubscriptionByClientId(input.clientId);
+
+      if (!subscription) {
+        if (!this.repository.upsertTrialSubscription) {
+          return err("Repositorio sin soporte de suscripción inicial.", "UNSUPPORTED_OPERATION");
+        }
+        const trialDays = targetPlan.trialDays > 0 ? targetPlan.trialDays : 14;
+        const trialEndsAt = new Date(now.getTime() + trialDays * 86_400_000);
+        subscription = await this.repository.upsertTrialSubscription({
+          clientId: input.clientId,
+          planId: input.targetPlanId,
+          cycle: input.targetCycle,
+          trialEndsAt,
+          currentPeriodStart: now,
+          currentPeriodEnd: trialEndsAt,
+          actor: input.submittedByUserId,
+        });
+      } else if (this.repository.setSubscriptionPendingUpgrade) {
+        subscription = await this.repository.setSubscriptionPendingUpgrade(
+          subscription.id,
+          input.targetPlanId,
+          input.targetCycle,
+          input.submittedByUserId,
+        );
+      }
+
+      if (!this.repository.createManualPaymentReport) {
+        return err("Repositorio sin soporte de reportes Bre-B.", "UNSUPPORTED_OPERATION");
+      }
+
+      const report = await this.repository.createManualPaymentReport({
+        clientId: input.clientId,
+        subscriptionId: subscription.id,
+        invoiceId: input.invoiceId,
+        targetPlanId: input.targetPlanId,
+        targetCycle: input.targetCycle,
+        operationKind: input.operationKind,
+        channel: "bre_b",
+        expectedAmountCents: invoice.totalCents,
+        reportedAmountCents: input.reportedAmountCents,
+        currency: "COP",
+        paymentReference: input.paymentReference?.trim() || null,
+        voucherMediaKey: mediaKey,
+        voucherMimeType: magic.detectedMime,
+        dynamicQrPayload: qrResult.data.payload,
+        breBKeySnapshot: `${qrResult.data.keyType}:${qrResult.data.keyValue}`,
+        status: "pending_review",
+        submittedByUserId: input.submittedByUserId,
+        createdBy: input.submittedByUserId,
+        updatedBy: input.submittedByUserId,
+      });
+
+      appLogger.info("[BillingService.submitManualBreBReport] Reporte Bre-B registrado para revisión", {
+        reportId: report.id,
+        clientId: input.clientId,
+        invoiceId: input.invoiceId,
+        subscriptionStatus: subscription.status,
+      });
+
+      return ok({ report, subscription });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[BillingService.submitManualBreBReport] Error: ${msg}`, error);
+      return err(msg, "BRE_B_REPORT_ERROR");
+    }
+  }
+
+  /**
+   * Lista reportes manuales Bre-B enriquecidos para la bandeja administrativa (`/admin/billing`).
+   */
+  async listManualBreBReports(filter?: {
+    status?: "pending_review" | "approved" | "rejected";
+    clientId?: string;
+  }): Promise<Result<ManualPaymentReportDetail[]>> {
+    try {
+      if (!this.repository.listManualPaymentReports) {
+        return ok([]);
+      }
+      const rows = await this.repository.listManualPaymentReports(filter);
+      return ok(rows);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[BillingService.listManualBreBReports] Error: ${msg}`, error);
+      return err(msg, "MANUAL_REPORTS_LIST_ERROR");
+    }
+  }
+
+  /**
+   * Obtiene un reporte manual Bre-B por identificador (incluye `voucherMediaKey` y metadatos).
+   */
+  async getManualBreBReportById(reportId: string): Promise<Result<ManualPaymentReportDetail>> {
+    try {
+      if (!this.repository.getManualPaymentReportById) {
+        return err("Repositorio sin soporte de reportes Bre-B.", "UNSUPPORTED_OPERATION");
+      }
+      const row = await this.repository.getManualPaymentReportById(reportId);
+      if (!row) {
+        return err("Reporte de pago Bre-B no encontrado.", "NOT_FOUND");
+      }
+      return ok(row);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[BillingService.getManualBreBReportById] Error: ${msg}`, error);
+      return err(msg, "MANUAL_REPORT_GET_ERROR");
+    }
+  }
+
+  /**
+   * Aprueba o rechaza atómicamente un reporte manual Bre-B (SPEC-04 §3.4).
+   */
+  async reviewManualBreBReport(
+    input: ReviewManualBreBReportInput,
+  ): Promise<Result<ReviewManualBreBReportOutput>> {
+    try {
+      const trimmedReason = (input.rejectionReason || "").trim();
+      if (input.action === "reject" && trimmedReason.length < 10) {
+        return err(
+          "Debes indicar un motivo de rechazo descriptivo de al menos 10 caracteres.",
+          "INVALID_REJECTION_REASON",
+        );
+      }
+
+      const detail = await this.repository.getManualPaymentReportById?.(input.reportId);
+      const now = new Date();
+      const year = now.getFullYear();
+      const rand = Math.floor(100000 + Math.random() * 900000);
+      const receiptNumber = `REC-${year}-${rand}`;
+
+      if (input.action === "approve") {
+        if (!this.repository.approveManualPaymentReportTransaction) {
+          return err("Repositorio sin soporte transaccional de aprobación.", "UNSUPPORTED_OPERATION");
+        }
+
+        const txResult = await this.repository.approveManualPaymentReportTransaction({
+          reportId: input.reportId,
+          reviewerUserId: input.reviewerUserId,
+          now,
+          receiptNumber,
+        });
+
+        if ("error" in txResult) {
+          return err(txResult.error, txResult.code);
+        }
+
+        if (this.notificationDispatcher?.dispatchBreBReviewResult && detail) {
+          const amountCop = new Intl.NumberFormat("es-CO", {
+            style: "currency",
+            currency: "COP",
+            maximumFractionDigits: 0,
+          }).format(Number(txResult.report.reportedAmountCents) / 100);
+          try {
+            await this.notificationDispatcher.dispatchBreBReviewResult({
+              clientId: detail.clientId,
+              tenantName: detail.clientName,
+              recipientEmail: detail.clientEmail,
+              locale: detail.clientLocale,
+              action: "approve",
+              planName: detail.planName.es || detail.planName.en || detail.planCode,
+              amountFormattedCop: amountCop,
+              receiptNumber,
+              reportId: txResult.report.id,
+            });
+          } catch (notifyErr) {
+            appLogger.warn("[BillingService.reviewManualBreBReport] Notificación de aprobación fallida", {
+              reportId: input.reportId,
+              error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+            });
+          }
+        }
+
+        appLogger.info("[BillingService.reviewManualBreBReport] Reporte Bre-B aprobado", {
+          reportId: txResult.report.id,
+          clientId: txResult.report.clientId,
+          paymentId: txResult.payment.id,
+        });
+
+        return ok({
+          report: txResult.report,
+          subscription: txResult.subscription,
+          payment: txResult.payment,
+          receipt: txResult.receipt,
+          invoice: txResult.invoice,
+        });
+      }
+
+      if (!this.repository.rejectManualPaymentReportTransaction) {
+        return err("Repositorio sin soporte transaccional de rechazo.", "UNSUPPORTED_OPERATION");
+      }
+
+      const rejectTx = await this.repository.rejectManualPaymentReportTransaction({
+        reportId: input.reportId,
+        reviewerUserId: input.reviewerUserId,
+        rejectionReason: trimmedReason,
+        now,
+      });
+
+      if ("error" in rejectTx) {
+        return err(rejectTx.error, rejectTx.code);
+      }
+
+      if (this.notificationDispatcher?.dispatchBreBReviewResult && detail) {
+        const amountCop = new Intl.NumberFormat("es-CO", {
+          style: "currency",
+          currency: "COP",
+          maximumFractionDigits: 0,
+        }).format(Number(rejectTx.report.reportedAmountCents) / 100);
+        try {
+          await this.notificationDispatcher.dispatchBreBReviewResult({
+            clientId: detail.clientId,
+            tenantName: detail.clientName,
+            recipientEmail: detail.clientEmail,
+            locale: detail.clientLocale,
+            action: "reject",
+            planName: detail.planName.es || detail.planName.en || detail.planCode,
+            amountFormattedCop: amountCop,
+            rejectionReason: trimmedReason,
+            reportId: rejectTx.report.id,
+          });
+        } catch (notifyErr) {
+          appLogger.warn("[BillingService.reviewManualBreBReport] Notificación de rechazo fallida", {
+            reportId: input.reportId,
+            error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+          });
+        }
+      }
+
+      appLogger.info("[BillingService.reviewManualBreBReport] Reporte Bre-B rechazado", {
+        reportId: rejectTx.report.id,
+        clientId: rejectTx.report.clientId,
+      });
+
+      return ok({
+        report: rejectTx.report,
+        subscription: rejectTx.subscription,
+      });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[BillingService.reviewManualBreBReport] Error: ${msg}`, error);
+      return err(msg, "MANUAL_REPORT_REVIEW_ERROR");
     }
   }
 }
 
 let defaultBillingServiceInstance: BillingService | null = null;
 
+function createDefaultNotificationDispatcher(): IBillingNotificationDispatcher {
+  const ntf = getTransactionalNotificationsService();
+  const baseOrigin = (env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
+  const billingUrl = baseOrigin ? `${baseOrigin}/workspace/billing` : "/workspace/billing";
+
+  return {
+    async dispatchPaymentSucceeded(params) {
+      const res = await ntf.enqueueEmail({
+        eventKey: "billing.payment_succeeded",
+        recipient: params.recipientEmail,
+        locale: "es",
+        variables: {
+          tenant_name: params.tenantName,
+          plan_name: params.planName,
+          amount: params.amountFormatted,
+          currency: params.currency,
+          period_end: "vigente",
+        },
+        idempotencyKey: `billing:receipt:${params.receiptNumber}`,
+      });
+      return {
+        dispatched: res.ok,
+        deliveryId: res.ok ? res.data.id : undefined,
+      };
+    },
+
+    async dispatchBreBReviewResult(params) {
+      const locale = params.locale === "en" ? "en" : "es";
+      const eventKey =
+        params.action === "approve" ? "billing.bre_b_approved" : "billing.bre_b_rejected";
+      const res = await ntf.enqueueEmail({
+        eventKey,
+        recipient: params.recipientEmail,
+        locale,
+        variables:
+          params.action === "approve"
+            ? {
+              tenant_name: params.tenantName,
+              plan_name: params.planName,
+              amount: params.amountFormattedCop,
+              receipt_number: params.receiptNumber ?? "-",
+              billing_url: billingUrl,
+            }
+            : {
+              tenant_name: params.tenantName,
+              plan_name: params.planName,
+              amount: params.amountFormattedCop,
+              rejection_reason: params.rejectionReason ?? "",
+              billing_url: billingUrl,
+            },
+        idempotencyKey: `billing:breb:${params.action}:${params.reportId}`,
+      });
+      return {
+        dispatched: res.ok,
+        deliveryId: res.ok ? res.data.id : undefined,
+      };
+    },
+  };
+}
+
 export function getBillingService(): BillingService {
   if (!defaultBillingServiceInstance) {
     const repo = new DrizzleBillingRepository(getDb());
-    defaultBillingServiceInstance = new BillingService(repo);
+    defaultBillingServiceInstance = new BillingService(repo, createDefaultNotificationDispatcher());
   }
   return defaultBillingServiceInstance;
 }

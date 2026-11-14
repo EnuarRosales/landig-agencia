@@ -406,5 +406,67 @@ export class S3StorageService {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
+
+  /**
+   * Descarga de forma autenticada un objeto binario desde el bucket privado de SeaweedFS.
+   *
+   * @param key - Clave relativa del objeto dentro del bucket.
+   * @returns Buffer binario y tipo MIME si existe, o error con código HTTP asociado.
+   */
+  async getObject(
+    key: string,
+  ): Promise<
+    { ok: true; buffer: Buffer; contentType: string } | { ok: false; error: string; status?: number }
+  > {
+    if (!this.accessKeyId || !this.secretAccessKey) {
+      return {
+        ok: false,
+        error: "Credenciales S3 (S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY) no configuradas.",
+      };
+    }
+
+    const cleanKey = key.replace(/^\/+/, "");
+    const path = `/${this.bucket}/${cleanKey}`;
+    const targetUrl = `${this.endpoint}${path}`;
+    const emptySha256 = createHash("sha256").update("").digest("hex");
+
+    try {
+      const headers = generateSigV4Headers({
+        method: "GET",
+        endpoint: this.endpoint,
+        path,
+        headers: {},
+        payloadSha256: emptySha256,
+        region: this.region,
+        accessKeyId: this.accessKeyId,
+        secretAccessKey: this.secretAccessKey,
+      });
+
+      const res = await this.fetchImpl(targetUrl, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(S3_REQUEST_TIMEOUT_MS),
+      });
+
+      if (!res.ok) {
+        const body = typeof res.text === "function" ? await res.text().catch(() => "") : "";
+        return {
+          ok: false,
+          status: res.status,
+          error: `HTTP ${res.status}: ${body || res.statusText}`,
+        };
+      }
+
+      const arrayBuffer = await res.arrayBuffer();
+      const contentType = res.headers?.get("content-type") || "application/octet-stream";
+      return {
+        ok: true,
+        buffer: Buffer.from(arrayBuffer),
+        contentType,
+      };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
 }
 

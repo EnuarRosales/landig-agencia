@@ -1,85 +1,70 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { appLogger } from "@mocter/domain";
-import type { CheckoutService } from "@mocter/domain";
+import { getCheckoutService, type CheckoutService } from "@mocter/domain";
+import { handle } from "@/lib/errors/route";
+import { problemResponse, requireTenantBillingOwner } from "@/lib/billing-route-auth";
 
 const checkoutRequestSchema = z.object({
-  clientId: z.string().uuid(),
+  clientId: z.string().uuid().optional(),
   planId: z.string().uuid(),
   planCode: z.string().min(1),
   amountCents: z.number().int().positive(),
   currency: z.enum(["COP", "USD"]),
   cycle: z.enum(["monthly", "annual"]).default("monthly"),
-  customerEmail: z.string().email(),
+  gateway: z.enum(["wompi", "stripe", "bre_b"]).optional(),
+  operationKind: z.enum(["new_subscription", "renewal", "upgrade"]).optional(),
+  customerEmail: z.string().email().optional(),
   redirectUrl: z.string().url().optional(),
-  executedBy: z.string().default("checkout.client"),
+  executedBy: z.string().optional(),
 });
 
 /**
- * Route Handler para iniciar sesión de pago de suscripción SaaS (BILL-001 T-06).
+ * Construye el handler POST `/api/billing/checkout` con RBAC `tenant_owner`,
+ * soporte Wompi / Stripe / Bre-B y errores RFC 9457 (`BILL-001`, `SPEC-04 T-05`).
  */
 export function createCheckoutRouteHandler(checkoutService: CheckoutService) {
-  return async function POST(req: NextRequest) {
-    try {
-      const body = await req.json();
-      const parsed = checkoutRequestSchema.safeParse(body);
+  return handle(async (req: NextRequest) => {
+    const body = await req.json();
+    const parsed = checkoutRequestSchema.safeParse(body);
 
-      if (!parsed.success) {
-        return NextResponse.json(
-          {
-            type: "https://mocter.co/errors/validation-error",
-            title: "Validation Error",
-            status: 400,
-            detail: "Parámetros de checkout inválidos.",
-            errors: parsed.error.issues,
-          },
-          {
-            status: 400,
-            headers: { "Content-Type": "application/problem+json" },
-          },
-        );
-      }
-
-      const result = await checkoutService.createCheckoutSession(parsed.data);
-
-      if (!result.ok) {
-        return NextResponse.json(
-          {
-            type: "https://mocter.co/errors/checkout-error",
-            title: "Checkout Session Failed",
-            status: 422,
-            detail: result.error,
-            code: result.code,
-          },
-          {
-            status: 422,
-            headers: { "Content-Type": "application/problem+json" },
-          },
-        );
-      }
-
-      return NextResponse.json({
-        ok: true,
-        data: result.data,
+    if (!parsed.success) {
+      return problemResponse(400, "Validation Error", "Parámetros de checkout inválidos.", {
+        typeSlug: "validation-error",
+        errors: parsed.error.issues,
       });
-    } catch (error: any) {
-      const msg = error instanceof Error ? error.message : String(error);
-      appLogger.error(`[ApiCheckout] Error inesperado en checkout: ${msg}`, error);
-      return NextResponse.json(
-        {
-          type: "https://mocter.co/errors/internal-server-error",
-          title: "Internal Server Error",
-          status: 500,
-          detail: "Error al generar la sesión de pago.",
-        },
-        {
-          status: 500,
-          headers: { "Content-Type": "application/problem+json" },
-        },
-      );
     }
-  };
+
+    const { context, clientId } = await requireTenantBillingOwner(req, parsed.data.clientId);
+
+    const result = await checkoutService.createCheckoutSession({
+      clientId,
+      planId: parsed.data.planId,
+      planCode: parsed.data.planCode,
+      amountCents: parsed.data.amountCents,
+      currency: parsed.data.currency,
+      cycle: parsed.data.cycle,
+      gateway: parsed.data.gateway,
+      operationKind: parsed.data.operationKind,
+      customerEmail: parsed.data.customerEmail || context.user.email,
+      redirectUrl: parsed.data.redirectUrl,
+      executedBy: parsed.data.executedBy || context.user.id,
+    });
+
+    if (!result.ok) {
+      return problemResponse(422, "Checkout Session Failed", result.error, {
+        typeSlug: "checkout-error",
+        code: result.code,
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      data: result.data,
+    });
+  });
 }
 
-export const POST = createCheckoutRouteHandler({} as any);
-
+/**
+ * Endpoint HTTP POST `/api/billing/checkout`. Inicializa lazy el servicio real en tiempo de petición.
+ */
+export const POST = (req: NextRequest) => createCheckoutRouteHandler(getCheckoutService())(req);

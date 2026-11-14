@@ -49,6 +49,8 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     billingCycles: ["monthly", "annual"],
     priceMonthlyCents: 0,
     priceAnnualCents: 0,
+    priceMonthlyUsdCents: 0,
+    priceAnnualUsdCents: 0,
     currency: "COP",
     marketingFeatures: { es: [], en: [] },
     createdAt: NOW,

@@ -30,6 +30,7 @@ import {
 } from "./chatwoot-provisioning.service";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
+import { getBillingService } from "./billing.service";
 
 /**
  * Resumen de cuota numérica de una dimensión del catálogo para onboarding.
@@ -948,6 +949,19 @@ export class TenantOnboardingService {
           updatedBy: user.email,
         })
         .where(eq(clients.id, client.id));
+
+      // 3b. Inicializar periodo de prueba automático al completar onboarding (SPEC-04 RN-SPEC-04-07)
+      try {
+        await getBillingService().activateTrialForTenant({
+          clientId: client.id,
+          planId: client.planId,
+          cycle: "monthly",
+          executedBy: user.id,
+        });
+      } catch (trialError) {
+        const trialMsg = trialError instanceof Error ? trialError.message : String(trialError);
+        appLogger.warn(`[completeStep3BotAndActivate TrialInit] ${trialMsg}`);
+      }
 
       // 4. Marcar sesión de onboarding como completada
       await db

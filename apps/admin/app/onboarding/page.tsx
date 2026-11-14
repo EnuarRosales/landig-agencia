@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import {
   resolveAuthenticatedPortalContext,
   tenantOnboardingService,
+  tenantWorkspaceService,
 } from "@mocter/domain";
 import { TenantOnboardingWizard } from "./tenant-onboarding-wizard";
 
@@ -47,6 +48,17 @@ export default async function OnboardingPage() {
         availablePlans: [],
       };
 
-  return <TenantOnboardingWizard initialState={initialState} />;
+  const clientIdForBilling =
+    portalContext.activeClientId || (stateRes.ok ? stateRes.data.client?.id : undefined);
+  let initialBilling = null;
+  if (clientIdForBilling) {
+    try {
+      initialBilling = await tenantWorkspaceService.getBillingDetails(clientIdForBilling);
+    } catch {
+      // Fallback defensivo si no hay detalle de facturación aún
+    }
+  }
+
+  return <TenantOnboardingWizard initialState={initialState} initialBilling={initialBilling} />;
 }
 

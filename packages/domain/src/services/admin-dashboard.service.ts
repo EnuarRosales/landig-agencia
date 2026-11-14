@@ -163,6 +163,8 @@ export interface CreateAdminPlanInput {
   descriptionEn?: string;
   priceMonthlyCop: number;
   priceAnnualCop?: number;
+  priceMonthlyUsd?: number;
+  priceAnnualUsd?: number;
   currency?: "COP" | "USD";
   billingCycles?: ("monthly" | "annual")[];
   trialDays?: number;
@@ -842,6 +844,8 @@ export interface UpdateAdminPlanInput {
   descriptionEn?: string;
   priceMonthlyCop: number;
   priceAnnualCop?: number;
+  priceMonthlyUsd?: number;
+  priceAnnualUsd?: number;
   currency?: "COP" | "USD";
   billingCycles?: ("monthly" | "annual")[];
   trialDays?: number;
@@ -1050,6 +1054,14 @@ export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Resu
     const priceAnnualCents = input.priceAnnualCop
       ? Math.round(input.priceAnnualCop * 100)
       : priceMonthlyCents * 10;
+    const priceMonthlyUsdCents =
+      input.priceMonthlyUsd !== undefined
+        ? Math.round(input.priceMonthlyUsd * 100)
+        : Math.round(priceMonthlyCents / 4000);
+    const priceAnnualUsdCents =
+      input.priceAnnualUsd !== undefined
+        ? Math.round(input.priceAnnualUsd * 100)
+        : priceMonthlyUsdCents * 10;
 
     const txResult = await db.transaction(async (tx) => {
       const [row] = await tx
@@ -1073,6 +1085,8 @@ export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Resu
           billingCycles: input.billingCycles || ["monthly", "annual"],
           priceMonthlyCents,
           priceAnnualCents,
+          priceMonthlyUsdCents,
+          priceAnnualUsdCents,
           currency: input.currency || "COP",
           marketingFeatures: {
             es: input.marketingFeaturesEs || [],
@@ -1156,6 +1170,14 @@ export async function updateAdminPlan(input: UpdateAdminPlanInput): Promise<Resu
     const priceAnnualCents = input.priceAnnualCop
       ? Math.round(input.priceAnnualCop * 100)
       : priceMonthlyCents * 10;
+    const priceMonthlyUsdCents =
+      input.priceMonthlyUsd !== undefined
+        ? Math.round(input.priceMonthlyUsd * 100)
+        : Math.round(priceMonthlyCents / 4000);
+    const priceAnnualUsdCents =
+      input.priceAnnualUsd !== undefined
+        ? Math.round(input.priceAnnualUsd * 100)
+        : priceMonthlyUsdCents * 10;
 
     const txResult = await db.transaction(async (tx) => {
       const [row] = await tx
@@ -1177,6 +1199,8 @@ export async function updateAdminPlan(input: UpdateAdminPlanInput): Promise<Resu
           billingCycles: input.billingCycles || ["monthly", "annual"],
           priceMonthlyCents,
           priceAnnualCents,
+          priceMonthlyUsdCents,
+          priceAnnualUsdCents,
           currency: input.currency || "COP",
           marketingFeatures: {
             es: input.marketingFeaturesEs || [],

@@ -21,12 +21,14 @@ import type {
   Invoice,
   PaymentReceipt,
   PaymentGatewayPublicView,
+  ManualPaymentReportDetail,
 } from "@mocter/domain";
 import { PlanModalDialog } from "../plans/plan-modal-dialog";
 import { PlanDeleteModal } from "../plans/plan-delete-modal";
 import { SubscriptionsTable } from "./subscriptions-table";
 import { ReceiptsTable } from "./receipts-table";
 import { GatewaysConfigForm } from "./gateways-config-form";
+import { ManualBreBReportsTable } from "./manual-breb-reports-table";
 
 interface BillingTabsViewProps {
   initialTab?: string;
@@ -38,6 +40,7 @@ interface BillingTabsViewProps {
     recentReceipts: PaymentReceipt[];
   };
   gateways: PaymentGatewayPublicView[];
+  manualReports?: ManualPaymentReportDetail[];
 }
 
 export function BillingTabsView({
@@ -45,6 +48,7 @@ export function BillingTabsView({
   plansList,
   overview,
   gateways,
+  manualReports = [],
 }: BillingTabsViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -155,6 +159,28 @@ export function BillingTabsView({
 
         <button
           type="button"
+          onClick={() => handleTabChange("manual_reports")}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
+            activeTab === "manual_reports"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
+              : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
+          }`}
+        >
+          <FileText className="h-4 w-4" />
+          <span>Pagos Bre-B Por Verificar</span>
+          <span
+            className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-mono ${
+              manualReports.filter((r) => r.status === "pending_review").length > 0
+                ? "bg-amber-500/20 text-amber-300 font-bold"
+                : "bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]"
+            }`}
+          >
+            {manualReports.filter((r) => r.status === "pending_review").length}
+          </span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => handleTabChange("gateways")}
           className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
             activeTab === "gateways"
@@ -163,7 +189,7 @@ export function BillingTabsView({
           }`}
         >
           <CreditCard className="h-4 w-4" />
-          <span>Pasarelas Wompi / Stripe</span>
+          <span>Canales De Pago</span>
         </button>
       </div>
 
@@ -242,15 +268,24 @@ export function BillingTabsView({
                   </thead>
                   <tbody className="divide-y divide-[var(--dsn-border)]">
                     {plansList.map((p) => {
-                      const currency = p.currency || "COP";
-                      const priceMonthly = (p.priceMonthlyCents / 100).toLocaleString("es-CO", {
+                      const priceMonthlyCop = (p.priceMonthlyCents / 100).toLocaleString("es-CO", {
                         style: "currency",
-                        currency,
+                        currency: "COP",
                         maximumFractionDigits: 0,
                       });
-                      const priceAnnual = (p.priceAnnualCents / 100).toLocaleString("es-CO", {
+                      const priceAnnualCop = (p.priceAnnualCents / 100).toLocaleString("es-CO", {
                         style: "currency",
-                        currency,
+                        currency: "COP",
+                        maximumFractionDigits: 0,
+                      });
+                      const priceMonthlyUsd = (Number(p.priceMonthlyUsdCents || 0) / 100).toLocaleString("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                        maximumFractionDigits: 0,
+                      });
+                      const priceAnnualUsd = (Number(p.priceAnnualUsdCents || 0) / 100).toLocaleString("en-US", {
+                        style: "currency",
+                        currency: "USD",
                         maximumFractionDigits: 0,
                       });
 
@@ -275,10 +310,16 @@ export function BillingTabsView({
                             )}
                           </td>
                           <td className="py-3.5 px-4 font-mono text-[var(--dsn-text)] font-semibold">
-                            {priceMonthly}
+                            <span>{priceMonthlyCop}</span>
+                            <span className="block text-[11px] font-normal text-[var(--dsn-text-secondary)]">
+                              {priceMonthlyUsd} USD
+                            </span>
                           </td>
                           <td className="py-3.5 px-4 font-mono text-[var(--dsn-text)] font-semibold">
-                            {priceAnnual}
+                            <span>{priceAnnualCop}</span>
+                            <span className="block text-[11px] font-normal text-[var(--dsn-text-secondary)]">
+                              {priceAnnualUsd} USD
+                            </span>
                           </td>
                           <td className="py-3.5 px-4 font-mono text-[var(--dsn-text)]">
                             {p.trialDays} días
@@ -350,6 +391,10 @@ export function BillingTabsView({
           invoices={overview.recentInvoices}
           receipts={overview.recentReceipts}
         />
+      )}
+
+      {activeTab === "manual_reports" && (
+        <ManualBreBReportsTable initialReports={manualReports} />
       )}
 
       {activeTab === "gateways" && (

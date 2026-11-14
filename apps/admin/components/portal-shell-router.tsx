@@ -141,6 +141,14 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
     if (pathname && pathname.startsWith("/onboarding")) {
       redirect("/workspace");
     }
+    // Bloqueo estricto de módulos por vencimiento sin pago reportado (SPEC-04 RN-SPEC-04-10)
+    if (
+      portalContext.subscriptionAlert?.subscriptionExpiredLocked &&
+      pathname &&
+      !pathname.startsWith("/workspace/billing")
+    ) {
+      redirect("/workspace/billing");
+    }
     return (
       <TenantWorkspaceShell
         currentUser={currentUserDto}
@@ -151,6 +159,8 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
           planName: planName || "Plan Pro",
         }}
         capabilities={capabilities}
+        subscriptionAlert={portalContext.subscriptionAlert ?? null}
+        locale={activeClient?.locale === "en" ? "en" : "es"}
       >
         {children}
       </TenantWorkspaceShell>

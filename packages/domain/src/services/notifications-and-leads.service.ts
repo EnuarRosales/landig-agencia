@@ -151,6 +151,42 @@ export const CANONICAL_EMAIL_EVENTS = [
     isEnabled: true,
     isSystem: false,
   },
+  {
+    key: "billing.trial_d5_reminder",
+    category: "billing" as const,
+    description: "Recordatorio preventivo 5 días antes del vencimiento del periodo de prueba o ciclo activo.",
+    variablesSchema: ["tenant_name", "plan_name", "days_remaining", "expires_at", "billing_url"],
+    defaultSenderKey: "billing",
+    isEnabled: true,
+    isSystem: false,
+  },
+  {
+    key: "billing.trial_d0_expired",
+    category: "billing" as const,
+    description: "Aviso inmediato el día de vencimiento del periodo de prueba o suscripción.",
+    variablesSchema: ["tenant_name", "plan_name", "expires_at", "billing_url"],
+    defaultSenderKey: "billing",
+    isEnabled: true,
+    isSystem: false,
+  },
+  {
+    key: "billing.bre_b_approved",
+    category: "billing" as const,
+    description: "Confirmación de pago inmediato Bre-B verificado y activación de suscripción.",
+    variablesSchema: ["tenant_name", "plan_name", "amount", "receipt_number", "billing_url"],
+    defaultSenderKey: "billing",
+    isEnabled: true,
+    isSystem: false,
+  },
+  {
+    key: "billing.bre_b_rejected",
+    category: "billing" as const,
+    description: "Notificación de comprobante Bre-B rechazado con motivo detallado.",
+    variablesSchema: ["tenant_name", "plan_name", "amount", "rejection_reason", "billing_url"],
+    defaultSenderKey: "billing",
+    isEnabled: true,
+    isSystem: false,
+  },
 ] as const;
 
 export type EmailEventKey = (typeof CANONICAL_EMAIL_EVENTS)[number]["key"];
@@ -388,6 +424,62 @@ export class TransactionalNotificationsAndLeadsService {
         subject: "Nuevo contacto desde la landing: {{lead_name}}",
         bodyHtml:
           "<p>Contacto: {{lead_name}} ({{lead_email}}, {{lead_phone}}). Mensaje: {{message}}.</p>",
+      },
+      {
+        eventKey: "billing.trial_d5_reminder",
+        locale: "es",
+        subject: "Tu plan {{plan_name}} vence en {{days_remaining}} días · {{tenant_name}}",
+        bodyHtml:
+          "<p>Hola {{tenant_name}}, tu periodo actual de {{plan_name}} vence el {{expires_at}}. Renueva o actualiza tu plan en <a href=\"{{billing_url}}\">Mi Plan y Cuotas</a> para mantener la continuidad sin interrupciones.</p>",
+      },
+      {
+        eventKey: "billing.trial_d5_reminder",
+        locale: "en",
+        subject: "Your {{plan_name}} plan expires in {{days_remaining}} days · {{tenant_name}}",
+        bodyHtml:
+          "<p>Hi {{tenant_name}}, your current {{plan_name}} period expires on {{expires_at}}. Renew or upgrade at <a href=\"{{billing_url}}\">My Plan &amp; Quotas</a> to keep uninterrupted service.</p>",
+      },
+      {
+        eventKey: "billing.trial_d0_expired",
+        locale: "es",
+        subject: "Tu periodo de prueba de {{plan_name}} venció hoy · {{tenant_name}}",
+        bodyHtml:
+          "<p>El ciclo de {{plan_name}} para {{tenant_name}} venció el {{expires_at}}. Completa tu pago en <a href=\"{{billing_url}}\">Mi Plan y Cuotas</a> para reactivar el servicio de inmediato.</p>",
+      },
+      {
+        eventKey: "billing.trial_d0_expired",
+        locale: "en",
+        subject: "Your {{plan_name}} trial expired today · {{tenant_name}}",
+        bodyHtml:
+          "<p>The {{plan_name}} cycle for {{tenant_name}} expired on {{expires_at}}. Complete your payment at <a href=\"{{billing_url}}\">My Plan &amp; Quotas</a> to restore active status immediately.</p>",
+      },
+      {
+        eventKey: "billing.bre_b_approved",
+        locale: "es",
+        subject: "Pago Bre-B verificado · Plan {{plan_name}} activo",
+        bodyHtml:
+          "<p>Confirmamos la recepción de tu pago Bre-B por {{amount}} para {{tenant_name}} (Recibo {{receipt_number}}). Tu plan {{plan_name}} ya está activo. Revisa tu detalle en <a href=\"{{billing_url}}\">Mi Plan y Cuotas</a>.</p>",
+      },
+      {
+        eventKey: "billing.bre_b_approved",
+        locale: "en",
+        subject: "Bre-B payment verified · {{plan_name}} active",
+        bodyHtml:
+          "<p>We confirmed your Bre-B payment of {{amount}} for {{tenant_name}} (Receipt {{receipt_number}}). Your {{plan_name}} plan is now active. Check details at <a href=\"{{billing_url}}\">My Plan &amp; Quotas</a>.</p>",
+      },
+      {
+        eventKey: "billing.bre_b_rejected",
+        locale: "es",
+        subject: "No pudimos verificar tu comprobante Bre-B · {{tenant_name}}",
+        bodyHtml:
+          "<p>Tu reporte de pago Bre-B por {{amount}} para el plan {{plan_name}} no fue aprobado. Motivo: <strong>{{rejection_reason}}</strong>. Tu espacio mantiene su configuración vigente; vuelve a subir el comprobante en <a href=\"{{billing_url}}\">Mi Plan y Cuotas</a>.</p>",
+      },
+      {
+        eventKey: "billing.bre_b_rejected",
+        locale: "en",
+        subject: "Could not verify your Bre-B voucher · {{tenant_name}}",
+        bodyHtml:
+          "<p>Your Bre-B payment report of {{amount}} for {{plan_name}} could not be approved. Reason: <strong>{{rejection_reason}}</strong>. Your workspace keeps its current configuration; please upload a clear voucher at <a href=\"{{billing_url}}\">My Plan &amp; Quotas</a>.</p>",
       },
     ];
 
@@ -896,5 +988,17 @@ export class TransactionalNotificationsAndLeadsService {
       return escapeHtml ? escapeHtmlVariable(rawVal) : String(rawVal);
     });
   }
+}
+
+let defaultNotificationsServiceInstance: TransactionalNotificationsAndLeadsService | null = null;
+
+/**
+ * Retorna la instancia singleton del servicio de notificaciones transaccionales (`NTF-001`, `SPEC-04`).
+ */
+export function getTransactionalNotificationsService(): TransactionalNotificationsAndLeadsService {
+  if (!defaultNotificationsServiceInstance) {
+    defaultNotificationsServiceInstance = new TransactionalNotificationsAndLeadsService();
+  }
+  return defaultNotificationsServiceInstance;
 }
 

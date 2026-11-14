@@ -33,6 +33,8 @@ describe("BILL-001 / ADM-001 · Plans Route Handler (/api/admin/plans)", () => {
         billingCycles: ["monthly", "annual"],
         priceMonthlyCents: 9900000,
         priceAnnualCents: 99000000,
+        priceMonthlyUsdCents: 2500,
+        priceAnnualUsdCents: 25000,
         currency: "COP",
         marketingFeatures: { es: [], en: [] },
         createdAt: new Date(),

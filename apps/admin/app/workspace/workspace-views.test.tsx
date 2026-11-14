@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import React from "react";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { WorkspaceDashboardView } from "./workspace-dashboard-view";
 import { ProductsView } from "./products/products-view";
 import { BillingView } from "./billing/billing-view";
+import { TenantWorkspaceShell } from "@/components/tenant-workspace-shell";
 
 afterEach(() => {
   cleanup();
@@ -233,6 +234,211 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       expect(screen.getByText("CRM Comercial")).toBeDefined();
       expect(screen.getByText("Incluida")).toBeDefined();
       expect(screen.getAllByText("No incluido en tu plan").length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe("SPEC-04 T-07: BillingCheckoutPanel, Bre-B QR Flow & Expiration Banner", () => {
+    it("renders plan selector, generates Bre-B dynamic QR, and uploads payment voucher", async () => {
+      const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+        if (url === "/api/billing/checkout") {
+          return {
+            ok: true,
+            json: async () => ({
+              ok: true,
+              data: {
+                gateway: "bre_b",
+                invoiceId: "inv-breb-1",
+                invoiceNumber: "INV-2026-0001",
+                reference: "MOCTER-INV-1",
+                amountCents: 14900000,
+                currency: "COP",
+                recipientName: "Mocter SAS",
+                keyType: "NIT",
+                keyValue: "901234567",
+                qrPayload: "000201010212...",
+                qrSvgDataUrl: "data:image/svg+xml;base64,PHN2Zy8+",
+                amountFormattedCop: "$ 149.000 COP",
+              },
+            }),
+          };
+        }
+        if (url === "/api/tenant/billing/bre-b/report") {
+          return {
+            ok: true,
+            json: async () => ({
+              ok: true,
+              data: { id: "rep-1", status: "pending_review" },
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({ ok: true, data: null }) };
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      render(
+        <BillingView
+          initialBilling={{
+            tenant: {
+              id: "client-co-1",
+              country: "CO",
+              currency: "COP",
+              locale: "es",
+              email: "owner@comercio.co",
+            },
+            subscription: {
+              id: "sub-1",
+              status: "trial",
+              cycle: "monthly",
+              gateway: "bre_b",
+              trialEndsAt: "2026-11-20T00:00:00.000Z",
+              currentPeriodEnd: "2026-11-20T00:00:00.000Z",
+              expiresAt: "2026-11-20T00:00:00.000Z",
+              daysRemaining: 4,
+              pendingUpgradePlanId: null,
+              pendingUpgradeCycle: null,
+            },
+            pendingBreBReport: null,
+            latestRejectedBreBReport: null,
+            availablePlans: [
+              {
+                id: "plan-starter",
+                code: "starter",
+                name: "Inicio Rápido",
+                description: "Ideal para comenzar",
+                priceMonthlyCents: 3900000,
+                priceAnnualCents: 39000000,
+                currency: "COP",
+                trialDays: 14,
+                isPopular: false,
+              },
+              {
+                id: "plan-growth",
+                code: "growth",
+                name: "Plan Crecimiento",
+                description: "Operación multicanal",
+                priceMonthlyCents: 14900000,
+                priceAnnualCents: 149000000,
+                currency: "COP",
+                trialDays: 14,
+                isPopular: true,
+              },
+            ],
+            availableChannels: [
+              {
+                id: "bre_b",
+                displayName: "Bre-B Colombia",
+                currency: "COP",
+                manualVerification: true,
+              },
+            ],
+            plan: {
+              id: "plan-starter",
+              code: "starter",
+              name: "Inicio Rápido",
+              description: "Ideal para comenzar",
+              priceMonthlyCents: 3900000,
+              priceAnnualCents: 39000000,
+              currency: "COP",
+              trialDays: 14,
+              lifecycleStatus: "activo",
+            },
+            quotas: [],
+            mediaLimits: {
+              imagesPerProduct: { dimension: "images_per_product", label: "Imágenes", mode: "LIMITED", value: 3, source: "plan" },
+              videosPerProduct: { dimension: "videos_per_product", label: "Videos", mode: "LIMITED", value: 0, source: "plan" },
+              audiosPerProduct: { dimension: "audios_per_product", label: "Audios", mode: "LIMITED", value: 1, source: "plan" },
+              pdfsPerProduct: { dimension: "pdfs_per_product", label: "PDFs", mode: "LIMITED", value: 1, source: "plan" },
+            },
+            retentionDays: { dimension: "chat_retention_days", label: "Retención", mode: "LIMITED", value: 30, source: "plan" },
+            capabilities: {},
+            capabilityDetails: [],
+          }}
+        />,
+      );
+
+      expect(screen.getByTestId("billing-checkout-panel")).toBeDefined();
+      expect(screen.queryByRole("button", { name: "Comenzar Periodo De Prueba" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: /Plan Crecimiento/i }));
+      fireEvent.click(screen.getByRole("button", { name: "Generar Orden De Pago" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("breb-qr-checkout-card")).toBeDefined();
+      });
+
+      expect(screen.getByText("Mocter SAS")).toBeDefined();
+      expect(screen.getByText("901234567")).toBeDefined();
+      expect(screen.getAllByText("$ 149.000 COP").length).toBeGreaterThanOrEqual(2);
+
+      const fileInput = screen.getByLabelText(/Comprobante De Transferencia/i) as HTMLInputElement;
+      const voucherFile = new File(["fake-png"], "comprobante.png", { type: "image/png" });
+      fireEvent.change(fileInput, { target: { files: [voucherFile] } });
+
+      fireEvent.click(screen.getByRole("button", { name: "Reportar Pago" }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("breb-pending-banner")).toBeDefined();
+      });
+    });
+
+    it("renders expiration banner inside TenantWorkspaceShell when <= 5 days remain and omits CTA when Bre-B pending", () => {
+      render(
+        <TenantWorkspaceShell
+          tenant={{ id: "c1", name: "Tienda Demo", slug: "tienda-demo", planName: "Pro" }}
+          subscriptionAlert={{
+            status: "trial",
+            expiresAt: "2026-11-18T00:00:00.000Z",
+            daysRemaining: 4,
+            pendingBreBReview: false,
+          }}
+        >
+          <div>Contenido</div>
+        </TenantWorkspaceShell>,
+      );
+
+      expect(screen.getByTestId("subscription-expiration-banner")).toBeDefined();
+      expect(screen.getByText("Tu Suscripción Vence Pronto")).toBeDefined();
+      expect(screen.getByRole("link", { name: "Renovar o Mejorar Plan" })).toBeDefined();
+
+      cleanup();
+
+      render(
+        <TenantWorkspaceShell
+          tenant={{ id: "c1", name: "Tienda Demo", slug: "tienda-demo", planName: "Pro" }}
+          subscriptionAlert={{
+            status: "active",
+            expiresAt: "2026-11-14T00:00:00.000Z",
+            daysRemaining: 0,
+            pendingBreBReview: true,
+          }}
+        >
+          <div>Contenido</div>
+        </TenantWorkspaceShell>,
+      );
+
+      expect(screen.getByText("Tu Suscripción Vence Hoy")).toBeDefined();
+      expect(screen.queryByRole("link", { name: "Renovar o Mejorar Plan" })).toBeNull();
+    });
+
+    it("locks sidebar navigation to /workspace/billing when subscriptionExpiredLocked is true", () => {
+      render(
+        <TenantWorkspaceShell
+          tenant={{ id: "c1", name: "Tienda Demo", slug: "tienda-demo", planName: "Pro" }}
+          subscriptionAlert={{
+            status: "expired",
+            expiresAt: "2026-11-10T00:00:00.000Z",
+            daysRemaining: 0,
+            pendingBreBReview: false,
+            subscriptionExpiredLocked: true,
+          }}
+        >
+          <div>Contenido</div>
+        </TenantWorkspaceShell>,
+      );
+
+      expect(screen.getByText("Tu Suscripción Ha Vencido")).toBeDefined();
+      expect(screen.getByText("Mi Plan Y Cuotas")).toBeDefined();
+      expect(screen.queryByText("Productos Y Catálogo")).toBeNull();
+      expect(screen.queryByText("Tablero")).toBeNull();
     });
   });
 });

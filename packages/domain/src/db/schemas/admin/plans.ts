@@ -25,8 +25,14 @@ export const plans = adminSchema.table(
       .$type<("monthly" | "annual")[]>()
       .notNull()
       .default(sql`'["monthly","annual"]'::jsonb`),
+    /** Precio mensual fijo en centavos COP (aplica para inquilinos en Colombia). */
     priceMonthlyCents: bigint("price_monthly_cents", { mode: "number" }).notNull().default(0),
+    /** Precio anual fijo en centavos COP (aplica para inquilinos en Colombia). */
     priceAnnualCents: bigint("price_annual_cents", { mode: "number" }).notNull().default(0),
+    /** Precio mensual fijo en centavos USD (aplica para inquilinos fuera de Colombia). */
+    priceMonthlyUsdCents: bigint("price_monthly_usd_cents", { mode: "number" }).notNull().default(0),
+    /** Precio anual fijo en centavos USD (aplica para inquilinos fuera de Colombia). */
+    priceAnnualUsdCents: bigint("price_annual_usd_cents", { mode: "number" }).notNull().default(0),
     currency: char("currency", { length: 3 }).notNull().default("COP"),
     marketingFeatures: jsonb("marketing_features")
       .$type<LocalizedList>()

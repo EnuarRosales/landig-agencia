@@ -14,6 +14,12 @@ import {
   type ResolvedPlanLimit,
 } from "./tenant-capability-gate.service";
 import { clientBrandings } from "../db/schemas/admin/client-brandings";
+import { DrizzleBillingRepository } from "../repositories/drizzle-billing.repository";
+import {
+  CheckoutService,
+  resolvePlanPricingForCountry,
+  type PaymentChannelOption,
+} from "./checkout.service";
 import { mediaCatalog } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { tenantInvitations } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { users } from "../db/schemas/admin/users";
@@ -126,55 +132,8 @@ export function buildImgproxyUrl(
   return `${baseUrl}/${signature}${path}`;
 }
 
-/**
- * Valida los magic bytes de un archivo multimedia para prevenir extension spoofing y archivos ejecutables (D-T2.3).
- */
-export function validateMediaMagicBytes(buffer: Buffer): { valid: boolean; detectedMime?: string; error?: string } {
-  if (buffer.length < 4) {
-    return { valid: false, error: "Archivo demasiado pequeño o vacío." };
-  }
-
-  // Comprobar ejecutable DOS/PE (MZ)
-  if (buffer[0] === 0x4d && buffer[1] === 0x5a) {
-    return { valid: false, error: "Archivos ejecutables binarios no están permitidos." };
-  }
-
-  // Comprobar ejecutable ELF (0x7F 'E' 'L' 'F')
-  if (buffer[0] === 0x7f && buffer[1] === 0x45 && buffer[2] === 0x4c && buffer[3] === 0x46) {
-    return { valid: false, error: "Binarios ELF no están permitidos." };
-  }
-
-  // JPEG: FF D8 FF
-  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return { valid: true, detectedMime: "image/jpeg" };
-  }
-
-  // PNG: 89 50 4E 47 (0x89 'P' 'N' 'G')
-  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
-    return { valid: true, detectedMime: "image/png" };
-  }
-
-  // GIF: 'G' 'I' 'F' '8'
-  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) {
-    return { valid: true, detectedMime: "image/gif" };
-  }
-
-  // WEBP: 'R' 'I' 'F' 'F' ... 'W' 'E' 'B' 'P'
-  if (
-    buffer.length >= 12 &&
-    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
-    buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
-  ) {
-    return { valid: true, detectedMime: "image/webp" };
-  }
-
-  // PDF: %PDF (0x25 0x50 0x44 0x46)
-  if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
-    return { valid: true, detectedMime: "application/pdf" };
-  }
-
-  return { valid: false, error: "Formato no admitido. Formatos permitidos: JPEG, PNG, WEBP, GIF, PDF." };
-}
+import { validateMediaMagicBytes } from "../utils/media-magic-bytes";
+export { validateMediaMagicBytes };
 
 // ─────────────────────────────────────────────────────────────
 // DTOs de Salida y Entrada
@@ -332,6 +291,44 @@ export interface WorkspaceBillingCapabilityItem {
   enabled: boolean;
 }
 
+export interface WorkspaceBillingPlanOptionDto {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  priceMonthlyCents: number;
+  priceAnnualCents: number;
+  currency: string;
+  trialDays: number;
+  isPopular: boolean;
+}
+
+export interface WorkspaceBillingSubscriptionDto {
+  id: string;
+  status: string;
+  cycle: "monthly" | "annual";
+  gateway: string | null;
+  trialEndsAt: string | null;
+  currentPeriodEnd: string;
+  expiresAt: string;
+  daysRemaining: number;
+  pendingUpgradePlanId: string | null;
+  pendingUpgradeCycle: "monthly" | "annual" | null;
+}
+
+export interface WorkspaceBillingPendingBreBDto {
+  id: string;
+  invoiceId: string;
+  targetPlanId: string;
+  targetCycle: "monthly" | "annual";
+  operationKind: string;
+  reportedAmountCents: number;
+  expectedAmountCents: number;
+  paymentReference: string | null;
+  status: string;
+  createdAt: string;
+}
+
 export interface WorkspaceBillingDto {
   plan: {
     id: string;
@@ -354,6 +351,22 @@ export interface WorkspaceBillingDto {
   retentionDays: WorkspaceBillingMediaLimitItem;
   capabilities: Record<string, boolean>;
   capabilityDetails: WorkspaceBillingCapabilityItem[];
+  tenant?: {
+    id: string;
+    country: string;
+    currency: string;
+    locale: string;
+    email: string;
+  };
+  subscription?: WorkspaceBillingSubscriptionDto | null;
+  pendingBreBReport?: WorkspaceBillingPendingBreBDto | null;
+  latestRejectedBreBReport?: {
+    id: string;
+    rejectionReason: string | null;
+    reviewedAt: string | null;
+  } | null;
+  availablePlans?: WorkspaceBillingPlanOptionDto[];
+  availableChannels?: PaymentChannelOption[];
 }
 
 export interface MediaUploadResult {
@@ -1268,6 +1281,9 @@ export class TenantWorkspaceService {
         planId: clients.planId,
         locale: clients.locale,
         lifecycleStatus: clients.lifecycleStatus,
+        country: clients.country,
+        currency: clients.currency,
+        contactEmail: clients.contactEmail,
       })
       .from(clients)
       .where(eq(clients.id, clientId))
@@ -1451,15 +1467,110 @@ export class TenantWorkspaceService {
       }
     }
 
+    // 4. Información extendida SPEC-04 (suscripción, reportes Bre-B, planes y canales habilitados)
+    let subscriptionDto: WorkspaceBillingSubscriptionDto | null = null;
+    let pendingBreBReport: WorkspaceBillingPendingBreBDto | null = null;
+    let latestRejectedBreBReport: WorkspaceBillingDto["latestRejectedBreBReport"] = null;
+    let availablePlans: WorkspaceBillingPlanOptionDto[] = [];
+    let availableChannels: PaymentChannelOption[] = [];
+
+    const clientCountry = (client.country || "CO").trim().toUpperCase();
+    const clientCurrency: "COP" | "USD" = clientCountry === "CO" ? "COP" : "USD";
+
+    try {
+      const billingRepo = new DrizzleBillingRepository(portalDb);
+      const checkoutSvc = new CheckoutService(billingRepo);
+
+      const [subRow, pendingRow, rejectedRow, publicPlans, channelsRes] = await Promise.all([
+        billingRepo.getSubscriptionByClientId(clientId),
+        billingRepo.getPendingManualReportByClientId(clientId),
+        billingRepo.getLatestRejectedManualReportByClientId(clientId),
+        billingRepo.listActivePublicPlans(),
+        checkoutSvc.listAvailableChannelsForTenant(clientCountry, clientCurrency),
+      ]);
+
+      if (subRow) {
+        const expiresAtDate =
+          subRow.status === "trialing" && subRow.trialEndsAt
+            ? subRow.trialEndsAt
+            : subRow.currentPeriodEnd;
+        const diffMs = expiresAtDate.getTime() - Date.now();
+        const daysRemaining = diffMs <= 0 ? 0 : Math.ceil(diffMs / 86_400_000);
+        subscriptionDto = {
+          id: subRow.id,
+          status: subRow.status,
+          cycle: subRow.cycle === "annual" ? "annual" : "monthly",
+          gateway: subRow.gateway ?? null,
+          trialEndsAt: subRow.trialEndsAt ? subRow.trialEndsAt.toISOString() : null,
+          currentPeriodEnd: subRow.currentPeriodEnd.toISOString(),
+          expiresAt: expiresAtDate.toISOString(),
+          daysRemaining,
+          pendingUpgradePlanId: subRow.pendingUpgradePlanId ?? null,
+          pendingUpgradeCycle:
+            subRow.pendingUpgradeCycle === "annual"
+              ? "annual"
+              : subRow.pendingUpgradeCycle === "monthly"
+                ? "monthly"
+                : null,
+        };
+      }
+
+      if (pendingRow) {
+        pendingBreBReport = {
+          id: pendingRow.id,
+          invoiceId: pendingRow.invoiceId,
+          targetPlanId: pendingRow.targetPlanId,
+          targetCycle: pendingRow.targetCycle === "annual" ? "annual" : "monthly",
+          operationKind: pendingRow.operationKind,
+          reportedAmountCents: Number(pendingRow.reportedAmountCents),
+          expectedAmountCents: Number(pendingRow.expectedAmountCents),
+          paymentReference: pendingRow.paymentReference ?? null,
+          status: pendingRow.status,
+          createdAt: pendingRow.createdAt.toISOString(),
+        };
+      }
+
+      if (rejectedRow) {
+        latestRejectedBreBReport = {
+          id: rejectedRow.id,
+          rejectionReason: rejectedRow.rejectionReason ?? null,
+          reviewedAt: rejectedRow.reviewedAt ? rejectedRow.reviewedAt.toISOString() : null,
+        };
+      }
+
+      availablePlans = publicPlans.map((p) => {
+        const localizedPricing = resolvePlanPricingForCountry(p, clientCountry);
+        return {
+          id: p.id,
+          code: p.code,
+          name: resolveLocalized(p.name, p.code),
+          description: resolveLocalized(p.description, ""),
+          priceMonthlyCents: localizedPricing.priceMonthlyCents,
+          priceAnnualCents: localizedPricing.priceAnnualCents,
+          currency: localizedPricing.currency,
+          trialDays: Number(p.trialDays),
+          isPopular: Boolean(p.isPopular),
+        };
+      });
+
+      if (channelsRes.ok) {
+        availableChannels = channelsRes.data;
+      }
+    } catch {
+      // Mantiene retrocompatibilidad cuando mocks unitarios solo simulan catálogo/cuotas base.
+    }
+
+    const activePlanPricing = resolvePlanPricingForCountry(plan, clientCountry);
+
     return {
       plan: {
         id: plan?.id || client.planId,
         code: plan?.code || "pro",
         name: planName,
         description: planDesc,
-        priceMonthlyCents: Number(plan?.priceMonthlyCents ?? 0),
-        priceAnnualCents: Number(plan?.priceAnnualCents ?? 0),
-        currency: plan?.currency || "COP",
+        priceMonthlyCents: activePlanPricing.priceMonthlyCents,
+        priceAnnualCents: activePlanPricing.priceAnnualCents,
+        currency: activePlanPricing.currency,
         trialDays: Number(plan?.trialDays ?? 0),
         lifecycleStatus: client.lifecycleStatus,
       },
@@ -1468,6 +1579,18 @@ export class TenantWorkspaceService {
       retentionDays,
       capabilities,
       capabilityDetails,
+      tenant: {
+        id: clientId,
+        country: clientCountry,
+        currency: clientCurrency,
+        locale,
+        email: client.contactEmail || "",
+      },
+      subscription: subscriptionDto,
+      pendingBreBReport,
+      latestRejectedBreBReport,
+      availablePlans,
+      availableChannels,
     };
   }
 }

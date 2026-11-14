@@ -2,26 +2,26 @@
 
 ## 1. Identificación
 
-| Campo | Valor |
-| --- | --- |
-| **ID** | `SPEC-04` |
-| **Nombre** | Flujo Integral de Suscripción SaaS, Periodo de Prueba, Pago con Bre-B y Renovación / Upgrade |
-| **Tipo de intervención** | Nuevo desarrollo de negocio + Remediación de endpoint crítico (`/api/billing/checkout`) |
-| **Prioridad** | P0 — Crítica (monetización SaaS, onboarding Paso 5 y continuidad operativa) |
-| **Versión** | 1.0.0 |
-| **Estado** | Aprobada para implementación |
-| **Paquetes / Apps afectadas** | `packages/domain`, `apps/admin` |
+| Campo                         | Valor                                                                                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **ID**                        | `SPEC-04`                                                                                                                                 |
+| **Nombre**                    | Flujo Integral de Suscripción SaaS, Periodo de Prueba, Pago con Bre-B y Renovación / Upgrade                                              |
+| **Tipo de intervención**      | Nuevo desarrollo de negocio + Remediación de endpoint crítico (`/api/billing/checkout`)                                                   |
+| **Prioridad**                 | P0 — Crítica (monetización SaaS, onboarding y continuidad operativa)                                                                      |
+| **Versión**                   | 1.1.0                                                                                                                                     |
+| **Estado**                    | En planeación (Fase 2 — Ajustes tras validación funcional de QR Bre-B, precios duales COP/USD, trial automático y bloqueo por expiración) |
+| **Paquetes / Apps afectadas** | `packages/domain`, `apps/admin`                                                                                                           |
 
 ---
 
 ## 2. Trazabilidad
 
-| Elemento | Referencia |
-| --- | --- |
-| **IDs de observaciones cubiertos** | `ONB-12`, `PLN-02`, `PLN-03`, `PLN-04` |
-| **Specs previas relacionadas** | `BILL-001`, `ADM-001`, `NTF-001`, `REF-001` |
-| **Specs dependientes** | `SPEC-06` (Paso 5 de Onboarding consume la sesión de pago o activación de prueba), `SPEC-14` (plantillas de email para `D-5`, `D-0` y confirmación/rechazo de comprobante Bre-B) |
-| **Wave de ejecución sugerida** | Wave 2 — Monetización, Identidad y Onboarding |
+| Elemento                           | Referencia                                                                                                                                                                       |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **IDs de observaciones cubiertos** | `ONB-12`, `PLN-02`, `PLN-03`, `PLN-04`                                                                                                                                           |
+| **Specs previas relacionadas**     | `BILL-001`, `ADM-001`, `NTF-001`, `REF-001`                                                                                                                                      |
+| **Specs dependientes**             | `SPEC-06` (Paso 5 de Onboarding consume la sesión de pago o activación de prueba), `SPEC-14` (plantillas de email para `D-5`, `D-0` y confirmación/rechazo de comprobante Bre-B) |
+| **Wave de ejecución sugerida**     | Wave 2 — Monetización, Identidad y Onboarding                                                                                                                                    |
 
 ---
 
@@ -43,6 +43,7 @@ La infraestructura de facturación de la SaaS presenta vacíos operativos que im
 ## 4. Objetivo y valor de negocio
 
 Formalizar e implementar de punta a punta el ciclo financiero entre el **inquilino y la plataforma Mocter**:
+
 - Habilitar la suscripción al plan desde el **Paso 5 del Onboarding** con opción explícita de pago inmediato o acceso inmediato en **periodo de prueba** (`trial_days`).
 - Incorporar **Bre-B (Colombia)** como tercer canal oficial sin pasarela ni costo transaccional, con llave en texto, **Código QR dinámico con monto exacto**, reporte de comprobante/voucher por el inquilino, revisión manual en `/admin/billing` y **continuidad garantizada** (mantiene trial para comercio nuevo o condiciones del plan vigente para comercio antiguo durante la verificación).
 - Conectar `POST /api/billing/checkout`, `wompi`, `stripe` y `bre_b` bajo control de activación/desactivación desde `/admin/billing`.
@@ -53,15 +54,19 @@ Formalizar e implementar de punta a punta el ciclo financiero entre el **inquili
 ## 5. Alcance y Fuera de alcance
 
 ### Dentro del alcance
+
 - Extensión de canales de pago de la SaaS (`wompi`, `stripe`, **`bre_b`**) con switch `isEnabled` administrable en `/admin/billing` (`GatewaysConfigForm`).
-- Configuración específica de `bre_b` en `/admin/billing`: país válido exclusivamente Colombia (`CO`), moneda `COP`, titular/comercio receptor, tipo de llave Bre-B, valor de llave Bre-B en texto y plantilla/parámetros de generación de QR dinámico con valor exacto.
+- Esquema de **precios duales fijos por plan (`COP` para Colombia `country === 'CO'` y `USD` para resto del mundo `country !== 'CO'`)** en `admin.plans` y en el modal administrativo de planes (`PlanModalDialog`), evitando que a un comercio en Colombia se le cobre el valor nominal en USD re-etiquetado como COP o que sufra variaciones por TRM en cada renovación.
+- Configuración específica de `bre_b` en `/admin/billing`: país válido exclusivamente Colombia (`CO`), moneda `COP`, titular/comercio receptor, tipo de llave Bre-B y valor de llave Bre-B en texto. **Se elimina el atributo «Plantilla De Payload QR (Opcional)»** para usar siempre el generador EMVCo canónico donde el sub-tag `01` del Tag `26` transporta directamente el `bre_b_key_value`.
 - Tabla/entidad para reportes de pago manual (`admin.billing_manual_payment_reports`) y carga segura de comprobante/voucher hacia SeaweedFS (`SPEC-00`).
 - Bandeja de verificación manual de vouchers Bre-B en `/admin/billing` con acciones «Aprobar Pago» y «Rechazar Pago».
 - Regla de continuidad de servicio mientras el voucher está `pending_review` (mantiene `trialing` en nuevos o plan vigente en antiguos).
-- Flujo de activación de periodo de prueba (`POST /api/tenant/billing/trial`), checkout/pago de plan (`POST /api/billing/checkout` corregido), renovación, cambio de ciclo (`monthly`/`annual`) y upgrade de plan (`POST /api/tenant/billing/upgrade`).
+- **Inicio automático del periodo de prueba (`trialing`) al culminar el Onboarding sin pago inmediato** (eliminando cualquier botón manual «Comenzar Periodo De Prueba» en UI), prohibición de periodos de prueba adicionales tras activada la suscripción, y **restricción operativa total cuando la suscripción expira sin renovarse**, permitiendo acceder únicamente a `/workspace/billing` para renovar o pagar el plan.
+- Checkout/pago de plan (`POST /api/billing/checkout` corregido), renovación, cambio de ciclo (`monthly`/`annual`) y upgrade de plan.
 - Alerta in-app de vencimiento próximo (`<= 5 días`) + job/trigger de notificaciones `D-5` y `D-0` (emitiendo evento hacia el sistema de plantillas de `SPEC-14`).
 
 ### Fuera de alcance
+
 - Pasarelas de cobro para que los clientes finales le paguen al comercio inquilino (restricción inicial: la SaaS no procesa pagos de clientes del inquilino; esos canales informativos viven en `SPEC-05`).
 - Diseño de los pasos 1–4 del asistente de onboarding (cubierto por `SPEC-06`).
 - Edición visual de plantillas HTML de email (`SPEC-14`).
@@ -70,27 +75,35 @@ Formalizar e implementar de punta a punta el ciclo financiero entre el **inquili
 
 ## 6. Actores y permisos
 
-| Actor / Rol | Operación | Permitido | Condición |
-| --- | --- | --- | --- |
-| `tenancy_owner` | Iniciar trial, pagar plan, reportar comprobante Bre-B, renovar o cambiar de plan | Sí | Solo sobre su `client_id` activo |
-| `tenancy_users` (`tenant_agent`) | Iniciar pagos, cambiar plan o reportar comprobantes | No | Recibe `403 Forbidden`; tampoco accede a facturas SaaS |
-| `platform_owner` / `platform_admin` | Activar/desactivar Wompi, Stripe o Bre-B y configurar llave Bre-B en `/admin/billing` | Sí | Auditoría obligatoria en `admin.audit_log` |
-| `platform_owner` / `platform_admin` | Aprobar o rechazar manualmente comprobantes Bre-B en `/admin/billing` | Sí | Exige motivo si rechaza; registra revisor y timestamp |
+| Actor / Rol                         | Operación                                                                             | Permitido | Condición                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------ |
+| `tenancy_owner`                     | Iniciar trial, pagar plan, reportar comprobante Bre-B, renovar o cambiar de plan      | Sí        | Solo sobre su `client_id` activo                       |
+| `tenancy_users` (`tenant_agent`)    | Iniciar pagos, cambiar plan o reportar comprobantes                                   | No        | Recibe `403 Forbidden`; tampoco accede a facturas SaaS |
+| `platform_owner` / `platform_admin` | Activar/desactivar Wompi, Stripe o Bre-B y configurar llave Bre-B en `/admin/billing` | Sí        | Auditoría obligatoria en `admin.audit_log`             |
+| `platform_owner` / `platform_admin` | Aprobar o rechazar manualmente comprobantes Bre-B en `/admin/billing`                 | Sí        | Exige motivo si rechaza; registra revisor y timestamp  |
 
 ---
 
 ## 7. Modelo de datos
 
-### 7.1 Extensión de `admin.payment_gateways_config` (`packages/domain/src/db/schemas/admin/payment-gateways-config.ts`)
-- Ampliar dominio permitido de `id` (y constraint/validación Zod): `'wompi' | 'stripe' | 'bre_b'`.
-- Campos adicionales (o en columna JSONB estructurada `channel_metadata` con comentarios SQL):
-  - `supported_countries`: `TEXT[]` / `JSONB` (ej. `['CO']` obligatorio para `'bre_b'`, `['CO']` o configurable para `'wompi'`, `['*']` para `'stripe'`).
-  - `bre_b_key_type`: `VARCHAR(32)` nullable (`'phone' | 'email' | 'document' | 'alphanumeric' | 'merchant_code'`).
-  - `bre_b_key_value`: `VARCHAR(160)` nullable (llave pública en texto mostrada al comercio).
-  - `bre_b_recipient_name`: `VARCHAR(160)` nullable (nombre del titular receptor en Banco de la República / entidad).
-  - `bre_b_qr_payload_template`: `TEXT` nullable (plantilla parametrizada para renderizar código QR dinámico con el monto exacto en COP y referencia de orden).
+### 7.1 Extensión de `admin.plans` y `admin.payment_gateways_config`
+
+- **Precios duales en `admin.plans` (`packages/domain/src/db/schemas/admin/plans.ts`):**
+  - `price_monthly_cents`: `BIGINT` `NOT NULL` default `0` — Precio fijo mensual en **Pesos Colombianos (`COP`)** para comercios con `country = 'CO'`.
+  - `price_annual_cents`: `BIGINT` `NOT NULL` default `0` — Precio fijo anual en **Pesos Colombianos (`COP`)** para comercios con `country = 'CO'`.
+  - `price_monthly_usd_cents`: `BIGINT` `NOT NULL` default `0` — Precio fijo mensual en **Dólares (`USD`)** para comercios internacionales (`country <> 'CO'`).
+  - `price_annual_usd_cents`: `BIGINT` `NOT NULL` default `0` — Precio fijo anual en **Dólares (`USD`)** para comercios internacionales (`country <> 'CO'`).
+- **Configuración de canales en `admin.payment_gateways_config` (`packages/domain/src/db/schemas/admin/payment-gateways-config.ts`):**
+  - Ampliar dominio permitido de `id` (y constraint/validación Zod): `'wompi' | 'stripe' | 'bre_b'`.
+  - Campos de configuración para Bre-B:
+    - `supported_countries`: `JSONB` (ej. `['CO']` obligatorio para `'bre_b'`, `['CO']` para `'wompi'`, `['*']` para `'stripe'`).
+    - `bre_b_key_type`: `VARCHAR(32)` nullable (`'phone' | 'email' | 'document' | 'alphanumeric' | 'merchant_code'`) — metadato informativo de qué tipo de llave se registró.
+    - `bre_b_key_value`: `VARCHAR(160)` nullable — valor real de la llave Bre-B (ej. `3208292559`, `@comercio`, NIT) que se muestra en texto y se codifica en el **sub-tag `01` del Tag `26` EMVCo**.
+    - `bre_b_recipient_name`: `VARCHAR(160)` nullable — nombre del titular receptor.
+    - _Nota:_ Se descarta y elimina de la interfaz el campo `bre_b_qr_payload_template`; la trama QR EMVCo se genera siempre con el motor determinístico estándar.
 
 ### 7.2 Extensión de `admin.subscriptions` y `admin.payments` (`packages/domain/src/db/schemas/admin/billing.ts`)
+
 - Ampliar `gateway` permitido en `payments` y `subscriptions`: `'wompi' | 'stripe' | 'bre_b' | 'trial'`.
 - Estados válidos de `subscriptions.status`: `'trialing' | 'active' | 'past_due' | 'paused' | 'cancelled' | 'expired'`.
 - Añadir en `subscriptions`:
@@ -100,6 +113,7 @@ Formalizar e implementar de punta a punta el ciclo financiero entre el **inquili
   - `d0_reminder_sent_at`: `TIMESTAMPTZ` nullable (idempotencia de aviso `D-0`).
 
 ### 7.3 Nueva tabla `admin.billing_manual_payment_reports` (`packages/domain/src/db/schemas/admin/billing.ts`)
+
 - `id`: `UUID` PK.
 - `client_id`: `UUID` FK → `admin.clients.id`, `NOT NULL`, indexado.
 - `subscription_id`: `UUID` FK → `admin.subscriptions.id`, `NOT NULL`.
@@ -129,24 +143,36 @@ Formalizar e implementar de punta a punta el ciclo financiero entre el **inquili
 ## 8. Reglas de negocio
 
 - **RN-SPEC-04-01 (Activación e independencia de canales de cobro SaaS):** Todos los canales de pago de suscripción (`wompi`, `stripe`, `bre_b`) poseen un interruptor `isEnabled` administrado exclusivamente desde `/admin/billing`. En el selector de pago del inquilino solo se muestran los canales donde `isEnabled = true` y cuya cobertura geográfica/monetaria aplique.
-- **RN-SPEC-04-02 (Restricción territorial y monetaria exclusiva de Bre-B):** El método **Bre-B** solo está disponible cuando el país del comercio (`admin.clients.country` o perfil de facturación) sea Colombia (`CO`) y la moneda de cobro sea `COP`. Para comercios de otros países o cobros en `USD`, Bre-B no aparece como opción ni se acepta en el backend (`422 BRE_B_COLOMBIA_ONLY`).
-- **RN-SPEC-04-03 (QR Dinámico con monto exacto y llave en texto Bre-B):** Al seleccionar Bre-B para una suscripción, renovación o upgrade, el sistema calcula el importe neto final en COP (aplicando créditos de referidos disponibles si aplica, nunca negativo), genera un payload de QR dinámico que embebe exactamente dicho monto y referencia de factura, y presenta simultáneamente la llave Bre-B en texto plano para copia manual.
+- **RN-SPEC-04-02 (Estrategia de precios duales por territorio y restricción exclusiva de Bre-B):**
+  - Todo plan comercial define precios fijos independientes en **COP** (para comercios nacionales de Colombia, `admin.clients.country === 'CO'`) y en **USD** (para comercios del resto del mundo, `admin.clients.country !== 'CO'`). No se realiza conversión cambiaria dinámica por TRM para garantizar estabilidad de precio en cada renovación.
+  - Cuando `client.country === 'CO'`, el inquilino visualiza y paga exclusivamente la tarifa en **COP** del plan (`price_monthly_cents` / `price_annual_cents`) a través de los canales habilitados para Colombia (`bre_b`, `wompi`).
+  - Cuando `client.country !== 'CO'`, el inquilino visualiza y paga exclusivamente la tarifa en **USD** del plan (`price_monthly_usd_cents` / `price_annual_usd_cents`) a través de canales internacionales (`stripe`), y Bre-B no aparece ni se permite (`422 BRE_B_COLOMBIA_ONLY`).
+- **RN-SPEC-04-03 (QR Dinámico EMVCo con llave real en sub-tag `01` y monto exacto en COP):** Al seleccionar Bre-B para una suscripción, renovación o upgrade, el sistema toma el precio en **COP** del plan seleccionado (aplicando créditos de referidos disponibles si aplica, nunca negativo) y construye el payload EMVCo Merchant-Presented QR Dinámico (`01=12`, moneda ISO `53=170`, monto en pesos en `54`) colocando en el Tag `26`:
+  - Sub-tag `00`: `"CO.COM.BANREP.BREB"` (identificador de red).
+  - Sub-tag `01`: **`bre_b_key_value`** (el valor real de la llave configurada, ej. `3208292559`, nunca el `bre_b_key_type`).
+  - Presenta simultáneamente el QR escaneable y la llave Bre-B en texto plano con opción de copiado. No existe campo de plantilla QR manual en el formulario de administración.
 - **RN-SPEC-04-04 (Reporte obligatorio de voucher y verificación manual SaaS):** Un pago vía Bre-B no activa automáticamente el plan pago ni cobra comisión de pasarela. El inquilino debe adjuntar su comprobante/voucher (`PNG`, `JPG`, `WEBP` o `PDF`, máximo 10 MiB); el reporte nace en `pending_review` y pasa a la cola del Backoffice SaaS (`/admin/billing`) donde un administrador aprueba o rechaza manualmente con trazabilidad completa.
 - **RN-SPEC-04-05 (Continuidad garantizada durante verificación manual Bre-B — Regla Vinculante):** Mientras exista un reporte Bre-B en estado `pending_review`:
-  - **Comercio nuevo:** Mantiene activo su estado de periodo de prueba (`subscriptions.status = 'trialing'`) con acceso completo a la plataforma conforme a `plans.trial_days` del plan seleccionado. Si no tenía trial creado aún al reportar en el paso 5 del onboarding, se le inicializa `trialing` automáticamente.
-  - **Comercio antiguo (renovación o upgrade):** Conserva íntegramente su `plan_id`, límites, cuotas y capacidades actuales hasta que el pago sea confirmado manualmente en `/admin/billing`. En renovaciones próximas al vencimiento, la suscripción permanece operativa en estado de gracia verificada mientras exista un `pending_review` abierto (sujeto a política configurable de días máximos de espera en revisión).
+  - **Comercio en prueba (`trialing`):** Mantiene activo su estado de periodo de prueba (`subscriptions.status = 'trialing'`) con acceso completo a la plataforma conforme a `plans.trial_days` del plan seleccionado.
+  - **Comercio antiguo (renovación o upgrade):** Conserva íntegramente su `plan_id`, límites, cuotas y capacidades actuales hasta que el pago sea confirmado manualmente en `/admin/billing`. En renovaciones próximas al vencimiento, la suscripción permanece operativa mientras exista un `pending_review` abierto.
 - **RN-SPEC-04-06 (Activación o rechazo tras revisión manual):**
-  - Al **aprobar** el pago Bre-B: se marca el reporte `approved`, la factura pasa a `paid`, se crea/actualiza la suscripción al `target_plan_id` / `target_cycle`, se sincroniza `admin.clients.plan_id` y `quota_version`, y se envía correo de confirmación al inquilino.
-  - Al **rechazar** el pago Bre-B: es obligatorio indicar motivo (`>= 10` caracteres); el reporte pasa a `rejected`, la factura pendiente queda cancelada o reintentable, no se aplica upgrade ni renovación, y el comercio (si es nuevo, sigue su trial hasta su expiración natural; si es antiguo, mantiene su estado base real) recibe notificación por correo y en UI para reintentar o cargar otro voucher.
-- **RN-SPEC-04-07 (Acceso gratuito a periodo de prueba sin cobro):** Si el inquilino elige «Comenzar Periodo De Prueba» en Onboarding (`ONB-12`), se crea su suscripción con `status = 'trialing'`, `trial_ends_at = NOW() + plans.trial_days * INTERVAL '1 day'` sin requerir tarjeta ni comprobante previo (salvo que un plan tenga `trial_days = 0`, caso en el cual exige pago previo).
+  - Al **aprobar** el pago Bre-B: se marca el reporte `approved`, la factura pasa a `paid`, se actualiza la suscripción a `active` en el `target_plan_id` / `target_cycle`, se sincroniza `admin.clients.plan_id` y `quota_version`, y se envía correo de confirmación al inquilino.
+  - Al **rechazar** el pago Bre-B: es obligatorio indicar motivo (`>= 10` caracteres); el reporte pasa a `rejected`, la factura pendiente queda anulada (`void`), no se aplica upgrade ni renovación, y el comercio conserva su estado previo real (si su prueba o periodo ya venció, pasa a restricción de acceso por expiración).
+- **RN-SPEC-04-07 (Activación automática del periodo de prueba en Onboarding y ausencia de botón manual):**
+  - Al culminar el Onboarding sin haber completado un pago inmediato (y para cualquier comercio en estado `activo` sin registro previo en `admin.subscriptions`), el sistema **crea automáticamente** su suscripción inicial en estado `trialing` con `trial_ends_at = NOW() + plans.trial_days * INTERVAL '1 day'`.
+  - **No se renderiza ningún botón manual «Comenzar Periodo De Prueba»** ni en `/workspace/billing` ni en el panel de checkout: el comercio ya se encuentra disfrutando de su periodo de prueba desde el momento en que finaliza su alta.
 - **RN-SPEC-04-08 (Alertas de vencimiento `D-5` y `D-0`):** Un proceso programado idempotente evalúa diariamente suscripciones próximas a expirar (`trial_ends_at` o `current_period_end`): emite alerta + email en `D-5` (5 días antes) y en `D-0` (día del vencimiento), registrando `d5_reminder_sent_at` y `d0_reminder_sent_at` para evitar envíos duplicados, además de mostrar banner contextual en `/workspace` cuando faltan `<= 5` días.
 - **RN-SPEC-04-09 (Cambio de plan / Upgrade y Renovación `PLN-04`):** El `tenancy_owner` puede iniciar desde `/workspace/billing` la renovación anticipada, el cambio de ciclo (`monthly` ↔ `annual`) o el cambio a un plan superior/diferente activo (`is_public = true`), recalculando cuotas automáticamente tras la confirmación del pago.
+- **RN-SPEC-04-10 (Prohibición de periodo de prueba adicional y bloqueo operativo por falta de renovación — Regla Vinculante):**
+  - Después de activada la suscripción inicial del comercio (en `trialing` o `active`), **la falta de renovación o vencimiento jamás habilita un nuevo periodo de prueba**.
+  - Cuando la suscripción expira (`status IN ('expired', 'past_due', 'cancelled')` o fecha de fin superada sin existir un reporte Bre-B en `pending_review`), **se restringe el acceso a todas las funcionalidades del sistema**: cualquier navegación a `/workspace/*` distinta de `/workspace/billing` redirige forzosamente a `/workspace/billing`, el menú lateral deshabilita/oculta los módulos operativos y las APIs operativas del comercio rechazan mutaciones, permitiéndole al inquilino **únicamente acceder a la opción de renovación/pago del plan en `/workspace/billing`**.
 
 ---
 
 ## 9. Contratos de interfaz
 
 ### 9.1 `POST /api/billing/checkout` (Remediación de handler `{}` → servicio real)
+
 - **Autenticación:** `tenancy_owner` del `clientId` solicitado (`403` si otro tenant o `tenant_agent`).
 - **Request JSON:** `{ clientId, planId, cycle, gateway: 'wompi' | 'stripe' | 'bre_b', operationKind: 'new_subscription' | 'renewal' | 'upgrade' }`.
 - **Response `200 OK`:**
@@ -155,21 +181,26 @@ Formalizar e implementar de punta a punta el ciclo financiero entre el **inquili
 - **Errores RFC 9457:** `422 GATEWAY_DISABLED`, `422 BRE_B_COLOMBIA_ONLY`, `422 PENDING_BRE_B_REVIEW_EXISTS`.
 
 ### 9.2 `POST /api/tenant/billing/trial` [Nuevo]
+
 - **Propósito:** Activa el periodo de prueba en Paso 5 de Onboarding o cuando el comercio elegible inicia su prueba.
 - **Response `200 OK`:** Suscripción en `trialing` con `trialEndsAt`.
 
 ### 9.3 `POST /api/tenant/billing/bre-b/report` [Nuevo — Multipart FormData]
+
 - **Propósito:** Recibe `invoiceId`, `paymentReference`, `reportedAmountCents` y archivo `voucher` (`File`). Sube el comprobante a SeaweedFS bajo prefijo privado `billing-vouchers/{clientId}/...`, crea el registro en `admin.billing_manual_payment_reports` en `pending_review`, garantiza estado de continuidad (trial en nuevos / conserva plan actual en antiguos), y dispara evento de notificación a administración.
 
 ### 9.4 `GET /api/admin/billing/gateways` y `PUT /api/admin/billing/gateways` (Extensión)
+
 - Soporta `id: 'wompi' | 'stripe' | 'bre_b'`, persistiendo configuración específica Bre-B y toggle `isEnabled` uniforme para los tres métodos.
 
 ### 9.5 `GET /api/admin/billing/manual-reports` y `POST /api/admin/billing/manual-reports/[id]/review` [Nuevos]
+
 - **Autenticación:** `platform_owner` / `platform_admin`.
 - `GET`: Lista reportes ordenados por `pending_review` primero, con URL firmada/protegida de descarga temporal del comprobante.
 - `POST .../review`: `{ action: 'approve' | 'reject', rejectionReason?: string }`. Ejecuta transacción atómica de aprobación o rechazo + emisión de email al comercio.
 
 ### 9.6 `POST /api/admin/billing/reminders/dispatch` (Cron / Job interno)
+
 - Evalúa suscripciones `D-5` y `D-0` de forma idempotente y delega el envío a las plantillas de `SPEC-14`.
 
 ---
@@ -177,18 +208,21 @@ Formalizar e implementar de punta a punta el ciclo financiero entre el **inquili
 ## 10. Especificación de UI/UX
 
 - **En `/admin/billing` (Backoffice SaaS):**
-  - Pestaña «Canales De Pago»: 3 tarjetas homologadas con interruptor «Canal Activo» (`wompi`, `stripe`, **Bre-B (Solo Colombia)**). La tarjeta Bre-B incluye selector «Tipo De Llave Bre-B», campo «Llave Bre-B», campo «Titular Receptor» y nota aclaratoria de cero costo transaccional y verificación manual.
+  - Modal de Planes (`PlanModalDialog` — Pestaña 1 «Información Comercial»): permite definir para cada plan tanto sus **Precios en Pesos Colombianos (`COP` — Colombia)** (`Precio Ciclo Mensual (COP)` y `Precio Ciclo Anual (COP)`) como sus **Precios en Dólares (`USD` — Internacional)** (`Precio Ciclo Mensual (USD)` y `Precio Ciclo Anual (USD)`).
+  - Pestaña «Canales De Pago»: 3 tarjetas homologadas con interruptor «Canal Activo» (`wompi`, `stripe`, **Bre-B (Solo Colombia)**). La tarjeta Bre-B incluye únicamente selector «Tipo De Llave Bre-B», campo «Valor De Llave Bre-B» y campo «Titular Receptor» (**sin** el campo «Plantilla De Payload QR (Opcional)»).
   - Pestaña «Pagos Bre-B Por Verificar» (con badge numérico de pendientes): tabla paginada, con filtros y ordenamiento (`AGENTS.md §4.8`), vista previa segura del comprobante adjunto, detalle de monto esperado vs reportado y botones en Title Case «Aprobar Pago» / «Rechazar Pago» usando modales `--dsn-*` (solicita motivo obligatorio al rechazar; nunca `window.confirm`).
-- **En Onboarding Paso 5 y `/workspace/billing` (Backoffice Inquilino):**
+- **En Onboarding y `/workspace/billing` (Backoffice Inquilino):**
+  - El precio de cada plan se muestra automáticamente en **`COP`** si el comercio pertenece a Colombia (`country === 'CO'`) o en **`USD`** para el resto del mundo (`country !== 'CO'`).
+  - **Sin botón «Comenzar Periodo De Prueba»:** Si el inquilino finaliza el Onboarding sin realizar pago inmediato, entra automáticamente en su periodo de prueba (`trialing`) y en `/workspace/billing` visualiza los días restantes de su prueba junto con las opciones de renovación o cambio de plan.
   - Selector claro de ciclo (`Mensual` / `Anual`) y catálogo comparativo para Upgrade/Renovación (`PLN-04`).
   - Selector de método de cobro mostrando únicamente los canales habilitados y válidos para el país/moneda del comercio (`Wompi`, `Stripe`, `Bre-B`).
   - Al seleccionar **Bre-B**, tarjeta Mobile First clara con:
-    1. Monto exacto a transferir en COP.
-    2. **Código QR Dinámico** nítido (con fondo claro para lectura confiable en apps bancarias colombianas).
+    1. Monto exacto a transferir en **COP** (tomado del precio en COP del plan).
+    2. **Código QR Dinámico** nítido cuyo Tag `26` sub-tag `01` contiene el `bre_b_key_value` real (`3208292559`, etc.) y el Tag `54` contiene el monto en COP.
     3. **Llave Bre-B en texto** con botón «Copiar Llave».
-    4. Zona de carga «Subir Comprobante De Transferencia» y campo «Referencia De Transferencia (Opcional)» + botón «Reportar Pago».
-  - Estado visual cuando existe comprobante en revisión: banner azul/ámbar informativo *«Tu pago por Bre-B está en verificación. Sigues operando normalmente con tu periodo de prueba / plan actual mientras confirmamos la transferencia.»*
-  - Banner de alerta de vencimiento en shell del workspace cuando restan `<= 5` días del periodo actual o trial.
+    4. Zona de carga «Comprobante De Transferencia» y campo «Referencia De Transferencia» + botón «Reportar Pago».
+  - Estado visual cuando existe comprobante en revisión: banner informativo indicando que el servicio continúa operativo mientras se valida el pago.
+  - **Modo de restricción por suscripción vencida (`status = 'expired'` sin revisión Bre-B pendiente):** Redirección forzosa de cualquier ruta `/workspace/*` hacia `/workspace/billing`, bloqueo de navegación a otros módulos del comercio y banner crítico indicando que la suscripción ha expirado y debe renovarse para restablecer las funcionalidades operativas.
 
 ---
 
@@ -286,8 +320,8 @@ Característica: Suscripción SaaS, periodo de prueba, pagos Bre-B y renovación
 
 - **Dependencias:** `SPEC-00` (SeaweedFS operativo para guardar vouchers), `SPEC-03` (catálogo completo de planes y capacidades), `SPEC-14` (plantillas de email `D-5`, `D-0`, confirmación/rechazo Bre-B).
 - **Riesgos:**
-  - *Compatibilidad del estándar QR de Bre-B / EMVCo Colombia:* Mitigado parametrizando generador determinístico basado en estándar EMVCo/QR interoperable vigente de Banco de la República y validándolo visualmente en pruebas humanas (`T-HUMANO`).
-  - *Comercio antiguo con periodo expirado justo durante revisión lenta del admin:* Mitigado otorgando ventana de gracia controlada mientras exista `status = 'pending_review'` (máximo configurable en plataforma, p. ej. 72h).
+  - _Compatibilidad del estándar QR de Bre-B / EMVCo Colombia:_ Mitigado parametrizando generador determinístico basado en estándar EMVCo/QR interoperable vigente de Banco de la República y validándolo visualmente en pruebas humanas (`T-HUMANO`).
+  - _Comercio antiguo con periodo expirado justo durante revisión lenta del admin:_ Mitigado otorgando ventana de gracia controlada mientras exista `status = 'pending_review'` (máximo configurable en plataforma, p. ej. 72h).
 
 ---
 
@@ -305,4 +339,3 @@ Característica: Suscripción SaaS, periodo de prueba, pagos Bre-B y renovación
 ## 15. Propuestas a Validar (PV-xx)
 
 Todos los aspectos funcionales de `ONB-12`, `PLN-02`, `PLN-03`, `PLN-04` (incluyendo los tres canales configurables y las reglas exactas de Bre-B) quedaron confirmados explícitamente por el usuario.
-

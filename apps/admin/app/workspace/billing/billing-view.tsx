@@ -23,10 +23,12 @@ import type {
 } from "@mocter/domain";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { formatStorageBytes } from "@/components/catalog-quota-banner";
+import { BillingCheckoutPanel } from "@/components/billing-checkout-panel";
 
 interface BillingViewProps {
   initialBilling: WorkspaceBillingDto | null;
   locale?: AdminLocale;
+  isOwner?: boolean;
 }
 
 function formatCurrencyCents(cents: number, currency: string): string {
@@ -277,9 +279,22 @@ export function PlanCapabilitiesMatrix({
 /**
  * Vista rediseñada de Facturación, Cuotas y Capacidades Efectivas del Espacio (`/workspace/billing`).
  */
-export function BillingView({ initialBilling, locale = "es" }: BillingViewProps) {
-  const [billing] = useState<WorkspaceBillingDto | null>(initialBilling);
+export function BillingView({ initialBilling, locale = "es", isOwner = true }: BillingViewProps) {
+  const [billing, setBilling] = useState<WorkspaceBillingDto | null>(initialBilling);
   const dict = getAdminDictionary(locale).workspace;
+
+  async function refreshBilling() {
+    try {
+      const res = await fetch("/api/tenant/billing", { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.ok && json.data) {
+        setBilling(json.data as WorkspaceBillingDto);
+      }
+    } catch {
+      // Silencio seguro si no hay red en pruebas
+    }
+  }
 
   if (!billing) {
     return (
@@ -293,7 +308,23 @@ export function BillingView({ initialBilling, locale = "es" }: BillingViewProps)
     );
   }
 
-  const isTrial = billing.plan.lifecycleStatus === "alta";
+  const isExpired = Boolean(
+    billing.subscription &&
+      !billing.pendingBreBReport &&
+      (billing.subscription.status === "expired" ||
+        billing.subscription.status === "past_due" ||
+        billing.subscription.status === "cancelled" ||
+        billing.subscription.daysRemaining <= 0),
+  );
+  const isTrial =
+    !isExpired &&
+    (billing.subscription?.status === "trialing" ||
+      billing.subscription?.status === "trial" ||
+      billing.plan.lifecycleStatus === "alta");
+  const hasCheckoutOptions = Boolean(
+    (billing.availablePlans && billing.availablePlans.length > 0) ||
+      (billing.availableChannels && billing.availableChannels.length > 0),
+  );
 
   return (
     <div className="w-full space-y-6 p-4 md:px-8 md:py-6 animate-in fade-in duration-300">
@@ -309,13 +340,23 @@ export function BillingView({ initialBilling, locale = "es" }: BillingViewProps)
           <p className="mt-1 text-xs text-[var(--dsn-text-secondary)]">{dict.billingSubtitle}</p>
         </div>
 
-        <Link
-          href="/workspace"
-          className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
-        >
-          <span>{dict.billingUpgradeCta}</span>
-          <ArrowUpRight className="h-3.5 w-3.5" />
-        </Link>
+        {hasCheckoutOptions ? (
+          <a
+            href="#plan-checkout-section"
+            className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
+          >
+            <span>{dict.billingUpgradeCta}</span>
+            <ArrowUpRight className="h-3.5 w-3.5" />
+          </a>
+        ) : (
+          <Link
+            href="/workspace"
+            className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
+          >
+            <span>{dict.billingUpgradeCta}</span>
+            <ArrowUpRight className="h-3.5 w-3.5" />
+          </Link>
+        )}
       </header>
 
       {/* Tarjeta Principal del Plan */}
@@ -330,13 +371,19 @@ export function BillingView({ initialBilling, locale = "es" }: BillingViewProps)
                 <h2 className="text-xl font-bold text-[var(--dsn-text)]">{billing.plan.name}</h2>
                 <span
                   className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                    isTrial
-                      ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                      : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                    isExpired
+                      ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                      : isTrial
+                        ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                        : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                   }`}
                 >
                   <ShieldCheck className="h-3.5 w-3.5" />
-                  {isTrial ? dict.billingStatusTrial : dict.billingStatusActive}
+                  {isExpired
+                    ? dict.billingStatusExpired
+                    : isTrial
+                      ? dict.billingStatusTrial
+                      : dict.billingStatusActive}
                 </span>
               </div>
               {billing.plan.description && (
@@ -389,6 +436,26 @@ export function BillingView({ initialBilling, locale = "es" }: BillingViewProps)
         </h2>
         <PlanCapabilitiesMatrix capabilityDetails={billing.capabilityDetails} locale={locale} />
       </section>
+
+      {/* Renovación, Cambio de Plan, Prueba y Pago Bre-B */}
+      {hasCheckoutOptions && (
+        <BillingCheckoutPanel
+          clientId={billing.tenant?.id || ""}
+          country={billing.tenant?.country}
+          currency={billing.tenant?.currency || billing.plan.currency}
+          customerEmail={billing.tenant?.email}
+          currentPlanId={billing.plan.id}
+          subscription={billing.subscription}
+          pendingBreBReport={billing.pendingBreBReport}
+          latestRejectedBreBReport={billing.latestRejectedBreBReport}
+          availablePlans={billing.availablePlans || []}
+          availableChannels={billing.availableChannels || []}
+          locale={locale}
+          mode="workspace"
+          isOwner={isOwner}
+          onSuccess={refreshBilling}
+        />
+      )}
     </div>
   );
 }

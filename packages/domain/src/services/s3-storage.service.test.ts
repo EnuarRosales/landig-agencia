@@ -171,5 +171,37 @@ describe("CEL-RF-016 · S3StorageService (SeaweedFS S3 Gateway Adapter)", () => 
       expect.objectContaining({ method: "DELETE" }),
     );
   });
+
+  it("descarga un objeto privado autenticado con SigV4 GET y retorna 404 cuando no existe", async () => {
+    const sampleBytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47]).buffer;
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "image/png" }),
+        arrayBuffer: async () => sampleBytes,
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        text: async () => "NoSuchKey",
+      });
+
+    const s3 = new S3StorageService(dummyConfig, mockFetch as any);
+    const okRes = await s3.getObject("billing-vouchers/c1/voucher.png");
+    expect(okRes.ok).toBe(true);
+    if (okRes.ok) {
+      expect(okRes.contentType).toBe("image/png");
+      expect(okRes.buffer).toEqual(Buffer.from(sampleBytes));
+    }
+
+    const notFoundRes = await s3.getObject("billing-vouchers/c1/missing.png");
+    expect(notFoundRes.ok).toBe(false);
+    if (!notFoundRes.ok) {
+      expect(notFoundRes.status).toBe(404);
+    }
+  });
 });
 

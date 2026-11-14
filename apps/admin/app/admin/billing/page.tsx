@@ -20,10 +20,11 @@ export default async function AdminBillingPage({
   const initialTab = sParams?.tab || "subscriptions";
 
   const billingService = getBillingService();
-  const [plansList, overviewResult, gatewaysResult] = await Promise.all([
+  const [plansList, overviewResult, gatewaysResult, manualReportsResult] = await Promise.all([
     fetchAdminPlans(),
     billingService.getAdminBillingOverview(),
     billingService.listPaymentGatewaysPublicConfig(),
+    billingService.listManualBreBReports(),
   ]);
 
   const overview = overviewResult.ok
@@ -42,6 +43,7 @@ export default async function AdminBillingPage({
       };
 
   const gateways = gatewaysResult.ok ? gatewaysResult.data : [];
+  const manualReports = manualReportsResult.ok ? manualReportsResult.data : [];
 
   return (
     <BillingTabsView
@@ -49,6 +51,7 @@ export default async function AdminBillingPage({
       plansList={plansList}
       overview={overview}
       gateways={gateways}
+      manualReports={manualReports}
     />
   );
 }

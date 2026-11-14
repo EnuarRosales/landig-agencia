@@ -11,8 +11,13 @@ export default async function WorkspaceBillingPage() {
   const sid = (cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value)?.trim();
 
   let initialBilling = null;
+  let locale: "es" | "en" = "es";
+  let isOwner = true;
   if (sid) {
     const context = await resolveAuthenticatedPortalContext(sid);
+    locale = context?.activeClient?.locale === "en" ? "en" : "es";
+    const resolvedRole = context?.role as string | undefined;
+    isOwner = !resolvedRole || resolvedRole === "tenant_owner" || resolvedRole === "tenancy_owner";
     if (context?.activeClient?.id) {
       try {
         initialBilling = await tenantWorkspaceService.getBillingDetails(context.activeClient.id);
@@ -22,6 +27,6 @@ export default async function WorkspaceBillingPage() {
     }
   }
 
-  return <BillingView initialBilling={initialBilling} />;
+  return <BillingView initialBilling={initialBilling} locale={locale} isOwner={isOwner} />;
 }
 

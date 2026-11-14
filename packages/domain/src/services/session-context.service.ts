@@ -1,6 +1,7 @@
 import { eq, and, ne } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { users, clients, clientRouting, cells, plans } from "../db/schemas/admin";
+import { subscriptions, billingManualPaymentReports } from "../db/schemas/admin/billing";
 import { cellTenantUsers } from "../db/schemas/tenant";
 import { withTenantCellTransaction } from "../db/cell-client";
 import { authService } from "./auth.service";
@@ -10,6 +11,7 @@ import {
   DrizzleTenantCapabilityGateRepository,
 } from "./tenant-capability-gate.service";
 import { appLogger } from "../utils/logger";
+import { getBillingService } from "./billing.service";
 
 /**
  * Scopes autoritativos mutuamente excluyentes para el portal Mocter (TNT-RF-02, ADM-D-35).
@@ -46,6 +48,7 @@ export interface PortalContextClient {
   name: string;
   lifecycleStatus: string;
   planId: string;
+  locale?: string;
 }
 
 /**
@@ -64,6 +67,13 @@ export interface PortalContext {
   planName: string | null;
   capabilities: Record<string, boolean>;
   lifecycleStatus: string | null;
+  subscriptionAlert?: {
+    status: string;
+    expiresAt: string;
+    daysRemaining: number;
+    pendingBreBReview: boolean;
+    subscriptionExpiredLocked?: boolean;
+  } | null;
 }
 
 /**
@@ -196,6 +206,7 @@ export async function resolveAuthenticatedPortalContext(
         ownerUserId: clients.ownerUserId,
         lifecycleStatus: clients.lifecycleStatus,
         planId: clients.planId,
+        locale: clients.locale,
       })
       .from(clients)
       .where(eq(clients.id, targetClientId))
@@ -299,6 +310,7 @@ export async function resolveAuthenticatedPortalContext(
       name: clientRecord.displayName,
       lifecycleStatus: clientRecord.lifecycleStatus,
       planId: clientRecord.planId,
+      locale: clientRecord.locale,
     };
 
     // Caso A: Inquilino en estado 'alta' (onboarding pendiente)
@@ -321,6 +333,75 @@ export async function resolveAuthenticatedPortalContext(
 
     // Caso B: Inquilino en estado 'activo' (operación completa en /workspace)
     if (clientRecord.lifecycleStatus === "activo") {
+      let subscriptionAlert: PortalContext["subscriptionAlert"] = null;
+      try {
+        let [subRow] = await db
+          .select({
+            status: subscriptions.status,
+            trialEndsAt: subscriptions.trialEndsAt,
+            currentPeriodEnd: subscriptions.currentPeriodEnd,
+          })
+          .from(subscriptions)
+          .where(eq(subscriptions.clientId, clientRecord.id))
+          .limit(1);
+
+        // Auto-aprovisionamiento defensivo solo si el espacio activo nunca tuvo registro de suscripción (RN-SPEC-04-07).
+        if (!subRow) {
+          const initRes = await getBillingService().activateTrialForTenant({
+            clientId: clientRecord.id,
+            planId: clientRecord.planId,
+            cycle: "monthly",
+            executedBy: portalUser.id,
+          });
+          if (initRes.ok) {
+            subRow = {
+              status: initRes.data.status,
+              trialEndsAt: initRes.data.trialEndsAt,
+              currentPeriodEnd: initRes.data.currentPeriodEnd,
+            };
+          }
+        }
+
+        if (subRow) {
+          const [pendingReport] = await db
+            .select({ id: billingManualPaymentReports.id })
+            .from(billingManualPaymentReports)
+            .where(
+              and(
+                eq(billingManualPaymentReports.clientId, clientRecord.id),
+                eq(billingManualPaymentReports.status, "pending_review"),
+              ),
+            )
+            .limit(1);
+
+          const expiresAt =
+            subRow.status === "trialing" && subRow.trialEndsAt
+              ? subRow.trialEndsAt
+              : subRow.currentPeriodEnd;
+          const diffMs = expiresAt.getTime() - Date.now();
+          const daysRemaining = diffMs <= 0 ? 0 : Math.ceil(diffMs / 86_400_000);
+          const pendingBreBReview = Boolean(pendingReport);
+          const subscriptionExpiredLocked =
+            !pendingBreBReview &&
+            (subRow.status === "expired" ||
+              subRow.status === "past_due" ||
+              subRow.status === "cancelled" ||
+              diffMs <= 0);
+
+          if (daysRemaining <= 5 || subscriptionExpiredLocked) {
+            subscriptionAlert = {
+              status: subRow.status,
+              expiresAt: expiresAt.toISOString(),
+              daysRemaining,
+              pendingBreBReview,
+              subscriptionExpiredLocked,
+            };
+          }
+        }
+      } catch {
+        subscriptionAlert = null;
+      }
+
       return {
         user: portalUser,
         session: portalSession,
@@ -334,6 +415,7 @@ export async function resolveAuthenticatedPortalContext(
         planName,
         capabilities,
         lifecycleStatus: "activo",
+        subscriptionAlert,
       };
     }
 

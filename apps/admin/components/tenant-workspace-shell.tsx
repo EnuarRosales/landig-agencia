@@ -31,7 +31,16 @@ import {
 import { ThemeToggle } from "./theme-toggle";
 import { ConfirmationModal } from "./confirmation-modal";
 import { handleLogoutRedirect } from "@/lib/api-client";
+import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import type { CurrentUserDto } from "./user-profile-modal";
+
+export interface TenantSubscriptionAlertDto {
+  status: string;
+  expiresAt: string;
+  daysRemaining: number;
+  pendingBreBReview: boolean;
+  subscriptionExpiredLocked?: boolean;
+}
 
 /**
  * Propiedades del componente cascarón operativo del comercio.
@@ -47,6 +56,8 @@ export interface TenantWorkspaceShellProps {
     planName?: string;
   };
   capabilities?: Record<string, boolean>;
+  subscriptionAlert?: TenantSubscriptionAlertDto | null;
+  locale?: AdminLocale;
 }
 
 interface NavItem {
@@ -73,8 +84,11 @@ export function TenantWorkspaceShell({
   currentUser,
   tenant,
   capabilities,
+  subscriptionAlert = null,
+  locale = "es",
 }: TenantWorkspaceShellProps) {
   const pathname = usePathname();
+  const dict = getAdminDictionary(locale).workspace;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profilePopoverOpen, setProfilePopoverOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -225,7 +239,12 @@ export function TenantWorkspaceShell({
     },
   ];
 
+  const isExpiredLocked = Boolean(subscriptionAlert?.subscriptionExpiredLocked);
+
   const visibleNavItems = navItems.filter((item) => {
+    if (isExpiredLocked) {
+      return item.href === "/workspace/billing";
+    }
     if (!item.capabilityCode) return true;
     if (!capabilities) return false;
     if (capabilities[item.capabilityCode]) return true;
@@ -241,7 +260,7 @@ export function TenantWorkspaceShell({
     if (href === "/workspace") {
       return pathname === "/workspace";
     }
-    return pathname.startsWith(href);
+    return Boolean(pathname?.startsWith(href));
   }
 
   const copyUserId = () => {
@@ -637,6 +656,52 @@ export function TenantWorkspaceShell({
           4. CONTENEDOR DE CONTENIDO PRINCIPAL ({children})
          ───────────────────────────────────────────────────────────── */}
       <main className="flex-1 min-w-0 min-h-dvh bg-[var(--dsn-background)] text-[var(--dsn-text)]">
+        {subscriptionAlert && (subscriptionAlert.daysRemaining <= 5 || isExpiredLocked) && (
+          <div className="px-4 pt-4 md:px-8">
+            <div
+              data-testid="subscription-expiration-banner"
+              className={`flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
+                subscriptionAlert.daysRemaining <= 0 || isExpiredLocked
+                  ? "border-rose-500/40 bg-rose-500/10"
+                  : "border-amber-500/40 bg-amber-500/10"
+              }`}
+            >
+              <div className="flex items-start gap-3 text-xs">
+                <ShieldCheck
+                  className={`h-5 w-5 shrink-0 mt-0.5 ${
+                    subscriptionAlert.daysRemaining <= 0 || isExpiredLocked
+                      ? "text-rose-400"
+                      : "text-amber-400"
+                  }`}
+                />
+                <div className="space-y-0.5">
+                  <p className="font-bold text-[var(--dsn-text)]">
+                    {isExpiredLocked
+                      ? dict.billingExpiredLockTitle
+                      : subscriptionAlert.daysRemaining <= 0
+                        ? dict.billingExpirationTodayTitle
+                        : dict.billingExpirationWarningTitle}
+                  </p>
+                  <p className="text-[var(--dsn-text-secondary)]">
+                    {subscriptionAlert.pendingBreBReview
+                      ? dict.billingPendingBannerDesc
+                      : isExpiredLocked
+                        ? dict.billingExpiredLockDesc
+                        : `${Math.max(0, subscriptionAlert.daysRemaining)} ${dict.billingDaysRemainingLabel}`}
+                  </p>
+                </div>
+              </div>
+              {!subscriptionAlert.pendingBreBReview && (
+                <Link
+                  href="/workspace/billing"
+                  className="inline-flex min-h-[38px] shrink-0 items-center justify-center rounded-lg bg-[var(--dsn-accent)] px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+                >
+                  {dict.billingExpirationBannerCta}
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
         {children}
       </main>
 
