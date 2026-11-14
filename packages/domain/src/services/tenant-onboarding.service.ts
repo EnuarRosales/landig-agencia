@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq, sql, and, asc, lt } from "drizzle-orm";
+import { eq, sql, and, asc, gt, inArray, isNull, lt, lte, or } from "drizzle-orm";
 import { getDb } from "../db/index";
 import {
   users,
@@ -7,6 +7,8 @@ import {
   clientRouting,
   clientPlans,
   plans,
+  planLimits,
+  clientPlanOverrides,
   cells,
   onboardingSessions,
   chatwootAccounts,
@@ -28,6 +30,26 @@ import {
 } from "./chatwoot-provisioning.service";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
+
+/**
+ * Resumen de cuota numérica de una dimensión del catálogo para onboarding.
+ */
+export interface OnboardingPlanLimitItem {
+  mode: "LIMITED" | "UNLIMITED";
+  value: number | null;
+}
+
+/**
+ * Resumen de límites de catálogo y archivos multimedia incluidos en un plan (SPEC-03 T-05).
+ */
+export interface OnboardingCatalogLimitsSummary {
+  products: OnboardingPlanLimitItem;
+  imagesPerProduct: OnboardingPlanLimitItem;
+  videosPerProduct: OnboardingPlanLimitItem;
+  audiosPerProduct: OnboardingPlanLimitItem;
+  pdfsPerProduct: OnboardingPlanLimitItem;
+  storageBytes: OnboardingPlanLimitItem;
+}
 
 /**
  * Estado DTO estructurado del asistente de onboarding devuelto a la UI (ADM-001 RF-14, TNT-001 RF-03).
@@ -73,7 +95,9 @@ export interface TenantOnboardingStateDto {
     name: string;
     description: string;
     priceMonthlyCents: number;
+    catalogLimits?: OnboardingCatalogLimitsSummary;
   }>;
+  currentCatalogSummary?: OnboardingCatalogLimitsSummary | null;
 }
 
 /**
@@ -270,11 +294,115 @@ export class TenantOnboardingService {
         step = client.lifecycleStatus === "activo" ? "completed" : 3;
       }
 
-      // 7. Resolver código de plan actual
+      // 7. Resolver código de plan actual y resumen de límites de catálogo (SPEC-03 T-05)
       let currentPlanCode = session?.planCode || "free";
       if (client?.planId) {
         const matched = availablePlans.find((p) => p.id === client.planId);
         if (matched) currentPlanCode = matched.code;
+      }
+
+      const defaultCatalogLimits = (): OnboardingCatalogLimitsSummary => ({
+        products: { mode: "LIMITED", value: 0 },
+        imagesPerProduct: { mode: "LIMITED", value: 0 },
+        videosPerProduct: { mode: "LIMITED", value: 0 },
+        audiosPerProduct: { mode: "LIMITED", value: 0 },
+        pdfsPerProduct: { mode: "LIMITED", value: 0 },
+        storageBytes: { mode: "LIMITED", value: 0 },
+      });
+
+      const applyLimitDim = (
+        target: OnboardingCatalogLimitsSummary,
+        dimension: string,
+        item: OnboardingPlanLimitItem,
+      ) => {
+        if (dimension === "products") target.products = item;
+        else if (dimension === "images_per_product") target.imagesPerProduct = item;
+        else if (dimension === "videos_per_product") target.videosPerProduct = item;
+        else if (dimension === "audios_per_product") target.audiosPerProduct = item;
+        else if (dimension === "pdfs_per_product") target.pdfsPerProduct = item;
+        else if (dimension === "storage_bytes") target.storageBytes = item;
+      };
+
+      const limitsByPlanId = new Map<string, OnboardingCatalogLimitsSummary>();
+      const planIdsToQuery = Array.from(
+        new Set([
+          ...availablePlans.map((p) => p.id),
+          ...(client?.planId ? [client.planId] : []),
+        ]),
+      );
+
+      if (planIdsToQuery.length > 0) {
+        try {
+          const limitRowsRaw = await db
+            .select({
+              planId: planLimits.planId,
+              dimension: planLimits.dimension,
+              mode: planLimits.mode,
+              value: planLimits.value,
+            })
+            .from(planLimits)
+            .where(inArray(planLimits.planId, planIdsToQuery));
+
+          if (Array.isArray(limitRowsRaw)) {
+            for (const row of limitRowsRaw) {
+              const summary = limitsByPlanId.get(row.planId) ?? defaultCatalogLimits();
+              const mode: "LIMITED" | "UNLIMITED" = row.mode === "UNLIMITED" ? "UNLIMITED" : "LIMITED";
+              applyLimitDim(summary, row.dimension, {
+                mode,
+                value: mode === "UNLIMITED" ? null : Number(row.value ?? 0),
+              });
+              limitsByPlanId.set(row.planId, summary);
+            }
+          }
+        } catch {
+          // Resiliencia ante mocks parciales
+        }
+      }
+
+      const enrichedPlans = availablePlans.map((p) => ({
+        ...p,
+        catalogLimits: limitsByPlanId.get(p.id) ?? defaultCatalogLimits(),
+      }));
+
+      let currentCatalogSummary: OnboardingCatalogLimitsSummary | null = null;
+      const activePlanObj =
+        (client?.planId ? enrichedPlans.find((p) => p.id === client.planId) : undefined) ||
+        enrichedPlans.find((p) => p.code === currentPlanCode);
+
+      if (client?.planId) {
+        const base = limitsByPlanId.get(client.planId) ?? activePlanObj?.catalogLimits ?? defaultCatalogLimits();
+        currentCatalogSummary = { ...base };
+        try {
+          const now = new Date();
+          const overrideRows = await db
+            .select({
+              dimension: clientPlanOverrides.dimension,
+              value: clientPlanOverrides.value,
+            })
+            .from(clientPlanOverrides)
+            .where(
+              and(
+                eq(clientPlanOverrides.clientId, client.id),
+                lte(clientPlanOverrides.validFrom, now),
+                or(
+                  isNull(clientPlanOverrides.validTo),
+                  gt(clientPlanOverrides.validTo, now),
+                ),
+              ),
+            );
+          if (Array.isArray(overrideRows)) {
+            for (const row of overrideRows) {
+              applyLimitDim(currentCatalogSummary, row.dimension, {
+                mode: row.value === null ? "UNLIMITED" : "LIMITED",
+                value: row.value !== null ? Number(row.value) : null,
+              });
+            }
+          }
+        } catch {
+          // Resiliencia ante mocks parciales
+        }
+      } else if (activePlanObj?.catalogLimits) {
+        currentCatalogSummary = activePlanObj.catalogLimits;
       }
 
       const clientDto = client
@@ -298,7 +426,8 @@ export class TenantOnboardingService {
         step,
         client: clientDto,
         draft: draftPayload,
-        availablePlans,
+        availablePlans: enrichedPlans,
+        currentCatalogSummary,
       });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);

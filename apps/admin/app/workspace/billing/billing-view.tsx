@@ -1,131 +1,394 @@
 "use client";
 
 import React, { useState } from "react";
-import { CreditCard, CheckCircle2, Shield, Zap, Sparkles } from "lucide-react";
-import type { WorkspaceBillingDto } from "@mocter/domain";
+import Link from "next/link";
+import {
+  CreditCard,
+  CheckCircle2,
+  XCircle,
+  Zap,
+  Image as ImageIcon,
+  Video,
+  Music,
+  FileText,
+  Clock,
+  ShieldCheck,
+  Infinity as InfinityIcon,
+  ArrowUpRight,
+} from "lucide-react";
+import type {
+  WorkspaceBillingCapabilityItem,
+  WorkspaceBillingDto,
+  WorkspaceBillingQuotaItem,
+} from "@mocter/domain";
+import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
+import { formatStorageBytes } from "@/components/catalog-quota-banner";
 
 interface BillingViewProps {
   initialBilling: WorkspaceBillingDto | null;
+  locale?: AdminLocale;
 }
 
-export function BillingView({ initialBilling }: BillingViewProps) {
-  const [billing] = useState<WorkspaceBillingDto | null>(initialBilling);
+function formatCurrencyCents(cents: number, currency: string): string {
+  const amount = Number(cents || 0) / 100;
+  try {
+    return new Intl.NumberFormat("es-CO", {
+      style: "currency",
+      currency: currency || "COP",
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `$${amount.toLocaleString("es-CO")} ${currency || "COP"}`;
+  }
+}
 
-  const planName = billing?.plan.name || "Plan Pro";
-  const planDesc = billing?.plan.description || "Plan operativo para comercios activos en Mocter.";
-  const quotas = billing?.quotas || [];
-  const capabilities = billing?.capabilities || {};
-
-  const formatQuotaValue = (val: number, unit: string) => {
-    if (unit === "bytes") {
-      const mb = val / (1024 * 1024);
-      if (mb < 1024) return `${mb.toFixed(1)} MB`;
-      return `${(mb / 1024).toFixed(2)} GB`;
-    }
-    return val.toLocaleString("es-CO");
+function formatQuotaValue(quota: WorkspaceBillingQuotaItem, unlimitedLabel: string): {
+  usedText: string;
+  limitText: string;
+} {
+  if (quota.dimension === "storage_bytes") {
+    return {
+      usedText: formatStorageBytes(quota.used),
+      limitText: quota.mode === "UNLIMITED" || quota.limit === null
+        ? unlimitedLabel
+        : formatStorageBytes(quota.limit),
+    };
+  }
+  return {
+    usedText: `${quota.used.toLocaleString("es-CO")}`,
+    limitText: quota.mode === "UNLIMITED" || quota.limit === null
+      ? unlimitedLabel
+      : `${quota.limit.toLocaleString("es-CO")}`,
   };
+}
+
+/**
+ * Tarjeta de progreso para cada cuota operativa del espacio (productos, contactos, equipo, almacenamiento y atención).
+ */
+export function PlanQuotaProgressCard({
+  quota,
+  locale = "es",
+}: {
+  quota: WorkspaceBillingQuotaItem;
+  locale?: AdminLocale;
+}) {
+  const dict = getAdminDictionary(locale).workspace;
+  const isUnlimited = quota.mode === "UNLIMITED" || quota.limit === null;
+  const isExcluded = !isUnlimited && (quota.limit ?? 0) === 0;
+  const { usedText, limitText } = formatQuotaValue(quota, dict.billingUnlimited);
+
+  const percent =
+    !isUnlimited && quota.limit && quota.limit > 0
+      ? Math.min(100, Math.round((quota.used / quota.limit) * 100))
+      : 0;
+
+  const barColor =
+    percent >= 85
+      ? "bg-rose-500"
+      : percent >= 70
+      ? "bg-amber-500"
+      : "bg-emerald-500";
 
   return (
-    <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--dsn-border)] pb-5">
+    <article className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-xs space-y-2.5">
+      <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
-              Mi Plan Y Cuotas Operativas
-            </h1>
-            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-mono font-medium text-emerald-400 border border-emerald-500/20">
-              Suscripción Activa
+          <h3 className="text-xs font-semibold text-[var(--dsn-text)]">{quota.label}</h3>
+          {quota.source === "override" && (
+            <span className="mt-1 inline-flex items-center rounded-full bg-[var(--dsn-accent)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--dsn-accent)]">
+              {dict.billingOverrideTag}
             </span>
-          </div>
-          <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">
-            Supervisión de consumo de recursos y capacidades habilitadas según tu plan contratado.
-          </p>
+          )}
         </div>
-      </header>
 
-      {/* Tarjeta del Plan Activo */}
-      <section className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <CreditCard className="h-6 w-6" />
+        {isUnlimited ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+            <InfinityIcon className="h-3 w-3" />
+            <span>{dict.billingUnlimited}</span>
+          </span>
+        ) : isExcluded ? (
+          <span className="inline-flex items-center rounded-full bg-[var(--dsn-surface-secondary)] px-2 py-0.5 text-[11px] font-medium text-[var(--dsn-text-secondary)]">
+            {dict.billingNotIncluded}
+          </span>
+        ) : (
+          <span className="text-[11px] font-mono font-semibold text-[var(--dsn-text-secondary)]">
+            {percent}%
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-baseline justify-between text-xs">
+        <span className="font-mono font-bold text-[var(--dsn-text)]">{usedText}</span>
+        <span className="font-mono text-[11px] text-[var(--dsn-text-secondary)]">
+          / {limitText} {quota.dimension === "storage_bytes" || isUnlimited || isExcluded ? "" : quota.unit}
+        </span>
+      </div>
+
+      <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--dsn-surface-secondary)]">
+        <div
+          className={`h-full rounded-full transition-all ${
+            isUnlimited ? "w-full bg-emerald-500/40" : isExcluded ? "w-0" : barColor
+          }`}
+          style={isUnlimited || isExcluded ? undefined : { width: `${percent}%` }}
+        />
+      </div>
+    </article>
+  );
+}
+
+/**
+ * Grilla dedicada de límites por producto (imágenes, videos, audios, PDFs) y retención de conversaciones.
+ */
+export function MediaLimitsGrid({
+  mediaLimits,
+  retentionDays,
+  locale = "es",
+}: {
+  mediaLimits: WorkspaceBillingDto["mediaLimits"];
+  retentionDays: WorkspaceBillingDto["retentionDays"];
+  locale?: AdminLocale;
+}) {
+  const dict = getAdminDictionary(locale).workspace;
+
+  const cards = [
+    { item: mediaLimits.imagesPerProduct, icon: ImageIcon, unit: locale === "en" ? "per product" : "por producto" },
+    { item: mediaLimits.videosPerProduct, icon: Video, unit: locale === "en" ? "per product" : "por producto" },
+    { item: mediaLimits.audiosPerProduct, icon: Music, unit: locale === "en" ? "per product" : "por producto" },
+    { item: mediaLimits.pdfsPerProduct, icon: FileText, unit: locale === "en" ? "per product" : "por producto" },
+    { item: retentionDays, icon: Clock, unit: locale === "en" ? "days" : "días" },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      {cards.map(({ item, icon: Icon, unit }) => {
+        const isUnlimited = item.mode === "UNLIMITED" || item.value === null;
+        const isExcluded = !isUnlimited && (item.value ?? 0) <= 0;
+
+        return (
+          <div
+            key={item.dimension}
+            className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-xs flex flex-col justify-between gap-2"
+          >
+            <div className="flex items-center gap-2 text-xs font-medium text-[var(--dsn-text-secondary)]">
+              <Icon className="h-4 w-4 text-[var(--dsn-accent)] shrink-0" />
+              <span>{item.label}</span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-[var(--dsn-text)]">{planName}</h2>
-                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-400">
-                  Activo
-                </span>
-              </div>
-              <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5 max-w-md">
-                {planDesc}
+
+            {isUnlimited ? (
+              <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                {dict.billingUnlimited}
               </p>
-            </div>
+            ) : isExcluded ? (
+              <p className="text-xs font-medium text-[var(--dsn-text-secondary)]">
+                {dict.billingNotIncluded}
+              </p>
+            ) : (
+              <p className="font-mono text-lg font-bold text-[var(--dsn-text)]">
+                {item.value}{" "}
+                <span className="text-[11px] font-sans font-normal text-[var(--dsn-text-secondary)]">
+                  {unit}
+                </span>
+              </p>
+            )}
           </div>
-        </div>
-      </section>
-
-      {/* Barras de Consumo de Cuotas */}
-      <section className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xs">
-        <h2 className="text-sm font-bold text-[var(--dsn-text)] mb-4">
-          Límites Y Consumo De Recursos
-        </h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {quotas.map((q) => {
-            const percentage = q.limit ? Math.min(100, Math.round((q.used / q.limit) * 100)) : 0;
-            return (
-              <div
-                key={q.dimension}
-                className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-4"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-[var(--dsn-text)]">{q.label}</span>
-                  <span className="text-xs font-mono font-semibold text-[var(--dsn-accent)]">
-                    {percentage}%
-                  </span>
-                </div>
-
-                <div className="mt-3 h-2 w-full rounded-full bg-[var(--dsn-border)] overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-[var(--dsn-accent)] transition-all duration-300"
-                    style={{ width: `${percentage}%` }}
-                  />
-                </div>
-
-                <p className="mt-2 text-[11px] font-mono text-[var(--dsn-text-secondary)]">
-                  {formatQuotaValue(q.used, q.unit)} / {q.limit ? formatQuotaValue(q.limit, q.unit) : "Ilimitado"}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Funcionalidades Incluidas */}
-      <section className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xs">
-        <h2 className="text-sm font-bold text-[var(--dsn-text)] mb-3">
-          Capacidades Habilitadas En Tu Comercio
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-          {Object.entries(capabilities).map(([key, enabled]) => (
-            <div
-              key={key}
-              className={`flex items-center gap-2 rounded-lg p-2.5 text-xs border ${
-                enabled
-                  ? "border-emerald-500/20 bg-emerald-500/5 text-[var(--dsn-text)]"
-                  : "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 text-[var(--dsn-text-secondary)] opacity-60"
-              }`}
-            >
-              <CheckCircle2
-                className={`h-4 w-4 shrink-0 ${enabled ? "text-emerald-400" : "text-[var(--dsn-text-secondary)]"}`}
-              />
-              <span className="font-medium capitalize">{key.replace(/_/g, " ")}</span>
-            </div>
-          ))}
-        </div>
-      </section>
+        );
+      })}
     </div>
   );
 }
 
+/**
+ * Matriz categorizada de capacidades funcionales efectivas del espacio.
+ */
+export function PlanCapabilitiesMatrix({
+  capabilityDetails,
+  locale = "es",
+}: {
+  capabilityDetails: WorkspaceBillingCapabilityItem[];
+  locale?: AdminLocale;
+}) {
+  const dict = getAdminDictionary(locale).workspace;
+
+  const groupLabels: Record<WorkspaceBillingCapabilityItem["category"], string> = {
+    channels: locale === "en" ? "Service Channels" : "Canales De Atención",
+    automation: locale === "en" ? "Automation & Campaigns" : "Automatización Y Campañas",
+    ai: locale === "en" ? "Artificial Intelligence" : "Inteligencia Artificial",
+    team: locale === "en" ? "Team & Operations" : "Equipo Y Operación",
+  };
+
+  const groups = (["channels", "ai", "automation", "team"] as const)
+    .map((cat) => ({
+      category: cat,
+      title: groupLabels[cat],
+      items: capabilityDetails.filter((c) => c.category === cat),
+    }))
+    .filter((g) => g.items.length > 0);
+
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <div key={group.category} className="space-y-2.5">
+          <h3 className="text-xs font-semibold text-[var(--dsn-text-secondary)]">
+            {group.title}
+          </h3>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {group.items.map((cap) => (
+              <div
+                key={cap.code}
+                className={`rounded-xl border p-3.5 transition-colors ${
+                  cap.enabled
+                    ? "border-emerald-500/30 bg-emerald-500/5"
+                    : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] opacity-75"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <p className="text-xs font-semibold text-[var(--dsn-text)]">{cap.label}</p>
+                    {cap.description && (
+                      <p className="text-[11px] text-[var(--dsn-text-secondary)] line-clamp-2">
+                        {cap.description}
+                      </p>
+                    )}
+                  </div>
+                  {cap.enabled ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-[var(--dsn-text-secondary)]/60 shrink-0 mt-0.5" />
+                  )}
+                </div>
+                <p
+                  className={`mt-2 text-[11px] font-medium ${
+                    cap.enabled
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-[var(--dsn-text-secondary)]"
+                  }`}
+                >
+                  {cap.enabled ? dict.billingIncluded : dict.billingNotIncluded}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Vista rediseñada de Facturación, Cuotas y Capacidades Efectivas del Espacio (`/workspace/billing`).
+ */
+export function BillingView({ initialBilling, locale = "es" }: BillingViewProps) {
+  const [billing] = useState<WorkspaceBillingDto | null>(initialBilling);
+  const dict = getAdminDictionary(locale).workspace;
+
+  if (!billing) {
+    return (
+      <div className="w-full p-4 md:px-8 md:py-6">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-12 text-center shadow-xs">
+          <CreditCard className="mb-3 h-10 w-10 text-[var(--dsn-text-secondary)]/40" />
+          <p className="text-sm font-semibold text-[var(--dsn-text)]">{dict.billingNoInfoTitle}</p>
+          <p className="mt-1 text-xs text-[var(--dsn-text-secondary)]">{dict.billingNoInfoDesc}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const isTrial = billing.plan.lifecycleStatus === "alta";
+
+  return (
+    <div className="w-full space-y-6 p-4 md:px-8 md:py-6 animate-in fade-in duration-300">
+      <header className="flex flex-col gap-4 border-b border-[var(--dsn-border)] pb-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-xs font-semibold text-indigo-500 dark:text-indigo-400">
+            <CreditCard className="h-3.5 w-3.5" />
+            {dict.billingBadge}
+          </span>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
+            {dict.billingTitle}
+          </h1>
+          <p className="mt-1 text-xs text-[var(--dsn-text-secondary)]">{dict.billingSubtitle}</p>
+        </div>
+
+        <Link
+          href="/workspace"
+          className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
+        >
+          <span>{dict.billingUpgradeCta}</span>
+          <ArrowUpRight className="h-3.5 w-3.5" />
+        </Link>
+      </header>
+
+      {/* Tarjeta Principal del Plan */}
+      <section className="relative overflow-hidden rounded-2xl border border-[var(--dsn-accent)]/30 bg-gradient-to-br from-[var(--dsn-surface)] to-[var(--dsn-surface-secondary)]/50 p-6 shadow-xs">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--dsn-accent)] text-white shadow-md">
+              <Zap className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold text-[var(--dsn-text)]">{billing.plan.name}</h2>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                    isTrial
+                      ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                      : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                  }`}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {isTrial ? dict.billingStatusTrial : dict.billingStatusActive}
+                </span>
+              </div>
+              {billing.plan.description && (
+                <p className="mt-1 text-xs text-[var(--dsn-text-secondary)]">
+                  {billing.plan.description}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="text-left sm:text-right">
+            <p className="font-mono text-xl font-bold text-[var(--dsn-text)]">
+              {billing.plan.priceMonthlyCents === 0
+                ? locale === "en" ? "Free" : "Gratuito"
+                : formatCurrencyCents(billing.plan.priceMonthlyCents, billing.plan.currency)}
+            </p>
+            {billing.plan.priceMonthlyCents > 0 && (
+              <p className="text-[11px] text-[var(--dsn-text-secondary)]">
+                {locale === "en" ? "per month" : "por mes"}
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Cuotas Operativas del Espacio */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-[var(--dsn-text)]">{dict.billingQuotasTitle}</h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {billing.quotas.map((quota) => (
+            <PlanQuotaProgressCard key={quota.dimension} quota={quota} locale={locale} />
+          ))}
+        </div>
+      </section>
+
+      {/* Límites por Producto y Retención */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-[var(--dsn-text)]">{dict.billingMediaTitle}</h2>
+        <MediaLimitsGrid
+          mediaLimits={billing.mediaLimits}
+          retentionDays={billing.retentionDays}
+          locale={locale}
+        />
+      </section>
+
+      {/* Capacidades Efectivas */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-[var(--dsn-text)]">
+          {dict.billingCapabilitiesTitle}
+        </h2>
+        <PlanCapabilitiesMatrix capabilityDetails={billing.capabilityDetails} locale={locale} />
+      </section>
+    </div>
+  );
+}

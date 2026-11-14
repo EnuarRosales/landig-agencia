@@ -479,4 +479,98 @@ describe("TenantOnboardingService", () => {
       }
     });
   });
+
+  describe("getOnboardingState catalogLimits (SPEC-03 T-05)", () => {
+    it("adjunta catalogLimits reales por plan y currentCatalogSummary con overrides vigentes", async () => {
+      const {
+        users: tUsers,
+        clients: tClients,
+        onboardingSessions: tSessions,
+        plans: tPlans,
+        clientRouting: tRouting,
+        planLimits: tPlanLimits,
+        clientPlanOverrides: tPlanOverrides,
+      } = await import("../db/schemas/admin");
+
+      const mockUser = { id: "user-1", email: "owner@shop.co", activeClientId: "client-1" };
+      const mockClient = {
+        id: "client-1",
+        displayName: "Shop",
+        slug: "shop",
+        locale: "es",
+        currency: "COP",
+        timezone: "America/Bogota",
+        lifecycleStatus: "alta",
+        planId: "plan-pro",
+      };
+      const mockPlans = [
+        { id: "plan-pro", code: "pro", name: { es: "Plan Pro" }, description: { es: "Pro" }, priceMonthlyCents: 99000 },
+      ];
+      const mockPlanLimits = [
+        { planId: "plan-pro", dimension: "products", mode: "LIMITED", value: 100 },
+        { planId: "plan-pro", dimension: "images_per_product", mode: "LIMITED", value: 10 },
+        { planId: "plan-pro", dimension: "videos_per_product", mode: "LIMITED", value: 1 },
+        { planId: "plan-pro", dimension: "audios_per_product", mode: "LIMITED", value: 3 },
+        { planId: "plan-pro", dimension: "pdfs_per_product", mode: "UNLIMITED", value: null },
+        { planId: "plan-pro", dimension: "storage_bytes", mode: "LIMITED", value: 1073741824 },
+      ];
+      const mockOverrides = [{ dimension: "products", value: 250 }];
+
+      const mockDb = {
+        select: vi.fn().mockImplementation(() => ({
+          from: vi.fn().mockImplementation((table: unknown) => {
+            let rows: any[] = [];
+            if (table === tUsers) rows = [mockUser];
+            else if (table === tClients) rows = [mockClient];
+            else if (table === tSessions) rows = [];
+            else if (table === tPlans) rows = mockPlans;
+            else if (table === tRouting) rows = [{ cellId: "c1", cellCode: "cell-01" }];
+            else if (table === tPlanLimits) rows = mockPlanLimits;
+            else if (table === tPlanOverrides) rows = mockOverrides;
+
+            const makeWhereRes = () => {
+              const p = Promise.resolve(rows);
+              return Object.assign(p, {
+                limit: vi.fn().mockResolvedValue(rows.slice(0, 1)),
+                orderBy: vi.fn().mockResolvedValue(rows),
+              });
+            };
+
+            return {
+              leftJoin: vi.fn().mockReturnValue({ where: vi.fn().mockImplementation(makeWhereRes) }),
+              where: vi.fn().mockImplementation(makeWhereRes),
+            };
+          }),
+        })),
+      };
+      vi.spyOn(dbModule, "getDb").mockReturnValue(mockDb as any);
+
+      vi.spyOn(cellClientModule, "withTenantCellTransaction").mockImplementation(async (_cid, cb) =>
+        cb({
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([]),
+            }),
+          }),
+        } as any),
+      );
+
+      const res = await service.getOnboardingState("user-1");
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.availablePlans[0].catalogLimits?.audiosPerProduct).toEqual({
+          mode: "LIMITED",
+          value: 3,
+        });
+        expect(res.data.availablePlans[0].catalogLimits?.pdfsPerProduct).toEqual({
+          mode: "UNLIMITED",
+          value: null,
+        });
+        expect(res.data.currentCatalogSummary?.products).toEqual({
+          mode: "LIMITED",
+          value: 250,
+        });
+      }
+    });
+  });
 });

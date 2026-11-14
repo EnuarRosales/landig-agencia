@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   TenantProductsAndMediaService,
   InMemoryTenantProductsRepository,
+  DrizzleTenantProductsRepository,
 } from "./tenant-products-and-media.service";
 
 describe("T6 · Tenant Products and Media Service with Plan Quotas", () => {
@@ -200,6 +201,90 @@ describe("T6 · Tenant Products and Media Service with Plan Quotas", () => {
       expect(successes).toHaveLength(1);
       expect(failures).toHaveLength(1);
       expect(await repo.countActiveProducts("client-conc")).toBe(1);
+    });
+  });
+
+  describe("SPEC-03 T-03 · Cuota de audios y conteo por mediaKind en Drizzle", () => {
+    it("rechaza adjuntar audio cuando audios_per_product es 0 LIMITED y permite hasta N cuando es N", async () => {
+      repo.quotas.set("client-aud:audios_per_product", { mode: "LIMITED", value: 0 });
+      repo.quotas.set("client-aud:storage_bytes", { mode: "UNLIMITED", value: null });
+
+      const blocked = await service.attachMediaToProduct("client-aud", {
+        productId: "prod-aud-1",
+        mediaId: "med-aud-1",
+        mediaKind: "audio",
+        sizeBytes: 1024,
+      });
+      expect(blocked.ok).toBe(false);
+      if (!blocked.ok) {
+        expect(blocked.code).toBe("QUOTA_EXCEEDED_AUDIOS_PER_PRODUCT");
+      }
+
+      repo.quotas.set("client-aud:audios_per_product", { mode: "LIMITED", value: 1 });
+      const first = await service.attachMediaToProduct("client-aud", {
+        productId: "prod-aud-1",
+        mediaId: "med-aud-1",
+        mediaKind: "audio",
+        sizeBytes: 1024,
+      });
+      expect(first.ok).toBe(true);
+
+      const second = await service.attachMediaToProduct("client-aud", {
+        productId: "prod-aud-1",
+        mediaId: "med-aud-2",
+        mediaKind: "audio",
+        sizeBytes: 1024,
+      });
+      expect(second.ok).toBe(false);
+      if (!second.ok) {
+        expect(second.code).toBe("QUOTA_EXCEEDED_AUDIOS_PER_PRODUCT");
+      }
+    });
+
+    it("DrizzleTenantProductsRepository lee limitRow.mode (no limitMode) y filtra countProductMediaByKind por tipo", async () => {
+      let portalSelectStep = 0;
+      const portalDb = {
+        select: vi.fn().mockImplementation(() => ({
+          from: vi.fn().mockImplementation(() => ({
+            where: vi.fn().mockImplementation(() => {
+              portalSelectStep += 1;
+              let rows: any[] = [];
+              if (portalSelectStep === 1) rows = []; // overrides
+              else if (portalSelectStep === 2) rows = [{ planId: "plan-1" }]; // client
+              else if (portalSelectStep === 3) rows = [{ dimension: "images_per_product", mode: "LIMITED", value: 5 }];
+              else if (portalSelectStep === 4) rows = [{ id: "m-img-1" }, { id: "m-img-2" }]; // matching images
+
+              const p = Promise.resolve(rows);
+              return Object.assign(p, {
+                limit: vi.fn().mockImplementation(() => Promise.resolve(rows.slice(0, 1))),
+              });
+            }),
+          })),
+        })),
+      };
+
+      const cellRows = [
+        { mediaId: "m-img-1" },
+        { mediaId: "m-img-2" },
+        { mediaId: "m-pdf-1" },
+        { mediaId: "m-aud-1" },
+      ];
+      const cellRunner = async (_clientId: string, fn: (tx: any) => Promise<any>) =>
+        fn({
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(cellRows),
+            }),
+          }),
+        });
+
+      const drizzleRepo = new DrizzleTenantProductsRepository(portalDb, cellRunner);
+
+      const quota = await drizzleRepo.getPlanQuota("client-1", "images_per_product");
+      expect(quota).toEqual({ mode: "LIMITED", value: 5 });
+
+      const imageCount = await drizzleRepo.countProductMediaByKind("client-1", "prod-1", "image");
+      expect(imageCount).toBe(2);
     });
   });
 });

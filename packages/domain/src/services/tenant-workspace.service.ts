@@ -8,6 +8,11 @@ import { plans } from "../db/schemas/admin/plans";
 import { planLimits, planFeatureValues } from "../db/schemas/admin/plan-catalogs";
 import { clientPlanOverrides } from "../db/schemas/admin/plan-catalogs";
 import { clientFeatureOverrides } from "../db/schemas/admin/plan-catalogs";
+import { chatwootCapabilities } from "../db/schemas/admin/chatwoot-capabilities";
+import {
+  DrizzleTenantCapabilityGateRepository,
+  type ResolvedPlanLimit,
+} from "./tenant-capability-gate.service";
 import { clientBrandings } from "../db/schemas/admin/client-brandings";
 import { mediaCatalog } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { tenantInvitations } from "../db/schemas/admin/chatwoot-media-onboarding";
@@ -301,21 +306,54 @@ export interface WorkspaceTeamMemberDto {
   joinedAt: string;
 }
 
+export interface WorkspaceBillingQuotaItem {
+  dimension: string;
+  label: string;
+  used: number;
+  limit: number | null;
+  unit: string;
+  mode: "LIMITED" | "UNLIMITED";
+  source: "override" | "plan" | "default";
+}
+
+export interface WorkspaceBillingMediaLimitItem {
+  dimension: string;
+  label: string;
+  mode: "LIMITED" | "UNLIMITED";
+  value: number | null;
+  source: "override" | "plan" | "default";
+}
+
+export interface WorkspaceBillingCapabilityItem {
+  code: string;
+  label: string;
+  description: string;
+  category: "channels" | "automation" | "ai" | "team";
+  enabled: boolean;
+}
+
 export interface WorkspaceBillingDto {
   plan: {
     id: string;
     code: string;
     name: string;
     description: string;
+    priceMonthlyCents: number;
+    priceAnnualCents: number;
+    currency: string;
+    trialDays: number;
+    lifecycleStatus: string;
   };
-  quotas: Array<{
-    dimension: string;
-    label: string;
-    used: number;
-    limit: number | null;
-    unit: string;
-  }>;
+  quotas: WorkspaceBillingQuotaItem[];
+  mediaLimits: {
+    imagesPerProduct: WorkspaceBillingMediaLimitItem;
+    videosPerProduct: WorkspaceBillingMediaLimitItem;
+    audiosPerProduct: WorkspaceBillingMediaLimitItem;
+    pdfsPerProduct: WorkspaceBillingMediaLimitItem;
+  };
+  retentionDays: WorkspaceBillingMediaLimitItem;
   capabilities: Record<string, boolean>;
+  capabilityDetails: WorkspaceBillingCapabilityItem[];
 }
 
 export interface MediaUploadResult {
@@ -1218,14 +1256,19 @@ export class TenantWorkspaceService {
   }
 
   /**
-   * Detalle de facturación, cuotas y capacidades del plan activo del comercio.
+   * Detalle unificado de facturación, cuotas reales, límites multimedia y capacidades efectivas
+   * del plan activo del comercio (SPEC-03 T-04, §9.1).
    */
   async getBillingDetails(clientId: string): Promise<WorkspaceBillingDto> {
     const portalDb = getDb();
 
-    // 1. Obtener cliente y plan
+    // 1. Obtener cliente y plan asignado
     const [client] = await portalDb
-      .select({ planId: clients.planId })
+      .select({
+        planId: clients.planId,
+        locale: clients.locale,
+        lifecycleStatus: clients.lifecycleStatus,
+      })
       .from(clients)
       .where(eq(clients.id, clientId))
       .limit(1);
@@ -1234,22 +1277,54 @@ export class TenantWorkspaceService {
       throw new Error(`Inquilino con ID ${clientId} no encontrado.`);
     }
 
+    const locale: "es" | "en" = client.locale === "en" ? "en" : "es";
+
     const [plan] = await portalDb
       .select()
       .from(plans)
       .where(eq(plans.id, client.planId))
       .limit(1);
 
-    const planName = plan?.name ? ((plan.name as any).es || (plan.name as any).en || "Plan Pro") : "Plan Pro";
-    const planDesc = plan?.description ? ((plan.description as any).es || (plan.description as any).en || "Plan operativo") : "Plan operativo";
+    const resolveLocalized = (
+      raw: unknown,
+      fallback: string,
+    ): string => {
+      if (!raw) return fallback;
+      if (typeof raw === "string") return raw;
+      const record = raw as { es?: string; en?: string };
+      return (locale === "en" ? record.en || record.es : record.es || record.en) || fallback;
+    };
 
-    // 2. Límites y cuotas
-    const limits = await portalDb
-      .select()
-      .from(planLimits)
-      .where(eq(planLimits.planId, client.planId));
+    const planName = resolveLocalized(plan?.name, plan?.code || "Plan");
+    const planDesc = resolveLocalized(plan?.description, "");
 
-    // Consumos celulares
+    // 2. Resolver límites y capacidades efectivas desde la fuente única de verdad (plan + overrides)
+    const gateRepo = new DrizzleTenantCapabilityGateRepository(() => portalDb);
+    const [resolvedLimits, capabilities] = await Promise.all([
+      gateRepo.getResolvedLimits(clientId),
+      gateRepo.getTenantCapabilities(clientId),
+    ]);
+
+    let capCatalogRows: Array<{
+      code: string;
+      name: unknown;
+      description: unknown;
+      commercialStatus: string;
+    }> = [];
+    try {
+      capCatalogRows = await portalDb
+        .select({
+          code: chatwootCapabilities.code,
+          name: chatwootCapabilities.name,
+          description: chatwootCapabilities.description,
+          commercialStatus: chatwootCapabilities.commercialStatus,
+        })
+        .from(chatwootCapabilities);
+    } catch {
+      capCatalogRows = [];
+    }
+
+    // 3. Consumos celulares reales (productos, contactos, miembros activos y counters de uso)
     const usageMetrics = await withTenantCellTransaction(clientId, async (tx) => {
       const [prodRes] = await tx
         .select({ count: sql<number>`count(*)::int` })
@@ -1261,61 +1336,119 @@ export class TenantWorkspaceService {
         .from(cellContacts)
         .where(and(eq(cellContacts.clientId, clientId), isNull(cellContacts.deletedAt)));
 
-      const [usageRes] = await tx
-        .select({ used: cellClientUsage.usedValue })
+      const [usersRes] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(cellTenantUsers)
+        .where(and(eq(cellTenantUsers.clientId, clientId), eq(cellTenantUsers.status, "active")));
+
+      const usageRows = await tx
+        .select({ dimension: cellClientUsage.dimension, used: cellClientUsage.usedValue })
         .from(cellClientUsage)
-        .where(and(eq(cellClientUsage.clientId, clientId), eq(cellClientUsage.dimension, "storage_bytes")))
-        .limit(1);
+        .where(eq(cellClientUsage.clientId, clientId));
+
+      const usageMap = new Map<string, number>();
+      for (const row of usageRows) {
+        usageMap.set(row.dimension, Number(row.used ?? 0));
+      }
 
       return {
         products: prodRes?.count ?? 0,
         contacts: contactRes?.count ?? 0,
-        storageBytes: usageRes?.used ?? 0,
+        tenantUsers: usersRes?.count ?? 0,
+        storageBytes: usageMap.get("storage_bytes") ?? 0,
+        chatwootAgents: usageMap.get("chatwoot_agents") ?? 0,
+        chatwootInboxes: usageMap.get("chatwoot_inboxes") ?? 0,
+        chatwootOutboundEmails: usageMap.get("chatwoot_outbound_emails") ?? 0,
       };
     });
 
-    const quotas = [
-      {
-        dimension: "products",
-        label: "Productos Activos",
-        used: usageMetrics.products,
-        limit: limits.find((l) => l.dimension === "products")?.mode === "UNLIMITED"
-          ? null
-          : (limits.find((l) => l.dimension === "products")?.value ?? 50),
-        unit: "productos",
-      },
-      {
-        dimension: "contacts",
-        label: "Contactos CRM",
-        used: usageMetrics.contacts,
-        limit: limits.find((l) => l.dimension === "contacts")?.mode === "UNLIMITED"
-          ? null
-          : (limits.find((l) => l.dimension === "contacts")?.value ?? 500),
-        unit: "contactos",
-      },
-      {
-        dimension: "storage_bytes",
-        label: "Almacenamiento Multimedia",
-        used: usageMetrics.storageBytes,
-        limit: limits.find((l) => l.dimension === "storage_bytes")?.mode === "UNLIMITED"
-          ? null
-          : (limits.find((l) => l.dimension === "storage_bytes")?.value ?? 1073741824), // 1GB default
-        unit: "bytes",
-      },
+    const buildQuota = (
+      dimension: keyof typeof resolvedLimits,
+      labelEs: string,
+      labelEn: string,
+      used: number,
+      unitEs: string,
+      unitEn: string,
+    ): WorkspaceBillingQuotaItem => {
+      const resolved: ResolvedPlanLimit = resolvedLimits[dimension];
+      return {
+        dimension,
+        label: locale === "en" ? labelEn : labelEs,
+        used,
+        limit: resolved.mode === "UNLIMITED" ? null : resolved.value,
+        unit: locale === "en" ? unitEn : unitEs,
+        mode: resolved.mode,
+        source: resolved.source,
+      };
+    };
+
+    const quotas: WorkspaceBillingQuotaItem[] = [
+      buildQuota("products", "Productos Del Catálogo", "Catalog Products", usageMetrics.products, "productos", "products"),
+      buildQuota("contacts", "Contactos CRM", "CRM Contacts", usageMetrics.contacts, "contactos", "contacts"),
+      buildQuota("tenant_users", "Miembros Del Equipo", "Team Members", usageMetrics.tenantUsers, "usuarios", "users"),
+      buildQuota("storage_bytes", "Almacenamiento Multimedia", "Media Storage", usageMetrics.storageBytes, "bytes", "bytes"),
+      buildQuota("chatwoot_agents", "Agentes De Atención", "Support Agents", usageMetrics.chatwootAgents, "agentes", "agents"),
+      buildQuota("chatwoot_inboxes", "Canales Y Bandejas", "Channels & Inboxes", usageMetrics.chatwootInboxes, "bandejas", "inboxes"),
+      buildQuota("chatwoot_outbound_emails", "Correos Salientes", "Outbound Emails", usageMetrics.chatwootOutboundEmails, "correos", "emails"),
     ];
 
-    // 3. Capacidades efectivas
-    const features = await portalDb
-      .select({
-        featureKey: planFeatureValues.featureKey,
-        enabled: planFeatureValues.enabled,
-      })
-      .from(planFeatureValues)
-      .where(eq(planFeatureValues.planId, client.planId));
+    const buildMediaLimit = (
+      dimension: keyof typeof resolvedLimits,
+      labelEs: string,
+      labelEn: string,
+    ): WorkspaceBillingMediaLimitItem => {
+      const resolved = resolvedLimits[dimension];
+      return {
+        dimension,
+        label: locale === "en" ? labelEn : labelEs,
+        mode: resolved.mode,
+        value: resolved.mode === "UNLIMITED" ? null : resolved.value,
+        source: resolved.source,
+      };
+    };
 
-    const capabilities: Record<string, boolean> = {};
-    for (const f of features) {
-      capabilities[f.featureKey] = f.enabled;
+    const mediaLimits = {
+      imagesPerProduct: buildMediaLimit("images_per_product", "Imágenes Por Producto", "Images Per Product"),
+      videosPerProduct: buildMediaLimit("videos_per_product", "Videos Por Producto", "Videos Per Product"),
+      audiosPerProduct: buildMediaLimit("audios_per_product", "Pistas De Audio Por Producto", "Audio Tracks Per Product"),
+      pdfsPerProduct: buildMediaLimit("pdfs_per_product", "Archivos PDF Por Producto", "PDF Files Per Product"),
+    };
+
+    const retentionDays = buildMediaLimit("chat_retention_days", "Retención De Conversaciones", "Conversation Retention");
+
+    const categorizeCapability = (code: string): "channels" | "automation" | "ai" | "team" => {
+      if (code.startsWith("channel_") || code === "chatwoot_inboxes" || code === "inbox_management") {
+        return "channels";
+      }
+      if (code.includes("captain") || code.includes("ai")) {
+        return "ai";
+      }
+      if (code.includes("automation") || code.includes("macros") || code.includes("campaigns")) {
+        return "automation";
+      }
+      return "team";
+    };
+
+    const capabilityDetails: WorkspaceBillingCapabilityItem[] = capCatalogRows
+      .filter((c) => c.commercialStatus === "commercial")
+      .map((c) => ({
+        code: c.code,
+        label: resolveLocalized(c.name, c.code),
+        description: resolveLocalized(c.description, ""),
+        category: categorizeCapability(c.code),
+        enabled: Boolean(capabilities[c.code]),
+      }));
+
+    if (capabilityDetails.length === 0) {
+      for (const [code, enabled] of Object.entries(capabilities)) {
+        capabilityDetails.push({
+          code,
+          label: code,
+          description: "",
+          category: categorizeCapability(code),
+          enabled: Boolean(enabled),
+        });
+      }
     }
 
     return {
@@ -1324,9 +1457,17 @@ export class TenantWorkspaceService {
         code: plan?.code || "pro",
         name: planName,
         description: planDesc,
+        priceMonthlyCents: Number(plan?.priceMonthlyCents ?? 0),
+        priceAnnualCents: Number(plan?.priceAnnualCents ?? 0),
+        currency: plan?.currency || "COP",
+        trialDays: Number(plan?.trialDays ?? 0),
+        lifecycleStatus: client.lifecycleStatus,
       },
       quotas,
+      mediaLimits,
+      retentionDays,
       capabilities,
+      capabilityDetails,
     };
   }
 }

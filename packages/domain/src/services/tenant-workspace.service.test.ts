@@ -311,5 +311,142 @@ describe("TenantWorkspaceService Unit & Media Suite", () => {
       expect("cellCode" in result.tenant).toBe(false);
     });
   });
+
+  describe("TenantWorkspaceService.getBillingDetails() (SPEC-03 T-04 · Entitlements unificados)", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("consolida plan_capability_values, chatwoot_inboxes, overrides vigentes, mediaLimits y consumos celulares", async () => {
+      let cellIdx = 0;
+      const cellResponses: unknown[][] = [
+        [{ count: 12 }], // products
+        [{ count: 40 }], // contacts
+        [{ count: 3 }], // tenant_users activos
+        [{ dimension: "storage_bytes", used: 1048576 }], // cellClientUsage
+      ];
+      const mockTx = {
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(async () => cellResponses[cellIdx++] ?? []),
+          })),
+        })),
+      };
+      vi.mocked(withTenantCellTransaction).mockImplementation(async (_clientId, fn) =>
+        fn(mockTx as never),
+      );
+      const {
+        clients: tClients,
+        plans: tPlans,
+        planLimits: tPlanLimits,
+        clientPlanOverrides: tPlanOverrides,
+        planCapabilityValues: tPlanCaps,
+        clientFeatureOverrides: tFeatOverrides,
+        chatwootCapabilities: tCapDefs,
+      } = await import("../db/schemas/admin");
+      const mockPortalByTable = {
+        select: vi.fn(() => ({
+          from: vi.fn((table: unknown) => {
+            let rows: unknown[] = [];
+            if (table === tClients) rows = [{ planId: "plan-growth", locale: "es", lifecycleStatus: "activo" }];
+            else if (table === tPlans)
+              rows = [
+                {
+                  id: "plan-growth",
+                  code: "growth",
+                  name: { es: "Plan Crecimiento", en: "Growth Plan" },
+                  description: { es: "Plan comercial completo", en: "Full plan" },
+                  priceMonthlyCents: 99000,
+                  priceAnnualCents: 990000,
+                  currency: "COP",
+                  trialDays: 14,
+                },
+              ];
+            else if (table === tPlanLimits)
+              rows = [
+                { dimension: "products", mode: "LIMITED", value: 50 },
+                { dimension: "images_per_product", mode: "LIMITED", value: 8 },
+                { dimension: "videos_per_product", mode: "LIMITED", value: 0 },
+                { dimension: "audios_per_product", mode: "LIMITED", value: 3 },
+                { dimension: "pdfs_per_product", mode: "LIMITED", value: 2 },
+                { dimension: "contacts", mode: "UNLIMITED", value: null },
+                { dimension: "tenant_users", mode: "LIMITED", value: 5 },
+                { dimension: "storage_bytes", mode: "LIMITED", value: 536870912 },
+                { dimension: "chat_retention_days", mode: "LIMITED", value: 90 },
+                { dimension: "chatwoot_agents", mode: "LIMITED", value: 4 },
+                { dimension: "chatwoot_inboxes", mode: "LIMITED", value: 2 },
+              ];
+            else if (table === tPlanOverrides) rows = [{ dimension: "products", value: 120 }];
+            else if (table === tPlanCaps)
+              rows = [
+                { capabilityCode: "channel_whatsapp", enabled: true },
+                { capabilityCode: "crm", enabled: true },
+              ];
+            else if (table === tFeatOverrides) rows = [{ featureKey: "crm", enabled: false }];
+            else if (table === tCapDefs)
+              rows = [
+                {
+                  code: "channel_whatsapp",
+                  name: { es: "WhatsApp Business", en: "WhatsApp" },
+                  description: { es: "Canal oficial", en: "Official" },
+                  commercialStatus: "commercial",
+                },
+                {
+                  code: "crm",
+                  name: { es: "CRM", en: "CRM" },
+                  description: { es: "Gestión de clientes", en: "CRM" },
+                  commercialStatus: "commercial",
+                },
+              ];
+
+            const p = Promise.resolve(rows);
+            return Object.assign(p, {
+              where: vi.fn(() => {
+                // Note: getTenantCapabilities selects chatwoot_inboxes specifically from planLimits (returns 1 row);
+                // getResolvedLimits selects all planLimits rows. Checking length or returning rows[0] for limit(1):
+                const inboxRow = rows.find((r: any) => r.dimension === "chatwoot_inboxes");
+                const p2 = Promise.resolve(rows);
+                return Object.assign(p2, {
+                  limit: vi.fn(async () => (table === tPlanLimits && inboxRow ? [inboxRow] : rows.slice(0, 1))),
+                });
+              }),
+              limit: vi.fn(async () => rows.slice(0, 1)),
+            });
+          }),
+        })),
+      };
+      vi.mocked(getDb).mockReturnValue(mockPortalByTable as never);
+
+      const service = new TenantWorkspaceService();
+      const billing = await service.getBillingDetails("client-growth-1");
+
+      expect(billing.plan.name).toBe("Plan Crecimiento");
+      expect(billing.plan.priceMonthlyCents).toBe(99000);
+      expect(billing.capabilities.channel_whatsapp).toBe(true);
+      expect(billing.capabilities.chatwoot_inboxes).toBe(true);
+      expect(billing.capabilities.crm).toBe(false); // Override applied
+
+      const productsQuota = billing.quotas.find((q) => q.dimension === "products");
+      expect(productsQuota?.limit).toBe(120); // Override applied
+      expect(productsQuota?.used).toBe(12);
+      expect(productsQuota?.source).toBe("override");
+
+      const usersQuota = billing.quotas.find((q) => q.dimension === "tenant_users");
+      expect(usersQuota?.used).toBe(3);
+      expect(usersQuota?.limit).toBe(5);
+
+      expect(billing.mediaLimits.audiosPerProduct).toEqual({
+        dimension: "audios_per_product",
+        label: "Pistas De Audio Por Producto",
+        mode: "LIMITED",
+        value: 3,
+        source: "plan",
+      });
+      expect(billing.mediaLimits.videosPerProduct.value).toBe(0);
+      expect(billing.retentionDays.value).toBe(90);
+      expect(billing.capabilityDetails.find((c) => c.code === "channel_whatsapp")?.enabled).toBe(true);
+      expect(billing.capabilityDetails.find((c) => c.code === "crm")?.enabled).toBe(false);
+    });
+  });
 });
 

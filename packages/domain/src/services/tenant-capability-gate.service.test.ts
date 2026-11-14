@@ -127,5 +127,60 @@ describe("TenantCapabilityGateService (T9 / CA-008 / S10)", () => {
 
       expect(caps.chatwoot_inboxes).toBe(false);
     });
+
+    it("resuelve getResolvedLimits combinando plan_limits y overrides vigentes y expone getTenantEntitlementsSummary (SPEC-03 T-04)", async () => {
+      const {
+        clients: tClients,
+        planLimits: tPlanLimits,
+        clientPlanOverrides: tPlanOverrides,
+        planCapabilityValues: tPlanCaps,
+        clientFeatureOverrides: tFeatOverrides,
+      } = await import("../db/schemas/admin");
+
+      const mockDb = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockImplementation((table: unknown) => ({
+            where: vi.fn().mockImplementation(() => {
+              let rows: any[] = [];
+              if (table === tClients) rows = [{ planId: "plan-pro-1" }];
+              else if (table === tPlanLimits) {
+                rows = [
+                  { dimension: "products", mode: "LIMITED", value: 100 },
+                  { dimension: "audios_per_product", mode: "LIMITED", value: 2 },
+                  { dimension: "contacts", mode: "UNLIMITED", value: null },
+                  { dimension: "chatwoot_inboxes", mode: "LIMITED", value: 3 },
+                ];
+              } else if (table === tPlanOverrides) {
+                rows = [{ dimension: "products", value: 250 }];
+              } else if (table === tPlanCaps) {
+                rows = [{ capabilityCode: "crm", enabled: true }];
+              } else if (table === tFeatOverrides) {
+                rows = [];
+              }
+
+              const promise = Promise.resolve(rows);
+              return Object.assign(promise, {
+                limit: vi.fn().mockImplementation(() => {
+                  const inbox = rows.find((r) => r.dimension === "chatwoot_inboxes");
+                  return Promise.resolve(table === tPlanLimits && inbox ? [inbox] : rows.slice(0, 1));
+                }),
+              });
+            }),
+          })),
+        }),
+      };
+
+      const drizzleRepo = new DrizzleTenantCapabilityGateRepository(() => mockDb);
+      const gateService = new TenantCapabilityGateService(drizzleRepo);
+      const summary = await gateService.getTenantEntitlementsSummary("client-pro-1");
+
+      expect(summary.limits.products).toEqual({ mode: "LIMITED", value: 250, source: "override" });
+      expect(summary.limits.audios_per_product).toEqual({ mode: "LIMITED", value: 2, source: "plan" });
+      expect(summary.limits.contacts).toEqual({ mode: "UNLIMITED", value: null, source: "plan" });
+      expect(summary.limits.videos_per_product).toEqual({ mode: "LIMITED", value: 0, source: "default" });
+      expect(summary.limits.chat_retention_days).toEqual({ mode: "LIMITED", value: 30, source: "default" });
+      expect(summary.capabilities.crm).toBe(true);
+      expect(summary.capabilities.chatwoot_inboxes).toBe(true);
+    });
   });
 });

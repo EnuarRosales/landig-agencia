@@ -1,4 +1,4 @@
-import { eq, and, sql, isNull, desc } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
 import { createHash, randomBytes } from "node:crypto";
 import { err, ok, type Result } from "../types/result";
 import { getDb } from "../db/client";
@@ -455,8 +455,11 @@ export class DrizzleTenantContactsAndUsersRepository
         and(
           eq(clientPlanOverrides.clientId, clientId),
           eq(clientPlanOverrides.dimension, dimension),
-          sql`${clientPlanOverrides.validFrom} <= ${now}`,
-          sql`(${clientPlanOverrides.validTo} IS NULL OR ${clientPlanOverrides.validTo} >= ${now})`,
+          lte(clientPlanOverrides.validFrom, now),
+          or(
+            isNull(clientPlanOverrides.validTo),
+            gt(clientPlanOverrides.validTo, now),
+          ),
         ),
       )
       .limit(1);

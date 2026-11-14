@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import * as domain from "@mocter/domain";
 import { GET as getDashboard } from "./dashboard/route";
 import { GET as getProducts, POST as createProduct } from "./products/route";
+import { GET as getBilling } from "./billing/route";
 
 vi.mock("@mocter/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof domain>();
@@ -184,6 +185,77 @@ describe("Tenant Workspace Route Handlers", () => {
     const json = await res.json();
     expect(json.ok).toBe(true);
     expect(json.data.name).toBe("Café Especial Huila");
+  });
+
+  it("should return 200 with unified billing entitlements from GET /api/tenant/billing (SPEC-03 T-04)", async () => {
+    vi.mocked(domain.resolveAuthenticatedPortalContext).mockResolvedValueOnce({
+      scope: "tenant",
+      user: {
+        id: "user-1",
+        email: "owner@shop.co",
+        displayName: "Owner",
+        status: "active",
+        emailVerifiedAt: null,
+      },
+      session: { id: "sid-1" },
+      role: "tenant_owner",
+      effectiveRoles: ["tenant_owner"],
+      lifecycleStatus: "activo",
+      activeClientId: "client-1",
+      activeClient: { id: "client-1", name: "Shop", slug: "shop" },
+      activeCellId: null,
+      activeCellCode: null,
+      planName: "Plan Pro",
+      capabilities: {},
+    } as Awaited<ReturnType<typeof domain.resolveAuthenticatedPortalContext>>);
+
+    vi.mocked(domain.tenantWorkspaceService.getBillingDetails).mockResolvedValueOnce({
+      plan: {
+        id: "plan-pro",
+        code: "pro",
+        name: "Plan Pro",
+        description: "Operación completa",
+        priceMonthlyCents: 99000,
+        priceAnnualCents: 990000,
+        currency: "COP",
+        trialDays: 14,
+        lifecycleStatus: "activo",
+      },
+      quotas: [
+        {
+          dimension: "products",
+          label: "Productos Del Catálogo",
+          used: 5,
+          limit: 100,
+          unit: "productos",
+          mode: "LIMITED",
+          source: "plan",
+        },
+      ],
+      mediaLimits: {
+        imagesPerProduct: { dimension: "images_per_product", label: "Imágenes Por Producto", mode: "LIMITED", value: 10, source: "plan" },
+        videosPerProduct: { dimension: "videos_per_product", label: "Videos Por Producto", mode: "LIMITED", value: 0, source: "plan" },
+        audiosPerProduct: { dimension: "audios_per_product", label: "Pistas De Audio Por Producto", mode: "LIMITED", value: 2, source: "plan" },
+        pdfsPerProduct: { dimension: "pdfs_per_product", label: "Archivos PDF Por Producto", mode: "LIMITED", value: 2, source: "plan" },
+      },
+      retentionDays: { dimension: "chat_retention_days", label: "Retención De Conversaciones", mode: "LIMITED", value: 60, source: "plan" },
+      capabilities: { channel_whatsapp: true },
+      capabilityDetails: [
+        { code: "channel_whatsapp", label: "WhatsApp Business", description: "Canal oficial", category: "channels", enabled: true },
+      ],
+    });
+
+    const req = new NextRequest("http://localhost:3003/api/tenant/billing", {
+      method: "GET",
+      headers: { cookie: "mocter_sid=test-sid" },
+    });
+
+    const res = await getBilling(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.ok).toBe(true);
+    expect(json.data.mediaLimits.audiosPerProduct.value).toBe(2);
+    expect(json.data.capabilities.channel_whatsapp).toBe(true);
   });
 });
 

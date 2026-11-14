@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { eq, and, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
 import { err, ok, type Result } from "../types/result";
 import { getDb } from "../db/client";
 import { clients } from "../db/schemas/admin/clients";
@@ -207,8 +207,11 @@ export class DrizzleTenantStorageAccountingRepository
         and(
           eq(clientPlanOverrides.clientId, clientId),
           eq(clientPlanOverrides.dimension, dimension),
-          sql`${clientPlanOverrides.validFrom} <= ${now}`,
-          sql`(${clientPlanOverrides.validTo} IS NULL OR ${clientPlanOverrides.validTo} >= ${now})`,
+          lte(clientPlanOverrides.validFrom, now),
+          or(
+            isNull(clientPlanOverrides.validTo),
+            gt(clientPlanOverrides.validTo, now),
+          ),
         ),
       )
       .limit(1);

@@ -11,16 +11,18 @@ import {
   AlertCircle,
   CheckCircle2,
 } from "lucide-react";
-import type { WorkspaceProductDto } from "@mocter/domain";
+import type { WorkspaceBillingDto, WorkspaceProductDto } from "@mocter/domain";
 import { workspaceFetch } from "@/lib/workspace-client";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
+import { CatalogQuotaBanner } from "@/components/catalog-quota-banner";
 
 interface ProductsViewProps {
   initialProducts: WorkspaceProductDto[];
+  initialBilling?: WorkspaceBillingDto | null;
 }
 
-export function ProductsView({ initialProducts }: ProductsViewProps) {
+export function ProductsView({ initialProducts, initialBilling = null }: ProductsViewProps) {
   const [products, setProducts] = useState<WorkspaceProductDto[]>(initialProducts);
   const [modalOpen, setModalOpen] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -189,6 +191,45 @@ export function ProductsView({ initialProducts }: ProductsViewProps) {
           <span>Registrar Nuevo Producto</span>
         </button>
       </header>
+
+      {initialBilling && (() => {
+        const productsQuota = initialBilling.quotas.find((q) => q.dimension === "products");
+        const storageQuota = initialBilling.quotas.find((q) => q.dimension === "storage_bytes");
+        return (
+          <CatalogQuotaBanner
+            planName={initialBilling.plan.name}
+            productsUsed={products.length}
+            storageBytesUsed={storageQuota?.used}
+            upgradeHref="/workspace/billing"
+            limits={{
+              products: {
+                mode: productsQuota?.mode ?? "LIMITED",
+                value: productsQuota?.limit ?? 0,
+              },
+              imagesPerProduct: {
+                mode: initialBilling.mediaLimits.imagesPerProduct.mode,
+                value: initialBilling.mediaLimits.imagesPerProduct.value,
+              },
+              videosPerProduct: {
+                mode: initialBilling.mediaLimits.videosPerProduct.mode,
+                value: initialBilling.mediaLimits.videosPerProduct.value,
+              },
+              audiosPerProduct: {
+                mode: initialBilling.mediaLimits.audiosPerProduct.mode,
+                value: initialBilling.mediaLimits.audiosPerProduct.value,
+              },
+              pdfsPerProduct: {
+                mode: initialBilling.mediaLimits.pdfsPerProduct.mode,
+                value: initialBilling.mediaLimits.pdfsPerProduct.value,
+              },
+              storageBytes: {
+                mode: storageQuota?.mode ?? "LIMITED",
+                value: storageQuota?.limit ?? 0,
+              },
+            }}
+          />
+        );
+      })()}
 
       {/* Tabla de Productos */}
       <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden shadow-xs">

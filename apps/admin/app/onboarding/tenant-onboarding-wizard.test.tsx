@@ -167,4 +167,38 @@ describe("TenantOnboardingWizard", () => {
       expect(mockRefresh).toHaveBeenCalled();
     });
   });
+
+  it("muestra resumen de cuotas en Paso 1 y CatalogQuotaBanner en Paso 2 (SPEC-03 T-06)", () => {
+    const withCatalogState: TenantOnboardingStateDto = {
+      step: 2,
+      client: null,
+      draft: { business: { planCode: "pro" } },
+      availablePlans: [
+        {
+          id: "p2",
+          code: "pro",
+          name: "Plan Pro",
+          description: "Profesional",
+          priceMonthlyCents: 8500000,
+          catalogLimits: {
+            products: { mode: "LIMITED", value: 150 },
+            imagesPerProduct: { mode: "LIMITED", value: 12 },
+            videosPerProduct: { mode: "LIMITED", value: 1 },
+            audiosPerProduct: { mode: "LIMITED", value: 4 },
+            pdfsPerProduct: { mode: "UNLIMITED", value: null },
+            storageBytes: { mode: "LIMITED", value: 1073741824 },
+          },
+        },
+      ],
+    };
+
+    render(<TenantOnboardingWizard initialState={withCatalogState} />);
+
+    expect(screen.getByTestId("catalog-quota-banner")).toBeDefined();
+    expect(screen.getByText(/Capacidades De Catálogo De Tu Plan · Plan Pro/)).toBeDefined();
+    expect(screen.getByText("150")).toBeDefined();
+    expect(screen.getByText("4")).toBeDefined();
+    expect(screen.getByText("Ilimitado")).toBeDefined();
+    expect(screen.getByText("1 GB")).toBeDefined();
+  });
 });

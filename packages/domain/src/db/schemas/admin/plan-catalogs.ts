@@ -25,6 +25,7 @@ export const PLAN_DIMENSION_KEYS = [
   "products",
   "images_per_product",
   "videos_per_product",
+  "audios_per_product",
   "pdfs_per_product",
   "contacts",
   "tenant_users",

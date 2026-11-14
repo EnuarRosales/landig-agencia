@@ -1,14 +1,42 @@
-import { eq, and, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
 import { err, ok, type Result } from "../types/result";
 import { getDb } from "../db/client";
 import { clients } from "../db/schemas/admin/clients";
 import { plans } from "../db/schemas/admin/plans";
 import { planCapabilityValues } from "../db/schemas/admin/chatwoot-capabilities";
-import { clientFeatureOverrides, planLimits } from "../db/schemas/admin/plan-catalogs";
+import {
+  PLAN_DIMENSION_KEYS,
+  clientFeatureOverrides,
+  clientPlanOverrides,
+  planLimits,
+  type PlanLimitDimensionKey,
+} from "../db/schemas/admin/plan-catalogs";
+
+/**
+ * Límite efectivo resuelto para una dimensión de plan considerando plan base y overrides vigentes.
+ */
+export interface ResolvedPlanLimit {
+  mode: "LIMITED" | "UNLIMITED";
+  value: number | null;
+  source: "override" | "plan" | "default";
+}
 
 export interface ITenantCapabilityGateRepository {
   isCapabilityEnabled(clientId: string, capabilityCode: string): Promise<boolean>;
   getTenantCapabilities(clientId: string): Promise<Record<string, boolean>>;
+  getResolvedLimits?(clientId: string): Promise<Record<PlanLimitDimensionKey, ResolvedPlanLimit>>;
+}
+
+function buildDefaultResolvedLimits(): Record<PlanLimitDimensionKey, ResolvedPlanLimit> {
+  const result = {} as Record<PlanLimitDimensionKey, ResolvedPlanLimit>;
+  for (const dim of PLAN_DIMENSION_KEYS) {
+    result[dim] = {
+      mode: "LIMITED",
+      value: dim === "chat_retention_days" ? 30 : 0,
+      source: "default",
+    };
+  }
+  return result;
 }
 
 /**
@@ -18,6 +46,7 @@ export class InMemoryTenantCapabilityGateRepository
   implements ITenantCapabilityGateRepository
 {
   public capabilities = new Map<string, Record<string, boolean>>();
+  public limits = new Map<string, Partial<Record<PlanLimitDimensionKey, ResolvedPlanLimit>>>();
 
   async isCapabilityEnabled(clientId: string, capabilityCode: string): Promise<boolean> {
     const tenantCaps = this.capabilities.get(clientId);
@@ -26,6 +55,13 @@ export class InMemoryTenantCapabilityGateRepository
 
   async getTenantCapabilities(clientId: string): Promise<Record<string, boolean>> {
     return this.capabilities.get(clientId) ?? {};
+  }
+
+  async getResolvedLimits(clientId: string): Promise<Record<PlanLimitDimensionKey, ResolvedPlanLimit>> {
+    const defaults = buildDefaultResolvedLimits();
+    const custom = this.limits.get(clientId);
+    if (!custom) return defaults;
+    return { ...defaults, ...custom };
   }
 }
 
@@ -102,8 +138,11 @@ export class DrizzleTenantCapabilityGateRepository
       .where(
         and(
           eq(clientFeatureOverrides.clientId, clientId),
-          sql`${clientFeatureOverrides.validFrom} <= ${now}`,
-          sql`(${clientFeatureOverrides.validTo} IS NULL OR ${clientFeatureOverrides.validTo} >= ${now})`,
+          lte(clientFeatureOverrides.validFrom, now),
+          or(
+            isNull(clientFeatureOverrides.validTo),
+            gt(clientFeatureOverrides.validTo, now),
+          ),
         ),
       );
 
@@ -112,6 +151,78 @@ export class DrizzleTenantCapabilityGateRepository
     }
 
     return map;
+  }
+
+  /**
+   * Resuelve todas las dimensiones canónicas del plan para un inquilino aplicando primero los
+   * límites base de `admin.plan_limits` y luego `admin.client_plan_overrides` vigentes.
+   */
+  async getResolvedLimits(
+    clientId: string,
+  ): Promise<Record<PlanLimitDimensionKey, ResolvedPlanLimit>> {
+    const db = this.dbProvider();
+    const resolved = buildDefaultResolvedLimits();
+
+    const [clientRow] = await db
+      .select({ planId: clients.planId })
+      .from(clients)
+      .where(eq(clients.id, clientId))
+      .limit(1);
+
+    if (!clientRow?.planId) {
+      return resolved;
+    }
+
+    const baseRows = await db
+      .select({
+        dimension: planLimits.dimension,
+        mode: planLimits.mode,
+        value: planLimits.value,
+      })
+      .from(planLimits)
+      .where(eq(planLimits.planId, clientRow.planId));
+
+    for (const row of baseRows) {
+      if (row.dimension in resolved) {
+        const mode = row.mode === "UNLIMITED" ? "UNLIMITED" : "LIMITED";
+        resolved[row.dimension as PlanLimitDimensionKey] = {
+          mode,
+          value: mode === "UNLIMITED" ? null : Number(row.value ?? 0),
+          source: "plan",
+        };
+      }
+    }
+
+    const now = new Date();
+    const overrideRows = await db
+      .select({
+        dimension: clientPlanOverrides.dimension,
+        value: clientPlanOverrides.value,
+      })
+      .from(clientPlanOverrides)
+      .where(
+        and(
+          eq(clientPlanOverrides.clientId, clientId),
+          lte(clientPlanOverrides.validFrom, now),
+          or(
+            isNull(clientPlanOverrides.validTo),
+            gt(clientPlanOverrides.validTo, now),
+          ),
+        ),
+      );
+
+    for (const row of overrideRows) {
+      if (row.dimension in resolved) {
+        const mode = row.value === null ? "UNLIMITED" : "LIMITED";
+        resolved[row.dimension as PlanLimitDimensionKey] = {
+          mode,
+          value: row.value !== null ? Number(row.value) : null,
+          source: "override",
+        };
+      }
+    }
+
+    return resolved;
   }
 }
 
@@ -143,6 +254,30 @@ export class TenantCapabilityGateService {
    */
   async getEffectiveCapabilities(clientId: string): Promise<Record<string, boolean>> {
     return await this.repository.getTenantCapabilities(clientId);
+  }
+
+  /**
+   * Obtiene los límites resueltos del inquilino combinando plan y overrides vigentes (SPEC-03 T-04).
+   */
+  async getResolvedLimits(clientId: string): Promise<Record<PlanLimitDimensionKey, ResolvedPlanLimit>> {
+    if (this.repository.getResolvedLimits) {
+      return await this.repository.getResolvedLimits(clientId);
+    }
+    return buildDefaultResolvedLimits();
+  }
+
+  /**
+   * Devuelve el resumen consolidado de entitlements (límites + capacidades efectivas) del inquilino.
+   */
+  async getTenantEntitlementsSummary(clientId: string): Promise<{
+    limits: Record<PlanLimitDimensionKey, ResolvedPlanLimit>;
+    capabilities: Record<string, boolean>;
+  }> {
+    const [limits, capabilities] = await Promise.all([
+      this.getResolvedLimits(clientId),
+      this.getEffectiveCapabilities(clientId),
+    ]);
+    return { limits, capabilities };
   }
 
   /**

@@ -1,4 +1,4 @@
-import { eq, and, sql, isNull, desc } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { err, ok, type Result } from "../types/result";
 import { getDb } from "../db/client";
 import { withTenantCellTransaction } from "../db/cell-client";
@@ -6,6 +6,7 @@ import { clients } from "../db/schemas/admin/clients";
 import { plans } from "../db/schemas/admin/plans";
 import { planLimits, type PlanLimitDimensionKey } from "../db/schemas/admin/plan-catalogs";
 import { clientPlanOverrides } from "../db/schemas/admin/plan-catalogs";
+import { mediaCatalog } from "../db/schemas/admin/chatwoot-media-onboarding";
 import {
   cellProducts,
   cellProductMedia,
@@ -15,7 +16,7 @@ import {
   type NewCellProduct,
 } from "../db/schemas/tenant/tenancy-catalog";
 
-export type MediaKind = "image" | "video" | "pdf";
+export type MediaKind = "image" | "audio" | "video" | "pdf";
 
 export interface TenantProductInput {
   name: string;
@@ -285,8 +286,11 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
         and(
           eq(clientPlanOverrides.clientId, clientId),
           eq(clientPlanOverrides.dimension, dimension),
-          sql`${clientPlanOverrides.validFrom} <= ${now}`,
-          sql`(${clientPlanOverrides.validTo} IS NULL OR ${clientPlanOverrides.validTo} > ${now})`,
+          lte(clientPlanOverrides.validFrom, now),
+          or(
+            isNull(clientPlanOverrides.validTo),
+            gt(clientPlanOverrides.validTo, now),
+          ),
         ),
       )
       .limit(1);
@@ -317,8 +321,8 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
     }
 
     return {
-      mode: limitRow.limitMode as "LIMITED" | "UNLIMITED",
-      value: limitRow.limitMode === "UNLIMITED" ? null : (limitRow.value ?? 0),
+      mode: limitRow.mode as "LIMITED" | "UNLIMITED",
+      value: limitRow.mode === "UNLIMITED" ? null : (limitRow.value ?? 0),
     };
   }
 
@@ -337,9 +341,9 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
     productId: string,
     kind: MediaKind,
   ): Promise<number> {
-    return this.cellTxRunner(clientId, async (tx) => {
-      const [res] = await tx
-        .select({ count: sql<number>`count(*)::int` })
+    const productRows = await this.cellTxRunner(clientId, async (tx) => {
+      return tx
+        .select({ mediaId: cellProductMedia.mediaId })
         .from(cellProductMedia)
         .where(
           and(
@@ -347,8 +351,23 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
             eq(cellProductMedia.productId, productId),
           ),
         );
-      return res?.count ?? 0;
     });
+
+    if (productRows.length === 0) {
+      return 0;
+    }
+
+    const uniqueMediaIds = Array.from(
+      new Set<string>(productRows.map((row: { mediaId: string }) => row.mediaId)),
+    );
+
+    const matchingMedia = await this.portalDb
+      .select({ id: mediaCatalog.id })
+      .from(mediaCatalog)
+      .where(and(inArray(mediaCatalog.id, uniqueMediaIds), eq(mediaCatalog.mediaKind, kind)));
+
+    const matchingSet = new Set(matchingMedia.map((m: { id: string }) => m.id));
+    return productRows.filter((row: { mediaId: string }) => matchingSet.has(row.mediaId)).length;
   }
 
   async getTenantStorageUsage(clientId: string): Promise<number> {
@@ -661,8 +680,8 @@ export class TenantProductsAndMediaService {
 
   /**
    * Asocia un archivo a un producto verificando tanto la cuota del tipo de archivo
-   * (`images_per_product`, `videos_per_product`, `pdfs_per_product`) como el
-   * almacenamiento global `storage_bytes` (CA-004, CA-006, S10).
+   * (`images_per_product`, `videos_per_product`, `audios_per_product`, `pdfs_per_product`) como el
+   * almacenamiento global `storage_bytes` (CA-004, CA-006, S10, SPEC-03).
    */
   async attachMediaToProduct(
     clientId: string,
@@ -676,6 +695,9 @@ export class TenantProductsAndMediaService {
       if (input.mediaKind === "image") {
         fileDimension = "images_per_product";
         resourceLabel = "imágenes por producto";
+      } else if (input.mediaKind === "audio") {
+        fileDimension = "audios_per_product";
+        resourceLabel = "pistas de audio por producto";
       } else if (input.mediaKind === "video") {
         fileDimension = "videos_per_product";
         resourceLabel = "videos por producto";

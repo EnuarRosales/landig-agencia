@@ -127,6 +127,20 @@ describe("T3 · Admin Plan Validation & Business Rules (S1–S6, S10)", () => {
 
       expect(result.ok).toBe(true);
     });
+
+    it("valida audios_per_product en modos LIMITED y UNLIMITED y rechaza negativos o decimales (SPEC-03 T-02)", () => {
+      expect(validatePlanLimits({ audios_per_product: { mode: "LIMITED", value: 0 } }).ok).toBe(true);
+      expect(validatePlanLimits({ audios_per_product: { mode: "LIMITED", value: 4 } }).ok).toBe(true);
+      expect(validatePlanLimits({ audios_per_product: { mode: "UNLIMITED", value: null } }).ok).toBe(true);
+
+      const neg = validatePlanLimits({ audios_per_product: { mode: "LIMITED", value: -1 } });
+      expect(neg.ok).toBe(false);
+      if (!neg.ok) expect(neg.code).toBe("NEGATIVE_LIMIT_VALUE");
+
+      const dec = validatePlanLimits({ audios_per_product: { mode: "LIMITED", value: 1.5 } });
+      expect(dec.ok).toBe(false);
+      if (!dec.ok) expect(dec.code).toBe("DECIMAL_LIMIT_VALUE");
+    });
   });
 
   describe("validatePlanCapabilities", () => {
@@ -209,10 +223,11 @@ describe("T3 · Admin Plan Validation & Business Rules (S1–S6, S10)", () => {
   });
 
   describe("PLAN_DIMENSION_NAMES_ES", () => {
-    it("cubre todas las 11 dimensiones canónicas", () => {
+    it("cubre todas las 12 dimensiones canónicas", () => {
       expect(PLAN_DIMENSION_NAMES_ES.products).toBe("Productos");
       expect(PLAN_DIMENSION_NAMES_ES.images_per_product).toBe("Imágenes por producto");
       expect(PLAN_DIMENSION_NAMES_ES.videos_per_product).toBe("Videos por producto");
+      expect(PLAN_DIMENSION_NAMES_ES.audios_per_product).toBe("Pistas de audio por producto");
       expect(PLAN_DIMENSION_NAMES_ES.pdfs_per_product).toBe("Archivos PDF por producto");
       expect(PLAN_DIMENSION_NAMES_ES.contacts).toBe("Contactos");
       expect(PLAN_DIMENSION_NAMES_ES.tenant_users).toBe("Usuarios por inquilino");

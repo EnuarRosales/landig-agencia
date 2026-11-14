@@ -211,6 +211,7 @@ function PlanModalDialogContent({
     products: { mode: "LIMITED", value: 500 },
     images_per_product: { mode: "LIMITED", value: 10 },
     videos_per_product: { mode: "LIMITED", value: 0 },
+    audios_per_product: { mode: "LIMITED", value: 0 },
     pdfs_per_product: { mode: "LIMITED", value: 2 },
   });
 
@@ -270,6 +271,10 @@ function PlanModalDialogContent({
                 videos_per_product: {
                   mode: data.limits.videos_per_product?.mode || "LIMITED",
                   value: data.limits.videos_per_product?.value ?? 0,
+                },
+                audios_per_product: {
+                  mode: data.limits.audios_per_product?.mode || "LIMITED",
+                  value: data.limits.audios_per_product?.value ?? 0,
                 },
                 pdfs_per_product: {
                   mode: data.limits.pdfs_per_product?.mode || "LIMITED",
@@ -413,6 +418,13 @@ function PlanModalDialogContent({
             catalogLimits.videos_per_product.mode === "UNLIMITED"
               ? null
               : Number(catalogLimits.videos_per_product.value),
+        },
+        audios_per_product: {
+          mode: catalogLimits.audios_per_product.mode,
+          value:
+            catalogLimits.audios_per_product.mode === "UNLIMITED"
+              ? null
+              : Number(catalogLimits.audios_per_product.value),
         },
         pdfs_per_product: {
           mode: catalogLimits.pdfs_per_product.mode,
@@ -1122,6 +1134,57 @@ function PlanModalDialogContent({
                     )}
                   </div>
 
+                  {/* Pistas de audio por producto */}
+                  <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-[var(--dsn-text)]">Pistas De Audio Por Producto</span>
+                      <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={catalogLimits.audios_per_product.mode === "UNLIMITED"}
+                          onChange={(e) =>
+                            setCatalogLimits({
+                              ...catalogLimits,
+                              audios_per_product: {
+                                mode: e.target.checked ? "UNLIMITED" : "LIMITED",
+                                value: e.target.checked ? 0 : catalogLimits.audios_per_product.value || 1,
+                              },
+                            })
+                          }
+                          className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
+                        />
+                        <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
+                      </label>
+                    </div>
+                    {catalogLimits.audios_per_product.mode === "LIMITED" ? (
+                      <div>
+                        <label htmlFor="limit-audios" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                          Máximo De Pistas De Audio (0 = Sin Audio)
+                        </label>
+                        <input
+                          id="limit-audios"
+                          type="number"
+                          min="0"
+                          value={catalogLimits.audios_per_product.value}
+                          onChange={(e) =>
+                            setCatalogLimits({
+                              ...catalogLimits,
+                              audios_per_product: {
+                                ...catalogLimits.audios_per_product,
+                                value: Number(e.target.value),
+                              },
+                            })
+                          }
+                          className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                        />
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-lg bg-[var(--dsn-surface)] text-xs text-emerald-600 dark:text-emerald-400 font-medium text-center">
+                        Pistas De Audio Ilimitadas Por Producto
+                      </div>
+                    )}
+                  </div>
+
                   {/* Archivos PDF por producto */}
                   <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-4 space-y-3">
                     <div className="flex items-center justify-between">
@@ -1741,6 +1804,30 @@ function PlanModalDialogContent({
                         {catalogLimits.images_per_product.mode === "UNLIMITED"
                           ? "Ilimitado"
                           : catalogLimits.images_per_product.value}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[var(--dsn-text-secondary)]">
+                      <span>Videos / Producto:</span>
+                      <span className="font-medium text-[var(--dsn-text)]">
+                        {catalogLimits.videos_per_product.mode === "UNLIMITED"
+                          ? "Ilimitado"
+                          : catalogLimits.videos_per_product.value}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[var(--dsn-text-secondary)]">
+                      <span>Audios / Producto:</span>
+                      <span className="font-medium text-[var(--dsn-text)]">
+                        {catalogLimits.audios_per_product.mode === "UNLIMITED"
+                          ? "Ilimitado"
+                          : catalogLimits.audios_per_product.value}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-[var(--dsn-text-secondary)]">
+                      <span>PDFs / Producto:</span>
+                      <span className="font-medium text-[var(--dsn-text)]">
+                        {catalogLimits.pdfs_per_product.mode === "UNLIMITED"
+                          ? "Ilimitado"
+                          : catalogLimits.pdfs_per_product.value}
                       </span>
                     </div>
                     <div className="flex justify-between text-[var(--dsn-text-secondary)]">

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { TenantOnboardingStateDto } from "@mocter/domain";
 import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
+import { CatalogQuotaBanner, formatStorageBytes } from "@/components/catalog-quota-banner";
 
 export interface TenantOnboardingWizardProps {
   initialState: TenantOnboardingStateDto;
@@ -469,6 +470,21 @@ export function TenantOnboardingWizard({ initialState }: TenantOnboardingWizardP
                       <p className="mt-1 text-[10px] text-[var(--dsn-text-secondary)] line-clamp-2">
                         {p.description}
                       </p>
+                      {p.catalogLimits && (
+                        <p className="mt-2 border-t border-[var(--dsn-border)]/50 pt-2 text-[10px] font-mono text-[var(--dsn-text-secondary)]">
+                          {p.catalogLimits.products.mode === "UNLIMITED"
+                            ? "Productos: Ilimitados"
+                            : `Productos: ${p.catalogLimits.products.value ?? 0}`}{" "}
+                          ·{" "}
+                          {p.catalogLimits.imagesPerProduct.mode === "UNLIMITED"
+                            ? "Imágenes: ∞"
+                            : `Imágenes: ${p.catalogLimits.imagesPerProduct.value ?? 0}`}{" "}
+                          ·{" "}
+                          {p.catalogLimits.storageBytes.mode === "UNLIMITED"
+                            ? "Espacio: ∞"
+                            : formatStorageBytes(p.catalogLimits.storageBytes.value)}
+                        </p>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -519,6 +535,21 @@ export function TenantOnboardingWizard({ initialState }: TenantOnboardingWizardP
               </p>
             </div>
           </div>
+
+          {(() => {
+            const activePlan =
+              initialState.availablePlans.find((p) => p.code === selectedPlanCode) ||
+              initialState.availablePlans.find((p) => p.id === initialState.client?.planId);
+            const activeLimits = activePlan?.catalogLimits || initialState.currentCatalogSummary;
+            return activeLimits ? (
+              <CatalogQuotaBanner
+                planName={activePlan?.name}
+                limits={activeLimits}
+                compact
+                locale={initialState.client?.locale === "en" ? "en" : "es"}
+              />
+            ) : null;
+          })()}
 
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
