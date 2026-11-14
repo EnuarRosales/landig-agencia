@@ -17,6 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import type { TenantOnboardingStateDto } from "@mocter/domain";
+import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
 
 export interface TenantOnboardingWizardProps {
   initialState: TenantOnboardingStateDto;
@@ -39,7 +40,6 @@ export function TenantOnboardingWizard({ initialState }: TenantOnboardingWizardP
     initialState.step === "completed" ? 3 : (initialState.step as 1 | 2 | 3),
   );
   const [loading, setLoading] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Estado del Paso 1: Negocio y Plan
@@ -108,50 +108,6 @@ export function TenantOnboardingWizard({ initialState }: TenantOnboardingWizardP
     setPaymentMethods((prev) =>
       prev.includes(method) ? prev.filter((m) => m !== method) : [...prev, method],
     );
-  }
-
-  // Ejecución de «Mejorar Con AI» en la descripción del producto (AI-001)
-  async function handleAiEnhance() {
-    if (!productDescription.trim() && !productName.trim()) {
-      setError("Ingresa al menos el nombre o un borrador del producto para mejorarlo con inteligencia artificial.");
-      return;
-    }
-
-    setAiLoading(true);
-    setError(null);
-
-    try {
-      const promptDraft = productDescription.trim() || productName.trim();
-      const res = await fetch("/api/ai/enhance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId: initialState.client?.id || "00000000-0000-0000-0000-000000000000",
-          fieldKey: "product_description",
-          draft: promptDraft,
-          locale: "es",
-          hasByokConfigured: false,
-          walletBalanceCents: 10000, // Cortesía de onboarding para trial gratuito
-        }),
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.enhancedText) {
-          setProductDescription(json.enhancedText);
-          return;
-        }
-      }
-
-      // Fallback algorítmico de redacción comercial si la inferencia en vivo no está enlazada
-      const fallbackSuggestion = `${productName.trim() || "Producto de alta calidad"} diseñado con materiales premium y acabados de precisión. Ideal para uso diario, con garantía directa de fábrica y despacho rápido a todo el país.`;
-      setProductDescription(fallbackSuggestion);
-    } catch {
-      const fallbackSuggestion = `${productName.trim() || "Producto de alta calidad"} diseñado con materiales premium y acabados de precisión. Ideal para uso diario, con garantía directa de fábrica y despacho rápido a todo el país.`;
-      setProductDescription(fallbackSuggestion);
-    } finally {
-      setAiLoading(false);
-    }
   }
 
   // Envío del Paso 1
@@ -623,48 +579,19 @@ export function TenantOnboardingWizard({ initialState }: TenantOnboardingWizardP
               </select>
             </div>
 
-            {/* Textarea con «Mejorar Con AI» (AI-001) */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label
-                  htmlFor="productDescription"
-                  className="block text-xs font-semibold text-[var(--dsn-text)]"
-                >
-                  Descripción Detallada Del Producto
-                </label>
-                <button
-                  type="button"
-                  onClick={handleAiEnhance}
-                  disabled={aiLoading}
-                  className="inline-flex min-h-[32px] items-center gap-1.5 rounded-lg border border-[var(--dsn-accent)]/40 bg-[var(--dsn-accent)]/15 px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-accent)] transition-colors hover:bg-[var(--dsn-accent)]/25 disabled:opacity-50"
-                >
-                  {aiLoading ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Mejorando Con AI...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>Mejorar Con AI</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              <textarea
-                id="productDescription"
-                required
-                rows={4}
-                value={productDescription}
-                onChange={(e) => setProductDescription(e.target.value)}
-                placeholder="Describe los beneficios, materiales y características principales de tu producto..."
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3.5 text-xs text-[var(--dsn-text)] placeholder-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)] leading-relaxed"
-              />
-              <p className="mt-1 text-[11px] text-[var(--dsn-text-secondary)]">
-                Usa «Mejorar Con AI» para redactar un texto persuasivo orientado a la conversión comercial.
-              </p>
-            </div>
+            <AiEnhanceTextarea
+              id="productDescription"
+              fieldKey="onboarding.product_description"
+              label="Descripción Detallada Del Producto"
+              required
+              rows={4}
+              value={productDescription}
+              onChange={setProductDescription}
+              fallbackDraft={productName}
+              context={{ productName, currency, productKind }}
+              placeholder="Describe los beneficios, materiales y características principales de tu producto..."
+              inputHint="Usa «Mejorar Con AI» para redactar un texto persuasivo orientado a la conversión comercial."
+            />
           </div>
 
           <div className="pt-4 border-t border-[var(--dsn-border)] flex items-center justify-between">

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { AiAssistService, type IAiAssistModelClient } from "./ai-assist.service";
+import { LlmHttpCallError } from "./llm-http-provider.client";
 import type { IAiAssistRepository } from "../repositories/ai-assist.repository.interface";
 import type { AiAssistField, AiAssistPrompt } from "../db/schemas/admin/ai-assist";
 
@@ -224,6 +225,355 @@ describe("AI-001 T-04 · AiAssistService («Mejorar con AI»)", () => {
         1,
         "owner@mocter.co",
       );
+    });
+  });
+
+  describe("SPEC-02 · Integración con CredentialResolver, Prompts Requeridos y LlmHttpCallError", () => {
+    it("permite mejora en trial/onboarding sin exigir saldo en billetera cuando el resolvedor entrega platform_trial", async () => {
+      const mockResolver = {
+        resolveCredential: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            source: "platform_trial",
+            mode: "mocter",
+            providerId: "prov-1",
+            providerCode: "google",
+            modelId: "mod-1",
+            modelCode: "gemini-2.0-flash",
+            apiKey: "AIzaSyMockTrialKey_1234",
+            keyLast4: "1234",
+            temperature: 0.7,
+            maxTokens: 1000,
+            monthlyTokenCap: 50000,
+          },
+        }),
+      };
+      const mockRecorder = {
+        record: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const specService = new AiAssistService(
+        mockRepo,
+        mockModel,
+        "gemini-1.5-flash",
+        mockResolver as any,
+        mockRecorder,
+      );
+
+      const res = await specService.enhanceText({
+        clientId: "client-trial",
+        userId: "user-trial",
+        fieldKey: "bot.objective",
+        draft: "vender tenis por whatsapp",
+        locale: "es",
+        context: { productName: "Tenis Urban" },
+        requestId: "req-spec02-1",
+        walletBalanceCents: 0,
+      });
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.credentialSource).toBe("platform_trial");
+        expect(res.data.billingMode).toBe("mocter");
+        expect(res.data.modelUsed).toBe("gemini-2.0-flash");
+        expect(res.data.providerUsed).toBe("google");
+      }
+      expect(mockModel.generateSuggestion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerCode: "google",
+          modelCode: "gemini-2.0-flash",
+          apiKey: "AIzaSyMockTrialKey_1234",
+          systemPrompt: expect.stringContaining("Tenis Urban"),
+        }),
+      );
+      expect(mockRecorder.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientId: "client-trial",
+          mode: "mocter",
+          purpose: "trial",
+          fieldKey: "bot.objective",
+          requestId: "req-spec02-1",
+          status: "success",
+        }),
+      );
+    });
+
+    it("devuelve AI_MASTER_PROMPT_MISSING cuando el campo activo no tiene prompt maestro en BD", async () => {
+      (mockRepo.getActivePromptByFieldKey as any).mockResolvedValueOnce(null);
+      const mockResolver = {
+        resolveCredential: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            source: "byok",
+            mode: "byok",
+            providerId: "prov-1",
+            providerCode: "openai",
+            modelId: "mod-1",
+            modelCode: "gpt-4o-mini",
+            apiKey: "sk-proj-byok-1234",
+            keyLast4: "1234",
+            temperature: 0.7,
+            maxTokens: 1000,
+            monthlyTokenCap: null,
+          },
+        }),
+      };
+
+      const specService = new AiAssistService(
+        mockRepo,
+        mockModel,
+        "gpt-4o-mini",
+        mockResolver as any,
+      );
+
+      const res = await specService.enhanceText({
+        clientId: "client-byok",
+        fieldKey: "bot.objective",
+        draft: "texto borrador",
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("AI_MASTER_PROMPT_MISSING");
+      }
+    });
+
+    it("propaga AI_BYOK_REQUIRED desde el resolvedor sin invocar al proveedor HTTP", async () => {
+      const mockResolver = {
+        resolveCredential: vi.fn().mockResolvedValue({
+          ok: false,
+          error: "BYOK requerido",
+          code: "AI_BYOK_REQUIRED",
+        }),
+      };
+      const specService = new AiAssistService(
+        mockRepo,
+        mockModel,
+        "gpt-4o-mini",
+        mockResolver as any,
+      );
+
+      const res = await specService.enhanceText({
+        clientId: "client-expired",
+        fieldKey: "bot.objective",
+        draft: "texto borrador",
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("AI_BYOK_REQUIRED");
+      }
+      expect(mockModel.generateSuggestion).not.toHaveBeenCalled();
+    });
+
+    it("registra evento status='error' en usageRecorder cuando la llamada HTTP LLM falla", async () => {
+      const mockUsageRecorder = { record: vi.fn().mockResolvedValue(undefined) };
+      const mockResolver = {
+        resolveCredential: vi.fn().mockResolvedValue({
+          ok: true,
+          data: {
+            source: "byok",
+            mode: "byok",
+            providerId: "prov-1",
+            providerCode: "openai",
+            modelId: "mod-1",
+            modelCode: "gpt-4o-mini",
+            apiKey: "sk-proj-byok-1234",
+            keyLast4: "1234",
+            temperature: 0.7,
+            maxTokens: 1000,
+            monthlyTokenCap: null,
+          },
+        }),
+      };
+      (mockModel.generateSuggestion as any).mockRejectedValueOnce(
+        new LlmHttpCallError("Timeout upstream 502", "AI_UPSTREAM_ERROR"),
+      );
+
+      const specService = new AiAssistService(
+        mockRepo,
+        mockModel,
+        "gpt-4o-mini",
+        mockResolver as any,
+        mockUsageRecorder,
+      );
+
+      const res = await specService.enhanceText({
+        clientId: "client-byok",
+        fieldKey: "bot.objective",
+        draft: "texto borrador",
+        requestId: "req-err-502",
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("AI_UPSTREAM_ERROR");
+      }
+      expect(mockUsageRecorder.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientId: "client-byok",
+          fieldKey: "bot.objective",
+          requestId: "req-err-502",
+          inputTokens: 0,
+          outputTokens: 0,
+          status: "error",
+        }),
+      );
+    });
+
+    it("ejecuta failover automático al proveedor secundario ante HTTP 429/5xx del primario y registra ambos eventos", async () => {
+      const mockUsageRecorder = { record: vi.fn().mockResolvedValue(undefined) };
+      const mockResolver = {
+        resolveCredential: vi.fn(),
+        resolveCredentialCandidates: vi.fn().mockResolvedValue({
+          ok: true,
+          data: [
+            {
+              source: "byok",
+              mode: "byok",
+              priorityRole: "primary",
+              providerId: "prov-primary",
+              providerCode: "openai",
+              apiDialect: "openai_compatible",
+              modelId: "mod-primary",
+              modelCode: "gpt-4o-mini",
+              apiKey: "sk-primary",
+              keyLast4: "mary",
+              temperature: 0.7,
+              maxTokens: 1000,
+              monthlyTokenCap: null,
+            },
+            {
+              source: "byok",
+              mode: "byok",
+              priorityRole: "secondary",
+              providerId: "prov-secondary",
+              providerCode: "groq",
+              apiDialect: "openai_compatible",
+              baseUrl: "https://api.groq.com/openai/v1",
+              modelId: "mod-secondary",
+              modelCode: "llama-3.3-70b-versatile",
+              apiKey: "gsk-secondary",
+              keyLast4: "dary",
+              temperature: 0.6,
+              maxTokens: 1000,
+              monthlyTokenCap: null,
+            },
+          ],
+        }),
+      };
+
+      (mockModel.generateSuggestion as any)
+        .mockRejectedValueOnce(new LlmHttpCallError("Rate limit 429", "AI_PROVIDER_RATE_LIMIT"))
+        .mockResolvedValueOnce({
+          suggestion: "Texto optimizado vía proveedor secundario.",
+          inputTokens: 20,
+          outputTokens: 30,
+        });
+
+      const specService = new AiAssistService(
+        mockRepo,
+        mockModel,
+        "gpt-4o-mini",
+        mockResolver as any,
+        mockUsageRecorder,
+      );
+
+      const res = await specService.enhanceText({
+        clientId: "client-failover",
+        fieldKey: "bot.objective",
+        draft: "texto borrador inicial",
+        requestId: "req-failover-1",
+      });
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.providerUsed).toBe("groq");
+        expect(res.data.modelUsed).toBe("llama-3.3-70b-versatile");
+        expect(res.data.failoverUsed).toBe(true);
+      }
+      expect(mockModel.generateSuggestion).toHaveBeenCalledTimes(2);
+      expect(mockUsageRecorder.record).toHaveBeenCalledTimes(2);
+      expect(mockUsageRecorder.record).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          providerId: "prov-primary",
+          status: "error",
+          failoverUsed: false,
+        }),
+      );
+      expect(mockUsageRecorder.record).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          providerId: "prov-secondary",
+          status: "success",
+          failoverUsed: true,
+        }),
+      );
+    });
+
+    it("NO hace failover al proveedor secundario cuando el primario falla por AI_KEY_INVALID (401/403)", async () => {
+      const mockUsageRecorder = { record: vi.fn().mockResolvedValue(undefined) };
+      const mockResolver = {
+        resolveCredential: vi.fn(),
+        resolveCredentialCandidates: vi.fn().mockResolvedValue({
+          ok: true,
+          data: [
+            {
+              source: "byok",
+              mode: "byok",
+              priorityRole: "primary",
+              providerId: "prov-primary",
+              providerCode: "openai",
+              modelId: "mod-primary",
+              modelCode: "gpt-4o-mini",
+              apiKey: "sk-bad",
+              keyLast4: "bad1",
+              temperature: 0.7,
+              maxTokens: 1000,
+              monthlyTokenCap: null,
+            },
+            {
+              source: "byok",
+              mode: "byok",
+              priorityRole: "secondary",
+              providerId: "prov-secondary",
+              providerCode: "anthropic",
+              modelId: "mod-secondary",
+              modelCode: "claude-3-5-haiku-latest",
+              apiKey: "sk-ant-ok",
+              keyLast4: "ok22",
+              temperature: 0.7,
+              maxTokens: 1000,
+              monthlyTokenCap: null,
+            },
+          ],
+        }),
+      };
+
+      (mockModel.generateSuggestion as any).mockRejectedValueOnce(
+        new LlmHttpCallError("Unauthorized 401", "AI_KEY_INVALID"),
+      );
+
+      const specService = new AiAssistService(
+        mockRepo,
+        mockModel,
+        "gpt-4o-mini",
+        mockResolver as any,
+        mockUsageRecorder,
+      );
+
+      const res = await specService.enhanceText({
+        clientId: "client-no-failover",
+        fieldKey: "bot.objective",
+        draft: "texto borrador",
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("AI_KEY_INVALID");
+      }
+      expect(mockModel.generateSuggestion).toHaveBeenCalledTimes(1);
     });
   });
 });

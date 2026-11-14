@@ -5,6 +5,7 @@ import {
   integer,
   jsonb,
   text,
+  timestamp,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -13,14 +14,18 @@ import { adminSchema } from "./namespace";
 import { auditColumns } from "../shared/audit-columns";
 
 /**
- * Catálogo maestro de proveedores de IA gobernado por la plataforma (`admin.ai_providers`, BOT-001 §4.1).
+ * Catálogo maestro de proveedores de IA gobernado por la plataforma (`admin.ai_providers`, BOT-001 §4.1, SPEC-02 Fase 2).
  */
 export const aiProviders = adminSchema.table(
   "ai_providers",
   {
     id: uuid("id").primaryKey().default(sql`uuidv7()`),
-    code: text("code").notNull().unique(),
+    code: text("code").notNull(),
     name: text("name").notNull(),
+    apiDialect: text("api_dialect").notNull().default("openai_compatible"),
+    baseUrl: text("base_url").notNull().default("https://api.openai.com/v1"),
+    verifyPath: text("verify_path").notNull().default("/models"),
+    logoStorageKey: text("logo_storage_key"),
     isActive: boolean("is_active").notNull().default(true),
     docsUrl: text("docs_url"),
     supportedModes: jsonb("supported_modes")
@@ -28,20 +33,27 @@ export const aiProviders = adminSchema.table(
       .notNull()
       .default(sql`'{"byok": true, "mocter": true}'::jsonb`),
     sortOrder: integer("sort_order").notNull().default(0),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: text("deleted_by"),
     ...auditColumns(),
   },
   (table) => [
+    uniqueIndex("ai_providers_code_active_unique")
+      .on(table.code)
+      .where(sql`deleted_at IS NULL`),
     check(
       "ai_providers_code_check",
-      sql.raw(
-        "code IN ('openai', 'anthropic', 'google', 'deepseek', 'openrouter', 'together_ai')",
-      ),
+      sql.raw("code ~ '^[a-z0-9_-]{2,40}$'"),
+    ),
+    check(
+      "ai_providers_api_dialect_check",
+      sql.raw("api_dialect IN ('openai_compatible', 'anthropic', 'google_gemini')"),
     ),
   ],
 );
 
 /**
- * Catálogo de modelos de LLM soportados con límites, capacidades y precios (`admin.ai_models`, BOT-001 §4.1).
+ * Catálogo de modelos de LLM soportados con límites, capacidades y precios (`admin.ai_models`, BOT-001 §4.1, SPEC-02 Fase 2).
  */
 export const aiModels = adminSchema.table(
   "ai_models",
@@ -63,6 +75,7 @@ export const aiModels = adminSchema.table(
       .notNull(),
     defaultTemperature: text("default_temperature").notNull().default("0.7"),
     defaultMaxTokens: integer("default_max_tokens").notNull().default(1000),
+    isDefault: boolean("is_default").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
     spreadPercent: integer("spread_percent").notNull().default(30),
@@ -70,10 +83,17 @@ export const aiModels = adminSchema.table(
     costOutputMtokUsdCents: bigint("cost_output_mtok_usd_cents", { mode: "number" }),
     retailInputMtokUsdCents: bigint("retail_input_mtok_usd_cents", { mode: "number" }),
     retailOutputMtokUsdCents: bigint("retail_output_mtok_usd_cents", { mode: "number" }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: text("deleted_by"),
     ...auditColumns(),
   },
   (table) => [
-    uniqueIndex("ai_models_provider_model_unique").on(table.providerId, table.modelId),
+    uniqueIndex("ai_models_provider_model_unique")
+      .on(table.providerId, table.modelId)
+      .where(sql`deleted_at IS NULL`),
+    uniqueIndex("ai_models_provider_default_unique")
+      .on(table.providerId)
+      .where(sql`is_default = true AND deleted_at IS NULL`),
     check("ai_models_spread_percent_check", sql.raw("spread_percent >= 0")),
   ],
 );

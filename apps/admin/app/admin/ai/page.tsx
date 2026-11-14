@@ -1,6 +1,6 @@
 import React from "react";
 import { fetchAdminAiGovernanceOverview } from "@mocter/domain";
-import { Bot, Cpu, Layers, Sparkles, Percent } from "lucide-react";
+import { Cpu, Layers, Sparkles, Percent } from "lucide-react";
 import { AiGovernanceView } from "./ai-governance-view";
 
 export const metadata = {

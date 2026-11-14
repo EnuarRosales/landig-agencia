@@ -1,4 +1,4 @@
-import { sql, desc, asc, eq, and, ne, isNull } from "drizzle-orm";
+import { sql, desc, asc, eq, and, ne, isNull, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { withTenantCellTransaction } from "../db/cell-client";
 import {
@@ -27,6 +27,11 @@ import {
   emailDeliveries,
   aiProviders,
   aiModels,
+  aiPlatformKeys,
+  tenantAiProviders,
+  tenantModelSettings,
+  tenantBots,
+  auditLog,
   botTones,
   botPresets,
   botDefaults,
@@ -62,11 +67,17 @@ import {
 } from "../db/schemas";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
+import { env } from "../utils/env";
 import { CANONICAL_EMAIL_SENDERS, CANONICAL_EMAIL_EVENTS } from "./notifications-and-leads.service";
 import { WhiteLabelService } from "./white-label.service";
 import { INITIAL_AI_PROVIDERS, INITIAL_BOT_DEFAULTS } from "./bot-catalog.seed";
 import { INITIAL_PROMPT_BLOCKS } from "./prompt-blocks.seed";
-import { INITIAL_AI_ASSIST_FIELDS, INITIAL_AI_ASSIST_PROMPTS } from "./ai-assist-catalog.seed";
+import { seedAiAssistCatalog } from "./ai-assist-catalog.seed";
+import type { AiPriorityRole, SupportedLlmProviderCode } from "./ai-credential-resolver.service";
+import { LlmHttpProviderClient, type AiApiDialect } from "./llm-http-provider.client";
+import { CatalogAndMediaService } from "./catalog-and-media.service";
+import { S3StorageService } from "./s3-storage.service";
+import { SecretCryptoError, SecretCryptoService } from "./secret-crypto.service";
 import { createCipheriv, createDecipheriv, randomBytes, createHash, randomUUID } from "node:crypto";
 import { cellSecretsCryptoService } from "./cell-secrets.service";
 import { authorizeCellProvision } from "./cell-authorization.service";
@@ -4023,10 +4034,71 @@ export async function deleteAdminTenant(
 // GOBERNANZA DE INTELIGENCIA ARTIFICIAL, PROVEEDORES LLM Y PROMPTS (BOT-001, BOT-002, AI-001)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const PROVIDER_SLUG_REGEX = /^[a-z0-9_-]{2,40}$/;
+const AI_PROVIDER_LOGO_MAX_BYTES = 2 * 1024 * 1024;
+const ALLOWED_AI_LOGO_FORMATS = new Set(["png", "jpeg", "webp", "avif"]);
+
+function normalizeAiDialect(value: string | null | undefined): AiApiDialect {
+  if (
+    value === "openai_compatible" ||
+    value === "anthropic" ||
+    value === "google_gemini"
+  ) {
+    return value;
+  }
+  return "openai_compatible";
+}
+
+function normalizeAiPriorityRole(value: string | null | undefined): AiPriorityRole {
+  if (value === "primary" || value === "secondary" || value === "standby") {
+    return value;
+  }
+  return "standby";
+}
+
+/**
+ * Firma una URL segura vía imgproxy para visualizar el logo de un proveedor LLM (falla suave a `null`).
+ */
+export function signProviderLogoUrl(logoStorageKey: string | null | undefined): string | null {
+  if (!logoStorageKey) {
+    return null;
+  }
+  if (!env.IMGPROXY_KEY || !env.IMGPROXY_SALT) {
+    return null;
+  }
+  const baseUrl = (env.IMGPROXY_PUBLIC_URL || env.IMGPROXY_BASE_URL || "").trim();
+  if (!baseUrl) {
+    return null;
+  }
+  try {
+    const catalogMedia = new CatalogAndMediaService(
+      [{ keyHex: env.IMGPROXY_KEY, saltHex: env.IMGPROXY_SALT }],
+      baseUrl,
+    );
+    const signed = catalogMedia.signImgproxyUrl({
+      storageKey: logoStorageKey,
+      width: 96,
+      height: 96,
+      resizingType: "fit",
+      format: "webp",
+    });
+    return signed.ok ? signed.data.signedUrl : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface AdminAiProviderDto {
   id: string;
   code: string;
   name: string;
+  apiDialect: AiApiDialect;
+  baseUrl: string;
+  verifyPath: string;
+  logoStorageKey: string | null;
+  logoUrl: string | null;
+  docsUrl: string | null;
+  sortOrder: number;
   isActive: boolean;
   supportedModes: { byok: boolean; mocter: boolean };
   modelsCount: number;
@@ -4040,6 +4112,11 @@ export interface AdminAiModelDto {
   displayName: string;
   contextWindow: number;
   maxOutputTokens: number;
+  defaultTemperature: number;
+  defaultMaxTokens: number;
+  isDefault: boolean;
+  recommendedUse: { es: string; en: string };
+  sortOrder: number;
   spreadPercent: number;
   costInputMtokUsdCents: number;
   costOutputMtokUsdCents: number;
@@ -4067,6 +4144,28 @@ export interface AdminAiAssistPromptDto {
   status: string;
 }
 
+/**
+ * Representación pública y enmascarada de una credencial LLM de plataforma (`admin.ai_platform_keys`, SPEC-02).
+ * Nunca expone material cifrado ni claves en texto plano.
+ */
+export interface AdminAiPlatformKeyDto {
+  id: string;
+  providerId: string;
+  providerCode: SupportedLlmProviderCode;
+  providerName: string;
+  keyId: string;
+  apiKeyLast4: string;
+  defaultModelId: string | null;
+  defaultModelCode: string | null;
+  monthlyTokenCap: number | null;
+  temperature: number;
+  maxTokens: number;
+  priorityRole: AiPriorityRole;
+  status: string;
+  purpose: string;
+  updatedAt: string;
+}
+
 export interface AdminAiGovernanceOverviewDto {
   kpis: {
     totalProviders: number;
@@ -4076,6 +4175,7 @@ export interface AdminAiGovernanceOverviewDto {
   };
   providers: AdminAiProviderDto[];
   models: AdminAiModelDto[];
+  platformKeys?: AdminAiPlatformKeyDto[];
   promptBlocks: AdminPromptBlockDto[];
   aiAssistPrompts: AdminAiAssistPromptDto[];
   defaults: {
@@ -4084,6 +4184,174 @@ export interface AdminAiGovernanceOverviewDto {
     defaultHandoffTriggers: string[];
     defaultMaxMessagesPerContact: number;
   };
+}
+
+/**
+ * Datos de entrada para registrar o rotar una llave de plataforma usada en periodos de prueba e inferencia.
+ */
+export interface SaveAdminPlatformTrialKeyInput {
+  providerCode: SupportedLlmProviderCode;
+  modelId?: string | null;
+  apiKey: string;
+  keyId?: string;
+  monthlyTokenCap?: number | null;
+  temperature?: number | null;
+  maxTokens?: number | null;
+  priorityRole?: AiPriorityRole;
+  verifyImmediately?: boolean;
+  actorUserId?: string;
+}
+
+/**
+ * Datos de entrada para actualizar parámetros operativos de una llave de plataforma activa.
+ */
+export interface UpdateAdminPlatformKeySettingsInput {
+  platformKeyId: string;
+  modelId?: string | null;
+  temperature?: number;
+  maxTokens?: number;
+  monthlyTokenCap?: number | null;
+  actorUserId?: string;
+}
+
+/**
+ * Datos de entrada para reasignar la prioridad (`primary`, `secondary`, `standby`) de una llave de plataforma.
+ */
+export interface SetAdminPlatformKeyPriorityInput {
+  platformKeyId: string;
+  priorityRole: AiPriorityRole;
+  actorUserId?: string;
+}
+
+/**
+ * Datos de entrada para subir el logotipo binario de un proveedor LLM a SeaweedFS.
+ */
+export interface UploadAdminAiProviderLogoInput {
+  fileBuffer: Buffer;
+  originalFilename: string;
+  providerCode?: string;
+  actorUserId?: string;
+}
+
+/**
+ * Resultado seguro tras almacenar el logotipo de un proveedor LLM.
+ */
+export interface UploadAdminAiProviderLogoResult {
+  storageKey: string;
+  logoUrl: string | null;
+  mimeType: string;
+  format: string;
+  sizeBytes: number;
+}
+
+/**
+ * Datos de entrada para crear un proveedor LLM dinámico en plataforma (`admin.ai_providers`).
+ */
+export interface CreateAdminAiProviderInput {
+  code: string;
+  name: string;
+  apiDialect: AiApiDialect;
+  baseUrl: string;
+  verifyPath?: string;
+  docsUrl?: string | null;
+  logoStorageKey?: string | null;
+  isActive?: boolean;
+  supportedModes?: { byok: boolean; mocter: boolean };
+  sortOrder?: number;
+  actorUserId?: string;
+}
+
+/**
+ * Datos de entrada para actualizar un proveedor LLM existente.
+ */
+export interface UpdateAdminAiProviderInput {
+  providerId: string;
+  name?: string;
+  apiDialect?: AiApiDialect;
+  baseUrl?: string;
+  verifyPath?: string;
+  docsUrl?: string | null;
+  logoStorageKey?: string | null;
+  isActive?: boolean;
+  supportedModes?: { byok: boolean; mocter: boolean };
+  sortOrder?: number;
+  actorUserId?: string;
+}
+
+/**
+ * Datos de entrada para eliminar (físico o lógico) un proveedor LLM.
+ */
+export interface DeleteAdminAiProviderInput {
+  providerId: string;
+  actorUserId?: string;
+}
+
+/**
+ * Datos de entrada para registrar un nuevo modelo bajo un proveedor LLM (`admin.ai_models`).
+ */
+export interface CreateAdminAiModelInput {
+  providerId: string;
+  modelId: string;
+  displayName: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  defaultTemperature?: number;
+  defaultMaxTokens?: number;
+  isDefault?: boolean;
+  isActive?: boolean;
+  recommendedUse?: { es: string; en: string };
+  spreadPercent?: number;
+  costInputMtokUsdCents?: number;
+  costOutputMtokUsdCents?: number;
+  sortOrder?: number;
+  actorUserId?: string;
+}
+
+/**
+ * Datos de entrada para actualizar un modelo LLM del catálogo gobernado.
+ */
+export interface UpdateAdminAiModelInput {
+  id: string;
+  displayName?: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  defaultTemperature?: number;
+  defaultMaxTokens?: number;
+  isDefault?: boolean;
+  isActive?: boolean;
+  recommendedUse?: { es: string; en: string };
+  spreadPercent?: number;
+  costInputMtokUsdCents?: number;
+  costOutputMtokUsdCents?: number;
+  sortOrder?: number;
+  actorUserId?: string;
+}
+
+/**
+ * Datos de entrada para eliminar (físico o lógico) un modelo LLM.
+ */
+export interface DeleteAdminAiModelInput {
+  id: string;
+  actorUserId?: string;
+}
+
+/**
+ * Datos de entrada para retirar una llave de plataforma activa (`admin.ai_platform_keys`).
+ */
+export interface RetireAdminPlatformTrialKeyInput {
+  platformKeyId: string;
+  actorUserId?: string;
+}
+
+/**
+ * Datos de entrada para versionar y activar un prompt maestro de «Mejorar con AI» (`admin.ai_assist_prompts`).
+ */
+export interface SaveAdminAssistPromptVersionInput {
+  fieldKey: string;
+  masterPrompt: string;
+  inputHint?: string;
+  actorUserId?: string;
+  actorEmail?: string;
 }
 
 export interface UpdateAdminModelSpreadInput {
@@ -4115,6 +4383,9 @@ const CANONICAL_INITIAL_MODELS = [
     displayName: "GPT-4o Mini",
     contextWindow: 128000,
     maxOutputTokens: 4096,
+    defaultTemperature: "0.7",
+    defaultMaxTokens: 1000,
+    isDefault: true,
     costInput: 15,
     costOutput: 60,
     spreadPercent: 30,
@@ -4126,6 +4397,9 @@ const CANONICAL_INITIAL_MODELS = [
     displayName: "GPT-4o Multimodal",
     contextWindow: 128000,
     maxOutputTokens: 4096,
+    defaultTemperature: "0.7",
+    defaultMaxTokens: 1200,
+    isDefault: false,
     costInput: 250,
     costOutput: 1000,
     spreadPercent: 30,
@@ -4137,6 +4411,9 @@ const CANONICAL_INITIAL_MODELS = [
     displayName: "Claude 3.5 Sonnet",
     contextWindow: 200000,
     maxOutputTokens: 8192,
+    defaultTemperature: "0.7",
+    defaultMaxTokens: 1200,
+    isDefault: true,
     costInput: 300,
     costOutput: 1500,
     spreadPercent: 30,
@@ -4148,6 +4425,9 @@ const CANONICAL_INITIAL_MODELS = [
     displayName: "Claude 3.5 Haiku",
     contextWindow: 200000,
     maxOutputTokens: 8192,
+    defaultTemperature: "0.6",
+    defaultMaxTokens: 1000,
+    isDefault: false,
     costInput: 80,
     costOutput: 400,
     spreadPercent: 30,
@@ -4159,6 +4439,9 @@ const CANONICAL_INITIAL_MODELS = [
     displayName: "Gemini 1.5 Flash",
     contextWindow: 1000000,
     maxOutputTokens: 8192,
+    defaultTemperature: "0.7",
+    defaultMaxTokens: 1000,
+    isDefault: true,
     costInput: 7,
     costOutput: 30,
     spreadPercent: 30,
@@ -4170,10 +4453,41 @@ const CANONICAL_INITIAL_MODELS = [
     displayName: "DeepSeek Chat",
     contextWindow: 64000,
     maxOutputTokens: 4096,
+    defaultTemperature: "0.7",
+    defaultMaxTokens: 1000,
+    isDefault: true,
     costInput: 14,
     costOutput: 28,
     spreadPercent: 30,
     recommendedUse: { es: "Excelente costo-beneficio para alta concurrencia", en: "Cost-effective high concurrency" },
+  },
+  {
+    providerCode: "openrouter",
+    modelId: "openai/gpt-4o-mini",
+    displayName: "OpenRouter · GPT-4o Mini",
+    contextWindow: 128000,
+    maxOutputTokens: 4096,
+    defaultTemperature: "0.7",
+    defaultMaxTokens: 1000,
+    isDefault: true,
+    costInput: 18,
+    costOutput: 70,
+    spreadPercent: 30,
+    recommendedUse: { es: "Enrutamiento unificado multiclase con respaldo inmediato", en: "Unified multi-model routing with instant fallback" },
+  },
+  {
+    providerCode: "together_ai",
+    modelId: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    displayName: "Llama 3.3 70B Instruct Turbo",
+    contextWindow: 128000,
+    maxOutputTokens: 4096,
+    defaultTemperature: "0.7",
+    defaultMaxTokens: 1000,
+    isDefault: true,
+    costInput: 88,
+    costOutput: 88,
+    spreadPercent: 30,
+    recommendedUse: { es: "Modelo abierto de alto rendimiento en español e inglés", en: "High-throughput open-weights model for multilingual chat" },
   },
 ];
 
@@ -4186,7 +4500,11 @@ export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanc
 
   try {
     // 1. Auto-inicialización de Proveedores y Modelos si está vacía
-    const existingProviders = await db.select().from(aiProviders);
+    const existingProviders = await db
+      .select()
+      .from(aiProviders)
+      .where(isNull(aiProviders.deletedAt));
+
     if (existingProviders.length === 0) {
       for (const p of INITIAL_AI_PROVIDERS) {
         const [insertedProvider] = await db
@@ -4194,6 +4512,9 @@ export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanc
           .values({
             code: p.code,
             name: p.name,
+            apiDialect: p.apiDialect,
+            baseUrl: p.baseUrl,
+            verifyPath: p.verifyPath,
             isActive: p.isActive,
             docsUrl: p.docsUrl,
             supportedModes: p.supportedModes,
@@ -4203,7 +4524,6 @@ export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanc
           })
           .returning();
 
-        // Modelos canónicos correspondientes a este proveedor
         const modelsToInsert = CANONICAL_INITIAL_MODELS.filter((m) => m.providerCode === p.code);
         for (const m of modelsToInsert) {
           const retailInput = Math.round(m.costInput * (1 + m.spreadPercent / 100));
@@ -4215,6 +4535,9 @@ export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanc
             displayName: m.displayName,
             contextWindow: m.contextWindow,
             maxOutputTokens: m.maxOutputTokens,
+            defaultTemperature: m.defaultTemperature,
+            defaultMaxTokens: m.defaultMaxTokens,
+            isDefault: m.isDefault,
             recommendedUse: m.recommendedUse,
             spreadPercent: m.spreadPercent,
             costInputMtokUsdCents: m.costInput,
@@ -4225,6 +4548,51 @@ export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanc
             createdBy: operator,
             updatedBy: operator,
           });
+        }
+      }
+    } else {
+      // Sincronización idempotente de modelos iniciales si algún proveedor base quedó con 0 modelos
+      const activeModelsCounts = await db
+        .select({
+          providerId: aiModels.providerId,
+          count: sql<number>`COUNT(*)::int`,
+        })
+        .from(aiModels)
+        .where(isNull(aiModels.deletedAt))
+        .groupBy(aiModels.providerId);
+
+      const countByProvider = new Map(
+        activeModelsCounts.map((row) => [row.providerId, Number(row.count)]),
+      );
+
+      for (const prov of existingProviders) {
+        if ((countByProvider.get(prov.id) ?? 0) === 0) {
+          const modelsToInsert = CANONICAL_INITIAL_MODELS.filter(
+            (m) => m.providerCode === prov.code,
+          );
+          for (const m of modelsToInsert) {
+            const retailInput = Math.round(m.costInput * (1 + m.spreadPercent / 100));
+            const retailOutput = Math.round(m.costOutput * (1 + m.spreadPercent / 100));
+            await db.insert(aiModels).values({
+              providerId: prov.id,
+              modelId: m.modelId,
+              displayName: m.displayName,
+              contextWindow: m.contextWindow,
+              maxOutputTokens: m.maxOutputTokens,
+              defaultTemperature: m.defaultTemperature,
+              defaultMaxTokens: m.defaultMaxTokens,
+              isDefault: m.isDefault,
+              recommendedUse: m.recommendedUse,
+              spreadPercent: m.spreadPercent,
+              costInputMtokUsdCents: m.costInput,
+              costOutputMtokUsdCents: m.costOutput,
+              retailInputMtokUsdCents: retailInput,
+              retailOutputMtokUsdCents: retailOutput,
+              isActive: true,
+              createdBy: operator,
+              updatedBy: operator,
+            });
+          }
         }
       }
     }
@@ -4261,37 +4629,16 @@ export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanc
       });
     }
 
-    // 4. Auto-inicialización de Campos y Prompts de AI-001 (AiAssist)
-    const existingFields = await db.select().from(aiAssistFields);
-    if (existingFields.length === 0) {
-      for (const f of INITIAL_AI_ASSIST_FIELDS) {
-        await db.insert(aiAssistFields).values({
-          fieldKey: f.fieldKey,
-          entity: f.entity,
-          columnName: f.columnName,
-          labels: f.labels,
-          isActive: f.isActive,
-          createdBy: operator,
-          updatedBy: operator,
-        });
-      }
-      for (const ap of INITIAL_AI_ASSIST_PROMPTS) {
-        await db.insert(aiAssistPrompts).values({
-          fieldKey: ap.fieldKey,
-          version: ap.version,
-          status: ap.status,
-          masterPrompt: ap.masterPrompt,
-          inputHint: ap.inputHint,
-          outputRules: ap.outputRules,
-          examples: ap.examples,
-          createdBy: operator,
-          updatedBy: operator,
-        });
-      }
-    }
+    // 4. Auto-inicialización idempotente de los 18 campos y prompts maestros de AI-001 (AiAssist)
+    await seedAiAssistCatalog();
 
-    // 5. Cargar datos consolidados
-    const providerRows = await db.select().from(aiProviders).orderBy(asc(aiProviders.sortOrder));
+    // 5. Cargar datos consolidados (excluyendo registros eliminados lógicamente)
+    const providerRows = await db
+      .select()
+      .from(aiProviders)
+      .where(isNull(aiProviders.deletedAt))
+      .orderBy(asc(aiProviders.sortOrder), asc(aiProviders.name));
+
     const modelRows = await db
       .select({
         id: aiModels.id,
@@ -4301,6 +4648,11 @@ export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanc
         displayName: aiModels.displayName,
         contextWindow: aiModels.contextWindow,
         maxOutputTokens: aiModels.maxOutputTokens,
+        defaultTemperature: aiModels.defaultTemperature,
+        defaultMaxTokens: aiModels.defaultMaxTokens,
+        isDefault: aiModels.isDefault,
+        recommendedUse: aiModels.recommendedUse,
+        sortOrder: aiModels.sortOrder,
         spreadPercent: aiModels.spreadPercent,
         costInputMtokUsdCents: aiModels.costInputMtokUsdCents,
         costOutputMtokUsdCents: aiModels.costOutputMtokUsdCents,
@@ -4310,7 +4662,13 @@ export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanc
       })
       .from(aiModels)
       .innerJoin(aiProviders, eq(aiModels.providerId, aiProviders.id))
-      .orderBy(asc(aiProviders.sortOrder), asc(aiModels.displayName));
+      .where(and(isNull(aiModels.deletedAt), isNull(aiProviders.deletedAt)))
+      .orderBy(
+        asc(aiProviders.sortOrder),
+        desc(aiModels.isDefault),
+        asc(aiModels.sortOrder),
+        asc(aiModels.displayName),
+      );
 
     const blockRows = await db
       .select()
@@ -4340,33 +4698,96 @@ export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanc
       defaultMaxMessagesPerContact: 50,
     };
 
+    const platformKeyRows = await db
+      .select({
+        id: aiPlatformKeys.id,
+        providerId: aiPlatformKeys.providerId,
+        providerCode: aiProviders.code,
+        providerName: aiProviders.name,
+        keyId: aiPlatformKeys.keyId,
+        apiKeyLast4: aiPlatformKeys.apiKeyLast4,
+        defaultModelId: aiPlatformKeys.defaultModelId,
+        defaultModelCode: aiModels.modelId,
+        monthlyTokenCap: aiPlatformKeys.monthlyTokenCap,
+        temperature: aiPlatformKeys.temperature,
+        maxTokens: aiPlatformKeys.maxTokens,
+        priorityRole: aiPlatformKeys.priorityRole,
+        status: aiPlatformKeys.status,
+        purpose: aiPlatformKeys.purpose,
+        updatedAt: aiPlatformKeys.updatedAt,
+      })
+      .from(aiPlatformKeys)
+      .innerJoin(aiProviders, eq(aiPlatformKeys.providerId, aiProviders.id))
+      .leftJoin(aiModels, eq(aiPlatformKeys.defaultModelId, aiModels.id))
+      .orderBy(desc(aiPlatformKeys.updatedAt));
+
+    const platformKeys: AdminAiPlatformKeyDto[] = platformKeyRows.map((pk) => {
+      const parsedTemp = Number.parseFloat(pk.temperature ?? "0.7");
+      return {
+        id: pk.id,
+        providerId: pk.providerId,
+        providerCode: pk.providerCode as SupportedLlmProviderCode,
+        providerName: pk.providerName,
+        keyId: pk.keyId,
+        apiKeyLast4: pk.apiKeyLast4,
+        defaultModelId: pk.defaultModelId ?? null,
+        defaultModelCode: pk.defaultModelCode ?? null,
+        monthlyTokenCap:
+          pk.monthlyTokenCap !== null && pk.monthlyTokenCap !== undefined
+            ? Number(pk.monthlyTokenCap)
+            : null,
+        temperature: Number.isFinite(parsedTemp) ? parsedTemp : 0.7,
+        maxTokens: Number(pk.maxTokens || 1000),
+        priorityRole: normalizeAiPriorityRole(pk.priorityRole),
+        status: pk.status,
+        purpose: pk.purpose,
+        updatedAt:
+          pk.updatedAt instanceof Date ? pk.updatedAt.toISOString() : String(pk.updatedAt),
+      };
+    });
+
     const providers: AdminAiProviderDto[] = providerRows.map((p) => {
       const pModels = modelRows.filter((m) => m.providerId === p.id);
       return {
         id: p.id,
         code: p.code,
         name: p.name,
+        apiDialect: normalizeAiDialect(p.apiDialect),
+        baseUrl: p.baseUrl,
+        verifyPath: p.verifyPath,
+        logoStorageKey: p.logoStorageKey ?? null,
+        logoUrl: signProviderLogoUrl(p.logoStorageKey),
+        docsUrl: p.docsUrl ?? null,
+        sortOrder: Number(p.sortOrder ?? 0),
         isActive: p.isActive,
         supportedModes: p.supportedModes,
         modelsCount: pModels.length,
       };
     });
 
-    const models: AdminAiModelDto[] = modelRows.map((m) => ({
-      id: m.id,
-      providerId: m.providerId,
-      providerCode: m.providerCode,
-      modelId: m.modelId,
-      displayName: m.displayName,
-      contextWindow: m.contextWindow,
-      maxOutputTokens: m.maxOutputTokens,
-      spreadPercent: m.spreadPercent,
-      costInputMtokUsdCents: Number(m.costInputMtokUsdCents || 0),
-      costOutputMtokUsdCents: Number(m.costOutputMtokUsdCents || 0),
-      retailInputMtokUsdCents: Number(m.retailInputMtokUsdCents || 0),
-      retailOutputMtokUsdCents: Number(m.retailOutputMtokUsdCents || 0),
-      isActive: m.isActive,
-    }));
+    const models: AdminAiModelDto[] = modelRows.map((m) => {
+      const parsedTemp = Number.parseFloat(m.defaultTemperature ?? "0.7");
+      return {
+        id: m.id,
+        providerId: m.providerId,
+        providerCode: m.providerCode,
+        modelId: m.modelId,
+        displayName: m.displayName,
+        contextWindow: m.contextWindow,
+        maxOutputTokens: m.maxOutputTokens,
+        defaultTemperature: Number.isFinite(parsedTemp) ? parsedTemp : 0.7,
+        defaultMaxTokens: Number(m.defaultMaxTokens || 1000),
+        isDefault: Boolean(m.isDefault),
+        recommendedUse: m.recommendedUse ?? { es: "", en: "" },
+        sortOrder: Number(m.sortOrder ?? 0),
+        spreadPercent: m.spreadPercent,
+        costInputMtokUsdCents: Number(m.costInputMtokUsdCents || 0),
+        costOutputMtokUsdCents: Number(m.costOutputMtokUsdCents || 0),
+        retailInputMtokUsdCents: Number(m.retailInputMtokUsdCents || 0),
+        retailOutputMtokUsdCents: Number(m.retailOutputMtokUsdCents || 0),
+        isActive: m.isActive,
+      };
+    });
 
     const promptBlocks: AdminPromptBlockDto[] = blockRows.map((b) => ({
       id: b.id,
@@ -4399,6 +4820,7 @@ export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanc
       },
       providers,
       models,
+      platformKeys,
       promptBlocks,
       aiAssistPrompts: aiAssistPromptsList,
       defaults: {
@@ -4572,6 +4994,1628 @@ export async function updateAdminBotDefaults(
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[updateAdminBotDefaults Failed] ${msg}`, error);
     return err(`Error al actualizar parámetros globales de bots: ${msg}`);
+  }
+}
+
+/**
+ * Registra o rota de forma segura una credencial de plataforma usada en periodos de prueba e onboarding (`admin.ai_platform_keys`, SPEC-02).
+ *
+ * Verifica opcionalmente la API Key contra el proveedor HTTP externo usando su dialecto/URL configurados,
+ * la cifra con `AES-256-GCM`, retira llaves activas previas del mismo `(purpose, priorityRole)` sin afectar
+ * el rol complementario (primario/secundario) y retorna únicamente metadatos enmascarados.
+ *
+ * @param input - Parámetros de proveedor, modelo por defecto, temperatura, maxTokens, prioridad y llave.
+ * @param deps - Dependencias criptográficas y de cliente HTTP opcionales para pruebas.
+ * @returns Metadato seguro y enmascarado de la credencial persistida o error tipado.
+ */
+export async function saveAdminPlatformTrialKey(
+  input: SaveAdminPlatformTrialKeyInput,
+  deps?: {
+    crypto?: SecretCryptoService;
+    llmClient?: LlmHttpProviderClient;
+  },
+): Promise<Result<AdminAiPlatformKeyDto>> {
+  const actor = input.actorUserId || "platform_owner";
+  const trimmedKey = (input.apiKey ?? "").trim();
+
+  if (trimmedKey.length < 8) {
+    return err("La clave API debe contener al menos 8 caracteres válidos.", "VALIDATION_ERROR");
+  }
+
+  if (
+    input.priorityRole !== undefined &&
+    input.priorityRole !== null &&
+    input.priorityRole !== "primary" &&
+    input.priorityRole !== "secondary" &&
+    input.priorityRole !== "standby"
+  ) {
+    return err("El rol de prioridad indicado no es válido.", "VALIDATION_ERROR");
+  }
+
+  const priorityRole: AiPriorityRole =
+    input.priorityRole === "secondary"
+      ? "secondary"
+      : input.priorityRole === "standby"
+        ? "standby"
+        : "primary";
+
+  if (
+    input.temperature !== undefined &&
+    input.temperature !== null &&
+    (Number.isNaN(Number(input.temperature)) ||
+      Number(input.temperature) < 0 ||
+      Number(input.temperature) > 2)
+  ) {
+    return err("La temperatura debe estar entre 0.0 y 2.0.", "VALIDATION_ERROR");
+  }
+
+  if (
+    input.maxTokens !== undefined &&
+    input.maxTokens !== null &&
+    (!Number.isInteger(Number(input.maxTokens)) ||
+      Number(input.maxTokens) < 64 ||
+      Number(input.maxTokens) > 8192)
+  ) {
+    return err("El límite máximo de tokens debe ser un entero entre 64 y 8192.", "VALIDATION_ERROR");
+  }
+
+  const db = getDb();
+
+  try {
+    const providerRows = await db
+      .select()
+      .from(aiProviders)
+      .where(
+        and(
+          eq(aiProviders.code, input.providerCode),
+          eq(aiProviders.isActive, true),
+          isNull(aiProviders.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    const provider = providerRows[0];
+    if (!provider) {
+      return err("El proveedor LLM seleccionado no existe o está inactivo.", "AI_PROVIDER_NOT_FOUND");
+    }
+
+    const providerModels = await db
+      .select()
+      .from(aiModels)
+      .where(
+        and(
+          eq(aiModels.providerId, provider.id),
+          eq(aiModels.isActive, true),
+          isNull(aiModels.deletedAt),
+        ),
+      )
+      .orderBy(desc(aiModels.isDefault), asc(aiModels.displayName));
+
+    const matchedModel = input.modelId
+      ? providerModels.find((m) => m.id === input.modelId || m.modelId === input.modelId)
+      : providerModels[0];
+
+    if (input.modelId && !matchedModel) {
+      return err(
+        "El modelo seleccionado no pertenece al proveedor elegido o se encuentra inactivo.",
+        "AI_MODEL_NOT_FOUND",
+      );
+    }
+
+    if (input.verifyImmediately !== false) {
+      const llmClient = deps?.llmClient ?? new LlmHttpProviderClient();
+      const verifyResult = await llmClient.verifyApiKey({
+        providerCode: provider.code as SupportedLlmProviderCode,
+        apiDialect: normalizeAiDialect(provider.apiDialect),
+        baseUrl: provider.baseUrl,
+        verifyPath: provider.verifyPath,
+        apiKey: trimmedKey,
+      });
+
+      if (!verifyResult.ok) {
+        return err(verifyResult.error, verifyResult.code ?? "AI_KEY_INVALID");
+      }
+    }
+
+    const crypto = deps?.crypto ?? new SecretCryptoService();
+    const encrypted = crypto.encrypt(trimmedKey);
+    const now = new Date();
+    const monthlyTokenCap =
+      input.monthlyTokenCap !== undefined &&
+      input.monthlyTokenCap !== null &&
+      Number(input.monthlyTokenCap) > 0
+        ? Math.trunc(Number(input.monthlyTokenCap))
+        : null;
+    const modelDefaultTemp = matchedModel
+      ? Number.parseFloat(matchedModel.defaultTemperature ?? "0.7")
+      : 0.7;
+    const resolvedTemperature =
+      input.temperature !== undefined && input.temperature !== null
+        ? Number(Number(input.temperature).toFixed(2))
+        : Number.isFinite(modelDefaultTemp)
+          ? modelDefaultTemp
+          : 0.7;
+    const resolvedMaxTokens =
+      input.maxTokens !== undefined && input.maxTokens !== null
+        ? Math.trunc(Number(input.maxTokens))
+        : matchedModel?.defaultMaxTokens ?? 1000;
+    const keyAlias = input.keyId?.trim() || `trial-${provider.code}-${priorityRole}`;
+
+    const inserted = await db.transaction(async (tx) => {
+      if (priorityRole === "primary" || priorityRole === "secondary") {
+        await tx
+          .update(aiPlatformKeys)
+          .set({
+            status: "retired",
+            updatedBy: actor,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(aiPlatformKeys.status, "active"),
+              eq(aiPlatformKeys.purpose, "inference"),
+              eq(aiPlatformKeys.priorityRole, priorityRole),
+            ),
+          );
+      }
+
+      const [row] = await tx
+        .insert(aiPlatformKeys)
+        .values({
+          providerId: provider.id,
+          keyId: keyAlias,
+          apiKeyCiphertext: encrypted.ciphertext,
+          apiKeyKeyId: encrypted.keyId,
+          apiKeyLast4: encrypted.last4,
+          defaultModelId: matchedModel?.id ?? null,
+          monthlyTokenCap,
+          temperature: String(resolvedTemperature),
+          maxTokens: resolvedMaxTokens,
+          priorityRole,
+          status: "active",
+          purpose: "inference",
+          createdBy: actor,
+          updatedBy: actor,
+        })
+        .returning();
+
+      await tx.insert(auditLog).values({
+        actorUserId: input.actorUserId ?? null,
+        actorRole: "platform_owner",
+        action: "admin_ai_platform_key_rotated",
+        entityType: "ai_platform_keys",
+        entityId: row.id,
+        clientId: null,
+        metadata: {
+          providerCode: provider.code,
+          priorityRole,
+          keyId: keyAlias,
+          apiKeyLast4: encrypted.last4,
+          defaultModelCode: matchedModel?.modelId ?? null,
+          temperature: resolvedTemperature,
+          maxTokens: resolvedMaxTokens,
+          monthlyTokenCap,
+        },
+      });
+
+      return row;
+    });
+
+    appLogger.info("[saveAdminPlatformTrialKey] Llave de plataforma registrada y activada", {
+      platformKeyId: inserted.id,
+      providerCode: provider.code,
+      priorityRole,
+      apiKeyLast4: encrypted.last4,
+      defaultModelCode: matchedModel?.modelId ?? null,
+    });
+
+    return ok({
+      id: inserted.id,
+      providerId: provider.id,
+      providerCode: provider.code as SupportedLlmProviderCode,
+      providerName: provider.name,
+      keyId: inserted.keyId,
+      apiKeyLast4: inserted.apiKeyLast4,
+      defaultModelId: inserted.defaultModelId ?? null,
+      defaultModelCode: matchedModel?.modelId ?? null,
+      monthlyTokenCap:
+        inserted.monthlyTokenCap !== null && inserted.monthlyTokenCap !== undefined
+          ? Number(inserted.monthlyTokenCap)
+          : null,
+      temperature: resolvedTemperature,
+      maxTokens: resolvedMaxTokens,
+      priorityRole,
+      status: inserted.status,
+      purpose: inserted.purpose,
+      updatedAt:
+        inserted.updatedAt instanceof Date
+          ? inserted.updatedAt.toISOString()
+          : new Date().toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof SecretCryptoError) {
+      return err(error.message, error.code);
+    }
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[saveAdminPlatformTrialKey Failed] ${msg}`, { error: msg });
+    return err(`No se pudo registrar la llave de plataforma: ${msg}`, "AI_PLATFORM_KEY_SAVE_FAILED");
+  }
+}
+
+/**
+ * Actualiza modelo por defecto, temperatura, máximo de tokens o tope mensual de una llave de plataforma activa.
+ *
+ * @param input - Identificador de la llave y parámetros operativos actualizados.
+ * @returns Metadato actualizado de la llave o error tipado.
+ */
+export async function updateAdminPlatformKeySettings(
+  input: UpdateAdminPlatformKeySettingsInput,
+): Promise<Result<AdminAiPlatformKeyDto>> {
+  const keyId = input.platformKeyId?.trim();
+  if (!keyId) {
+    return err("El identificador de la llave de plataforma es obligatorio.", "VALIDATION_ERROR");
+  }
+
+  if (
+    input.temperature !== undefined &&
+    (Number.isNaN(Number(input.temperature)) ||
+      Number(input.temperature) < 0 ||
+      Number(input.temperature) > 2)
+  ) {
+    return err("La temperatura debe estar entre 0.0 y 2.0.", "VALIDATION_ERROR");
+  }
+
+  if (
+    input.maxTokens !== undefined &&
+    (!Number.isInteger(Number(input.maxTokens)) ||
+      Number(input.maxTokens) < 64 ||
+      Number(input.maxTokens) > 8192)
+  ) {
+    return err("El límite máximo de tokens debe ser un entero entre 64 y 8192.", "VALIDATION_ERROR");
+  }
+
+  const db = getDb();
+  const actor = input.actorUserId || "platform_owner";
+
+  try {
+    const existingRows = await db
+      .select()
+      .from(aiPlatformKeys)
+      .where(eq(aiPlatformKeys.id, keyId))
+      .limit(1);
+
+    const existing = existingRows[0];
+    if (!existing) {
+      return err("La llave de plataforma indicada no existe.", "NOT_FOUND");
+    }
+
+    const providerRows = await db
+      .select()
+      .from(aiProviders)
+      .where(eq(aiProviders.id, existing.providerId))
+      .limit(1);
+    const provider = providerRows[0];
+    if (!provider) {
+      return err("El proveedor asociado a esta llave no existe.", "AI_PROVIDER_NOT_FOUND");
+    }
+
+    let nextDefaultModelId = existing.defaultModelId;
+    let nextDefaultModelCode: string | null = null;
+
+    if (input.modelId !== undefined) {
+      if (input.modelId === null || input.modelId === "") {
+        nextDefaultModelId = null;
+      } else {
+        const modelRows = await db
+          .select()
+          .from(aiModels)
+          .where(
+            and(
+              eq(aiModels.providerId, existing.providerId),
+              eq(aiModels.isActive, true),
+              isNull(aiModels.deletedAt),
+            ),
+          );
+        const foundModel = modelRows.find(
+          (m) => m.id === input.modelId || m.modelId === input.modelId,
+        );
+        if (!foundModel) {
+          return err(
+            "El modelo seleccionado no pertenece al proveedor de esta llave o está inactivo.",
+            "AI_MODEL_NOT_FOUND",
+          );
+        }
+        nextDefaultModelId = foundModel.id;
+        nextDefaultModelCode = foundModel.modelId;
+      }
+    } else if (existing.defaultModelId) {
+      const [m] = await db
+        .select({ modelId: aiModels.modelId })
+        .from(aiModels)
+        .where(eq(aiModels.id, existing.defaultModelId))
+        .limit(1);
+      nextDefaultModelCode = m?.modelId ?? null;
+    }
+
+    const nextTemperature =
+      input.temperature !== undefined
+        ? Number(Number(input.temperature).toFixed(2))
+        : Number.parseFloat(existing.temperature ?? "0.7") || 0.7;
+    const nextMaxTokens =
+      input.maxTokens !== undefined
+        ? Math.trunc(Number(input.maxTokens))
+        : existing.maxTokens ?? 1000;
+    const nextMonthlyTokenCap =
+      input.monthlyTokenCap !== undefined
+        ? input.monthlyTokenCap !== null && Number(input.monthlyTokenCap) > 0
+          ? Math.trunc(Number(input.monthlyTokenCap))
+          : null
+        : existing.monthlyTokenCap;
+
+    const [updated] = await db
+      .update(aiPlatformKeys)
+      .set({
+        defaultModelId: nextDefaultModelId,
+        temperature: String(nextTemperature),
+        maxTokens: nextMaxTokens,
+        monthlyTokenCap: nextMonthlyTokenCap,
+        updatedBy: actor,
+        updatedAt: new Date(),
+      })
+      .where(eq(aiPlatformKeys.id, existing.id))
+      .returning();
+
+    await db.insert(auditLog).values({
+      actorUserId: input.actorUserId ?? null,
+      actorRole: "platform_owner",
+      action: "admin_ai_platform_key_settings_updated",
+      entityType: "ai_platform_keys",
+      entityId: updated.id,
+      clientId: null,
+      metadata: {
+        defaultModelId: nextDefaultModelId,
+        temperature: nextTemperature,
+        maxTokens: nextMaxTokens,
+        monthlyTokenCap: nextMonthlyTokenCap,
+      },
+    });
+
+    return ok({
+      id: updated.id,
+      providerId: provider.id,
+      providerCode: provider.code,
+      providerName: provider.name,
+      keyId: updated.keyId,
+      apiKeyLast4: updated.apiKeyLast4,
+      defaultModelId: updated.defaultModelId ?? null,
+      defaultModelCode: nextDefaultModelCode,
+      monthlyTokenCap:
+        updated.monthlyTokenCap !== null && updated.monthlyTokenCap !== undefined
+          ? Number(updated.monthlyTokenCap)
+          : null,
+      temperature: nextTemperature,
+      maxTokens: nextMaxTokens,
+      priorityRole: normalizeAiPriorityRole(updated.priorityRole),
+      status: updated.status,
+      purpose: updated.purpose,
+      updatedAt:
+        updated.updatedAt instanceof Date
+          ? updated.updatedAt.toISOString()
+          : new Date().toISOString(),
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminPlatformKeySettings Failed] ${msg}`, { error: msg });
+    return err(`No se pudo actualizar la configuración de la llave: ${msg}`, "AI_PLATFORM_KEY_UPDATE_FAILED");
+  }
+}
+
+/**
+ * Reasigna el rol de prioridad (`primary`, `secondary`, `standby`) de una llave activa de plataforma,
+ * degradando automáticamente a `standby` cualquier otra llave activa del mismo `purpose` que ocupara ese rol.
+ *
+ * @param input - Identificador de llave y rol de prioridad objetivo.
+ * @returns Confirmación de actualización o error si la llave no está activa.
+ */
+export async function setAdminPlatformKeyPriority(
+  input: SetAdminPlatformKeyPriorityInput,
+): Promise<Result<{ id: string; priorityRole: AiPriorityRole }>> {
+  const keyId = input.platformKeyId?.trim();
+  if (!keyId) {
+    return err("El identificador de la llave de plataforma es obligatorio.", "VALIDATION_ERROR");
+  }
+
+  if (
+    input.priorityRole !== "primary" &&
+    input.priorityRole !== "secondary" &&
+    input.priorityRole !== "standby"
+  ) {
+    return err("El rol de prioridad indicado no es válido.", "VALIDATION_ERROR");
+  }
+
+  const db = getDb();
+  const actor = input.actorUserId || "platform_owner";
+
+  try {
+    const existingRows = await db
+      .select()
+      .from(aiPlatformKeys)
+      .where(eq(aiPlatformKeys.id, keyId))
+      .limit(1);
+
+    const existing = existingRows[0];
+    if (!existing) {
+      return err("La llave de plataforma indicada no existe.", "NOT_FOUND");
+    }
+    if (existing.status !== "active") {
+      return err("Solo es posible priorizar credenciales activas.", "VALIDATION_ERROR");
+    }
+
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      if (input.priorityRole === "primary" || input.priorityRole === "secondary") {
+        await tx
+          .update(aiPlatformKeys)
+          .set({
+            priorityRole: "standby",
+            updatedBy: actor,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(aiPlatformKeys.status, "active"),
+              eq(aiPlatformKeys.purpose, existing.purpose),
+              eq(aiPlatformKeys.priorityRole, input.priorityRole),
+              ne(aiPlatformKeys.id, existing.id),
+            ),
+          );
+      }
+
+      await tx
+        .update(aiPlatformKeys)
+        .set({
+          priorityRole: input.priorityRole,
+          updatedBy: actor,
+          updatedAt: now,
+        })
+        .where(eq(aiPlatformKeys.id, existing.id));
+
+      await tx.insert(auditLog).values({
+        actorUserId: input.actorUserId ?? null,
+        actorRole: "platform_owner",
+        action: "admin_ai_platform_key_priority_updated",
+        entityType: "ai_platform_keys",
+        entityId: existing.id,
+        clientId: null,
+        metadata: {
+          previousRole: existing.priorityRole,
+          newRole: input.priorityRole,
+        },
+      });
+    });
+
+    return ok({ id: existing.id, priorityRole: input.priorityRole });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[setAdminPlatformKeyPriority Failed] ${msg}`, { error: msg });
+    return err(`No se pudo reasignar la prioridad de la llave: ${msg}`, "AI_PLATFORM_KEY_PRIORITY_FAILED");
+  }
+}
+
+/**
+ * Retira una credencial LLM de plataforma dejándola inactiva para nuevas inferencias de prueba (`SPEC-02`).
+ *
+ * @param input - Identificador de la credencial a retirar y actor responsable.
+ * @returns Confirmación de retiro o error si el registro no existe.
+ */
+export async function retireAdminPlatformTrialKey(
+  input: RetireAdminPlatformTrialKeyInput,
+): Promise<Result<{ id: string; status: "retired" }>> {
+  if (!input.platformKeyId?.trim()) {
+    return err("El identificador de la llave de plataforma es obligatorio.", "VALIDATION_ERROR");
+  }
+
+  const db = getDb();
+  const actor = input.actorUserId || "platform_owner";
+
+  try {
+    const [updated] = await db
+      .update(aiPlatformKeys)
+      .set({
+        status: "retired",
+        updatedBy: actor,
+        updatedAt: new Date(),
+      })
+      .where(eq(aiPlatformKeys.id, input.platformKeyId.trim()))
+      .returning();
+
+    if (!updated) {
+      return err("La llave de plataforma indicada no existe.", "NOT_FOUND");
+    }
+
+    await db.insert(auditLog).values({
+      actorUserId: input.actorUserId ?? null,
+      actorRole: "platform_owner",
+      action: "admin_ai_platform_key_retired",
+      entityType: "ai_platform_keys",
+      entityId: updated.id,
+      clientId: null,
+      metadata: {
+        keyId: updated.keyId,
+        apiKeyLast4: updated.apiKeyLast4,
+      },
+    });
+
+    appLogger.info("[retireAdminPlatformTrialKey] Llave de plataforma retirada", {
+      platformKeyId: updated.id,
+      apiKeyLast4: updated.apiKeyLast4,
+    });
+
+    return ok({ id: updated.id, status: "retired" });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[retireAdminPlatformTrialKey Failed] ${msg}`, { error: msg });
+    return err(`No se pudo retirar la llave de plataforma: ${msg}`, "AI_PLATFORM_KEY_RETIRE_FAILED");
+  }
+}
+
+/**
+ * Valida (magic bytes y tope 2 MB) y sube el logotipo de un proveedor LLM a SeaweedFS,
+ * retornando su clave de objeto y URL firmada de imgproxy (`SPEC-02 §4.3`).
+ *
+ * @param input - Buffer binario del archivo, nombre original y slug opcional del proveedor.
+ * @param deps - Servicio S3 inyectable para pruebas deterministas.
+ * @returns Clave en almacenamiento de objetos y URL firmada opcional o error de validación.
+ */
+export async function uploadAdminAiProviderLogo(
+  input: UploadAdminAiProviderLogoInput,
+  deps?: { s3Storage?: S3StorageService },
+): Promise<Result<UploadAdminAiProviderLogoResult>> {
+  if (!input.fileBuffer || input.fileBuffer.length === 0) {
+    return err("El archivo del logo está vacío.", "MEDIA_EMPTY");
+  }
+  if (input.fileBuffer.length > AI_PROVIDER_LOGO_MAX_BYTES) {
+    return err("El logo no puede superar los 2 MB.", "MEDIA_TOO_LARGE");
+  }
+
+  const mediaValidator = new CatalogAndMediaService();
+  const validation = mediaValidator.detectAndValidateMediaContent(
+    input.fileBuffer,
+    input.originalFilename || "logo.png",
+  );
+  if (!validation.ok) {
+    return err(validation.error, validation.code ?? "MEDIA_VALIDATION_FAILED");
+  }
+
+  if (
+    validation.data.mediaKind !== "image" ||
+    !ALLOWED_AI_LOGO_FORMATS.has(validation.data.sourceFormat)
+  ) {
+    return err(
+      "Formato no admitido. Solo se permiten imágenes PNG, JPEG, WebP o AVIF.",
+      "UNSUPPORTED_MEDIA_FORMAT",
+    );
+  }
+
+  const cleanSlug =
+    (input.providerCode ?? "provider")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "")
+      .slice(0, 40) || "provider";
+  const storageKey = `ai-providers/logos/${cleanSlug}/${randomUUID()}.${validation.data.sourceFormat}`;
+
+  const s3 = deps?.s3Storage ?? new S3StorageService();
+  const uploadRes = await s3.putObject(storageKey, input.fileBuffer, validation.data.mimeType);
+  if (!uploadRes.ok) {
+    return err(
+      uploadRes.error || "No se pudo almacenar el logotipo en el servicio de almacenamiento.",
+      "MEDIA_STORAGE_UNAVAILABLE",
+    );
+  }
+
+  return ok({
+    storageKey,
+    logoUrl: signProviderLogoUrl(storageKey),
+    mimeType: validation.data.mimeType,
+    format: validation.data.sourceFormat,
+    sizeBytes: input.fileBuffer.length,
+  });
+}
+
+function validateHttpBaseUrl(rawUrl: string): string | null {
+  const trimmed = rawUrl.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return null;
+    }
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeVerifyPath(rawPath: string | undefined): string {
+  const trimmed = (rawPath ?? "/models").trim() || "/models";
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+/**
+ * Registra dinámicamente un nuevo proveedor LLM en `admin.ai_providers` (`SPEC-02 Fase 2`).
+ *
+ * @param input - Código slug, nombre comercial, dialecto HTTP, URL base, ruta de verificación y logo opcional.
+ * @returns DTO del proveedor creado o error de validación/unicidad.
+ */
+export async function createAdminAiProvider(
+  input: CreateAdminAiProviderInput,
+): Promise<Result<AdminAiProviderDto>> {
+  const code = (input.code ?? "").trim().toLowerCase();
+  if (!PROVIDER_SLUG_REGEX.test(code)) {
+    return err(
+      "El slug del proveedor debe tener entre 2 y 40 caracteres en minúsculas, números, guiones o guión bajo.",
+      "VALIDATION_ERROR",
+    );
+  }
+
+  const name = (input.name ?? "").trim();
+  if (name.length < 2) {
+    return err("El nombre visible del proveedor es obligatorio.", "VALIDATION_ERROR");
+  }
+
+  if (
+    input.apiDialect !== "openai_compatible" &&
+    input.apiDialect !== "anthropic" &&
+    input.apiDialect !== "google_gemini"
+  ) {
+    return err("El dialecto de API indicado no es compatible.", "VALIDATION_ERROR");
+  }
+
+  const normalizedBaseUrl = validateHttpBaseUrl(input.baseUrl ?? "");
+  if (!normalizedBaseUrl) {
+    return err("La URL base del proveedor debe ser una URL HTTP/HTTPS válida.", "VALIDATION_ERROR");
+  }
+
+  const verifyPath = normalizeVerifyPath(input.verifyPath);
+  const db = getDb();
+  const actor = input.actorUserId || "platform_owner";
+
+  try {
+    const duplicate = await db
+      .select({ id: aiProviders.id })
+      .from(aiProviders)
+      .where(and(eq(aiProviders.code, code), isNull(aiProviders.deletedAt)))
+      .limit(1);
+
+    if (duplicate[0]) {
+      return err(
+        `Ya existe un proveedor activo con el slug '${code}'.`,
+        "AI_PROVIDER_CODE_EXISTS",
+      );
+    }
+
+    const [inserted] = await db
+      .insert(aiProviders)
+      .values({
+        code,
+        name,
+        apiDialect: input.apiDialect,
+        baseUrl: normalizedBaseUrl,
+        verifyPath,
+        logoStorageKey: input.logoStorageKey ?? null,
+        docsUrl: input.docsUrl?.trim() || null,
+        isActive: input.isActive ?? true,
+        supportedModes: input.supportedModes ?? { byok: true, mocter: true },
+        sortOrder: input.sortOrder ?? 100,
+        createdBy: actor,
+        updatedBy: actor,
+      })
+      .returning();
+
+    await db.insert(auditLog).values({
+      actorUserId: input.actorUserId ?? null,
+      actorRole: "platform_owner",
+      action: "admin_ai_provider_created",
+      entityType: "ai_providers",
+      entityId: inserted.id,
+      clientId: null,
+      metadata: {
+        code: inserted.code,
+        apiDialect: inserted.apiDialect,
+        baseUrl: inserted.baseUrl,
+      },
+    });
+
+    return ok({
+      id: inserted.id,
+      code: inserted.code,
+      name: inserted.name,
+      apiDialect: normalizeAiDialect(inserted.apiDialect),
+      baseUrl: inserted.baseUrl,
+      verifyPath: inserted.verifyPath,
+      logoStorageKey: inserted.logoStorageKey ?? null,
+      logoUrl: signProviderLogoUrl(inserted.logoStorageKey),
+      docsUrl: inserted.docsUrl ?? null,
+      sortOrder: Number(inserted.sortOrder ?? 0),
+      isActive: inserted.isActive,
+      supportedModes: inserted.supportedModes,
+      modelsCount: 0,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[createAdminAiProvider Failed] ${msg}`, { error: msg });
+    return err(`No se pudo crear el proveedor LLM: ${msg}`, "AI_PROVIDER_CREATE_FAILED");
+  }
+}
+
+/**
+ * Actualiza metadatos, transporte HTTP, logo o estado activo de un proveedor LLM existente.
+ *
+ * @param input - Identificador del proveedor y campos a actualizar.
+ * @returns DTO actualizado del proveedor o error tipado.
+ */
+export async function updateAdminAiProvider(
+  input: UpdateAdminAiProviderInput,
+): Promise<Result<AdminAiProviderDto>> {
+  const providerId = input.providerId?.trim();
+  if (!providerId) {
+    return err("El identificador del proveedor es obligatorio.", "VALIDATION_ERROR");
+  }
+
+  const db = getDb();
+  const actor = input.actorUserId || "platform_owner";
+
+  try {
+    const existingRows = await db
+      .select()
+      .from(aiProviders)
+      .where(and(eq(aiProviders.id, providerId), isNull(aiProviders.deletedAt)))
+      .limit(1);
+
+    const existing = existingRows[0];
+    if (!existing) {
+      return err("El proveedor indicado no existe.", "AI_PROVIDER_NOT_FOUND");
+    }
+
+    let nextBaseUrl = existing.baseUrl;
+    if (input.baseUrl !== undefined) {
+      const valid = validateHttpBaseUrl(input.baseUrl);
+      if (!valid) {
+        return err("La URL base del proveedor debe ser una URL HTTP/HTTPS válida.", "VALIDATION_ERROR");
+      }
+      nextBaseUrl = valid;
+    }
+
+    if (
+      input.apiDialect !== undefined &&
+      input.apiDialect !== "openai_compatible" &&
+      input.apiDialect !== "anthropic" &&
+      input.apiDialect !== "google_gemini"
+    ) {
+      return err("El dialecto de API indicado no es compatible.", "VALIDATION_ERROR");
+    }
+
+    const nextName =
+      input.name !== undefined ? input.name.trim() || existing.name : existing.name;
+    const nextVerifyPath =
+      input.verifyPath !== undefined ? normalizeVerifyPath(input.verifyPath) : existing.verifyPath;
+
+    const [updated] = await db
+      .update(aiProviders)
+      .set({
+        name: nextName,
+        apiDialect: input.apiDialect ?? existing.apiDialect,
+        baseUrl: nextBaseUrl,
+        verifyPath: nextVerifyPath,
+        logoStorageKey:
+          input.logoStorageKey !== undefined ? input.logoStorageKey : existing.logoStorageKey,
+        docsUrl: input.docsUrl !== undefined ? input.docsUrl : existing.docsUrl,
+        isActive: input.isActive !== undefined ? input.isActive : existing.isActive,
+        supportedModes: input.supportedModes ?? existing.supportedModes,
+        sortOrder: input.sortOrder !== undefined ? input.sortOrder : existing.sortOrder,
+        updatedBy: actor,
+        updatedAt: new Date(),
+      })
+      .where(eq(aiProviders.id, existing.id))
+      .returning();
+
+    const modelCountRows = await db
+      .select({ count: sql<number>`COUNT(*)::int` })
+      .from(aiModels)
+      .where(and(eq(aiModels.providerId, updated.id), isNull(aiModels.deletedAt)));
+
+    await db.insert(auditLog).values({
+      actorUserId: input.actorUserId ?? null,
+      actorRole: "platform_owner",
+      action: "admin_ai_provider_updated",
+      entityType: "ai_providers",
+      entityId: updated.id,
+      clientId: null,
+      metadata: {
+        code: updated.code,
+        isActive: updated.isActive,
+        apiDialect: updated.apiDialect,
+      },
+    });
+
+    return ok({
+      id: updated.id,
+      code: updated.code,
+      name: updated.name,
+      apiDialect: normalizeAiDialect(updated.apiDialect),
+      baseUrl: updated.baseUrl,
+      verifyPath: updated.verifyPath,
+      logoStorageKey: updated.logoStorageKey ?? null,
+      logoUrl: signProviderLogoUrl(updated.logoStorageKey),
+      docsUrl: updated.docsUrl ?? null,
+      sortOrder: Number(updated.sortOrder ?? 0),
+      isActive: updated.isActive,
+      supportedModes: updated.supportedModes,
+      modelsCount: Number(modelCountRows[0]?.count ?? 0),
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminAiProvider Failed] ${msg}`, { error: msg });
+    return err(`No se pudo actualizar el proveedor LLM: ${msg}`, "AI_PROVIDER_UPDATE_FAILED");
+  }
+}
+
+/**
+ * Elimina un proveedor LLM aplicando integridad referencial híbrida:
+ * - Bloquea con `AI_RESOURCE_IN_ACTIVE_USE` (409) si tiene credenciales BYOK, llaves activas de plataforma,
+ *   bots activos o presets activos referenciándolo.
+ * - Aplica borrado lógico (`deleted_at = NOW()`) si únicamente posee historial de uso o llaves retiradas.
+ * - Ejecuta `DELETE` físico si nunca fue referenciado.
+ *
+ * @param input - Identificador del proveedor y actor responsable.
+ * @returns Resultado con modo de borrado aplicado o conflicto de integridad.
+ */
+export async function deleteAdminAiProvider(
+  input: DeleteAdminAiProviderInput,
+): Promise<Result<{ providerId: string; mode: "hard_deleted" | "soft_deleted" }>> {
+  const providerId = input.providerId?.trim();
+  if (!providerId) {
+    return err("El identificador del proveedor es obligatorio.", "VALIDATION_ERROR");
+  }
+
+  const db = getDb();
+  const actor = input.actorUserId || "platform_owner";
+
+  try {
+    const existingRows = await db
+      .select()
+      .from(aiProviders)
+      .where(and(eq(aiProviders.id, providerId), isNull(aiProviders.deletedAt)))
+      .limit(1);
+
+    const existing = existingRows[0];
+    if (!existing) {
+      return err("El proveedor indicado no existe.", "AI_PROVIDER_NOT_FOUND");
+    }
+
+    const childModels = await db
+      .select({ id: aiModels.id })
+      .from(aiModels)
+      .where(eq(aiModels.providerId, existing.id));
+    const childModelIds = childModels.map((m) => m.id);
+
+    const [
+      activeByokRows,
+      activeTenantModelRows,
+      activePlatformKeyRows,
+      activeBotRows,
+      activePresetRows,
+    ] = await Promise.all([
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(tenantAiProviders)
+        .where(and(eq(tenantAiProviders.providerId, existing.id), isNull(tenantAiProviders.deletedAt))),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(tenantModelSettings)
+        .where(
+          and(
+            eq(tenantModelSettings.providerId, existing.id),
+            isNull(tenantModelSettings.deletedAt),
+          ),
+        ),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(aiPlatformKeys)
+        .where(and(eq(aiPlatformKeys.providerId, existing.id), eq(aiPlatformKeys.status, "active"))),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(tenantBots)
+        .where(and(eq(tenantBots.providerId, existing.id), isNull(tenantBots.deletedAt))),
+      childModelIds.length > 0
+        ? db
+            .select({ count: sql<number>`COUNT(*)::int` })
+            .from(botPresets)
+            .where(and(inArray(botPresets.modelId, childModelIds), eq(botPresets.isActive, true)))
+        : Promise.resolve([{ count: 0 }]),
+    ]);
+
+    const activeRefsCount =
+      Number(activeByokRows[0]?.count ?? 0) +
+      Number(activeTenantModelRows[0]?.count ?? 0) +
+      Number(activePlatformKeyRows[0]?.count ?? 0) +
+      Number(activeBotRows[0]?.count ?? 0) +
+      Number(activePresetRows[0]?.count ?? 0);
+
+    if (activeRefsCount > 0) {
+      return err(
+        "No es posible eliminar este proveedor porque tiene credenciales activas, llaves de plataforma o bots asociados.",
+        "AI_RESOURCE_IN_ACTIVE_USE",
+      );
+    }
+
+    const [
+      usageHistoryRows,
+      anyByokRows,
+      anyModelSettingRows,
+      anyPlatformKeyRows,
+      anyBotRows,
+      anyPresetRows,
+    ] = await Promise.all([
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(aiUsageEvents)
+        .where(eq(aiUsageEvents.providerId, existing.id)),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(tenantAiProviders)
+        .where(eq(tenantAiProviders.providerId, existing.id)),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(tenantModelSettings)
+        .where(eq(tenantModelSettings.providerId, existing.id)),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(aiPlatformKeys)
+        .where(eq(aiPlatformKeys.providerId, existing.id)),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(tenantBots)
+        .where(eq(tenantBots.providerId, existing.id)),
+      childModelIds.length > 0
+        ? db
+            .select({ count: sql<number>`COUNT(*)::int` })
+            .from(botPresets)
+            .where(inArray(botPresets.modelId, childModelIds))
+        : Promise.resolve([{ count: 0 }]),
+    ]);
+
+    const hasHistory =
+      Number(usageHistoryRows[0]?.count ?? 0) +
+        Number(anyByokRows[0]?.count ?? 0) +
+        Number(anyModelSettingRows[0]?.count ?? 0) +
+        Number(anyPlatformKeyRows[0]?.count ?? 0) +
+        Number(anyBotRows[0]?.count ?? 0) +
+        Number(anyPresetRows[0]?.count ?? 0) >
+      0;
+
+    const now = new Date();
+    const mode: "hard_deleted" | "soft_deleted" = hasHistory ? "soft_deleted" : "hard_deleted";
+
+    await db.transaction(async (tx) => {
+      if (hasHistory) {
+        await tx
+          .update(aiModels)
+          .set({
+            isActive: false,
+            isDefault: false,
+            deletedAt: now,
+            deletedBy: actor,
+            updatedBy: actor,
+            updatedAt: now,
+          })
+          .where(and(eq(aiModels.providerId, existing.id), isNull(aiModels.deletedAt)));
+
+        await tx
+          .update(aiProviders)
+          .set({
+            isActive: false,
+            deletedAt: now,
+            deletedBy: actor,
+            updatedBy: actor,
+            updatedAt: now,
+          })
+          .where(eq(aiProviders.id, existing.id));
+      } else {
+        await tx.delete(aiModels).where(eq(aiModels.providerId, existing.id));
+        await tx.delete(aiProviders).where(eq(aiProviders.id, existing.id));
+      }
+
+      await tx.insert(auditLog).values({
+        actorUserId: input.actorUserId ?? null,
+        actorRole: "platform_owner",
+        action:
+          mode === "soft_deleted"
+            ? "admin_ai_provider_soft_deleted"
+            : "admin_ai_provider_hard_deleted",
+        entityType: "ai_providers",
+        entityId: existing.id,
+        clientId: null,
+        metadata: {
+          code: existing.code,
+          mode,
+        },
+      });
+    });
+
+    return ok({ providerId: existing.id, mode });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[deleteAdminAiProvider Failed] ${msg}`, { error: msg });
+    return err(`No se pudo eliminar el proveedor LLM: ${msg}`, "AI_PROVIDER_DELETE_FAILED");
+  }
+}
+
+/**
+ * Registra un nuevo modelo bajo un proveedor LLM existente (`admin.ai_models`),
+ * garantizando transaccionalmente unicidad de `isDefault = true` por proveedor.
+ *
+ * @param input - Identificador de proveedor, slug de modelo, nombre visible y parámetros de inferencia.
+ * @returns DTO del modelo creado o error tipado.
+ */
+export async function createAdminAiModel(
+  input: CreateAdminAiModelInput,
+): Promise<Result<AdminAiModelDto>> {
+  const providerId = input.providerId?.trim();
+  const modelId = input.modelId?.trim();
+  const displayName = input.displayName?.trim();
+
+  if (!providerId || !modelId || !displayName) {
+    return err(
+      "El proveedor, identificador técnico del modelo y nombre visible son obligatorios.",
+      "VALIDATION_ERROR",
+    );
+  }
+
+  const defaultTemperature =
+    input.defaultTemperature !== undefined ? Number(input.defaultTemperature) : 0.7;
+  if (Number.isNaN(defaultTemperature) || defaultTemperature < 0 || defaultTemperature > 2) {
+    return err("La temperatura por defecto debe estar entre 0.0 y 2.0.", "VALIDATION_ERROR");
+  }
+
+  const defaultMaxTokens =
+    input.defaultMaxTokens !== undefined ? Math.trunc(Number(input.defaultMaxTokens)) : 1000;
+  if (!Number.isInteger(defaultMaxTokens) || defaultMaxTokens < 64 || defaultMaxTokens > 8192) {
+    return err("El máximo de tokens por defecto debe estar entre 64 y 8192.", "VALIDATION_ERROR");
+  }
+
+  const db = getDb();
+  const actor = input.actorUserId || "platform_owner";
+
+  try {
+    const providerRows = await db
+      .select()
+      .from(aiProviders)
+      .where(and(eq(aiProviders.id, providerId), isNull(aiProviders.deletedAt)))
+      .limit(1);
+    const provider = providerRows[0];
+    if (!provider) {
+      return err("El proveedor seleccionado no existe.", "AI_PROVIDER_NOT_FOUND");
+    }
+
+    const duplicate = await db
+      .select({ id: aiModels.id })
+      .from(aiModels)
+      .where(
+        and(
+          eq(aiModels.providerId, provider.id),
+          eq(aiModels.modelId, modelId),
+          isNull(aiModels.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    if (duplicate[0]) {
+      return err(
+        `Ya existe el modelo '${modelId}' registrado bajo este proveedor.`,
+        "AI_MODEL_EXISTS",
+      );
+    }
+
+    const spreadPercent = Math.max(0, Math.trunc(Number(input.spreadPercent ?? 30)));
+    const costInput = Math.max(0, Math.trunc(Number(input.costInputMtokUsdCents ?? 0)));
+    const costOutput = Math.max(0, Math.trunc(Number(input.costOutputMtokUsdCents ?? 0)));
+    const retailInput = Math.round(costInput * (1 + spreadPercent / 100));
+    const retailOutput = Math.round(costOutput * (1 + spreadPercent / 100));
+    const now = new Date();
+
+    const inserted = await db.transaction(async (tx) => {
+      if (input.isDefault === true) {
+        await tx
+          .update(aiModels)
+          .set({ isDefault: false, updatedBy: actor, updatedAt: now })
+          .where(and(eq(aiModels.providerId, provider.id), isNull(aiModels.deletedAt)));
+      }
+
+      const [row] = await tx
+        .insert(aiModels)
+        .values({
+          providerId: provider.id,
+          modelId,
+          displayName,
+          contextWindow: Math.max(1024, Math.trunc(Number(input.contextWindow ?? 128000))),
+          maxOutputTokens: Math.max(256, Math.trunc(Number(input.maxOutputTokens ?? 4096))),
+          defaultTemperature: String(Number(defaultTemperature.toFixed(2))),
+          defaultMaxTokens,
+          isDefault: Boolean(input.isDefault),
+          isActive: input.isActive ?? true,
+          recommendedUse: input.recommendedUse ?? {
+            es: "Uso general y asistencia de contenido",
+            en: "General purpose and content assistance",
+          },
+          sortOrder: input.sortOrder ?? 10,
+          spreadPercent,
+          costInputMtokUsdCents: costInput,
+          costOutputMtokUsdCents: costOutput,
+          retailInputMtokUsdCents: retailInput,
+          retailOutputMtokUsdCents: retailOutput,
+          createdBy: actor,
+          updatedBy: actor,
+        })
+        .returning();
+
+      await tx.insert(auditLog).values({
+        actorUserId: input.actorUserId ?? null,
+        actorRole: "platform_owner",
+        action: "admin_ai_model_created",
+        entityType: "ai_models",
+        entityId: row.id,
+        clientId: null,
+        metadata: {
+          providerCode: provider.code,
+          modelId: row.modelId,
+          isDefault: row.isDefault,
+        },
+      });
+
+      return row;
+    });
+
+    return ok({
+      id: inserted.id,
+      providerId: provider.id,
+      providerCode: provider.code,
+      modelId: inserted.modelId,
+      displayName: inserted.displayName,
+      contextWindow: inserted.contextWindow,
+      maxOutputTokens: inserted.maxOutputTokens,
+      defaultTemperature: Number.parseFloat(inserted.defaultTemperature) || 0.7,
+      defaultMaxTokens: inserted.defaultMaxTokens,
+      isDefault: inserted.isDefault,
+      recommendedUse: inserted.recommendedUse,
+      sortOrder: Number(inserted.sortOrder ?? 0),
+      spreadPercent: inserted.spreadPercent,
+      costInputMtokUsdCents: Number(inserted.costInputMtokUsdCents || 0),
+      costOutputMtokUsdCents: Number(inserted.costOutputMtokUsdCents || 0),
+      retailInputMtokUsdCents: Number(inserted.retailInputMtokUsdCents || 0),
+      retailOutputMtokUsdCents: Number(inserted.retailOutputMtokUsdCents || 0),
+      isActive: inserted.isActive,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[createAdminAiModel Failed] ${msg}`, { error: msg });
+    return err(`No se pudo crear el modelo LLM: ${msg}`, "AI_MODEL_CREATE_FAILED");
+  }
+}
+
+/**
+ * Actualiza un modelo LLM (`displayName`, `defaultTemperature`, `defaultMaxTokens`, `isDefault`, costos, `isActive`),
+ * aplicando cambio transaccional único de `isDefault` por proveedor.
+ *
+ * @param input - Identificador de registro de modelo y campos a actualizar.
+ * @returns DTO del modelo actualizado o error tipado.
+ */
+export async function updateAdminAiModel(
+  input: UpdateAdminAiModelInput,
+): Promise<Result<AdminAiModelDto>> {
+  const id = input.id?.trim();
+  if (!id) {
+    return err("El identificador del modelo es obligatorio.", "VALIDATION_ERROR");
+  }
+
+  if (
+    input.defaultTemperature !== undefined &&
+    (Number.isNaN(Number(input.defaultTemperature)) ||
+      Number(input.defaultTemperature) < 0 ||
+      Number(input.defaultTemperature) > 2)
+  ) {
+    return err("La temperatura por defecto debe estar entre 0.0 y 2.0.", "VALIDATION_ERROR");
+  }
+
+  if (
+    input.defaultMaxTokens !== undefined &&
+    (!Number.isInteger(Number(input.defaultMaxTokens)) ||
+      Number(input.defaultMaxTokens) < 64 ||
+      Number(input.defaultMaxTokens) > 8192)
+  ) {
+    return err("El máximo de tokens por defecto debe estar entre 64 y 8192.", "VALIDATION_ERROR");
+  }
+
+  const db = getDb();
+  const actor = input.actorUserId || "platform_owner";
+
+  try {
+    const existingRows = await db
+      .select()
+      .from(aiModels)
+      .where(and(eq(aiModels.id, id), isNull(aiModels.deletedAt)))
+      .limit(1);
+
+    const existing = existingRows[0];
+    if (!existing) {
+      return err("El modelo especificado no existe.", "MODEL_NOT_FOUND");
+    }
+
+    const providerRows = await db
+      .select()
+      .from(aiProviders)
+      .where(eq(aiProviders.id, existing.providerId))
+      .limit(1);
+    const provider = providerRows[0];
+    if (!provider) {
+      return err("El proveedor padre no existe.", "AI_PROVIDER_NOT_FOUND");
+    }
+
+    const nextSpread =
+      input.spreadPercent !== undefined
+        ? Math.max(0, Math.trunc(Number(input.spreadPercent)))
+        : existing.spreadPercent;
+    const nextCostInput =
+      input.costInputMtokUsdCents !== undefined
+        ? Math.max(0, Math.trunc(Number(input.costInputMtokUsdCents)))
+        : Number(existing.costInputMtokUsdCents || 0);
+    const nextCostOutput =
+      input.costOutputMtokUsdCents !== undefined
+        ? Math.max(0, Math.trunc(Number(input.costOutputMtokUsdCents)))
+        : Number(existing.costOutputMtokUsdCents || 0);
+    const retailInput = Math.round(nextCostInput * (1 + nextSpread / 100));
+    const retailOutput = Math.round(nextCostOutput * (1 + nextSpread / 100));
+    const nextTemp =
+      input.defaultTemperature !== undefined
+        ? String(Number(Number(input.defaultTemperature).toFixed(2)))
+        : existing.defaultTemperature;
+    const nextMaxTokens =
+      input.defaultMaxTokens !== undefined
+        ? Math.trunc(Number(input.defaultMaxTokens))
+        : existing.defaultMaxTokens;
+    const now = new Date();
+
+    const updated = await db.transaction(async (tx) => {
+      if (input.isDefault === true) {
+        await tx
+          .update(aiModels)
+          .set({ isDefault: false, updatedBy: actor, updatedAt: now })
+          .where(
+            and(
+              eq(aiModels.providerId, existing.providerId),
+              isNull(aiModels.deletedAt),
+              ne(aiModels.id, existing.id),
+            ),
+          );
+      }
+
+      const [row] = await tx
+        .update(aiModels)
+        .set({
+          displayName: input.displayName?.trim() || existing.displayName,
+          contextWindow: input.contextWindow ?? existing.contextWindow,
+          maxOutputTokens: input.maxOutputTokens ?? existing.maxOutputTokens,
+          defaultTemperature: nextTemp,
+          defaultMaxTokens: nextMaxTokens,
+          isDefault: input.isDefault !== undefined ? input.isDefault : existing.isDefault,
+          isActive: input.isActive !== undefined ? input.isActive : existing.isActive,
+          recommendedUse: input.recommendedUse ?? existing.recommendedUse,
+          sortOrder: input.sortOrder !== undefined ? input.sortOrder : existing.sortOrder,
+          spreadPercent: nextSpread,
+          costInputMtokUsdCents: nextCostInput,
+          costOutputMtokUsdCents: nextCostOutput,
+          retailInputMtokUsdCents: retailInput,
+          retailOutputMtokUsdCents: retailOutput,
+          updatedBy: actor,
+          updatedAt: now,
+        })
+        .where(eq(aiModels.id, existing.id))
+        .returning();
+
+      await tx.insert(auditLog).values({
+        actorUserId: input.actorUserId ?? null,
+        actorRole: "platform_owner",
+        action: "admin_ai_model_updated",
+        entityType: "ai_models",
+        entityId: row.id,
+        clientId: null,
+        metadata: {
+          modelId: row.modelId,
+          isDefault: row.isDefault,
+          isActive: row.isActive,
+          defaultTemperature: row.defaultTemperature,
+          defaultMaxTokens: row.defaultMaxTokens,
+        },
+      });
+
+      return row;
+    });
+
+    return ok({
+      id: updated.id,
+      providerId: provider.id,
+      providerCode: provider.code,
+      modelId: updated.modelId,
+      displayName: updated.displayName,
+      contextWindow: updated.contextWindow,
+      maxOutputTokens: updated.maxOutputTokens,
+      defaultTemperature: Number.parseFloat(updated.defaultTemperature) || 0.7,
+      defaultMaxTokens: updated.defaultMaxTokens,
+      isDefault: updated.isDefault,
+      recommendedUse: updated.recommendedUse,
+      sortOrder: Number(updated.sortOrder ?? 0),
+      spreadPercent: updated.spreadPercent,
+      costInputMtokUsdCents: Number(updated.costInputMtokUsdCents || 0),
+      costOutputMtokUsdCents: Number(updated.costOutputMtokUsdCents || 0),
+      retailInputMtokUsdCents: Number(updated.retailInputMtokUsdCents || 0),
+      retailOutputMtokUsdCents: Number(updated.retailOutputMtokUsdCents || 0),
+      isActive: updated.isActive,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateAdminAiModel Failed] ${msg}`, { error: msg });
+    return err(`No se pudo actualizar el modelo LLM: ${msg}`, "AI_MODEL_UPDATE_FAILED");
+  }
+}
+
+/**
+ * Elimina un modelo LLM aplicando borrado híbrido:
+ * - `409 AI_RESOURCE_IN_ACTIVE_USE` si tiene configuraciones BYOK activas, llaves activas de plataforma,
+ *   bots activos o presets activos.
+ * - Soft-delete si tiene historial de uso o referencias retiradas.
+ * - Hard-delete si nunca fue referenciado.
+ */
+export async function deleteAdminAiModel(
+  input: DeleteAdminAiModelInput,
+): Promise<Result<{ id: string; mode: "hard_deleted" | "soft_deleted" }>> {
+  const id = input.id?.trim();
+  if (!id) {
+    return err("El identificador del modelo es obligatorio.", "VALIDATION_ERROR");
+  }
+
+  const db = getDb();
+  const actor = input.actorUserId || "platform_owner";
+
+  try {
+    const existingRows = await db
+      .select()
+      .from(aiModels)
+      .where(and(eq(aiModels.id, id), isNull(aiModels.deletedAt)))
+      .limit(1);
+
+    const existing = existingRows[0];
+    if (!existing) {
+      return err("El modelo especificado no existe.", "MODEL_NOT_FOUND");
+    }
+
+    const [
+      activeTenantModelRows,
+      activePlatformKeyRows,
+      activeBotRows,
+      activePresetRows,
+    ] = await Promise.all([
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(tenantModelSettings)
+        .where(
+          and(
+            eq(tenantModelSettings.modelId, existing.id),
+            isNull(tenantModelSettings.deletedAt),
+          ),
+        ),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(aiPlatformKeys)
+        .where(and(eq(aiPlatformKeys.defaultModelId, existing.id), eq(aiPlatformKeys.status, "active"))),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(tenantBots)
+        .where(and(eq(tenantBots.modelId, existing.id), isNull(tenantBots.deletedAt))),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(botPresets)
+        .where(and(eq(botPresets.modelId, existing.id), eq(botPresets.isActive, true))),
+    ]);
+
+    const activeRefsCount =
+      Number(activeTenantModelRows[0]?.count ?? 0) +
+      Number(activePlatformKeyRows[0]?.count ?? 0) +
+      Number(activeBotRows[0]?.count ?? 0) +
+      Number(activePresetRows[0]?.count ?? 0);
+
+    if (activeRefsCount > 0) {
+      return err(
+        "No es posible eliminar este modelo porque está en uso por configuraciones BYOK, llaves activas o bots.",
+        "AI_RESOURCE_IN_ACTIVE_USE",
+      );
+    }
+
+    const [usageRows, anyModelSettings, anyPlatformKeys, anyBots, anyPresets] = await Promise.all([
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(aiUsageEvents)
+        .where(eq(aiUsageEvents.modelId, existing.id)),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(tenantModelSettings)
+        .where(eq(tenantModelSettings.modelId, existing.id)),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(aiPlatformKeys)
+        .where(eq(aiPlatformKeys.defaultModelId, existing.id)),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(tenantBots)
+        .where(eq(tenantBots.modelId, existing.id)),
+      db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(botPresets)
+        .where(eq(botPresets.modelId, existing.id)),
+    ]);
+
+    const hasHistory =
+      Number(usageRows[0]?.count ?? 0) +
+        Number(anyModelSettings[0]?.count ?? 0) +
+        Number(anyPlatformKeys[0]?.count ?? 0) +
+        Number(anyBots[0]?.count ?? 0) +
+        Number(anyPresets[0]?.count ?? 0) >
+      0;
+
+    const now = new Date();
+    const mode: "hard_deleted" | "soft_deleted" = hasHistory ? "soft_deleted" : "hard_deleted";
+
+    await db.transaction(async (tx) => {
+      if (hasHistory) {
+        await tx
+          .update(aiModels)
+          .set({
+            isActive: false,
+            isDefault: false,
+            deletedAt: now,
+            deletedBy: actor,
+            updatedBy: actor,
+            updatedAt: now,
+          })
+          .where(eq(aiModels.id, existing.id));
+      } else {
+        await tx.delete(aiModels).where(eq(aiModels.id, existing.id));
+      }
+
+      await tx.insert(auditLog).values({
+        actorUserId: input.actorUserId ?? null,
+        actorRole: "platform_owner",
+        action:
+          mode === "soft_deleted"
+            ? "admin_ai_model_soft_deleted"
+            : "admin_ai_model_hard_deleted",
+        entityType: "ai_models",
+        entityId: existing.id,
+        clientId: null,
+        metadata: {
+          modelId: existing.modelId,
+          mode,
+        },
+      });
+    });
+
+    return ok({ id: existing.id, mode });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[deleteAdminAiModel Failed] ${msg}`, { error: msg });
+    return err(`No se pudo eliminar el modelo LLM: ${msg}`, "AI_MODEL_DELETE_FAILED");
+  }
+}
+
+/**
+ * Crea una nueva versión activa e inmutable para un prompt maestro de «Mejorar con AI» (`admin.ai_assist_prompts`).
+ *
+ * @param input - Clave del campo asistido, nuevo texto del prompt maestro y sugerencia de entrada opcional.
+ * @returns Campo actualizado y número de versión recién activado.
+ */
+export async function saveAdminAssistPromptVersion(
+  input: SaveAdminAssistPromptVersionInput,
+): Promise<Result<{ fieldKey: string; version: number }>> {
+  const fieldKey = (input.fieldKey ?? "").trim();
+  const trimmedPrompt = (input.masterPrompt ?? "").trim();
+
+  if (!fieldKey || !trimmedPrompt) {
+    return err("La clave del campo y el texto del prompt maestro son obligatorios.", "VALIDATION_ERROR");
+  }
+
+  const db = getDb();
+  const actor = input.actorEmail || input.actorUserId || "platform_owner";
+
+  try {
+    let fieldRows = await db
+      .select()
+      .from(aiAssistFields)
+      .where(eq(aiAssistFields.fieldKey, fieldKey))
+      .limit(1);
+
+    if (!fieldRows[0]) {
+      await seedAiAssistCatalog();
+      fieldRows = await db
+        .select()
+        .from(aiAssistFields)
+        .where(eq(aiAssistFields.fieldKey, fieldKey))
+        .limit(1);
+    }
+
+    if (!fieldRows[0]) {
+      return err(`El campo asistido '${fieldKey}' no existe en el catálogo.`, "FIELD_NOT_FOUND");
+    }
+
+    const existingVersions = await db
+      .select()
+      .from(aiAssistPrompts)
+      .where(eq(aiAssistPrompts.fieldKey, fieldKey))
+      .orderBy(desc(aiAssistPrompts.version));
+
+    const currentActive = existingVersions.find((row) => row.status === "active") ?? existingVersions[0];
+    const nextVersion = existingVersions.length > 0 ? Number(existingVersions[0].version) + 1 : 1;
+    const now = new Date();
+
+    await db
+      .update(aiAssistPrompts)
+      .set({
+        status: "retired",
+        updatedBy: actor,
+        updatedAt: now,
+      })
+      .where(and(eq(aiAssistPrompts.fieldKey, fieldKey), eq(aiAssistPrompts.status, "active")));
+
+    const [inserted] = await db
+      .insert(aiAssistPrompts)
+      .values({
+        fieldKey,
+        version: nextVersion,
+        status: "active",
+        masterPrompt: trimmedPrompt,
+        inputHint:
+          input.inputHint !== undefined ? input.inputHint.trim() : (currentActive?.inputHint ?? ""),
+        outputRules: currentActive?.outputRules ?? {},
+        examples: currentActive?.examples ?? [],
+        createdBy: actor,
+        updatedBy: actor,
+      })
+      .returning();
+
+    await db.insert(auditLog).values({
+      actorUserId: input.actorUserId ?? null,
+      actorRole: "platform_owner",
+      action: "admin_ai_assist_prompt_versioned",
+      entityType: "ai_assist_prompts",
+      entityId: inserted.id,
+      clientId: null,
+      metadata: {
+        fieldKey,
+        version: nextVersion,
+      },
+    });
+
+    appLogger.info("[saveAdminAssistPromptVersion] Prompt maestro de asistencia versionado", {
+      fieldKey,
+      version: nextVersion,
+    });
+
+    return ok({ fieldKey: inserted.fieldKey, version: Number(inserted.version) });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[saveAdminAssistPromptVersion Failed] ${msg}`, { error: msg });
+    return err(`Error al versionar prompt maestro de asistencia: ${msg}`, "AI_ASSIST_PROMPT_SAVE_FAILED");
   }
 }
 

@@ -97,6 +97,9 @@ export const tenantAiProviders = adminSchema.table(
     apiKeyKeyId: text("api_key_key_id").notNull(),
     apiKeyLast4: text("api_key_last4").notNull(),
     status: text("status").notNull().default("active"),
+    priorityRole: text("priority_role").notNull().default("primary"),
+    lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }),
+    lastVerificationError: text("last_verification_error"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     deletedBy: text("deleted_by"),
     ...auditColumns(),
@@ -105,7 +108,19 @@ export const tenantAiProviders = adminSchema.table(
     uniqueIndex("tenant_ai_providers_client_provider_active_unique")
       .on(table.clientId, table.providerId)
       .where(sql`deleted_at IS NULL`),
-    check("tenant_ai_providers_status_check", sql.raw("status IN ('active', 'disabled')")),
+    uniqueIndex("tenant_ai_providers_client_priority_active_unique")
+      .on(table.clientId, table.priorityRole)
+      .where(
+        sql`deleted_at IS NULL AND status = 'active' AND priority_role IN ('primary', 'secondary')`,
+      ),
+    check(
+      "tenant_ai_providers_status_check",
+      sql.raw("status IN ('active', 'disabled', 'invalid', 'revoked')"),
+    ),
+    check(
+      "tenant_ai_providers_priority_role_check",
+      sql.raw("priority_role IN ('primary', 'secondary', 'standby')"),
+    ),
   ],
 );
 
@@ -248,6 +263,11 @@ export const aiUsageEvents = adminSchema.table(
     walletTransactionId: uuid("wallet_transaction_id").references(
       () => walletTransactions.id,
     ),
+    fieldKey: text("field_key"),
+    requestId: text("request_id"),
+    latencyMs: integer("latency_ms"),
+    failoverUsed: boolean("failover_used").notNull().default(false),
+    status: text("status").notNull().default("success"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -259,11 +279,12 @@ export const aiUsageEvents = adminSchema.table(
       sql.raw("purpose IN ('bot', 'assist', 'trial')"),
     ),
     check("ai_usage_events_cost_cents_check", sql.raw("cost_usd_cents >= 0")),
+    check("ai_usage_events_status_check", sql.raw("status IN ('success', 'error')")),
   ],
 );
 
 /**
- * Claves de API de plataforma para el modo de inferencia Mocter (`admin.ai_platform_keys`, BOT-001 §4.3).
+ * Claves de API de plataforma para el modo de inferencia Mocter (`admin.ai_platform_keys`, BOT-001 §4.3, SPEC-02 Fase 2).
  */
 export const aiPlatformKeys = adminSchema.table(
   "ai_platform_keys",
@@ -276,12 +297,28 @@ export const aiPlatformKeys = adminSchema.table(
     apiKeyCiphertext: text("api_key_ciphertext").notNull(),
     apiKeyKeyId: text("api_key_key_id").notNull(),
     apiKeyLast4: text("api_key_last4").notNull(),
+    defaultModelId: uuid("default_model_id").references(() => aiModels.id),
+    monthlyTokenCap: bigint("monthly_token_cap", { mode: "number" }),
+    temperature: text("temperature").notNull().default("0.7"),
+    maxTokens: integer("max_tokens").notNull().default(1000),
+    priorityRole: text("priority_role").notNull().default("primary"),
     status: text("status").notNull().default("active"),
     purpose: text("purpose").notNull().default("inference"),
     ...auditColumns(),
   },
   (table) => [
+    uniqueIndex("ai_platform_keys_purpose_priority_active_unique")
+      .on(table.purpose, table.priorityRole)
+      .where(sql`status = 'active' AND priority_role IN ('primary', 'secondary')`),
     check("ai_platform_keys_status_check", sql.raw("status IN ('active', 'retired')")),
+    check(
+      "ai_platform_keys_priority_role_check",
+      sql.raw("priority_role IN ('primary', 'secondary', 'standby')"),
+    ),
+    check(
+      "ai_platform_keys_max_tokens_check",
+      sql.raw("max_tokens >= 64 AND max_tokens <= 8192"),
+    ),
   ],
 );
 

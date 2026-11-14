@@ -55,7 +55,7 @@ function columnNames(table: PgTable): string[] {
 }
 
 describe("BOT-001 T-02 & T-07 · Persistencia del Catálogo de IA, Bots y Billetera", () => {
-  it("define ai_providers con validación de códigos autorizados", () => {
+  it("define ai_providers con slug dinámico, dialecto HTTP, endpoint, logo y soft-delete (SPEC-02 Fase 2)", () => {
     const config = getTableConfig(aiProviders);
     expect(config.name).toBe("ai_providers");
     expect(config.schema).toBe("admin");
@@ -63,21 +63,35 @@ describe("BOT-001 T-02 & T-07 · Persistencia del Catálogo de IA, Bots y Billet
     const cols = columnNames(aiProviders);
     expect(cols).toContain("code");
     expect(cols).toContain("name");
+    expect(cols).toContain("api_dialect");
+    expect(cols).toContain("base_url");
+    expect(cols).toContain("verify_path");
+    expect(cols).toContain("logo_storage_key");
+    expect(cols).toContain("deleted_at");
     expect(cols).toContain("is_active");
     expect(cols).toContain("supported_modes");
 
+    const indexNames = config.indexes.map((idx) => idx.config.name);
+    expect(indexNames).toContain("ai_providers_code_active_unique");
+
     const checks = checkSql(aiProviders);
-    expect(checks["ai_providers_code_check"]).toContain(
-      "code IN ('openai', 'anthropic', 'google', 'deepseek', 'openrouter', 'together_ai')",
+    expect(checks["ai_providers_code_check"]).toContain("code ~ '^[a-z0-9_-]{2,40}$'");
+    expect(checks["ai_providers_api_dialect_check"]).toContain(
+      "api_dialect IN ('openai_compatible', 'anthropic', 'google_gemini')",
     );
   });
 
-  it("define ai_models con índice único por proveedor y modelo, y spread >= 0", () => {
+  it("define ai_models con índice único por proveedor y modelo, is_default único y spread >= 0", () => {
     const config = getTableConfig(aiModels);
     expect(config.name).toBe("ai_models");
 
+    const cols = columnNames(aiModels);
+    expect(cols).toContain("is_default");
+    expect(cols).toContain("deleted_at");
+
     const indexNames = config.indexes.map((idx) => idx.config.name);
     expect(indexNames).toContain("ai_models_provider_model_unique");
+    expect(indexNames).toContain("ai_models_provider_default_unique");
 
     const checks = checkSql(aiModels);
     expect(checks["ai_models_spread_percent_check"]).toContain("spread_percent >= 0");
@@ -118,12 +132,25 @@ describe("BOT-001 T-02 & T-07 · Persistencia del Catálogo de IA, Bots y Billet
     expect(checks["tenant_bots_exclusive_model_choice_check"]).toContain("preset_id IS NOT NULL");
   });
 
-  it("define tenant_ai_providers con índice único parcial por cliente y proveedor activo", () => {
+  it("define tenant_ai_providers con índice único parcial por cliente, proveedor y priority_role (SPEC-02 Fase 2)", () => {
     const config = getTableConfig(tenantAiProviders);
     expect(config.name).toBe("tenant_ai_providers");
 
+    const cols = columnNames(tenantAiProviders);
+    expect(cols).toContain("priority_role");
+
     const indexNames = config.indexes.map((idx) => idx.config.name);
     expect(indexNames).toContain("tenant_ai_providers_client_provider_active_unique");
+    expect(indexNames).toContain("tenant_ai_providers_client_priority_active_unique");
+
+    const pkConfig = getTableConfig(aiPlatformKeys);
+    const pkCols = columnNames(aiPlatformKeys);
+    expect(pkCols).toContain("priority_role");
+    expect(pkCols).toContain("temperature");
+    expect(pkCols).toContain("max_tokens");
+    expect(pkConfig.indexes.map((idx) => idx.config.name)).toContain(
+      "ai_platform_keys_purpose_priority_active_unique",
+    );
   });
 
   it("define wallets y wallet_transactions con saldos no negativos", () => {

@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { Bot, Save, Plus, Trash2, CheckCircle2, AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { Bot, Save, Plus, Trash2, CheckCircle2, AlertCircle, KeyRound } from "lucide-react";
 import type { WorkspaceBotConfigDto } from "@mocter/domain";
 import { workspaceFetch } from "@/lib/workspace-client";
+import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
 
 interface BotViewProps {
   initialConfig: WorkspaceBotConfigDto | null;
@@ -110,15 +112,24 @@ export function BotView({ initialConfig }: BotViewProps) {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50"
-        >
-          <Save className="h-4 w-4" />
-          <span>{saving ? "Guardando..." : "Guardar Cambios"}</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/workspace/ai"
+            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors"
+          >
+            <KeyRound className="h-4 w-4 text-[var(--dsn-accent)]" />
+            <span>Proveedores Y Llaves AI</span>
+          </Link>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            <Save className="h-4 w-4" />
+            <span>{saving ? "Guardando..." : "Guardar Cambios"}</span>
+          </button>
+        </div>
       </header>
 
       {success && (
@@ -197,44 +208,38 @@ export function BotView({ initialConfig }: BotViewProps) {
             Políticas Comerciales Y De Garantía
           </h2>
 
-          <div>
-            <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
-              Política De Garantías
-            </label>
-            <textarea
-              rows={2}
-              value={warrantyPolicy}
-              onChange={(e) => setWarrantyPolicy(e.target.value)}
-              placeholder="Ej. Todos nuestros productos cuentan con 6 meses de garantía por defectos de fábrica."
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden"
-            />
-          </div>
+          <AiEnhanceTextarea
+            id="bot-warranty-policy"
+            fieldKey="policy.warranty"
+            label="Política De Garantías"
+            rows={2}
+            value={warrantyPolicy}
+            onChange={setWarrantyPolicy}
+            context={{ botPreset: preset }}
+            placeholder="Ej. Todos nuestros productos cuentan con 6 meses de garantía por defectos de fábrica."
+          />
 
-          <div>
-            <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
-              Política De Cambios Y Devoluciones
-            </label>
-            <textarea
-              rows={2}
-              value={returnsPolicy}
-              onChange={(e) => setReturnsPolicy(e.target.value)}
-              placeholder="Ej. Tienes hasta 15 días calendario para solicitar cambios en productos sin uso."
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden"
-            />
-          </div>
+          <AiEnhanceTextarea
+            id="bot-returns-policy"
+            fieldKey="policy.returns"
+            label="Política De Cambios Y Devoluciones"
+            rows={2}
+            value={returnsPolicy}
+            onChange={setReturnsPolicy}
+            context={{ botPreset: preset }}
+            placeholder="Ej. Tienes hasta 15 días calendario para solicitar cambios en productos sin uso."
+          />
 
-          <div>
-            <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
-              Mensaje De Confirmación De Pedido
-            </label>
-            <textarea
-              rows={2}
-              value={orderMessage}
-              onChange={(e) => setOrderMessage(e.target.value)}
-              placeholder="Ej. ¡Gracias por tu compra! Tu pedido fue registrado y te notificaremos el despacho."
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden"
-            />
-          </div>
+          <AiEnhanceTextarea
+            id="bot-order-confirmation"
+            fieldKey="bot.order_confirmation_message"
+            label="Mensaje De Confirmación De Pedido"
+            rows={2}
+            value={orderMessage}
+            onChange={setOrderMessage}
+            context={{ botPreset: preset }}
+            placeholder="Ej. ¡Gracias por tu compra! Tu pedido fue registrado y te notificaremos el despacho."
+          />
         </section>
 
         {/* Preguntas Frecuentes */}

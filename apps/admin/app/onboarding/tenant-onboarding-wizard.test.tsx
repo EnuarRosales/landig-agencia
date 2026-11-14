@@ -86,7 +86,7 @@ describe("TenantOnboardingWizard", () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ ok: true, data: { nextStep: 2, clientId: "new-client" } }),
-    } as any);
+    } as unknown as Response);
 
     render(<TenantOnboardingWizard initialState={baseState} />);
 
@@ -116,8 +116,11 @@ describe("TenantOnboardingWizard", () => {
 
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ ok: true, enhancedText: "Texto mejorado con inteligencia artificial." }),
-    } as any);
+      json: async () => ({
+        ok: true,
+        data: { suggestion: "Texto mejorado con inteligencia artificial." },
+      }),
+    } as unknown as Response);
 
     render(<TenantOnboardingWizard initialState={step2State} />);
 
@@ -127,6 +130,12 @@ describe("TenantOnboardingWizard", () => {
 
     const aiButton = screen.getByText("Mejorar Con AI");
     fireEvent.click(aiButton);
+
+    const acceptButton = await screen.findByRole("button", { name: /Aceptar Sugerencia/i });
+    const descTextareaBeforeAccept = screen.getByLabelText("Descripción Detallada Del Producto") as HTMLTextAreaElement;
+    expect(descTextareaBeforeAccept.value).toBe("");
+
+    fireEvent.click(acceptButton);
 
     await waitFor(() => {
       const descTextarea = screen.getByLabelText("Descripción Detallada Del Producto") as HTMLTextAreaElement;
@@ -143,7 +152,7 @@ describe("TenantOnboardingWizard", () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => ({ ok: true, data: { lifecycleStatus: "activo", redirectTo: "/workspace" } }),
-    } as any);
+    } as unknown as Response);
 
     render(<TenantOnboardingWizard initialState={step3State} />);
 

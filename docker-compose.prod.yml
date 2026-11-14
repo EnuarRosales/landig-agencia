@@ -156,6 +156,9 @@ services:
       IMGPROXY_SALT: ${IMGPROXY_SALT}
       IMGPROXY_PUBLIC_URL: ${IMGPROXY_PUBLIC_URL:-https://media.mocter.co}
       IMGPROXY_BASE_URL: ${IMGPROXY_BASE_URL:-https://media.mocter.co}
+      AI_ENCRYPTION_KEY: ${AI_ENCRYPTION_KEY}
+      AI_ENCRYPTION_KEY_ID: ${AI_ENCRYPTION_KEY_ID:-key-v1}
+      AI_HTTP_TIMEOUT_MS: ${AI_HTTP_TIMEOUT_MS:-15000}
     networks: [ backend, traefik_network, media_network ]
     labels:
       - "traefik.enable=true"

@@ -6,6 +6,9 @@ export const INITIAL_AI_PROVIDERS = [
   {
     code: "openai",
     name: "OpenAI",
+    apiDialect: "openai_compatible" as const,
+    baseUrl: "https://api.openai.com/v1",
+    verifyPath: "/models",
     isActive: true,
     docsUrl: "https://platform.openai.com/docs",
     supportedModes: { byok: true, mocter: true },
@@ -14,6 +17,9 @@ export const INITIAL_AI_PROVIDERS = [
   {
     code: "anthropic",
     name: "Anthropic",
+    apiDialect: "anthropic" as const,
+    baseUrl: "https://api.anthropic.com/v1",
+    verifyPath: "/models",
     isActive: true,
     docsUrl: "https://docs.anthropic.com",
     supportedModes: { byok: true, mocter: true },
@@ -22,6 +28,9 @@ export const INITIAL_AI_PROVIDERS = [
   {
     code: "google",
     name: "Google AI",
+    apiDialect: "google_gemini" as const,
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    verifyPath: "/models",
     isActive: true,
     docsUrl: "https://ai.google.dev/docs",
     supportedModes: { byok: true, mocter: true },
@@ -30,6 +39,9 @@ export const INITIAL_AI_PROVIDERS = [
   {
     code: "deepseek",
     name: "DeepSeek",
+    apiDialect: "openai_compatible" as const,
+    baseUrl: "https://api.deepseek.com/v1",
+    verifyPath: "/models",
     isActive: true,
     docsUrl: "https://platform.deepseek.com",
     supportedModes: { byok: true, mocter: true },
@@ -38,6 +50,9 @@ export const INITIAL_AI_PROVIDERS = [
   {
     code: "openrouter",
     name: "OpenRouter",
+    apiDialect: "openai_compatible" as const,
+    baseUrl: "https://openrouter.ai/api/v1",
+    verifyPath: "/auth/key",
     isActive: true,
     docsUrl: "https://openrouter.ai/docs",
     supportedModes: { byok: true, mocter: false },
@@ -46,6 +61,9 @@ export const INITIAL_AI_PROVIDERS = [
   {
     code: "together_ai",
     name: "Together AI",
+    apiDialect: "openai_compatible" as const,
+    baseUrl: "https://api.together.xyz/v1",
+    verifyPath: "/models",
     isActive: true,
     docsUrl: "https://docs.together.ai",
     supportedModes: { byok: true, mocter: true },

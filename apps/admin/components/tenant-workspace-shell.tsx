@@ -26,6 +26,7 @@ import {
   Mail,
   Copy,
   Check,
+  KeyRound,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 import { ConfirmationModal } from "./confirmation-modal";
@@ -171,6 +172,12 @@ export function TenantWorkspaceShell({
       label: "Asistente AI Y Bot",
       badge: "AI",
       icon: Bot,
+    },
+    {
+      href: "/workspace/ai",
+      label: "Proveedores Y Llaves AI",
+      badge: "BYOK",
+      icon: KeyRound,
     },
     {
       href: "/workspace/team",

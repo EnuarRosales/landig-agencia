@@ -7,7 +7,6 @@ import {
   Trash2,
   UploadCloud,
   Image as ImageIcon,
-  Sparkles,
   X,
   AlertCircle,
   CheckCircle2,
@@ -15,6 +14,7 @@ import {
 import type { WorkspaceProductDto } from "@mocter/domain";
 import { workspaceFetch } from "@/lib/workspace-client";
 import { ConfirmationModal } from "@/components/confirmation-modal";
+import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
 
 interface ProductsViewProps {
   initialProducts: WorkspaceProductDto[];
@@ -34,7 +34,6 @@ export function ProductsView({ initialProducts }: ProductsViewProps) {
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState<"draft" | "published">("published");
   const [saving, setSaving] = useState(false);
-  const [aiEnhancing, setAiEnhancing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   // Estados de subida multimedia
@@ -46,19 +45,6 @@ export function ProductsView({ initialProducts }: ProductsViewProps) {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<WorkspaceProductDto | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  // Función «Mejorar Con AI» (AI-001, Regla 4.7)
-  const handleAiEnhance = async () => {
-    if (!description.trim() && !name.trim()) return;
-    setAiEnhancing(true);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      const enhanced = `${description ? description.trim() : name.trim()} — Producto artesanal seleccionado con altos estándares de calidad, durabilidad garantizada y entrega inmediata a nivel nacional.`;
-      setDescription(enhanced);
-    } finally {
-      setAiEnhancing(false);
-    }
-  };
 
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -367,29 +353,16 @@ export function ProductsView({ initialProducts }: ProductsViewProps) {
                 />
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-[var(--dsn-text)]">
-                    Descripción Del Producto
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleAiEnhance}
-                    disabled={aiEnhancing}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--dsn-accent)] hover:opacity-80 disabled:opacity-50"
-                  >
-                    <Sparkles className="h-3 w-3" />
-                    <span>{aiEnhancing ? "Mejorando..." : "Mejorar Con AI"}</span>
-                  </button>
-                </div>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe notas de sabor, presentación y características clave..."
-                  rows={3}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                />
-              </div>
+              <AiEnhanceTextarea
+                id="product-description-input"
+                fieldKey="product.description"
+                label="Descripción Del Producto"
+                value={description}
+                onChange={setDescription}
+                context={{ productName: name, category }}
+                placeholder="Describe notas de sabor, presentación y características clave..."
+                rows={3}
+              />
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

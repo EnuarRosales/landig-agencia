@@ -21,6 +21,14 @@ const SENSITIVE_PATTERNS = [
     regex: /bearer\s+[a-zA-Z0-9_\-\.]+/gi,
     replacement: "Bearer [REDACTED]",
   },
+  {
+    regex: /\bsk-(?:ant-|or-|proj-)?[a-zA-Z0-9_\-]{12,}\b/g,
+    replacement: "[REDACTED_API_KEY]",
+  },
+  {
+    regex: /\bAIza[a-zA-Z0-9_\-]{16,}\b/g,
+    replacement: "[REDACTED_API_KEY]",
+  },
 ];
 
 /**
@@ -69,7 +77,11 @@ function sanitizeObject(obj: unknown): unknown {
   if (obj !== null && typeof obj === "object") {
     const sanitized: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(obj)) {
-      if (/password|secret|token|credential|authorization/i.test(key)) {
+      if (
+        /password|secret|authorization|ciphertext|api_?key|x-api-key|x-goog-api-key|^credentials?$|^(?:access|refresh|id|session|auth|platform|verification|reset|csrf|bearer)_?tokens?$/i.test(
+          key,
+        )
+      ) {
         sanitized[key] = "[REDACTED]";
       } else {
         sanitized[key] = sanitizeObject(val);

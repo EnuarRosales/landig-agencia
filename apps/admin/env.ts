@@ -66,6 +66,9 @@ export const env = createEnv({
     S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).default("true"),
     S3_ACCESS_KEY_ID: z.string().min(1, "S3_ACCESS_KEY_ID es requerida"),
     S3_SECRET_ACCESS_KEY: z.string().min(1, "S3_SECRET_ACCESS_KEY es requerida"),
+    AI_ENCRYPTION_KEY: z.string().optional(),
+    AI_ENCRYPTION_KEY_ID: z.string().min(1).default("key-v1"),
+    AI_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
   },
   client: {
     NEXT_PUBLIC_ADMIN_URL: z
@@ -107,6 +110,9 @@ export const env = createEnv({
     S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE,
     S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
     S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
+    AI_ENCRYPTION_KEY: process.env.AI_ENCRYPTION_KEY,
+    AI_ENCRYPTION_KEY_ID: process.env.AI_ENCRYPTION_KEY_ID,
+    AI_HTTP_TIMEOUT_MS: process.env.AI_HTTP_TIMEOUT_MS,
     NEXT_PUBLIC_ADMIN_URL: process.env.NEXT_PUBLIC_ADMIN_URL,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_CHATWOOT_URL: process.env.NEXT_PUBLIC_CHATWOOT_URL,

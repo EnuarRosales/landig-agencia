@@ -70,6 +70,18 @@ export const envSchema = z.object({
   S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).default("true"),
   S3_ACCESS_KEY_ID: z.string().min(1, "S3_ACCESS_KEY_ID no puede estar vacío").optional(),
   S3_SECRET_ACCESS_KEY: z.string().min(1, "S3_SECRET_ACCESS_KEY no puede estar vacío").optional(),
+  AI_ENCRYPTION_KEY: z
+    .string()
+    .optional(),
+  AI_ENCRYPTION_KEY_ID: z
+    .string()
+    .min(1, "AI_ENCRYPTION_KEY_ID no puede estar vacío")
+    .default("key-v1"),
+  AI_HTTP_TIMEOUT_MS: z.coerce
+    .number()
+    .int("AI_HTTP_TIMEOUT_MS debe ser un entero")
+    .positive("AI_HTTP_TIMEOUT_MS debe ser mayor a cero")
+    .default(15000),
 });
 
 /**
@@ -189,6 +201,18 @@ export const env = createEnv({
     S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).default("true"),
     S3_ACCESS_KEY_ID: z.string().min(1, "S3_ACCESS_KEY_ID no puede estar vacío").optional(),
     S3_SECRET_ACCESS_KEY: z.string().min(1, "S3_SECRET_ACCESS_KEY no puede estar vacío").optional(),
+    AI_ENCRYPTION_KEY: z
+      .string()
+      .optional(),
+    AI_ENCRYPTION_KEY_ID: z
+      .string()
+      .min(1, "AI_ENCRYPTION_KEY_ID no puede estar vacío")
+      .default("key-v1"),
+    AI_HTTP_TIMEOUT_MS: z.coerce
+      .number()
+      .int("AI_HTTP_TIMEOUT_MS debe ser un entero")
+      .positive("AI_HTTP_TIMEOUT_MS debe ser mayor a cero")
+      .default(15000),
   },
   runtimeEnv: process.env,
   skipValidation: shouldSkipEnvValidation(),
@@ -230,6 +254,8 @@ export function getValidatedEnv(
         S3_REGION: "us-east-1",
         S3_BUCKET: "media",
         S3_FORCE_PATH_STYLE: "true",
+        AI_ENCRYPTION_KEY_ID: "key-v1",
+        AI_HTTP_TIMEOUT_MS: 15000,
       };
     }
     const issues = result.error.issues.map((issue) => ({

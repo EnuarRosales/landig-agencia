@@ -1,6 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
+import { Sparkles, RefreshCw, AlertCircle, Check, X } from "lucide-react";
+
+export interface AiEnhanceRequestResult {
+  ok: boolean;
+  suggestion?: string;
+  error?: string;
+  code?: string;
+}
 
 export interface AiEnhanceTextareaProps {
   id?: string;
@@ -9,24 +18,24 @@ export interface AiEnhanceTextareaProps {
   label: string;
   value: string;
   onChange: (val: string) => void;
+  fallbackDraft?: string;
+  context?: Record<string, unknown>;
   inputHint?: string;
   placeholder?: string;
   rows?: number;
   disabled?: boolean;
   required?: boolean;
   hasInferenceAccess?: boolean;
-  onEnhanceRequest?: (fieldKey: string, draft: string) => Promise<{ ok: boolean; suggestion?: string; error?: string }>;
+  onEnhanceRequest?: (fieldKey: string, draft: string) => Promise<AiEnhanceRequestResult>;
   locale?: "es" | "en";
 }
 
 /**
- * Componente transversal de área de texto con capacidad «Mejorar con AI» (AI-001 RF-01, RF-03, T-05).
+ * Componente transversal de área de texto con capacidad «Mejorar Con AI».
  *
- * Características:
- * - Cumple Title Case en el Label según AGENTS.md §4.8.
- * - Deshabilita el botón si no hay credenciales de inferencia (BYOK o billetera) explicando el motivo (RF-04.1).
- * - Human-in-the-loop: Muestra la propuesta en un panel de comparación permitiendo editar, aceptar o descartar (RF-03.2).
- * - Nunca guarda sin aceptación explícita del usuario.
+ * - Cumple Title Case en etiquetas de formulario y diseño adaptativo Mobile First.
+ * - Conecta por defecto con `POST /api/ai/enhance` usando sesión autenticada.
+ * - Mantiene control humano explícito: propone en vista editable y nunca guarda ni sobreescribe solo.
  */
 export function AiEnhanceTextarea({
   id,
@@ -35,6 +44,8 @@ export function AiEnhanceTextarea({
   label,
   value,
   onChange,
+  fallbackDraft,
+  context,
   inputHint,
   placeholder,
   rows = 4,
@@ -48,11 +59,60 @@ export function AiEnhanceTextarea({
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [editedSuggestion, setEditedSuggestion] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   const isEs = locale === "es";
 
+  async function requestEnhancement(draftText: string): Promise<AiEnhanceRequestResult> {
+    if (onEnhanceRequest) {
+      return onEnhanceRequest(fieldKey, draftText);
+    }
+
+    const res = await fetch("/api/ai/enhance", {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        fieldKey,
+        draft: draftText,
+        locale,
+        context,
+      }),
+    });
+
+    const json = (await res.json().catch(() => null)) as
+      | {
+          ok?: boolean;
+          data?: { suggestion?: string };
+          detail?: string;
+          error?: string;
+          code?: string;
+        }
+      | null;
+
+    if (!res.ok || !json?.ok || !json?.data?.suggestion) {
+      return {
+        ok: false,
+        code: json?.code,
+        error:
+          json?.detail ??
+          json?.error ??
+          (isEs
+            ? "No fue posible obtener una sugerencia en este momento."
+            : "Could not retrieve a suggestion right now."),
+      };
+    }
+
+    return {
+      ok: true,
+      suggestion: json.data.suggestion,
+    };
+  }
+
   async function handleEnhance() {
-    if (!value || value.trim().length === 0) {
+    const effectiveDraft = value.trim() || fallbackDraft?.trim() || "";
+    if (effectiveDraft.length === 0) {
+      setErrorCode(null);
       setErrorMessage(
         isEs
           ? "Escribe primero un borrador para que la AI pueda mejorarlo."
@@ -62,29 +122,40 @@ export function AiEnhanceTextarea({
     }
 
     if (!hasInferenceAccess) {
+      setErrorCode("AI_BYOK_REQUIRED");
       setErrorMessage(
         isEs
-          ? "Para usar 'Mejorar con AI' configura tu proveedor BYOK o recarga saldo en tu billetera."
-          : "To use 'Improve with AI' configure your BYOK provider or top up your wallet.",
+          ? "Para usar 'Mejorar Con AI' configura tu proveedor de Inteligencia Artificial."
+          : "To use 'Improve With AI' configure your Artificial Intelligence provider.",
       );
       return;
     }
 
     setLoading(true);
     setErrorMessage(null);
+    setErrorCode(null);
 
     try {
-      if (onEnhanceRequest) {
-        const res = await onEnhanceRequest(fieldKey, value);
-        if (res.ok && res.suggestion) {
-          setSuggestion(res.suggestion);
-          setEditedSuggestion(res.suggestion);
-        } else {
-          setErrorMessage(res.error ?? (isEs ? "Error al procesar la mejora." : "Error processing enhancement."));
-        }
+      const res = await requestEnhancement(effectiveDraft);
+      if (res.ok && res.suggestion) {
+        setSuggestion(res.suggestion);
+        setEditedSuggestion(res.suggestion);
+      } else {
+        setErrorCode(res.code ?? null);
+        setErrorMessage(
+          res.error ??
+            (isEs ? "Error al procesar la mejora." : "Error processing enhancement."),
+        );
       }
-    } catch (err: any) {
-      setErrorMessage(err.message ?? (isEs ? "Fallo de conexión." : "Connection failed."));
+    } catch (err: unknown) {
+      setErrorCode(null);
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : isEs
+            ? "Fallo de conexión al solicitar mejora."
+            : "Connection failed while requesting enhancement.",
+      );
     } finally {
       setLoading(false);
     }
@@ -96,6 +167,7 @@ export function AiEnhanceTextarea({
       setSuggestion(null);
       setEditedSuggestion("");
       setErrorMessage(null);
+      setErrorCode(null);
     }
   }
 
@@ -106,13 +178,20 @@ export function AiEnhanceTextarea({
 
   return (
     <div className="flex flex-col gap-2 w-full">
-      <div className="flex items-center justify-between">
-        <label
-          htmlFor={id}
-          className="text-sm font-semibold text-slate-800 dark:text-slate-200"
-        >
-          {label} {required && <span className="text-red-500">*</span>}
-        </label>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex items-center gap-1">
+          <label
+            htmlFor={id}
+            className="text-xs font-semibold text-[var(--dsn-text)]"
+          >
+            {label}
+          </label>
+          {required && (
+            <span aria-hidden="true" className="text-xs font-semibold text-rose-500">
+              *
+            </span>
+          )}
+        </div>
 
         <button
           type="button"
@@ -121,17 +200,17 @@ export function AiEnhanceTextarea({
           title={
             !hasInferenceAccess
               ? isEs
-                ? "Requiere configurar proveedor BYOK o saldo en billetera"
-                : "Requires BYOK provider or wallet balance"
+                ? "Requiere configurar un proveedor AI activo"
+                : "Requires an active AI provider"
               : undefined
           }
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
+          className={`inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
             !hasInferenceAccess
-              ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700"
-              : "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800 dark:hover:bg-indigo-900 cursor-pointer"
+              ? "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)] opacity-60 cursor-not-allowed"
+              : "border-[var(--dsn-accent)]/40 bg-[var(--dsn-accent)]/12 text-[var(--dsn-accent)] hover:bg-[var(--dsn-accent)]/20 cursor-pointer"
           }`}
         >
-          <span>✨</span>
+          <Sparkles className={`h-3.5 w-3.5 ${loading ? "animate-pulse" : ""}`} />
           <span>
             {loading
               ? isEs
@@ -145,8 +224,8 @@ export function AiEnhanceTextarea({
       </div>
 
       {inputHint && (
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          💡 {inputHint}
+        <p className="text-[11px] text-[var(--dsn-text-secondary)]">
+          {inputHint}
         </p>
       )}
 
@@ -157,43 +236,75 @@ export function AiEnhanceTextarea({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
+        required={required}
         placeholder={placeholder}
-        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 disabled:opacity-50"
+        className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/60 focus:border-[var(--dsn-accent)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)] disabled:opacity-50 leading-relaxed"
       />
 
       {errorMessage && (
-        <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-          ⚠️ {errorMessage}
-        </p>
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400"
+        >
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+          {errorCode === "AI_BYOK_REQUIRED" && (
+            <Link
+              href="/workspace/ai"
+              className="font-semibold underline text-[var(--dsn-accent)] hover:opacity-90"
+            >
+              {isEs ? "Configurar Proveedor AI" : "Configure AI Provider"}
+            </Link>
+          )}
+        </div>
       )}
 
       {suggestion !== null && (
-        <div className="mt-2 p-3 bg-indigo-50/50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-lg flex flex-col gap-2">
-          <div className="flex items-center justify-between text-xs font-medium text-indigo-900 dark:text-indigo-200">
-            <span>✨ {isEs ? "Propuesta Sugerida Por AI (Puedes Editarla):" : "AI Suggested Proposal (You Can Edit):"}</span>
+        <div className="mt-1 rounded-xl border border-[var(--dsn-accent)]/40 bg-[var(--dsn-accent)]/5 p-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between text-xs font-semibold text-[var(--dsn-text)]">
+            <span className="inline-flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+              {isEs
+                ? "Propuesta Sugerida Por AI (Editable Antes De Aceptar)"
+                : "AI Suggested Proposal (Editable Before Accepting)"}
+            </span>
           </div>
 
           <textarea
             rows={rows}
+            aria-label={isEs ? "Vista Previa De Sugerencia AI" : "AI Suggestion Preview"}
             value={editedSuggestion}
             onChange={(e) => setEditedSuggestion(e.target.value)}
-            className="w-full rounded-md border border-indigo-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none dark:border-indigo-700 dark:bg-slate-900 dark:text-slate-100"
+            className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden leading-relaxed"
           />
 
-          <div className="flex items-center justify-end gap-2 pt-1">
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleEnhance}
+              disabled={loading}
+              className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+              <span>{isEs ? "Generar Otra Opción" : "Try Another Option"}</span>
+            </button>
             <button
               type="button"
               onClick={handleDiscard}
-              className="px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+              className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
             >
-              {isEs ? "Descartar" : "Discard"}
+              <X className="h-3 w-3" />
+              <span>{isEs ? "Descartar" : "Discard"}</span>
             </button>
             <button
               type="button"
               onClick={handleAccept}
-              className="px-3 py-1 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm"
+              className="inline-flex min-h-[36px] items-center gap-1 rounded-lg bg-[var(--dsn-accent)] px-3 py-1 text-xs font-semibold text-white hover:opacity-90 transition-opacity shadow-xs"
             >
-              {isEs ? "Aceptar Sugerencia" : "Accept Suggestion"}
+              <Check className="h-3.5 w-3.5" />
+              <span>{isEs ? "Aceptar Sugerencia" : "Accept Suggestion"}</span>
             </button>
           </div>
         </div>
@@ -201,4 +312,3 @@ export function AiEnhanceTextarea({
     </div>
   );
 }
-
