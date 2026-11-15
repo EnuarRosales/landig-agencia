@@ -13,6 +13,12 @@ import {
 } from "./tenant-capability-gate.service";
 import { appLogger } from "../utils/logger";
 import { getBillingService } from "./billing.service";
+import {
+  DrizzleWhiteLabelRepository,
+  WhiteLabelService,
+  type WhiteLabelCapabilityMode,
+} from "./white-label.service";
+import type { BrandingPaletteTokens } from "../db/schemas/admin/client-brandings";
 
 /**
  * Scopes autoritativos mutuamente excluyentes para el portal Mocter (TNT-RF-02, ADM-D-35).
@@ -52,6 +58,19 @@ export interface PortalContextClient {
   locale?: string;
   logoMediaId?: string | null;
   logoUrl?: string | null;
+  connectionHealthy?: boolean;
+}
+
+/**
+ * Datos resueltos de marca blanca del comercio para layout, shell y cabecera (`SPEC-07`).
+ */
+export interface PortalContextBranding {
+  brandName: string | null;
+  logoUrl: string | null;
+  faviconUrl: string | null;
+  customFont: string | null;
+  removeMocterBranding: boolean;
+  palette: BrandingPaletteTokens | null;
 }
 
 /**
@@ -70,6 +89,9 @@ export interface PortalContext {
   planName: string | null;
   capabilities: Record<string, boolean>;
   lifecycleStatus: string | null;
+  whiteLabelMode?: WhiteLabelCapabilityMode;
+  branding?: PortalContextBranding | null;
+  brandingTokens?: Record<string, string> | null;
   subscriptionAlert?: {
     status: string;
     expiresAt: string;
@@ -328,6 +350,42 @@ export async function resolveAuthenticatedPortalContext(
       }
     }
 
+    // Resolver modo y tokens de Marca Blanca (SPEC-07) sin afectar flujos si hay fallo transitorio
+    let whiteLabelMode: WhiteLabelCapabilityMode = "none";
+    let resolvedBranding: PortalContextBranding | null = null;
+    let brandingTokens: Record<string, string> | null = null;
+
+    try {
+      const wlRepo = new DrizzleWhiteLabelRepository(() => db);
+      whiteLabelMode = await wlRepo.findClientPlanWhiteLabelMode(clientRecord.id);
+      if (whiteLabelMode !== "none") {
+        const wlRow = await wlRepo.findClientBranding(clientRecord.id);
+        if (wlRow && "clientId" in wlRow) {
+          const effectiveBrandLogo =
+            whiteLabelMode === "completa" && wlRow.logoUrl
+              ? wlRow.logoUrl
+              : resolvedLogoUrl;
+          if (whiteLabelMode === "completa" && wlRow.logoUrl) {
+            resolvedLogoUrl = wlRow.logoUrl;
+          }
+          resolvedBranding = {
+            brandName: whiteLabelMode === "completa" ? wlRow.brandName : null,
+            logoUrl: effectiveBrandLogo,
+            faviconUrl: whiteLabelMode === "completa" ? wlRow.faviconUrl : null,
+            customFont: whiteLabelMode === "completa" ? wlRow.customFont : null,
+            removeMocterBranding:
+              whiteLabelMode === "completa" ? Boolean(wlRow.removeMocterBranding) : false,
+            palette: wlRow.palette ?? null,
+          };
+          brandingTokens = WhiteLabelService.buildBackofficeCssTokens(wlRow.palette);
+        }
+      }
+    } catch {
+      whiteLabelMode = "none";
+      resolvedBranding = null;
+      brandingTokens = null;
+    }
+
     const portalClient: PortalContextClient = {
       id: clientRecord.id,
       slug: clientRecord.slug,
@@ -338,6 +396,7 @@ export async function resolveAuthenticatedPortalContext(
       locale: clientRecord.locale,
       logoMediaId: clientRecord.logoMediaId ?? null,
       logoUrl: resolvedLogoUrl,
+      connectionHealthy: Boolean(activeCellId),
     };
 
     // Caso A: Inquilino en estado 'alta' (onboarding pendiente)
@@ -442,6 +501,9 @@ export async function resolveAuthenticatedPortalContext(
         planName,
         capabilities,
         lifecycleStatus: "activo",
+        whiteLabelMode,
+        branding: resolvedBranding,
+        brandingTokens,
         subscriptionAlert,
       };
     }
@@ -460,6 +522,9 @@ export async function resolveAuthenticatedPortalContext(
       planName,
       capabilities,
       lifecycleStatus: clientRecord.lifecycleStatus,
+      whiteLabelMode,
+      branding: resolvedBranding,
+      brandingTokens,
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

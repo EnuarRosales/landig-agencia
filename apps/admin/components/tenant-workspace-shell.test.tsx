@@ -222,4 +222,49 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
       expect(screen.getByText(/Espacio Dedicado y Membresía Única/i)).toBeDefined();
     }
   });
+
+  it("9. Renderiza nombre largo completo sin recortes fijos y aplica fallback ante error de carga en logoUrl (SPEC-07 T-03)", () => {
+    const longName = "Distribuidora Integral Café del Valle Sur";
+    render(
+      <TenantWorkspaceShell
+        currentUser={mockTenantUser}
+        tenant={{
+          ...mockTenantInfo,
+          name: longName,
+          logoUrl: "https://cdn.mocter.co/broken-logo.png",
+        }}
+      >
+        <div>Contenido</div>
+      </TenantWorkspaceShell>,
+    );
+
+    const renderedNames = screen.getAllByText(longName);
+    expect(renderedNames.length).toBeGreaterThanOrEqual(2);
+    for (const node of renderedNames) {
+      expect(node.className).not.toContain("max-w-[120px]");
+      expect(node.className).not.toContain("max-w-[130px]");
+    }
+
+    const logos = screen.getAllByRole("img", { name: longName });
+    expect(logos.length).toBeGreaterThanOrEqual(1);
+    fireEvent.error(logos[0]);
+    expect(screen.queryByRole("img", { name: longName })).toBeNull();
+  });
+
+  it("10. Inyecta brandingTokens en el contenedor raíz y prioriza branding.brandName cuando está activo (SPEC-07 T-03)", () => {
+    render(
+      <TenantWorkspaceShell
+        currentUser={mockTenantUser}
+        tenant={mockTenantInfo}
+        brandingTokens={{ "--dsn-accent": "#0F766E", "--dsn-accent-fg": "#FFFFFF" }}
+        branding={{ brandName: "Marca Blanca Norte", removeMocterBranding: true }}
+      >
+        <div>Contenido</div>
+      </TenantWorkspaceShell>,
+    );
+
+    const root = screen.getByTestId("tenant-workspace-shell");
+    expect(root.getAttribute("style")).toContain("--dsn-accent: #0F766E");
+    expect(screen.getAllByText("Marca Blanca Norte").length).toBeGreaterThanOrEqual(1);
+  });
 });

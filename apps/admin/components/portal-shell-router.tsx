@@ -158,10 +158,22 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
           slug: activeClient?.slug || "comercio",
           logoUrl: activeClient?.logoUrl || undefined,
           planName: planName || "Plan Pro",
+          connectionHealthy: activeClient?.connectionHealthy,
         }}
         capabilities={capabilities}
         subscriptionAlert={portalContext.subscriptionAlert ?? null}
         locale={activeClient?.locale === "en" ? "en" : "es"}
+        brandingTokens={portalContext.brandingTokens ?? undefined}
+        branding={
+          portalContext.branding
+            ? {
+                brandName: portalContext.branding.brandName,
+                faviconUrl: portalContext.branding.faviconUrl,
+                removeMocterBranding: portalContext.branding.removeMocterBranding,
+                customFont: portalContext.branding.customFont,
+              }
+            : null
+        }
       >
         {children}
       </TenantWorkspaceShell>

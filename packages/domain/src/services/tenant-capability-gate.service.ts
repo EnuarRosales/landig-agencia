@@ -8,6 +8,7 @@ import {
   PLAN_DIMENSION_KEYS,
   clientFeatureOverrides,
   clientPlanOverrides,
+  planFeatureValues,
   planLimits,
   type PlanLimitDimensionKey,
 } from "../db/schemas/admin/plan-catalogs";
@@ -127,12 +128,34 @@ export class DrizzleTenantCapabilityGateRepository
       map["chatwoot_inboxes"] = mode === "UNLIMITED" || (mode !== "DISABLED" && val > 0);
     }
 
+    // 2c. Leer capacidades nativas de Mocter desde admin.plan_feature_values (ej. white_label)
+    const featureRows = await db
+      .select({
+        featureKey: planFeatureValues.featureKey,
+        enabled: planFeatureValues.enabled,
+        value: planFeatureValues.value,
+      })
+      .from(planFeatureValues)
+      .where(eq(planFeatureValues.planId, clientRow.planId));
+
+    for (const f of featureRows) {
+      if (!f.featureKey) continue;
+      if (f.featureKey === "white_label") {
+        const wlEnabled = Boolean(f.enabled && f.value !== "none");
+        map["white_label"] = wlEnabled;
+        map["custom_branding"] = wlEnabled;
+      } else {
+        map[f.featureKey] = Boolean(f.enabled);
+      }
+    }
+
     // 3. Aplicar overrides vigentes del inquilino si existen
     const now = new Date();
     const overrides = await db
       .select({
         featureKey: clientFeatureOverrides.featureKey,
         enabled: clientFeatureOverrides.enabled,
+        value: clientFeatureOverrides.value,
       })
       .from(clientFeatureOverrides)
       .where(
@@ -147,7 +170,24 @@ export class DrizzleTenantCapabilityGateRepository
       );
 
     for (const o of overrides) {
+      if (!o.featureKey) continue;
       map[o.featureKey] = Boolean(o.enabled);
+      if (o.featureKey === "white_label") {
+        const wlEnabled = Boolean(o.enabled && o.value !== "none");
+        map["white_label"] = wlEnabled;
+        map["custom_branding"] = wlEnabled;
+      } else if (o.featureKey === "custom_branding") {
+        map["white_label"] = Boolean(o.enabled);
+      }
+    }
+
+    if (map["custom_branding"] === undefined) {
+      if (map["custom_reply_domain"] || map["branded_email_templates"]) {
+        map["custom_branding"] = true;
+        map["white_label"] = true;
+      } else {
+        map["custom_branding"] = false;
+      }
     }
 
     return map;

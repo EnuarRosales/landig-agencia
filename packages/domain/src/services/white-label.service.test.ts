@@ -158,4 +158,71 @@ describe("ADM-001 T-28 · WhiteLabelService (Motor de Marca Blanca)", () => {
       expect(mockRepo.deleteClientBranding).toHaveBeenCalledWith("client-enterprise");
     });
   });
+
+  describe("SPEC-07 · Validaciones FQDN, unicidad, tipografía y tokens CSS", () => {
+    it("rechaza dominios locales o con esquema/puerto (RN-SPEC-07-05)", async () => {
+      vi.mocked(mockRepo.findClientPlanWhiteLabelMode).mockResolvedValue("completa");
+
+      for (const badDomain of ["localhost:3003", "http://tienda.co", "192.168.1.5", "sin_punto"]) {
+        const res = await service.updateBranding({
+          clientId: "client-ent",
+          customDomain: badDomain,
+        });
+        expect(res.ok).toBe(false);
+        if (res.ok) continue;
+        expect(res.code).toBe("INVALID_CUSTOM_DOMAIN");
+      }
+    });
+
+    it("rechaza dominio personalizado en uso por otro comercio con CUSTOM_DOMAIN_IN_USE", async () => {
+      const repoWithDomain: IWhiteLabelRepository = {
+        ...mockRepo,
+        findClientPlanWhiteLabelMode: vi.fn().mockResolvedValue("completa"),
+        findClientIdByCustomDomain: vi.fn().mockResolvedValue("other-client-id"),
+      };
+      const svc = new WhiteLabelService(repoWithDomain);
+
+      const res = await svc.updateBranding({
+        clientId: "client-ent",
+        customDomain: "catalogo.otraempresa.co",
+      });
+
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.code).toBe("CUSTOM_DOMAIN_IN_USE");
+    });
+
+    it("rechaza tipografías fuera del catálogo seguro (prevención de inyección CSS)", async () => {
+      vi.mocked(mockRepo.findClientPlanWhiteLabelMode).mockResolvedValueOnce("completa");
+
+      const res = await service.updateBranding({
+        clientId: "client-ent",
+        customFont: "Comic Sans; background: url(javascript:alert(1))",
+      });
+
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.code).toBe("INVALID_CUSTOM_FONT");
+    });
+
+    it("genera variables CSS seguras para el Backoffice únicamente con colores hexadecimales válidos", () => {
+      const validTokens = WhiteLabelService.buildBackofficeCssTokens({
+        primary: "#0F172A",
+        primaryForeground: "#FFFFFF",
+        accent: "#2563EB",
+        accentForeground: "#FFFFFF",
+      });
+      expect(validTokens).toMatchObject({
+        "--dsn-accent": "#2563EB",
+        "--dsn-accent-fg": "#FFFFFF",
+      });
+      expect(validTokens?.["--dsn-accent-hover"]).toMatch(/^#[0-9a-f]{6}$/i);
+
+      const injected = WhiteLabelService.buildBackofficeCssTokens({
+        primary: "red; --xss: 1",
+        primaryForeground: "#FFFFFF",
+      });
+      expect(injected).toBeNull();
+    });
+  });
 });

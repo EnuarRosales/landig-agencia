@@ -55,10 +55,18 @@ export interface TenantWorkspaceShellProps {
     slug: string;
     logoUrl?: string;
     planName?: string;
+    connectionHealthy?: boolean;
   };
   capabilities?: Record<string, boolean>;
   subscriptionAlert?: TenantSubscriptionAlertDto | null;
   locale?: AdminLocale;
+  brandingTokens?: Record<string, string>;
+  branding?: {
+    brandName?: string | null;
+    faviconUrl?: string | null;
+    removeMocterBranding?: boolean;
+    customFont?: string | null;
+  } | null;
 }
 
 interface NavItem {
@@ -88,6 +96,8 @@ export function TenantWorkspaceShell({
   capabilities,
   subscriptionAlert = null,
   locale = "es",
+  brandingTokens,
+  branding = null,
 }: TenantWorkspaceShellProps) {
   const pathname = usePathname();
   const dict = getAdminDictionary(locale).workspace;
@@ -98,6 +108,7 @@ export function TenantWorkspaceShell({
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
 
   const tenantInfo = {
     id: tenant?.id || "tenant-default-id",
@@ -105,7 +116,10 @@ export function TenantWorkspaceShell({
     slug: tenant?.slug || "comercio",
     logoUrl: tenant?.logoUrl,
     planName: tenant?.planName || "Plan Pro",
+    connectionHealthy: tenant?.connectionHealthy ?? true,
   };
+  const displayStoreName = branding?.brandName?.trim() || tenantInfo.name;
+  const logoError = Boolean(tenantInfo.logoUrl && failedLogoUrl === tenantInfo.logoUrl);
 
   const user: CurrentUserDto = currentUser || {
     id: "00000000-0000-0000-0000-000000000000",
@@ -222,7 +236,7 @@ export function TenantWorkspaceShell({
     },
     {
       href: "/workspace/branding",
-      label: "Identidad y Marca Blanca",
+      label: dict.navBranding || "Identidad y Marca Blanca",
       badge: "Marca",
       icon: Paintbrush,
       capabilityCode: "custom_branding",
@@ -282,49 +296,89 @@ export function TenantWorkspaceShell({
     }
   };
 
+  const renderBrandMark = (size: "sm" | "md") => {
+    const sizeClasses = size === "sm" ? "h-8 w-8" : "h-9 w-9";
+    if (tenantInfo.logoUrl && !logoError) {
+      return (
+        <img
+          src={tenantInfo.logoUrl}
+          alt={displayStoreName}
+          onError={() => setFailedLogoUrl(tenantInfo.logoUrl ?? null)}
+          className={`${sizeClasses} shrink-0 rounded-lg object-contain border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]`}
+        />
+      );
+    }
+    return (
+      <div
+        className={`flex ${sizeClasses} shrink-0 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/40 shadow-xs`}
+      >
+        <Store className="h-4 w-4" />
+      </div>
+    );
+  };
+
+  const connectionLabel = tenantInfo.connectionHealthy
+    ? dict.connectedStatus
+    : dict.connectionIssueStatus || "Revisar Conexión";
+
+  const renderConnectionBadge = (compact = false) => (
+    <div
+      data-testid="tenant-connection-status"
+      title={connectionLabel}
+      className={`inline-flex items-center gap-1.5 rounded-md border ${
+        compact ? "px-2 py-1" : "px-2 py-0.5"
+      } ${
+        tenantInfo.connectionHealthy
+          ? "bg-[var(--dsn-surface-secondary)]/80 border-emerald-500/20 text-emerald-400"
+          : "bg-amber-500/10 border-amber-500/30 text-amber-400"
+      }`}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          tenantInfo.connectionHealthy ? "bg-emerald-400 animate-pulse" : "bg-amber-400"
+        }`}
+      />
+      <span className="text-[10px] font-mono">{connectionLabel}</span>
+    </div>
+  );
+
   return (
-    <div className="min-h-dvh bg-[var(--dsn-background)] text-[var(--dsn-text)] transition-colors duration-150 flex flex-col md:flex-row">
+    <div
+      data-testid="tenant-workspace-shell"
+      style={brandingTokens as React.CSSProperties | undefined}
+      className="min-h-dvh bg-[var(--dsn-background)] text-[var(--dsn-text)] transition-colors duration-150 flex flex-col md:flex-row"
+    >
       {/* ─────────────────────────────────────────────────────────────
           1. TOP BAR MÓVIL (Mobile First: Pantallas < md)
          ───────────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between border-b border-[var(--dsn-border)] bg-[var(--dsn-surface)]/90 px-4 backdrop-blur-md md:hidden">
-        <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-40 flex min-h-14 w-full items-center justify-between gap-2 border-b border-[var(--dsn-border)] bg-[var(--dsn-surface)]/90 px-4 py-1.5 backdrop-blur-md md:hidden">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Abrir menú de navegación"
-            className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] transition-colors hover:bg-[var(--dsn-surface)] focus-visible:outline-2 focus-visible:outline-[var(--dsn-accent)]"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] transition-colors hover:bg-[var(--dsn-surface)] focus-visible:outline-2 focus-visible:outline-[var(--dsn-accent)]"
           >
             <Menu className="h-5 w-5" />
           </button>
 
           <Link
             href="/workspace"
-            className="flex items-center gap-2 transition-opacity hover:opacity-90 active:scale-98"
-            aria-label={`${tenantInfo.name} Inicio`}
+            className="flex items-center gap-2 min-w-0 flex-1 transition-opacity hover:opacity-90 active:scale-98"
+            aria-label={`${displayStoreName} Inicio`}
           >
-            {tenantInfo.logoUrl ? (
-              <img
-                src={tenantInfo.logoUrl}
-                alt={tenantInfo.name}
-                className="h-7 w-7 rounded-lg object-contain border border-[var(--dsn-border)]"
-              />
-            ) : (
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/40">
-                <Store className="h-4 w-4" />
-              </div>
-            )}
-            <span className="font-bold tracking-tight text-[var(--dsn-text)] text-sm truncate max-w-[130px]">
-              {tenantInfo.name}
+            {renderBrandMark("sm")}
+            <span
+              className="font-bold tracking-tight text-[var(--dsn-text)] text-sm break-words leading-tight line-clamp-2"
+              title={displayStoreName.length > 36 ? displayStoreName : undefined}
+            >
+              {displayStoreName}
             </span>
           </Link>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--dsn-surface-secondary)] text-[10px] font-mono text-emerald-400 border border-emerald-500/20">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Conectado</span>
-          </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {renderConnectionBadge(true)}
           <ThemeToggle />
         </div>
       </header>
@@ -349,42 +403,38 @@ export function TenantWorkspaceShell({
           {/* Panel Lateral Deslizable */}
           <div className="relative flex w-full max-w-[280px] flex-1 flex-col bg-[var(--dsn-sidebar)] p-4 shadow-2xl animate-in slide-in-from-left duration-200">
             {/* Cabecera del Drawer */}
-            <div className="flex items-center justify-between pb-4 border-b border-[var(--dsn-border)]">
-              <Link
-                href="/workspace"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-2.5 min-w-0"
-              >
-                {tenantInfo.logoUrl ? (
-                  <img
-                    src={tenantInfo.logoUrl}
-                    alt={tenantInfo.name}
-                    className="h-8 w-8 rounded-lg object-contain border border-[var(--dsn-border)]"
-                  />
-                ) : (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/40 shadow-xs">
-                    <Store className="h-4 w-4" />
-                  </div>
-                )}
-                <div className="flex flex-col min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold tracking-tight text-[var(--dsn-text)] text-sm truncate">
-                      {tenantInfo.name}
+            <div className="flex items-start justify-between gap-2 pb-4 border-b border-[var(--dsn-border)]">
+              <div className="min-w-0 flex-1 space-y-2">
+                <Link
+                  href="/workspace"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-start gap-2.5 min-w-0"
+                >
+                  {renderBrandMark("md")}
+                  <div className="flex flex-col min-w-0 flex-1 gap-1">
+                    <span
+                      className="font-bold tracking-tight text-[var(--dsn-text)] text-sm break-words leading-snug line-clamp-2"
+                      title={displayStoreName.length > 36 ? displayStoreName : undefined}
+                    >
+                      {displayStoreName}
                     </span>
-                    <span className="rounded bg-[var(--dsn-accent)]/15 px-1.5 py-0.2 text-[10px] font-mono font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/20 shrink-0">
-                      Comercio
-                    </span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="rounded bg-[var(--dsn-accent)]/15 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/20 shrink-0">
+                        Comercio
+                      </span>
+                      <span className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
+                        {tenantInfo.slug}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
-                    {tenantInfo.slug}
-                  </span>
-                </div>
-              </Link>
+                </Link>
+                <div>{renderConnectionBadge()}</div>
+              </div>
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(false)}
                 aria-label="Cerrar menú"
-                className="flex h-11 w-11 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] hover:bg-[var(--dsn-surface)]"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] hover:bg-[var(--dsn-surface)]"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -511,42 +561,32 @@ export function TenantWorkspaceShell({
       <aside className="hidden md:flex w-[260px] shrink-0 min-h-dvh border-r border-[var(--dsn-border)] bg-[var(--dsn-sidebar)] p-4 flex-col justify-between">
         <div>
           {/* Cabecera del Comercio */}
-          <div className="flex items-center justify-between pb-4 border-b border-[var(--dsn-border)]">
+          <div className="pb-4 border-b border-[var(--dsn-border)] space-y-2.5">
             <Link
               href="/workspace"
-              className="flex items-center gap-2.5 transition-opacity hover:opacity-90 active:scale-98 min-w-0"
-              aria-label={`${tenantInfo.name} Inicio`}
+              className="flex items-start gap-2.5 transition-opacity hover:opacity-90 active:scale-98 min-w-0"
+              aria-label={`${displayStoreName} Inicio`}
             >
-              {tenantInfo.logoUrl ? (
-                <img
-                  src={tenantInfo.logoUrl}
-                  alt={tenantInfo.name}
-                  className="h-8 w-8 rounded-lg object-contain border border-[var(--dsn-border)]"
-                />
-              ) : (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/40 shadow-xs">
-                  <Store className="h-4 w-4" />
-                </div>
-              )}
-              <div className="flex flex-col min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-1.5">
-                  <span className="font-bold tracking-tight text-[var(--dsn-text)] text-sm break-words leading-tight">
-                    {tenantInfo.name}
-                  </span>
-                  <span className="rounded bg-[var(--dsn-accent)]/15 px-1.5 py-0.2 text-[10px] font-mono font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/20 shrink-0 mt-0.5">
+              {renderBrandMark("md")}
+              <div className="flex flex-col min-w-0 flex-1 gap-1">
+                <span
+                  className="font-bold tracking-tight text-[var(--dsn-text)] text-sm break-words leading-snug line-clamp-2"
+                  title={displayStoreName.length > 36 ? displayStoreName : undefined}
+                >
+                  {displayStoreName}
+                </span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="rounded bg-[var(--dsn-accent)]/15 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/20 shrink-0">
                     Comercio
                   </span>
+                  <span className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
+                    {tenantInfo.slug}
+                  </span>
                 </div>
-                <span className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
-                  {tenantInfo.slug}
-                </span>
               </div>
             </Link>
 
-            <div className="flex items-center gap-1.5 shrink-0" title="Conectado">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-mono text-emerald-400">Conectado</span>
-            </div>
+            <div>{renderConnectionBadge()}</div>
           </div>
 
           {/* Navegación Desktop */}

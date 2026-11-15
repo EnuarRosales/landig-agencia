@@ -1,26 +1,49 @@
 import type { ReactNode } from "react";
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { resolveAuthenticatedPortalContext } from "@mocter/domain";
 
-/**
- * Guardia de navegación para el subárbol operativo del comercio `/workspace/*` (TNT-001 R2, Feature 12).
- *
- * Restringe el acceso a inquilinos autenticados en estado operativo (`scope === 'tenant'` y `lifecycleStatus === 'activo'`).
- * Si un operador de plataforma accede aquí, es redirigido a `/admin`.
- * Si un prospecto o inquilino en estado 'alta' accede, es redirigido a `/onboarding`.
- */
-export default async function WorkspaceSubtreeLayout({ children }: { children: ReactNode }) {
+async function readWorkspaceContextFromCookies() {
   const cookieStore = await cookies();
   const isProduction = process.env.NODE_ENV === "production";
   const sidCookieName = isProduction ? "__Host-mocter_sid" : "mocter_sid";
-  const sid = (cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value)?.trim();
+  const sid = (
+    cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value
+  )?.trim();
 
   if (!sid) {
-    redirect("/es/login");
+    return null;
   }
 
-  const context = await resolveAuthenticatedPortalContext(sid);
+  return resolveAuthenticatedPortalContext(sid);
+}
+
+/**
+ * Metadatos dinámicos del workspace del comercio (título y favicon personalizados para marca blanca).
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const context = await readWorkspaceContextFromCookies();
+  if (!context || context.scope !== "tenant" || !context.branding) {
+    return {};
+  }
+
+  const metadata: Metadata = {};
+  if (context.branding.brandName?.trim()) {
+    metadata.title = context.branding.brandName.trim();
+  }
+  if (context.branding.faviconUrl?.trim()) {
+    metadata.icons = { icon: context.branding.faviconUrl.trim() };
+  }
+  return metadata;
+}
+
+/**
+ * Guardia de navegación e inyección de tokens seguros de marca blanca para `/workspace/*`.
+ */
+export default async function WorkspaceSubtreeLayout({ children }: { children: ReactNode }) {
+  const context = await readWorkspaceContextFromCookies();
+
   if (!context) {
     redirect("/es/login");
   }
@@ -31,10 +54,18 @@ export default async function WorkspaceSubtreeLayout({ children }: { children: R
     } else if (context.lifecycleStatus === "alta" || context.scope === "onboarding_prospect") {
       redirect("/onboarding");
     } else {
-      // Cuentas suspendidas o bloqueadas no deben derivarse a onboarding
       redirect("/es/login?error=account_suspended");
     }
   }
 
-  return <>{children}</>;
+  const brandingStyle =
+    context.brandingTokens && Object.keys(context.brandingTokens).length > 0
+      ? (context.brandingTokens as React.CSSProperties)
+      : undefined;
+
+  return (
+    <div style={brandingStyle} className="w-full">
+      {children}
+    </div>
+  );
 }

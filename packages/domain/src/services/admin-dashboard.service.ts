@@ -48,6 +48,8 @@ import {
   clientBrandings,
   planLimits,
   planDimensions,
+  planFeatures,
+  planFeatureValues,
   chatwootCapabilities,
   chatwootAccounts,
   planCapabilityValues,
@@ -69,7 +71,7 @@ import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 import { env } from "../utils/env";
 import { CANONICAL_EMAIL_SENDERS, CANONICAL_EMAIL_EVENTS } from "./notifications-and-leads.service";
-import { WhiteLabelService } from "./white-label.service";
+import { WhiteLabelService, type WhiteLabelCapabilityMode } from "./white-label.service";
 import { INITIAL_AI_PROVIDERS, INITIAL_BOT_DEFAULTS } from "./bot-catalog.seed";
 import { INITIAL_PROMPT_BLOCKS } from "./prompt-blocks.seed";
 import { seedAiAssistCatalog } from "./ai-assist-catalog.seed";
@@ -153,6 +155,7 @@ export interface AdminPlanDetails extends Plan {
   limits: Record<PlanLimitDimensionKey, PlanLimitConfigItem>;
   capabilities: Record<string, boolean>;
   chatwootEnabled: boolean;
+  whiteLabelMode: WhiteLabelCapabilityMode;
 }
 
 export interface CreateAdminPlanInput {
@@ -178,6 +181,7 @@ export interface CreateAdminPlanInput {
   limits?: PlanLimitsConfig;
   capabilities?: Record<string, boolean>;
   chatwootEnabled?: boolean;
+  whiteLabelMode?: WhiteLabelCapabilityMode;
 }
 
 /**
@@ -859,6 +863,54 @@ export interface UpdateAdminPlanInput {
   limits?: PlanLimitsConfig;
   capabilities?: Record<string, boolean>;
   chatwootEnabled?: boolean;
+  whiteLabelMode?: WhiteLabelCapabilityMode;
+}
+
+/**
+ * Garantiza de forma idempotente la definición del feature `white_label` y persiste su valor por plan.
+ */
+async function upsertPlanWhiteLabelFeature(
+  tx: any,
+  planId: string,
+  mode: WhiteLabelCapabilityMode,
+  operator: string,
+): Promise<void> {
+  await tx
+    .insert(planFeatures)
+    .values({
+      key: "white_label",
+      label: { es: "Nivel de Marca Blanca", en: "White Label Level" },
+      description: {
+        es: "Define si el plan permite personalizar solo paleta de colores o marca blanca completa.",
+        en: "Controls whether the plan allows palette customization or full white labeling.",
+      },
+      featureType: "enum",
+      allowedOptions: ["none", "paleta", "completa"],
+      createdBy: operator,
+      updatedBy: operator,
+    })
+    .onConflictDoNothing({ target: planFeatures.key });
+
+  const now = new Date();
+  await tx
+    .insert(planFeatureValues)
+    .values({
+      planId,
+      featureKey: "white_label",
+      enabled: mode !== "none",
+      value: mode,
+      createdBy: operator,
+      updatedBy: operator,
+    })
+    .onConflictDoUpdate({
+      target: [planFeatureValues.planId, planFeatureValues.featureKey],
+      set: {
+        enabled: mode !== "none",
+        value: mode,
+        updatedAt: now,
+        updatedBy: operator,
+      },
+    });
 }
 
 export interface DeleteAdminPlanResult {
@@ -1132,6 +1184,14 @@ export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Resu
         });
       }
 
+      // Persistir nivel de Marca Blanca del plan (SPEC-07 D-SPEC-07-01)
+      await upsertPlanWhiteLabelFeature(
+        tx,
+        row.id,
+        input.whiteLabelMode ?? "none",
+        operator,
+      );
+
       return ok(row);
     });
 
@@ -1272,6 +1332,10 @@ export async function updateAdminPlan(input: UpdateAdminPlanInput): Promise<Resu
         }
       }
 
+      if (input.whiteLabelMode !== undefined) {
+        await upsertPlanWhiteLabelFeature(tx, row.id, input.whiteLabelMode, operator);
+      }
+
       return ok(row);
     });
 
@@ -1319,6 +1383,27 @@ export async function fetchAdminPlanDetails(planId: string): Promise<Result<Admi
       .from(planCapabilityValues)
       .where(eq(planCapabilityValues.planId, planId));
 
+    const [wlFeatureRow] = await db
+      .select({
+        enabled: planFeatureValues.enabled,
+        value: planFeatureValues.value,
+      })
+      .from(planFeatureValues)
+      .where(
+        and(
+          eq(planFeatureValues.planId, planId),
+          eq(planFeatureValues.featureKey, "white_label"),
+        ),
+      )
+      .limit(1);
+
+    let whiteLabelMode: WhiteLabelCapabilityMode = "none";
+    if (wlFeatureRow?.enabled) {
+      if (wlFeatureRow.value === "completa" || wlFeatureRow.value === "paleta") {
+        whiteLabelMode = wlFeatureRow.value;
+      }
+    }
+
     const limitsMap: Record<PlanLimitDimensionKey, PlanLimitConfigItem> = {
       products: { mode: "LIMITED", value: 0 },
       images_per_product: { mode: "LIMITED", value: 0 },
@@ -1365,6 +1450,7 @@ export async function fetchAdminPlanDetails(planId: string): Promise<Result<Admi
       limits: limitsMap,
       capabilities: capabilitiesMap,
       chatwootEnabled,
+      whiteLabelMode,
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

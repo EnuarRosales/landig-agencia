@@ -81,9 +81,9 @@ Se utiliza la tabla existente `admin.client_brandings` (`packages/domain/src/db/
 - `id`: `UUID` PK.
 - `client_id`: `UUID` FK → `admin.clients.id`, único (`UNIQUE`), aislamiento por inquilino.
 - `brand_name`: `VARCHAR(160)` nullable (opcional para sobreescribir título de marca blanca; por defecto usa `clients.display_name`).
-- `logo_url`: `TEXT` nullable (sincronizada/respaldada por `admin.media_catalog` vía `SPEC-00`, manteniendo prioridad de logo básico `clients.logo_media_id` cuando el usuario carga en perfil).
-- `favicon_url`: `TEXT` nullable (validado MIME `image/png`, `image/x-icon`, `image/svg+xml`).
-- `palette`: `JSONB` `BrandingPaletteTokens` (`primaryHex`, `accentHex`, `surfaceHex`, `textHex`, `sidebarBgHex`, `sidebarTextHex`).
+- `logo_url`: `TEXT` nullable (resuelta mediante subida directa a `admin.media_catalog`/SeaweedFS + imgproxy vía `SPEC-00`/`SPEC-05`, manteniendo sincronizado `clients.logo_media_id`).
+- `favicon_url`: `TEXT` nullable (subida directa `PNG`/`ICO`/`SVG` hacia SeaweedFS/imgproxy vía `POST /api/tenant/branding/asset`).
+- `palette`: `JSONB` `BrandingPaletteTokens` (`primary`, `primaryForeground`, `accent`, `accentForeground`, más opcionales `background`, `foreground`, `card`, `cardForeground`).
 - `remove_mocter_branding`: `BOOLEAN` `NOT NULL`, default `false`.
 - `custom_domain`: `VARCHAR(255)` nullable, único (formato FQDN válido sin esquema ni puerto, ej. `tienda.miempresa.co`).
 - `custom_font`: `VARCHAR(64)` nullable (catálogo seguro permitido: `Inter`, `Geist`, `Space Grotesk`, `Plus Jakarta Sans`, `DM Sans`).
@@ -119,7 +119,14 @@ Se utiliza la tabla existente `admin.client_brandings` (`packages/domain/src/db/
         "brandName": "Tienda Sol",
         "logoUrl": "https://...",
         "faviconUrl": null,
-        "palette": { "primaryHex": "#0F172A", "accentHex": "#2563EB", "surfaceHex": "#FFFFFF", "textHex": "#0F172A" },
+        "palette": {
+          "primary": "#0F172A",
+          "primaryForeground": "#FFFFFF",
+          "accent": "#2563EB",
+          "accentForeground": "#FFFFFF",
+          "background": "#FFFFFF",
+          "foreground": "#0F172A"
+        },
         "removeMocterBranding": true,
         "customDomain": "catalogo.tiendasol.co",
         "customFont": "Space Grotesk"
@@ -240,7 +247,10 @@ Característica: Shell del comercio y módulo de Marca Blanca
 
 ---
 
-## 15. Propuestas a Validar (PV-xx)
+## 15. Decisiones Confirmadas y Propuestas Validadas
 
-Sin preguntas abiertas para esta especificación.
+- **D-SPEC-07-01 (Gating de capacidades `WhiteLabelCapabilityMode` y editor de Planes SaaS):** `DrizzleWhiteLabelRepository` y `TenantCapabilityGateService` resuelven el modo efectivo (`none` | `paleta` | `completa`) en orden de prioridad: (1) override vigente por inquilino en `admin.client_feature_overrides` (`white_label` / `custom_branding`), seguido de (2) configuración del plan en `admin.plan_feature_values` (`feature_key = 'white_label'`). El editor de Planes SaaS (`/admin/plans`) incluye el selector `none | paleta | completa` y sincroniza `custom_branding` en el mapa de capacidades efectivas.
+- **D-SPEC-07-02 (Contrato `BrandingPaletteTokens` y alcance de inyección CSS):** Se mantiene el contrato existente `BrandingPaletteTokens` (`primary`, `primaryForeground`, `accent`, `accentForeground`, más opcionales `background`, `foreground`, `card`, `cardForeground`). En el Backoffice (`/workspace/*`) solo se inyectan tokens de marca sobre acento/primario (`--dsn-accent`, `--dsn-accent-hover`, `--dsn-accent-fg`) respetando siempre el modo Claro/Oscuro seleccionado por el usuario; la paleta completa se aplica en el Panel de Vista Previa y futura vitrina comercial.
+- **D-SPEC-07-03 (Carga binaria de Favicon y Logo en SeaweedFS/imgproxy):** En nivel `completa`, el módulo `/workspace/branding` habilita subida directa de archivos para **Favicon** (`PNG`/`ICO`/`SVG`) y **Logotipo** mediante `POST /api/tenant/branding/asset` hacia SeaweedFS + imgproxy (`SPEC-00` / `SPEC-05`), manteniendo sincronizado `clients.logo_media_id` en `/workspace/profile` sin exigir URLs externas manuales.
+- **D-SPEC-07-04 (Visibilidad de menú lateral en nivel `'none'`):** Cuando `custom_branding` es `false`, `TenantWorkspaceShell` mantiene oculta la opción «Identidad y Marca Blanca» de la barra lateral (preservando el gating `TNT-001` y sus tests actuales); si el propietario navega directamente a `/workspace/branding`, se despliega la pantalla informativa/upsell con acceso directo a `/workspace/profile` (logo básico) y `/workspace/billing` (cambio de plan).
 

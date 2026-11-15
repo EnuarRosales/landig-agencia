@@ -67,6 +67,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       limits: body.limits,
       capabilities: body.capabilities,
       chatwootEnabled: body.chatwootEnabled,
+      whiteLabelMode:
+        body.whiteLabelMode === "paleta" || body.whiteLabelMode === "completa"
+          ? body.whiteLabelMode
+          : "none",
     });
 
     if (!result.ok) {
@@ -114,6 +118,10 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
       limits: body.limits,
       capabilities: body.capabilities,
       chatwootEnabled: body.chatwootEnabled,
+      whiteLabelMode:
+        body.whiteLabelMode === "paleta" || body.whiteLabelMode === "completa"
+          ? body.whiteLabelMode
+          : "none",
     });
 
     if (!result.ok) {

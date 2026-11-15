@@ -151,10 +151,90 @@ export function mapProfileDomainError(
 }
 
 /**
+ * Traduce códigos de error de dominio de `WhiteLabelService` al código HTTP y slug RFC 9457 correspondiente (`SPEC-07`).
+ */
+export function mapWhiteLabelDomainError(
+  req: NextRequest,
+  requestId: string,
+  error: string,
+  code?: string,
+): NextResponse {
+  switch (code) {
+    case "FORBIDDEN_WHITE_LABEL_NOT_IN_PLAN":
+      return profileProblemResponse({
+        req,
+        requestId,
+        status: 403,
+        title: "Forbidden",
+        detail: error,
+        code: "WHITE_LABEL_NOT_IN_PLAN",
+        typeSlug: "white-label-not-in-plan",
+      });
+    case "FORBIDDEN_FULL_WHITE_LABEL_REQUIRED":
+      return profileProblemResponse({
+        req,
+        requestId,
+        status: 403,
+        title: "Enterprise Branding Required",
+        detail: error,
+        code: "ENTERPRISE_BRANDING_REQUIRED",
+        typeSlug: "enterprise-branding-required",
+      });
+    case "CUSTOM_DOMAIN_IN_USE":
+      return profileProblemResponse({
+        req,
+        requestId,
+        status: 409,
+        title: "Conflict",
+        detail: error,
+        code: "CUSTOM_DOMAIN_IN_USE",
+        typeSlug: "custom-domain-in-use",
+      });
+    case "CONTRAST_RATIO_FAILED":
+      return profileProblemResponse({
+        req,
+        requestId,
+        status: 422,
+        title: "Unprocessable Entity",
+        detail: error,
+        code: "WCAG_CONTRAST_TOO_LOW",
+        typeSlug: "wcag-contrast-too-low",
+      });
+    case "INVALID_PALETTE_COLOR":
+    case "INVALID_CUSTOM_DOMAIN":
+    case "INVALID_CUSTOM_FONT":
+      return profileProblemResponse({
+        req,
+        requestId,
+        status: 400,
+        title: "Validation Error",
+        detail: error,
+        code,
+        typeSlug: "branding-validation-error",
+      });
+    default:
+      return profileProblemResponse({
+        req,
+        requestId,
+        status: 500,
+        title: "Internal Server Error",
+        detail: error,
+        code: code || "WHITE_LABEL_ERROR",
+        typeSlug: "white-label-error",
+      });
+  }
+}
+
+/**
  * Emite un evento estructurado Pino en segundo plano vía `after()` sin bloquear la respuesta HTTP (`SPEC-05 §12`).
  */
 export function emitProfileAfterEvent(
-  eventName: "tenant.profile.updated" | "tenant.payment_channel.mutated",
+  eventName:
+    | "tenant.profile.updated"
+    | "tenant.payment_channel.mutated"
+    | "tenant.branding.updated"
+    | "tenant.branding.reset"
+    | "tenant.branding.asset_uploaded",
   payload: Record<string, unknown>,
 ): void {
   const run = async () => {

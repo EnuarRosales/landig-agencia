@@ -236,6 +236,7 @@ function PlanModalDialogContent({
   });
 
   // Pestaña 5: Capacidades opcionales
+  const [whiteLabelMode, setWhiteLabelMode] = useState<"none" | "paleta" | "completa">("none");
   const [capabilities, setCapabilities] = useState<Record<string, boolean>>({});
   const [capabilityCatalog, setCapabilityCatalog] = useState<CapabilityItem[]>([]);
   const [capSearchTerm, setCapSearchTerm] = useState("");
@@ -323,6 +324,9 @@ function PlanModalDialogContent({
 
             if (data.capabilities) {
               setCapabilities(data.capabilities);
+            }
+            if (data.whiteLabelMode === "paleta" || data.whiteLabelMode === "completa" || data.whiteLabelMode === "none") {
+              setWhiteLabelMode(data.whiteLabelMode);
             }
             if (data.chatwootEnabled !== undefined) {
               setChatwootEnabled(Boolean(data.chatwootEnabled));
@@ -508,6 +512,7 @@ function PlanModalDialogContent({
         limits: payloadLimits,
         capabilities,
         chatwootEnabled,
+        whiteLabelMode,
       };
 
       const method = isEdit ? "PUT" : "POST";
@@ -1700,6 +1705,34 @@ function PlanModalDialogContent({
             {/* PESTAÑA 5: Capacidades Opcionales */}
             {activeTab === "capabilities" && (
               <div className="space-y-4">
+                <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-3.5 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <label
+                        htmlFor="plan-white-label-mode"
+                        className="text-xs font-semibold text-[var(--dsn-text)] block"
+                      >
+                        Nivel de Marca Blanca de Plataforma
+                      </label>
+                      <p className="text-[11px] text-[var(--dsn-text-secondary)]">
+                        Define el alcance de personalización visual habilitado en el Backoffice del comercio.
+                      </p>
+                    </div>
+                    <select
+                      id="plan-white-label-mode"
+                      value={whiteLabelMode}
+                      onChange={(e) =>
+                        setWhiteLabelMode(e.target.value as "none" | "paleta" | "completa")
+                      }
+                      className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs font-medium text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none min-w-[210px]"
+                    >
+                      <option value="none">Sin Marca Blanca (Solo Logo Básico)</option>
+                      <option value="paleta">Paleta de Colores (WCAG 2.2 AA)</option>
+                      <option value="completa">Marca Blanca Completa (Enterprise)</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-2 border-b border-[var(--dsn-border)]">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--dsn-text-secondary)]" />
