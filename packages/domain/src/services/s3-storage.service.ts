@@ -408,15 +408,13 @@ export class S3StorageService {
   }
 
   /**
-   * Descarga de forma autenticada un objeto binario desde el bucket privado de SeaweedFS.
-   *
-   * @param key - Clave relativa del objeto dentro del bucket.
-   * @returns Buffer binario y tipo MIME si existe, o error con código HTTP asociado.
+   * Ejecuta una petición GET autenticada contra SeaweedFS S3 (con soporte opcional HTTP `Range`).
    */
-  async getObject(
+  private async fetchObjectResponse(
     key: string,
+    rangeHeader?: string | null,
   ): Promise<
-    { ok: true; buffer: Buffer; contentType: string } | { ok: false; error: string; status?: number }
+    { ok: true; response: Response } | { ok: false; error: string; status?: number }
   > {
     if (!this.accessKeyId || !this.secretAccessKey) {
       return {
@@ -429,13 +427,17 @@ export class S3StorageService {
     const path = `/${this.bucket}/${cleanKey}`;
     const targetUrl = `${this.endpoint}${path}`;
     const emptySha256 = createHash("sha256").update("").digest("hex");
+    const extraHeaders: Record<string, string> = {};
+    if (rangeHeader && rangeHeader.trim().length > 0) {
+      extraHeaders.range = rangeHeader.trim();
+    }
 
     try {
       const headers = generateSigV4Headers({
         method: "GET",
         endpoint: this.endpoint,
         path,
-        headers: {},
+        headers: extraHeaders,
         payloadSha256: emptySha256,
         region: this.region,
         accessKeyId: this.accessKeyId,
@@ -457,16 +459,72 @@ export class S3StorageService {
         };
       }
 
-      const arrayBuffer = await res.arrayBuffer();
-      const contentType = res.headers?.get("content-type") || "application/octet-stream";
-      return {
-        ok: true,
-        buffer: Buffer.from(arrayBuffer),
-        contentType,
-      };
+      return { ok: true, response: res };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  /**
+   * Transmite un objeto privado desde SeaweedFS S3 preservando cabeceras de streaming y HTTP `Range` (206).
+   *
+   * @param key - Clave relativa del objeto dentro del bucket.
+   * @param rangeHeader - Cabecera `Range` opcional enviada por `<video>` o `<audio>`.
+   * @returns Flujo binario, código HTTP (`200` o `206`) y metadatos de cabeceras.
+   */
+  async getObjectStream(
+    key: string,
+    rangeHeader?: string | null,
+  ): Promise<
+    | {
+        ok: true;
+        status: number;
+        body: ReadableStream<Uint8Array> | null;
+        bufferFallback?: Buffer;
+        contentType: string;
+        contentLength: string | null;
+        contentRange: string | null;
+        acceptRanges: string | null;
+      }
+    | { ok: false; error: string; status?: number }
+  > {
+    const fetched = await this.fetchObjectResponse(key, rangeHeader);
+    if (!fetched.ok) return fetched;
+    const res = fetched.response;
+    const contentType = res.headers?.get("content-type") || "application/octet-stream";
+    return {
+      ok: true,
+      status: res.status === 206 ? 206 : 200,
+      body: res.body ?? null,
+      contentType,
+      contentLength: res.headers?.get("content-length") ?? null,
+      contentRange: res.headers?.get("content-range") ?? null,
+      acceptRanges: res.headers?.get("accept-ranges") || "bytes",
+    };
+  }
+
+  /**
+   * Descarga de forma autenticada un objeto binario desde el bucket privado de SeaweedFS.
+   *
+   * @param key - Clave relativa del objeto dentro del bucket.
+   * @returns Buffer binario y tipo MIME si existe, o error con código HTTP asociado.
+   */
+  async getObject(
+    key: string,
+  ): Promise<
+    { ok: true; buffer: Buffer; contentType: string } | { ok: false; error: string; status?: number }
+  > {
+    const fetched = await this.fetchObjectResponse(key);
+    if (!fetched.ok) return fetched;
+
+    const res = fetched.response;
+    const arrayBuffer = await res.arrayBuffer();
+    const contentType = res.headers?.get("content-type") || "application/octet-stream";
+    return {
+      ok: true,
+      buffer: Buffer.from(arrayBuffer),
+      contentType,
+    };
   }
 }
 

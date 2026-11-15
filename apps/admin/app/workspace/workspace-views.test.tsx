@@ -5,7 +5,9 @@ import { WorkspaceDashboardView } from "./workspace-dashboard-view";
 import { ProductsView } from "./products/products-view";
 import { BillingView } from "./billing/billing-view";
 import { ProfileView } from "./profile/profile-view";
+import { BotView } from "./bot/bot-view";
 import { TenantWorkspaceShell } from "@/components/tenant-workspace-shell";
+import type { CatalogListResultDto, ProductDetailDto } from "@mocter/domain";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/workspace/profile",
@@ -121,7 +123,7 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
               currency: "COP",
               sku: "CF-MOL",
               category: "Bebidas",
-              status: "published",
+              status: "active",
               availability: "in_stock",
               mediaUrls: ["https://media.mocter.co/test.webp"],
               createdAt: new Date().toISOString(),
@@ -130,10 +132,10 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
         />,
       );
 
-      expect(screen.getByText("Café Molido Gourmet")).toBeDefined();
-      expect(screen.getByText("SKU: CF-MOL")).toBeDefined();
-      expect(screen.getByText("Publicado")).toBeDefined();
-      expect(screen.getByText("Subir Foto")).toBeDefined();
+      expect(screen.getAllByText("Café Molido Gourmet").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("SKU: CF-MOL").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Activo").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Multimedia").length).toBeGreaterThanOrEqual(1);
     });
 
     it("opens create product modal with Title Case labels (Rule 4.8)", () => {
@@ -142,8 +144,8 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       fireEvent.click(openBtn);
 
       expect(screen.getByText("Nombre del Producto *")).toBeDefined();
-      expect(screen.getByText("Descripción del Producto")).toBeDefined();
-      expect(screen.getByText("Precio en Pesos *")).toBeDefined();
+      expect(screen.getByText("Descripción Comercial del Producto")).toBeDefined();
+      expect(screen.getByText("Precio de Venta *")).toBeDefined();
       expect(screen.getByText("Mejorar con AI")).toBeDefined();
     });
 
@@ -159,7 +161,7 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
               currency: "COP",
               sku: null,
               category: null,
-              status: "published",
+              status: "active",
               availability: "in_stock",
               mediaUrls: [],
               createdAt: new Date().toISOString(),
@@ -750,6 +752,506 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       );
 
       expect(screen.getByText("Perfil del Negocio")).toBeDefined();
+    });
+  });
+
+  describe("ProductsView Catalog, Combos, Media, RBAC & Bilingual Suite", () => {
+    function buildSampleCatalog(): CatalogListResultDto {
+      return {
+        items: [
+          {
+            id: "prod-simple-low",
+            name: "Grano Espresso Premium",
+            description: "Tueste medio artesanal",
+            sku: "GEP-01",
+            category: "Café",
+            brand: "Origen",
+            kind: "physical",
+            compositionType: "simple",
+            condition: "new",
+            availability: "in_stock",
+            status: "active",
+            currency: "COP",
+            costPriceCents: 1800000,
+            priceCents: 3600000,
+            salePriceCents: null,
+            profitability: {
+              profitCents: 1800000,
+              marginPct: 50,
+              markupPct: 100,
+              isNegative: false,
+            },
+            stockQuantity: 2,
+            minStockThreshold: 5,
+            effectiveStock: 2,
+            isLowStock: true,
+            hasInactiveComboComponent: false,
+            coverImageUrl: null,
+            mediaUrls: [],
+            mediaCounts: { image: 1, video: 0, audio: 0, pdf: 0 },
+            attributesCount: 1,
+            comboComponentsCount: 0,
+            createdAt: "2026-11-10T10:00:00.000Z",
+            updatedAt: "2026-11-10T10:00:00.000Z",
+          },
+          {
+            id: "prod-combo-1",
+            name: "Kit Barista Completo",
+            description: "Paquete de café y prensa",
+            sku: "KIT-BAR-1",
+            category: "Combos",
+            brand: "Origen",
+            kind: "physical",
+            compositionType: "combo",
+            condition: "new",
+            availability: "in_stock",
+            status: "active",
+            currency: "COP",
+            costPriceCents: 4000000,
+            priceCents: 8000000,
+            salePriceCents: null,
+            profitability: {
+              profitCents: 4000000,
+              marginPct: 50,
+              markupPct: 100,
+              isNegative: false,
+            },
+            stockQuantity: 0,
+            minStockThreshold: 2,
+            effectiveStock: 0,
+            isLowStock: true,
+            hasInactiveComboComponent: true,
+            coverImageUrl: null,
+            mediaUrls: [],
+            mediaCounts: { image: 2, video: 1, audio: 1, pdf: 1 },
+            attributesCount: 0,
+            comboComponentsCount: 2,
+            createdAt: "2026-11-11T10:00:00.000Z",
+            updatedAt: "2026-11-11T10:00:00.000Z",
+          },
+        ],
+        pagination: { page: 1, limit: 20, total: 2, totalPages: 1 },
+        summary: { totalActive: 2, lowStockCount: 2, comboCount: 1 },
+      };
+    }
+
+    function buildSampleDetail(): ProductDetailDto {
+      const base = buildSampleCatalog().items[1]!;
+      return {
+        ...base,
+        botMasterPrompt: "Regla clave: confirmar molienda antes del envío.",
+        attributes: [{ name: "Molienda", values: ["Espresso", "Prensa Francesa"] }],
+        comboComponents: [
+          {
+            componentProductId: "prod-simple-low",
+            name: "Grano Espresso Premium",
+            sku: "GEP-01",
+            kind: "physical",
+            status: "active",
+            priceCents: 3600000,
+            costPriceCents: 1800000,
+            stockQuantity: 2,
+            quantity: 1,
+            sortOrder: 0,
+            coverImageUrl: null,
+          },
+        ],
+        suggestedComboCostCents: 1800000,
+        lowStockAlertSentAt: null,
+        media: {
+          images: [
+            {
+              id: "pm-1",
+              mediaId: "m-img-1",
+              mediaKind: "image",
+              mimeType: "image/webp",
+              originalFilename: "kit.webp",
+              sizeBytes: 12040,
+              isCover: true,
+              altText: "Portada kit",
+              sortOrder: 0,
+              url: "https://cdn.example/kit.webp",
+              thumbUrl: "https://cdn.example/kit-thumb.webp",
+              createdAt: "2026-11-11T10:00:00.000Z",
+            },
+          ],
+          videos: [
+            {
+              id: "pm-2",
+              mediaId: "m-vid-1",
+              mediaKind: "video",
+              mimeType: "video/mp4",
+              originalFilename: "demo.mp4",
+              sizeBytes: 240000,
+              isCover: false,
+              altText: null,
+              sortOrder: 1,
+              url: "/api/tenant/media/m-vid-1",
+              thumbUrl: null,
+              createdAt: "2026-11-11T10:00:00.000Z",
+            },
+          ],
+          audios: [
+            {
+              id: "pm-3",
+              mediaId: "m-aud-1",
+              mediaKind: "audio",
+              mimeType: "audio/mpeg",
+              originalFilename: "nota.mp3",
+              sizeBytes: 42000,
+              isCover: false,
+              altText: null,
+              sortOrder: 2,
+              url: "/api/tenant/media/m-aud-1",
+              thumbUrl: null,
+              createdAt: "2026-11-11T10:00:00.000Z",
+            },
+          ],
+          pdfs: [
+            {
+              id: "pm-4",
+              mediaId: "m-pdf-1",
+              mediaKind: "pdf",
+              mimeType: "application/pdf",
+              originalFilename: "ficha-tecnica.pdf",
+              sizeBytes: 88000,
+              isCover: false,
+              altText: null,
+              sortOrder: 3,
+              url: "/api/tenant/media/m-pdf-1",
+              thumbUrl: null,
+              createdAt: "2026-11-11T10:00:00.000Z",
+            },
+          ],
+        },
+      };
+    }
+
+    it("renders summary metrics, combo badge, inactive component warning, and low-stock indicators", () => {
+      render(<ProductsView initialCatalog={buildSampleCatalog()} canDelete={true} />);
+
+      expect(screen.getAllByText("Stock Bajo").length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText("Componente Inactivo").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Combo (2)").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/Margen: 50\.0%/).length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("hides Delete action for tenant_agent (canDelete=false) and uses custom ConfirmationModal for tenant_owner", async () => {
+      const sample = buildSampleCatalog();
+      const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url === "/api/tenant/products/prod-simple-low" && init?.method === "DELETE") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: true, data: { deleted: true } }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            data: {
+              ...sample,
+              items: sample.items.filter((i) => i.id !== "prod-simple-low"),
+              pagination: { ...sample.pagination, total: 1 },
+            },
+          }),
+        };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      try {
+        render(<ProductsView initialCatalog={sample} canDelete={false} />);
+        expect(screen.queryAllByText("Eliminar").length).toBe(0);
+
+        cleanup();
+
+        render(<ProductsView initialCatalog={sample} canDelete={true} />);
+        const deleteButtons = screen.getAllByText("Eliminar");
+        expect(deleteButtons.length).toBeGreaterThanOrEqual(1);
+        fireEvent.click(deleteButtons[0]!);
+
+        expect(screen.getByText("Eliminar Producto del Catálogo")).toBeDefined();
+        fireEvent.click(screen.getByText("Eliminar Producto"));
+
+        await waitFor(() => {
+          expect(fetchMock).toHaveBeenCalledWith(
+            "/api/tenant/products/prod-simple-low",
+            expect.objectContaining({ method: "DELETE" }),
+          );
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("opens Inactivate ConfirmationModal and sends PATCH /status without native confirm", async () => {
+      const sample = buildSampleCatalog();
+      const updatedDetail = buildSampleDetail();
+      updatedDetail.id = "prod-simple-low";
+      updatedDetail.status = "inactive";
+
+      const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url === "/api/tenant/products/prod-simple-low/status" && init?.method === "PATCH") {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: true, data: updatedDetail }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, data: sample }),
+        };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      try {
+        render(<ProductsView initialCatalog={sample} canDelete={true} />);
+        const inactivateButtons = screen.getAllByText("Inactivar");
+        fireEvent.click(inactivateButtons[0]!);
+
+        expect(screen.getByText("Inactivar Producto del Catálogo")).toBeDefined();
+        fireEvent.click(screen.getByText("Inactivar Producto"));
+
+        await waitFor(() => {
+          expect(fetchMock).toHaveBeenCalledWith(
+            "/api/tenant/products/prod-simple-low/status",
+            expect.objectContaining({ method: "PATCH" }),
+          );
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("fetches and displays full ProductDetailModal with combo components, attributes, master prompt, video, audio, and PDF", async () => {
+      const detail = buildSampleDetail();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, data: detail }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(<ProductsView initialCatalog={buildSampleCatalog()} canDelete={true} />);
+      const viewButtons = screen.getAllByLabelText("Ver Detalle Kit Barista Completo");
+      fireEvent.click(viewButtons[0]!);
+
+      await waitFor(() => {
+        expect(screen.getByText("Detalle del Producto")).toBeDefined();
+        expect(screen.getByText("Regla clave: confirmar molienda antes del envío.")).toBeDefined();
+      });
+
+      expect(screen.getByText("Molienda:")).toBeDefined();
+      expect(screen.getByText("Prensa Francesa")).toBeDefined();
+      expect(screen.getByText("Videos Promocionales")).toBeDefined();
+      expect(screen.getByText("Audios Descriptivos")).toBeDefined();
+      expect(screen.getByText("Documentos y Fichas PDF")).toBeDefined();
+      expect(screen.getByText("ficha-tecnica.pdf")).toBeDefined();
+
+      vi.unstubAllGlobals();
+    });
+
+    it("navigates all 5 tabs of ProductFormModal, computes live profitability, and inserts Prompt Maestro template", () => {
+      const { container } = render(<ProductsView initialProducts={[]} />);
+      const rootWrapper = container.firstElementChild as HTMLElement | null;
+      expect(rootWrapper?.className).toContain("p-4");
+      expect(rootWrapper?.className).toContain("md:px-8");
+      expect(rootWrapper?.className).toContain("md:py-6");
+
+      const createButton = screen.getByRole("button", { name: "Registrar Nuevo Producto" });
+      expect(createButton.className).toContain("bg-[var(--dsn-accent)]");
+      expect(createButton.className).not.toContain("--dsn-primary");
+
+      const refreshButton = screen.getByRole("button", { name: "Actualizar" });
+      expect(refreshButton.className).toContain("bg-[var(--dsn-surface)]");
+      expect(refreshButton.className).toContain("hover:border-[var(--dsn-accent)]");
+
+      fireEvent.click(createButton);
+
+      // El campo estático de Precio Promocional fue desacoplado hacia SPEC-18 (/workspace/promotions)
+      expect(screen.queryByLabelText("Precio Promocional (Opcional)")).toBeNull();
+
+      const costInput = screen.getByLabelText("Costo Unitario de Adquisición") as HTMLInputElement;
+      const priceInput = screen.getByLabelText("Precio de Venta *") as HTMLInputElement;
+      fireEvent.change(costInput, { target: { value: "20000" } });
+      fireEvent.change(priceInput, { target: { value: "40000" } });
+
+      expect(screen.getByText("50%")).toBeDefined();
+
+      fireEvent.click(screen.getByText("Stock Físico"));
+      expect(screen.getByLabelText("Umbral Mínimo de Alerta")).toBeDefined();
+
+      fireEvent.click(screen.getByText("Atributos y Combo"));
+      expect(screen.getByText("Atributos y Variantes del Producto")).toBeDefined();
+
+      fireEvent.click(screen.getByText("Multimedia"));
+      expect(
+        screen.getByText(
+          "Guarda los datos básicos del producto para habilitar la carga de imágenes, videos, audios o fichas PDF.",
+        ),
+      ).toBeDefined();
+
+      fireEvent.click(screen.getByText("Prompt Maestro"));
+      fireEvent.click(screen.getByText("Insertar Estructura Recomendada"));
+      expect(screen.getByText(/\/ 32,000/)).toBeDefined();
+    });
+
+    it("automatically closes ProductFormModal and shows confirmation banner when Guardar Producto succeeds", async () => {
+      const sample = buildSampleCatalog();
+      const createdDetail = buildSampleDetail();
+      createdDetail.id = "prod-created-99";
+      createdDetail.name = "Cafetera Italiana Acero";
+
+      const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url === "/api/tenant/products" && init?.method === "POST") {
+          return {
+            ok: true,
+            status: 201,
+            json: async () => ({ ok: true, data: createdDetail }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, data: sample }),
+        };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      try {
+        render(<ProductsView initialCatalog={sample} canDelete={true} />);
+        fireEvent.click(screen.getByRole("button", { name: "Registrar Nuevo Producto" }));
+        expect(screen.getByRole("dialog")).toBeDefined();
+
+        fireEvent.change(screen.getByLabelText("Nombre del Producto *"), {
+          target: { value: "Cafetera Italiana Acero" },
+        });
+        fireEvent.change(screen.getByLabelText(/Descripción Comercial/), {
+          target: { value: "Cafetera moka de 6 tazas en acero inoxidable." },
+        });
+        fireEvent.change(screen.getByLabelText("Precio de Venta *"), {
+          target: { value: "95000" },
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "Guardar Producto" }));
+
+        await waitFor(() => {
+          expect(fetchMock).toHaveBeenCalledWith(
+            "/api/tenant/products",
+            expect.objectContaining({ method: "POST" }),
+          );
+          expect(screen.queryByRole("dialog")).toBeNull();
+          expect(screen.getByText("Producto creado y agregado al catálogo.")).toBeDefined();
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("renders bilingual English catalog copy when locale='en'", () => {
+      render(
+        <ProductsView initialCatalog={buildSampleCatalog()} locale="en" canDelete={true} />,
+      );
+
+      expect(screen.getByText("Products & Commercial Catalog")).toBeDefined();
+      expect(screen.getByText("Register New Product")).toBeDefined();
+      expect(screen.getAllByText("Low Stock").length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText("Delete").length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("SPEC-19: pre-hydrates ProductFormModal Prompt Maestro with IDEAL structure and never duplicates on repeated clicks", () => {
+      render(<ProductsView initialProducts={[]} />);
+      fireEvent.click(screen.getByRole("button", { name: "Registrar Nuevo Producto" }));
+
+      fireEvent.change(screen.getByLabelText("Nombre del Producto *"), {
+        target: { value: "Resina Dental Moldeable" },
+      });
+      fireEvent.change(screen.getByLabelText(/Descripción Comercial/), {
+        target: { value: "Úsala desde casa, fácil de moldear y reutilizable." },
+      });
+      fireEvent.change(screen.getByLabelText("Precio de Venta *"), {
+        target: { value: "64900" },
+      });
+
+      fireEvent.click(screen.getByText("Prompt Maestro"));
+      const insertBtn = screen.getByText("Insertar Estructura Recomendada");
+
+      // Clic 3 veces consecutivas: debe ser 100% idempotente (sin duplicar encabezados IDEAL)
+      fireEvent.click(insertBtn);
+      fireEvent.click(insertBtn);
+      fireEvent.click(insertBtn);
+
+      const promptTextarea = screen.getByLabelText(
+        "Prompt Maestro del Producto para el Asistente",
+      ) as HTMLTextAreaElement;
+
+      expect(promptTextarea.value).toContain("## [I] Intención Comercial y Palabras Clave");
+      expect(promptTextarea.value).toContain("## [D] Detalle Comercial y Beneficios Clave");
+      expect(promptTextarea.value).toContain("## [E] Estrategia de Precios, Escalones y Presentación");
+      expect(promptTextarea.value).toContain("## [A] Acción Multimedia, Audios y Calificación de Pedido");
+      expect(promptTextarea.value).toContain("## [L] Límites del Producto y Manejo de Objeciones");
+      expect(promptTextarea.value).toContain("Resina Dental Moldeable");
+      expect(promptTextarea.value).toContain("[[MEDIA:Resina Dental Moldeable:imagen]]");
+
+      const occurrences = promptTextarea.value.split(
+        "## [I] Intención Comercial y Palabras Clave",
+      ).length - 1;
+      expect(occurrences).toBe(1);
+    });
+  });
+
+  describe("BotView · SPEC-19 Prompt General IDEAL & Dynamic Classifier (Functional vs. Operational)", () => {
+    it("renders Client General Prompt (Plano 2) and Dynamic Conversation Classifier with Chatwoot colors and operational side effects", () => {
+      render(
+        <BotView
+          initialConfig={{
+            botPreset: "natural_rhythm",
+            remindersEnabled: true,
+            warrantyPolicy: "30 días de garantía por defectos de fabricación.",
+            returnsPolicy: "Cambios dentro de los primeros 5 días hábiles.",
+            orderMessage: "Tu pedido ha sido confirmado.",
+            faqs: [],
+            paymentMethods: [],
+          }}
+        />,
+      );
+
+      expect(
+        screen.getByText("Prompt General de Operación del Cliente (Metodología IDEAL)"),
+      ).toBeDefined();
+      expect(
+        screen.getByText(
+          "Clasificador Dinámico de Conversaciones (Etiquetas Funcionales y Operativas)",
+        ),
+      ).toBeDefined();
+
+      // Etiquetas funcionales y colores en Chatwoot
+      expect(screen.getByText("Lead Caliente")).toBeDefined();
+      expect(screen.getByText("#F97316")).toBeDefined();
+      expect(screen.getByText("Compra Realizada")).toBeDefined();
+      expect(screen.getByText("#10B981")).toBeDefined();
+
+      // Etiquetas operativas y efectos secundarios
+      expect(screen.getByText("Soporte Humano")).toBeDefined();
+      expect(screen.getAllByText("Dirigir a Agente Humano").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("Pausar Bot").length).toBeGreaterThanOrEqual(1);
+
+      // Idempotencia del botón «Insertar Estructura IDEAL del Negocio»
+      const insertBusinessBtn = screen.getByText("Insertar Estructura IDEAL del Negocio");
+      fireEvent.click(insertBusinessBtn);
+      fireEvent.click(insertBusinessBtn);
+
+      const generalPromptArea = screen.getByLabelText(
+        "Prompt General de Operación del Cliente",
+      ) as HTMLTextAreaElement;
+      const countHeader =
+        generalPromptArea.value.split("### [I] INTENCIÓN COMERCIAL Y REGLA DE CATÁLOGO").length - 1;
+      expect(countHeader).toBe(1);
+      expect(generalPromptArea.value).toContain("30 días de garantía por defectos de fabricación.");
     });
   });
 });

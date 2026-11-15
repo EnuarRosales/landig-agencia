@@ -187,6 +187,23 @@ export const CANONICAL_EMAIL_EVENTS = [
     isEnabled: true,
     isSystem: false,
   },
+  {
+    key: "tenant.inventory.low_stock",
+    category: "tenant" as const,
+    description:
+      "Alerta al comercio cuando un producto físico simple alcanza o desciende del umbral mínimo de stock configurado.",
+    variablesSchema: [
+      "business_name",
+      "product_name",
+      "sku",
+      "current_stock",
+      "min_threshold",
+      "product_admin_url",
+    ],
+    defaultSenderKey: "no-reply",
+    isEnabled: true,
+    isSystem: false,
+  },
 ] as const;
 
 export type EmailEventKey = (typeof CANONICAL_EMAIL_EVENTS)[number]["key"];
@@ -480,6 +497,20 @@ export class TransactionalNotificationsAndLeadsService {
         subject: "Could not verify your Bre-B voucher · {{tenant_name}}",
         bodyHtml:
           "<p>Your Bre-B payment report of {{amount}} for {{plan_name}} could not be approved. Reason: <strong>{{rejection_reason}}</strong>. Your workspace keeps its current configuration; please upload a clear voucher at <a href=\"{{billing_url}}\">My Plan &amp; Quotas</a>.</p>",
+      },
+      {
+        eventKey: "tenant.inventory.low_stock",
+        locale: "es",
+        subject: "Alerta de stock bajo: {{product_name}} ({{sku}}) · {{business_name}}",
+        bodyHtml:
+          "<p>Hola {{business_name}}, el producto <strong>{{product_name}}</strong> (SKU: <code>{{sku}}</code>) alcanzó el nivel mínimo configurado.</p><p>Stock vigente: <strong>{{current_stock}}</strong> unidades · Umbral mínimo: <strong>{{min_threshold}}</strong> unidades.</p><p>Revisa o repón el inventario desde <a href=\"{{product_admin_url}}\">Catálogo de Productos</a>.</p>",
+      },
+      {
+        eventKey: "tenant.inventory.low_stock",
+        locale: "en",
+        subject: "Low stock alert: {{product_name}} ({{sku}}) · {{business_name}}",
+        bodyHtml:
+          "<p>Hi {{business_name}}, <strong>{{product_name}}</strong> (SKU: <code>{{sku}}</code>) has reached or dropped below its configured minimum threshold.</p><p>Current stock: <strong>{{current_stock}}</strong> units · Minimum threshold: <strong>{{min_threshold}}</strong> units.</p><p>Review or restock this item in <a href=\"{{product_admin_url}}\">Product Catalog</a>.</p>",
       },
     ];
 

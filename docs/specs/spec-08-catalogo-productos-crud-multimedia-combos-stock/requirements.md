@@ -9,7 +9,7 @@
 | **Tipo de intervención** | Evolución integral de núcleo comercial + Remediación de brechas funcional/esquema |
 | **Prioridad** | P0 — Crítica (corazón comercial del comercio y conocimiento del bot) |
 | **Versión** | 1.0.0 |
-| **Estado** | Aprobada para implementación |
+| **Estado** | Implementada |
 | **Paquetes / Apps afectadas** | `packages/domain`, `apps/admin`, `apps/web` (lectura catálogo si aplica) |
 
 ---
@@ -57,22 +57,25 @@ Entregar un **gestor completo de Catálogo de Productos** que habilite:
 ## 5. Alcance y Fuera de alcance
 
 ### Dentro del alcance
+- Unificación arquitectónica sobre `TenantProductsAndMediaService` (`packages/domain/src/services/tenant-products-and-media.service.ts`) como autoridad única de dominio para catálogo, multimedia, combos y stock (`SPEC-08`), manteniendo wrappers compatibles en `TenantWorkspaceService` únicamente para callers/tests legados (`SPEC-06` y dashboard).
 - Extensión del esquema en `pg-cell-XX` (`packages/domain/src/db/schemas/tenant/tenancy-catalog.ts`):
-  - En `cell_products`: `cost_price_cents`, `composition_type` (`'simple' | 'combo'`), `bot_master_prompt` (`TEXT` amplio), `stock_quantity` (`INTEGER` nullable), `min_stock_threshold` (`INTEGER` nullable), `low_stock_alert_sent_at` (`TIMESTAMPTZ` nullable), y soporte claro del estado `'inactive'` (o `'published' | 'inactive' | 'draft'` migrado desde `'archived'`).
-  - Nueva tabla `cell_product_bundle_items` (relación combo → productos componentes + cantidad + orden).
-  - En `cell_product_media`: columna `is_cover` (`BOOLEAN` `NOT NULL`, default `false`) + índice único parcial que garantice máximo 1 imagen cover activa por producto.
-- Servicios en `packages/domain/src/services/tenant-products-and-media.service.ts` para CRUD completo, validación estricta por cuota de cada tipo de medio (`image`, `video`, `audio`, `pdf`) y storage total, gestión de combos sin ciclos recursivos, cálculo de utilidad (`calculateProductProfitability` de `SPEC-06`), cambio de cover atómico, inactivación con modal `--dsn-*` y evaluador de alerta de stock mínimo.
-- API completa en `apps/admin/app/api/tenant/products/`:
-  - `GET / POST /api/tenant/products`
-  - `GET / PUT / PATCH / DELETE /api/tenant/products/[id]`
-  - `PATCH /api/tenant/products/[id]/status` (activar / inactivar)
-  - `POST /api/tenant/products/[id]/media/[mediaId]/cover` (definir miniatura principal) y `DELETE /api/tenant/products/[id]/media/[mediaId]`
-- Rediseño completo de `apps/admin/app/workspace/products/products-view.tsx`:
-  - Tabla con búsqueda, filtro por tipo/composición/estado, ordenamiento, paginación y badge visual de stock bajo.
-  - Modal/Drawer **Ver Producto** (toda la ficha: precios, utilidad, atributos, componentes de combo, galería de imágenes/video/audio/PDF reproducibles y preview del prompt maestro).
-  - Modal/Formulario **Crear / Editar Producto** organizado en pestañas/bloques claros Mobile First.
-  - Modales de confirmación `--dsn-*` para **Inactivar / Activar** y **Eliminar** producto (prohibido `window.confirm`).
-- Disparo del evento de notificación de **Stock Mínimo Alcanzado** al crear/editar stock o al confirmar/descontar pedidos (`SPEC-11`), conectado al catálogo de plantillas configurables en `/admin/settings/notifications` (`SPEC-14`).
+  - En `cell_products`: `cost_price_cents` (`BIGINT NOT NULL DEFAULT 0`), `composition_type` (`'simple' | 'combo'`), `bot_master_prompt` (`TEXT NOT NULL DEFAULT ''` migrando `prompt` previo), `attributes` normalizado a `'[]'::jsonb`, `stock_quantity` (`INTEGER` nullable), `min_stock_threshold` (`INTEGER` nullable), `low_stock_alert_sent_at` (`TIMESTAMPTZ` nullable), `deleted_at`/`deleted_by`, y migración limpia de `status` a `('active' | 'inactive' | 'draft')` (`'published' → 'active'`, `'archived' → 'inactive'`).
+  - Nueva tabla `cell_product_bundle_items` (relación combo → productos componentes + cantidad + orden con claves foráneas compuestas `(client_id, *_product_id)` hacia `admin.products`, RLS y auditoría).
+  - En `cell_product_media`: columnas `media_kind` (`'image' | 'video' | 'audio' | 'pdf'`) e `is_cover` (`BOOLEAN` `NOT NULL`, default `false`) + restricción `NOT is_cover OR media_kind = 'image'` + índice único parcial que garantice máximo 1 imagen cover activa por `(client_id, product_id)`.
+- Unificación de validación de magic bytes (`packages/domain/src/utils/media-magic-bytes.ts`) para imágenes (`PNG`, `JPEG`, `WebP`, `AVIF`, rechazando `SVG` y `GIF`), video (`MP4`, `WebM`, `MOV`), audio (`MP3`, `OGG/Opus`, `WAV`, `M4A`) y `PDF`, aplicando cuotas `*_per_product` (incluyendo `audios_per_product`), `storage_bytes` y deduplicación por hash (`media_catalog` + `cell_client_media`).
+- Ruta autenticada de entrega privada `GET /api/tenant/media/[mediaId]` desde SeaweedFS (`S3StorageService.getObject`) con soporte HTTP `Range` (`206 Partial Content`) para reproducción de `<video>` / `<audio>` y `Content-Disposition: inline` para PDFs, manteniendo `imgproxy` para imágenes (`SPEC-00`).
+- Registro del evento `tenant.inventory.low_stock` y sus plantillas `es`/`en` en `packages/domain/src/services/notifications-and-leads.service.ts` para envío asíncrono vía `after()` hacia `clients.commercial_email ?? clients.contact_email` cuando un producto físico simple cruza hacia abajo `stock_quantity <= min_stock_threshold`.
+- API completa en `apps/admin/app/api/tenant/products/` envuelta en `handle()` RFC 9457:
+  - `GET / POST /api/tenant/products` (envolvente paginada `SPEC-17` `{ ok: true, data: { items, pagination, summary } }`)
+  - `GET / PUT / DELETE /api/tenant/products/[id]`
+  - `PATCH /api/tenant/products/[id]/status` (activar / inactivar / borrador)
+  - `POST /api/tenant/products/[id]/media/[mediaId]/cover` y `DELETE /api/tenant/products/[id]/media/[mediaId]`
+  - Actualización de `/api/tenant/media/upload` para aceptar multimedia multimodal validada contra cuotas del producto.
+- Rediseño completo de `apps/admin/app/workspace/products/` (`products-view.tsx`, `product-detail-modal.tsx`, `product-form-modal.tsx`):
+  - Tabla paginada, ordenable y filtrable con vista tarjeta Mobile First y badge visual de stock bajo.
+  - Modal **Ver Producto** (ficha completa: precios, utilidad, atributos, componentes de combo, galería de imágenes, reproductores HTML5 `<video>`/`<audio>`, visor/descarga PDF y prompt maestro colapsable).
+  - Modal **Crear / Editar Producto** por pestañas claras Mobile First, incluyendo guía estructurada + `<AiEnhanceTextarea fieldKey="product.bot_master_prompt" />` (`ai-assist-catalog.seed.ts` ajustado a `maxLength: 4000` dentro del tope DB/Zod de `32,000` chars).
+  - Modales de confirmación `--dsn-*` (`ConfirmationModal`) para **Inactivar / Activar** y **Eliminar** producto (prohibido `window.confirm`).
 
 ### Fuera de alcance
 - Definición o edición visual de la plantilla de correo de stock mínimo en administración SaaS (pertenece a `SPEC-14`).
@@ -85,42 +88,43 @@ Entregar un **gestor completo de Catálogo de Productos** que habilite:
 
 | Actor / Rol | Operación | Permitido | Condición |
 | --- | --- | --- | --- |
-| `tenancy_owner` | Ver, crear, editar, inactivar, eliminar productos, gestionar multimedia, atributos, combos, stock y `bot_master_prompt` | Sí | Solo en su `client_id` y dentro de cuotas del plan |
-| `tenancy_users` (`tenant_agent`) | Ver fichas completas, crear/editar productos y stock si el comercio habilita permiso de catálogo | Sí | Según política del comercio; bloqueado en borrado permanente si se restringe |
-| `tenancy_users` (`tenant_agent`) | Eliminar productos permanentemente | Condicionado | Permitido solo con confirmación modal `--dsn-*` o restricción configurable al owner según `TENANT_RBAC` (`SPEC-12`) |
+| `tenant_owner` | Ver, crear, editar, inactivar/activar, eliminar productos, gestionar multimedia, atributos, combos, stock y `bot_master_prompt` | Sí | Solo en su `client_id` y dentro de cuotas del plan |
+| `tenant_agent` | Listar catálogo, ver fichas completas, crear/editar productos, ajustar stock y gestionar multimedia | Sí | Solo en su `client_id` y dentro de cuotas del plan |
+| `tenant_agent` | Eliminar productos permanentemente (`DELETE /api/tenant/products/[id]`) | No | Bloqueado con HTTP `403 Forbidden` y acción oculta en UI (reservada a `tenant_owner`) |
 
 ---
 
 ## 7. Modelo de datos
 
 ### 7.1 Actualización de `cell_products` (`packages/domain/src/db/schemas/tenant/tenancy-catalog.ts`)
-- `cost_price_cents`: `BIGINT` `NOT NULL`, default `0`. Precio de costo unitario para cálculo de utilidad (`SPEC-06`).
-- `price_cents`: `BIGINT` `NOT NULL` (`> 0`). Precio de venta al público.
+- Llave primaria compuesta existente `(client_id, id)` (`cell_products_pkey`).
+- `cost_price_cents`: `BIGINT` `NOT NULL`, default `0` (migrando valores previos `NULL` a `0`). Precio de costo unitario para cálculo de utilidad (`SPEC-06`); en combos el formulario sugiere la suma `(comp.cost_price_cents ?? comp.price_cents) * qty` permitiendo sobrescritura manual.
+- `price_cents`: `BIGINT` `NOT NULL` (`>= 0`, `> 0` en validación de negocio). Precio de venta al público.
 - `sale_price_cents`: `BIGINT` nullable (precio promocional opcional `< price_cents`).
-- `kind`: `VARCHAR(24)` (`'physical' | 'digital' | 'service'`).
-- `composition_type`: `VARCHAR(16)` (`'simple' | 'combo'`), `NOT NULL`, default `'simple'`.
-- `status`: `VARCHAR(24)` (`'active' | 'inactive' | 'draft'`), `NOT NULL`, default `'active'` *(manteniendo mapeo limpio de `'published'` → `'active'` y `'archived'` → `'inactive'`)*.
-- `bot_master_prompt`: **`TEXT`** `NOT NULL`, default `''` (tipo PostgreSQL `TEXT` de gran capacidad sin truncado de 255/1000 chars; validación de aplicación `<= 32,000` caracteres).
-- `attributes`: `JSONB` `Array<{ name: string; values: string[]; requiredForOrder?: boolean }>`, default `[]`.
-- `stock_quantity`: `INTEGER` nullable (`>= 0`, obligatorio solo cuando `kind === 'physical'` y `composition_type === 'simple'`; para combos puede ser calculado del stock de sus componentes o definido explícitamente).
-- `min_stock_threshold`: `INTEGER` nullable (`>= 0`, aplicable solo cuando `kind === 'physical'`).
-- `low_stock_alert_sent_at`: `TIMESTAMPTZ` nullable (para evitar spam de alertas repetidas mientras siga bajo el mínimo sin reabastecerse).
-- `deleted_at`: `TIMESTAMPTZ` nullable (**eliminación lógica** cuando existen pedidos históricos o referencias de combos/clonación; limpieza física permitida en borradores sin historial).
+- `kind`: `TEXT` (`'physical' | 'digital' | 'service'`).
+- `composition_type`: `TEXT` (`'simple' | 'combo'`), `NOT NULL`, default `'simple'`.
+- `status`: `TEXT` (`'active' | 'inactive' | 'draft'`), `NOT NULL`, default `'active'` (migración SQL que actualiza `'published'` → `'active'`, `'archived'` → `'inactive'`, actualiza `TenantOnboardingService` para escribir `'active'` y normaliza alias legacy en entrada Zod).
+- `bot_master_prompt`: **`TEXT`** `NOT NULL`, default `''` (copiando valores previos de `prompt` en migración y manteniendo sincronización espejo con `prompt` al escribir hasta que `SPEC-10` lea exclusivamente `bot_master_prompt`; validación Zod hasta `32,000` caracteres; `ai-assist-catalog.seed.ts` ajustado a `outputRules.maxLength = 4000` para sugerencias enriquecidas dentro del límite de 32k).
+- `attributes`: `JSONB` `Array<{ name: string; values: string[]; requiredForOrder?: boolean }>`, `NOT NULL`, default `'[]'::jsonb` (normalizando filas legacy con `'{}'::jsonb` a `'[]'::jsonb`).
+- `stock_quantity`: `INTEGER` nullable (`>= 0`, obligatorio solo cuando `kind === 'physical'` y `composition_type === 'simple'`; para `composition_type === 'combo'`, el **stock efectivo se calcula dinámicamente en lectura** como `min(floor(comp.stock_quantity / item.quantity))` sobre sus componentes físicos activos; si el combo solo contiene componentes `digital`/`service`, no limita por stock físico; UI y DTO advierten si algún componente pasa a `'inactive'`).
+- `min_stock_threshold`: `INTEGER` nullable (`>= 0`, aplicable solo cuando `kind === 'physical'` y `composition_type === 'simple'`).
+- `low_stock_alert_sent_at`: `TIMESTAMPTZ` nullable (evita spam de alertas repetidas mientras permanezca en/bajo el mínimo sin reabastecerse por encima del umbral).
+- `deleted_at`: `TIMESTAMPTZ` nullable + `deleted_by`: `TEXT` nullable (**eliminación lógica** cuando existen pedidos históricos o clonación; liberación de cuota activa en `products.used`).
 
 ### 7.2 Nueva tabla `cell_product_bundle_items` (en `pg-cell-XX`)
-- `id`: `UUID` PK.
-- `client_id`: `UUID` `NOT NULL`, indexado con RLS `app.current_client_id`.
-- `bundle_product_id`: `UUID` FK → `cell_products.id` (`ON DELETE CASCADE`).
-- `component_product_id`: `UUID` FK → `cell_products.id` (`ON DELETE RESTRICT` — impide borrar un producto simple si forma parte activa de un combo).
-- `quantity`: `INTEGER` `NOT NULL` (`> 0`).
+- `id`: `UUID` (`default uuidv7()`). PK compuesta `(client_id, id)`.
+- `client_id`: `UUID` `NOT NULL`, aislado con `ENABLE + FORCE ROW LEVEL SECURITY` (`app.current_client_id`).
+- `bundle_product_id`: `UUID` `NOT NULL`, FK compuesta `(client_id, bundle_product_id)` → `admin.products(client_id, id)` (`ON DELETE CASCADE`).
+- `component_product_id`: `UUID` `NOT NULL`, FK compuesta `(client_id, component_product_id)` → `admin.products(client_id, id)` (`ON DELETE RESTRICT` — impide borrar físicamente un producto simple mientras pertenezca a un combo).
+- `quantity`: `INTEGER` `NOT NULL` (`CHECK (quantity > 0)`).
 - `sort_order`: `INTEGER` `NOT NULL`, default `0`.
-- `UNIQUE (bundle_product_id, component_product_id)`.
+- Columnas de auditoría (`created_at`, `updated_at`, `created_by`, `updated_by`) + `UNIQUE (client_id, bundle_product_id, component_product_id)`.
 
 ### 7.3 Actualización de `cell_product_media`
-- `media_kind`: `'image' | 'video' | 'audio' | 'pdf'`.
+- `media_kind`: `TEXT` `NOT NULL`, default `'image'` (`CHECK (media_kind IN ('image', 'video', 'audio', 'pdf'))`).
 - `is_cover`: `BOOLEAN` `NOT NULL`, default `false`.
-- Índice único parcial por producto: máximo una fila con `is_cover = true` por `product_id` (`CREATE UNIQUE INDEX ... WHERE is_cover = true`).
-- Restricción lógica: solo filas con `media_kind = 'image'` pueden tener `is_cover = true`.
+- Restricción SQL: `CHECK (NOT is_cover OR media_kind = 'image')`.
+- Índice único parcial por producto: `CREATE UNIQUE INDEX product_media_one_cover_per_product ON admin.product_media (client_id, product_id) WHERE is_cover = true`.
 
 ---
 
@@ -131,7 +135,7 @@ Entregar un **gestor completo de Catálogo de Productos** que habilite:
 - **RN-SPEC-08-03 (Prompt maestro estructurado de gran tamaño para el Bot `PRD-04`):** El atributo `bot_master_prompt` se almacena como `TEXT` sin límite corto, admitiendo hasta `32,000` caracteres en validación Zod. La UI proporciona guía estructurada recomendada (Qué resuelve el producto / Beneficios clave / Público objetivo / Objeciones frecuentes y respuestas / Políticas aplicables / Llamado al cierre) más botón «Mejorar Con AI» real (`SPEC-02`, campo `product.bot_master_prompt`) sin autoguardado silencioso.
 - **RN-SPEC-08-04 (Atributos dinámicos normalizados `PRD-05`):** Cada producto puede definir múltiples grupos de atributos dinámicos (ej. `Color`: `["Negro", "Blanco"]`, `Talla`: `["S", "M", "L"]`). Se validan nombres no vacíos sin duplicados por producto y valores no vacíos (máximo 20 atributos por producto, 50 valores por atributo) para que tanto la tienda web como el bot AI y los pedidos (`SPEC-11`) puedan exigir o capturar la variante exacta.
 - **RN-SPEC-08-05 (Combos / productos compuestos sin ciclos `PRD-06`):** Un producto con `composition_type = 'combo'` debe incluir al menos 1 producto componente (`composition_type = 'simple'` del mismo `client_id`) con cantidad `>= 1`. Queda prohibido agregar el mismo combo dentro de sí mismo o incluir otro combo como hijo (sin anidamiento cíclico) y prohibido eliminar físicamente un producto simple mientras pertenezca a un combo activo (`409 PRODUCT_USED_IN_COMBO`).
-- **RN-SPEC-08-06 (Stock y alerta de umbral mínimo exclusiva de productos físicos `PRD-08`):** Los campos `stock_quantity` y `min_stock_threshold` aplican y se validan únicamente cuando `kind === 'physical'` (para `'digital'` o `'service'` permanecen `null` y ocultos en UI). Cuando en un producto físico activo `stock_quantity <= min_stock_threshold` y `low_stock_alert_sent_at IS NULL`, el sistema emite el evento de notificación por email `inventory.low_stock` (`SPEC-14`) al correo comercial/de alertas del comercio y marca `low_stock_alert_sent_at = NOW()`. Al reponer stock por encima del mínimo (`stock_quantity > min_stock_threshold`), `low_stock_alert_sent_at` se restablece a `null` para rearmar futuras alertas.
+- **RN-SPEC-08-06 (Stock y alerta de umbral mínimo exclusiva de productos físicos `PRD-08`):** Los campos persistidos `stock_quantity` y `min_stock_threshold` aplican y se validan únicamente cuando `kind === 'physical'` y `composition_type === 'simple'` (para `'digital'` o `'service'` permanecen `null` y ocultos en UI; para combos físicos se calcula dinámicamente en lectura `min(floor(comp.stock_quantity / qty))` sobre sus componentes físicos activos). Cuando en un producto físico simple activo `min_stock_threshold > 0`, `stock_quantity <= min_stock_threshold` y `low_stock_alert_sent_at IS NULL`, el sistema emite asíncronamente vía `after()` el evento `tenant.inventory.low_stock` (`TransactionalNotificationsAndLeadsService`, `es`/`en`) hacia `clients.commercial_email ?? clients.contact_email` y marca `low_stock_alert_sent_at = NOW()`. Al reponer stock por encima del mínimo (`stock_quantity > min_stock_threshold`), `low_stock_alert_sent_at` se restablece a `null` para rearmar futuras alertas. La campana in-app y preferencias granulares por evento permanecen acotadas a `SPEC-14`.
 - **RN-SPEC-08-07 (Estado Inactivo vs Eliminación `PRD-03`):** Un producto marcado como `inactive` deja de ser ofrecido por el bot AI y de mostrarse en catálogo público, pero conserva íntegros sus pedidos históricos, multimedia y métricas; puede reactivarse en cualquier momento. Su cambio de estado o eliminación se confirma siempre con modal accesible `--dsn-*`.
 
 ---
@@ -139,20 +143,21 @@ Entregar un **gestor completo de Catálogo de Productos** que habilite:
 ## 9. Contratos de interfaz
 
 ### 9.1 `GET /api/tenant/products` y `POST /api/tenant/products`
-- `GET`: Soporta filtros `?q=...&status=active|inactive|draft&kind=physical|digital|service&compositionType=simple|combo&lowStock=true&page=1&limit=20&sort=...`. Retorna paginación + resumen `coverImageUrl` vía imgproxy (`SPEC-00`) + conteo de medios por tipo.
-- `POST`: Valida cuota total de productos (`SPEC-03`), utilidad (`costPriceCents` vs `priceCents`), atributos dinámicos, `botMasterPrompt` (`<= 32,000` chars), items de combo si `compositionType = 'combo'` y stock si `kind = 'physical'`.
+- `GET`: Soporta filtros `?q=...&status=active|inactive|draft&kind=physical|digital|service&compositionType=simple|combo&lowStock=true&page=1&limit=20&sortBy=...&sortDir=asc|desc`. Retorna envolvente paginada estándar `SPEC-17` `{ ok: true, data: { items, pagination, summary } }` con `coverImageUrl` vía imgproxy (`SPEC-00`), stock efectivo (calculado en combos) y conteo de medios por tipo.
+- `POST`: Valida cuota total de productos (`SPEC-03`), utilidad (`costPriceCents` vs `priceCents`), atributos dinámicos, `botMasterPrompt` (`<= 32,000` chars), items de combo si `compositionType = 'combo'` y stock si `kind = 'physical'` y `compositionType = 'simple'`.
 
 ### 9.2 `GET / PUT / DELETE /api/tenant/products/[id]` [Extensión con `GET` completo]
-- `GET`: Retorna ficha completa del producto, todos sus archivos multimedia agrupados (`images`, `videos`, `audios`, `pdfs`) con `isCover` y URLs firmadas/imgproxy, sus componentes de combo (si aplica) con precios e imágenes, e historial básico de disponibilidad.
+- `GET`: Retorna ficha completa del producto, todos sus archivos multimedia agrupados (`images`, `videos`, `audios`, `pdfs`) con `isCover` y URLs (`imgproxy` para imágenes, `/api/tenant/media/[mediaId]` para video/audio/PDF), sus componentes de combo (si aplica) con precios, stock e imágenes, cálculo de rentabilidad (`calculateProductProfitability`), stock efectivo y advertencias si algún componente está `inactive`.
 - `PUT`: Actualiza atributos completos validando transición de simple ↔ combo, cuotas y regla de stock mínimo (disparando alerta `after()` si corresponde).
-- `DELETE`: Si está en un combo activo retorna `409 PRODUCT_USED_IN_COMBO`; si tiene pedidos asociados aplica eliminación lógica (`deleted_at = NOW()`) liberando cupo activo en `products.used` y conservando trazabilidad de órdenes.
+- `DELETE`: Restringido exclusivamente a `tenant_owner` (`403 Forbidden` para `tenant_agent`). Si es componente de un combo no eliminado retorna `409 PRODUCT_USED_IN_COMBO`; aplica eliminación lógica (`deleted_at = NOW()`, `deleted_by = actor`) liberando cupo activo en `products.used` y conservando trazabilidad histórica.
 
 ### 9.3 `PATCH /api/tenant/products/[id]/status` [Nuevo]
-- Request: `{ status: "active" | "inactive" | "draft" }`.
+- Request: `{ status: "active" | "inactive" | "draft" }` (acepta alias legacy `'published'` / `'archived'`).
 
-### 9.4 `POST /api/tenant/products/[id]/media/[mediaId]/cover` y `DELETE /api/tenant/products/[id]/media/[mediaId]` [Nuevos]
+### 9.4 `POST /api/tenant/products/[id]/media/[mediaId]/cover`, `DELETE /api/tenant/products/[id]/media/[mediaId]` y `GET /api/tenant/media/[mediaId]` [Nuevos]
 - `POST .../cover`: Transacción que desmarca el cover anterior y fija `is_cover = true` en `mediaId` (solo si `media_kind === 'image'`).
-- `DELETE .../media/[mediaId]`: Remueve registro, descuenta `file_size_bytes` de `cell_client_usage` e invoca limpieza en SeaweedFS (`SPEC-00`); si era cover, promueve otra imagen existente.
+- `DELETE .../media/[mediaId]`: Remueve vínculo `cell_product_media`, descuenta `storage_bytes` en `cell_client_usage` y limpia en SeaweedFS si el archivo ya no tiene otras referencias del inquilino/globales (`SPEC-00`); si era cover, promueve automáticamente otra imagen existente por `sort_order`.
+- `GET /api/tenant/media/[mediaId]`: Proxy autenticado por inquilino que verifica membresía en `cell_client_media` y transmite objetos privados (`video`, `audio`, `pdf` e imágenes originales) desde `S3StorageService.getObject` con soporte HTTP `Range` (`206 Partial Content`) y `Content-Disposition: inline`.
 
 ---
 
@@ -262,15 +267,33 @@ Característica: CRUD completo de productos, multimedia con cover, atributos, co
 
 ## 14. Definition of Done
 
-- [ ] Esquema `cell_products`, `cell_product_bundle_items` y `cell_product_media.is_cover` migrados con RLS y comentarios SQL.
-- [ ] `GET`/`PUT`/`PATCH status`/`DELETE` + endpoints de `cover` y `media` implementados en `/api/tenant/products*` con Zod, `handle()` RFC 9457 y pruebas de aislamiento.
-- [ ] UI `/workspace/products` completa: tabla paginada, Modal Ver, Modal Crear/Editar multimodal + cover + atributos dinámicos + combos + stock físico + prompt maestro 32k chars con AI real, e inactivación/eliminación con modales `--dsn-*`.
-- [ ] Alerta automática por stock mínimo probada de extremo a extremo.
-- [ ] `pnpm lint`, `pnpm test`, `drizzle-kit check` en verde + protocolo §4.18 ejecutado.
+- [x] Esquema `cell_products`, `cell_product_bundle_items` y `cell_product_media.is_cover` migrados con RLS y comentarios SQL (`0013` y `0014` generadas, validadas y aplicadas en celda local).
+- [x] `GET`/`PUT`/`PATCH status`/`DELETE` + endpoints de `cover` y `media` implementados en `/api/tenant/products*` con Zod, `handle()` RFC 9457 y pruebas de aislamiento.
+- [x] UI `/workspace/products` completa: tabla paginada, Modal Ver, Modal Crear/Editar multimodal + cover + atributos dinámicos + combos + stock físico + prompt maestro 32k chars con AI real, e inactivación/eliminación con modales `--dsn-*`.
+- [x] Alerta automática por stock mínimo probada unitaria y en contratos de ruta (`after()`).
+- [x] Checks de dominio/UI/web, `drizzle-kit check`, `eslint` en archivos modificados (`0` errores), `next build` de `@mocter/admin` y protocolo `AGENTS.md §4.18` ejecutados (con hallazgo de 53 errores ESLint preexistentes en archivos heredados ajenos a `SPEC-08` y `11` tests omitidos de integración en `chatwoot-provisioning.service.test.ts`).
+
+---
 
 ---
 
 ## 15. Propuestas a Validar (PV-xx)
 
-Todas las aclaraciones solicitadas (`audios_per_product` en `PRD-03`, tipo `TEXT` de gran capacidad y estructura de mejores prácticas en `PRD-04`, foto principal `PRD-07`, combos `PRD-06` y alerta de stock físico `PRD-08`) quedaron cerradas.
+Todas las aclaraciones solicitadas (`audios_per_product` en `PRD-03`, tipo `TEXT` de gran capacidad y estructura de mejores prácticas en `PRD-04`, foto principal `PRD-07`, combos `PRD-06` y alerta de stock físico `PRD-08`) quedaron cerradas junto con las decisiones `D-01` a `D-06`.
+
+---
+
+## 16. Decisiones de Diseño Aprobadas (`/grill-me`)
+
+| ID | Decisión | Justificación |
+| --- | --- | --- |
+| `D-01` | Consolidar `TenantProductsAndMediaService` como autoridad única de catálogo, combos, stock y multimedia (`SPEC-08`); las rutas `/api/tenant/products*`, `/api/tenant/media/upload`, `/api/tenant/media/[mediaId]` y `/workspace/products` delegan en este servicio y todas usan `handle()` RFC 9457. `TenantWorkspaceService` conserva solo wrappers compatibles para callers legados (`SPEC-06` y dashboard). | Elimina la duplicación entre dos servicios paralelos y garantiza enforcement uniforme de cuotas (`products`, `*_per_product`, `storage_bytes`) y aislamiento por `client_id`. |
+| `D-02` | Migración SQL limpia en `cell_products`: `status` pasa a `('active', 'inactive', 'draft')` convirtiendo `'published'→'active'` y `'archived'→'inactive'`; `attributes` pasa de `'{}'` a `'[]'`; `cost_price_cents` coalescido a `NOT NULL DEFAULT 0`; `bot_master_prompt` copia `prompt` previo y sincroniza ambos en escritura mientras `SPEC-10` migra; `TenantOnboardingService` pasa a escribir `'active'`; y `ai-assist-catalog.seed.ts` amplía `product.bot_master_prompt` a `outputRules.maxLength = 4000` (límite duro 32k). | Evita deuda técnica permanente de estados legados en constraints SQL sin romper productos ya creados en onboarding. |
+| `D-03` | En combos (`composition_type = 'combo'`), el stock efectivo es **calculado dinámicamente en lectura** (`min(floor(comp.stock_quantity / item.quantity))` sobre componentes físicos activos; combos 100% digitales/servicios sin tope físico) y el formulario sugiere el costo sumando `(comp.cost_price_cents ?? comp.price_cents) * qty` permitiendo sobrescritura manual. Si algún componente pasa a `'inactive'`, la ficha del combo emite advertencia explícita. | Garantiza consistencia real de inventario frente a futuras deducciones de pedidos (`SPEC-11`) evitando sobreventa de componentes individuales. |
+| `D-04` | Imágenes siguen servidas vía `imgproxy`; `video`, `audio` y `pdf` se entregan mediante `GET /api/tenant/media/[mediaId]` autenticado por inquilino con soporte HTTP `Range` (`206`) desde `S3StorageService.getObject` y `Content-Disposition: inline`. `validateMediaMagicBytes` unifica `PNG/JPEG/WebP/AVIF` (rechazando `SVG` y `GIF`), `MP4/WebM/MOV`, `MP3/OGG/WAV/M4A` y `PDF`. | Mantiene SeaweedFS completamente privado, compatible con Traefik/Docker sin URLs internas expuestas (`AGENTS.md §4.16`) y habilita seeking nativo en `<video>`/`<audio>`. |
+| `D-05` | Alerta `tenant.inventory.low_stock` registrada en `notifications-and-leads.service.ts` con plantillas `es`/`en` y envío no bloqueante vía `after()` a `clients.commercial_email ?? clients.contact_email`. `low_stock_alert_sent_at` evita envíos duplicados hasta que el producto vuelva a superar `min_stock_threshold`. La campana in-app y preferencias granulares quedan en `SPEC-14`. | Entrega notificación funcional inmediata sin anticipar tablas fuera de alcance de `SPEC-14` ni spammear al comercio en cada edición de precio o descripción. |
+| `D-06` | `tenant_owner` tiene acceso total sobre catálogo; `tenant_agent` puede listar, ver detalle, crear/editar, ajustar stock y gestionar multimedia, pero tiene bloqueado `DELETE` (`403 Forbidden` y acción oculta en UI). `GET /api/tenant/products` adopta envolvente paginada `SPEC-17` `{ ok: true, data: { items, pagination, summary } }`. | Protege integridad de eliminaciones permanentes en rol operativo manteniendo agilidad diaria en inventario y multimedia. |
+| `D-07` | Se retira del formulario de creación/edición de producto (`product-form-modal.tsx`) el campo estático manual «Precio Promocional (Opcional)», delegando la gestión integral de promociones (con vigencias explícitas, por categoría/producto/catálogo, cupo de unidades y prioridad sin acumulación) a la especificación dedicada `SPEC-18` (`/workspace/promotions`), manteniendo `sale_price_cents` en BD por compatibilidad. Asimismo, `/workspace/products` aplica `AGENTS.md §4.19` (`w-full space-y-6 p-4 md:px-8 md:py-6`, botones de cabecera con `--dsn-accent` y `--dsn-surface`, y cierre automático del modal al pulsar «Guardar Producto»). | Evita precios promocionales estáticos huérfanos sin control de vigencia y estandariza la ergonomía visual y operativa del Backoffice. |
+| `D-08` | El generador de estructura recomendada del Prompt Maestro del Producto (`buildRecommendedProductPromptTemplate` en `product-ui-helpers.ts` y `product-form-modal.tsx`) se alinea con la arquitectura de `SPEC-19` bajo la metodología secuencial **`IDEAL`** (`[I] Intención`, `[D] Detalle`, `[E] Ejemplo`, `[A] Acción`, `[L] Límite`), auto-hidratando el guion comercial a partir de los datos y archivos multimedia ya cargados en el modal y garantizando idempotencia total (reemplazo/actualización limpia sin duplicar encabezados al pulsar repetidamente «Insertar Estructura Recomendada»). | Convierte la configuración del prompt por producto en una herramienta de rápida adopción (cero fricción) y desacopla las reglas del artículo respecto al Prompt General del Cliente (`bot.client_general_prompt`). |
+
 

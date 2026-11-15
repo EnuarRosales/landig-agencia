@@ -92,6 +92,20 @@
       "when": 1794698530377,
       "tag": "0012_add_product_cost_price_cents",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794711039594,
+      "tag": "0013_cell_phase6_catalog_spec08",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794711060642,
+      "tag": "0014_cell_phase6_catalog_spec08_rls_grants_comments",
+      "breakpoints": true
     }
   ]
 }

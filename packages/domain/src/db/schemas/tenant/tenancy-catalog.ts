@@ -4,6 +4,7 @@ import {
   char,
   check,
   customType,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -148,7 +149,16 @@ export const cellClientMedia = cellAdminSchema.table(
 );
 
 /**
- * Catálogo transaccional de productos y servicios del inquilino (`admin.products`, ADM-001 T-13, §9.0, DAT-001 §6.3).
+ * Atributo dinámico configurable de un producto para variantes del catálogo y bot (SPEC-08 §7.1).
+ */
+export interface ProductDynamicAttribute {
+  name: string;
+  values: string[];
+  requiredForOrder?: boolean;
+}
+
+/**
+ * Catálogo transaccional de productos y servicios del inquilino (`admin.products`, ADM-001 T-13, §9.0, DAT-001 §6.3, SPEC-08 §7.1).
  *
  * Tabla compartida no particionada con llave primaria compuesta `(client_id, id)` y `FORCE ROW LEVEL SECURITY`.
  */
@@ -168,11 +178,12 @@ export const cellProducts = cellAdminSchema.table(
     description: text("description").notNull(),
     brand: text("brand"),
     kind: text("kind").notNull().default("physical"),
+    compositionType: text("composition_type").notNull().default("simple"),
     condition: text("condition").notNull().default("new"),
     availability: text("availability").notNull().default("in_stock"),
-    status: text("status").notNull().default("draft"),
+    status: text("status").notNull().default("active"),
     sortOrder: integer("sort_order").notNull().default(0),
-    costPriceCents: bigint("cost_price_cents", { mode: "number" }),
+    costPriceCents: bigint("cost_price_cents", { mode: "number" }).notNull().default(0),
     priceCents: bigint("price_cents", { mode: "number" }).notNull(),
     salePriceCents: bigint("sale_price_cents", { mode: "number" }),
     currency: char("currency", { length: 3 }),
@@ -186,10 +197,14 @@ export const cellProducts = cellAdminSchema.table(
     ageGroup: text("age_group"),
     pattern: text("pattern"),
     attributes: jsonb("attributes")
-      .$type<Record<string, unknown>>()
+      .$type<ProductDynamicAttribute[]>()
       .notNull()
-      .default(sql`'{}'::jsonb`),
+      .default(sql`'[]'::jsonb`),
     prompt: text("prompt"),
+    botMasterPrompt: text("bot_master_prompt").notNull().default(""),
+    stockQuantity: integer("stock_quantity"),
+    minStockThreshold: integer("min_stock_threshold"),
+    lowStockAlertSentAt: timestamp("low_stock_alert_sent_at", { withTimezone: true }),
     keywords: jsonb("keywords")
       .$type<string[]>()
       .notNull()
@@ -218,6 +233,10 @@ export const cellProducts = cellAdminSchema.table(
       sql.raw("kind IN ('physical', 'digital', 'service')"),
     ),
     check(
+      "products_composition_type_check",
+      sql.raw("composition_type IN ('simple', 'combo')"),
+    ),
+    check(
       "products_condition_check",
       sql.raw("condition IN ('new', 'refurbished', 'used')"),
     ),
@@ -227,12 +246,68 @@ export const cellProducts = cellAdminSchema.table(
     ),
     check(
       "products_status_check",
-      sql.raw("status IN ('draft', 'published', 'archived')"),
+      sql.raw("status IN ('active', 'inactive', 'draft')"),
     ),
     check("products_price_check", sql.raw("price_cents >= 0")),
     check(
       "products_cost_price_non_negative_check",
-      sql.raw("cost_price_cents IS NULL OR cost_price_cents >= 0"),
+      sql.raw("cost_price_cents >= 0"),
+    ),
+    check(
+      "products_stock_quantity_check",
+      sql.raw("stock_quantity IS NULL OR stock_quantity >= 0"),
+    ),
+    check(
+      "products_min_stock_threshold_check",
+      sql.raw("min_stock_threshold IS NULL OR min_stock_threshold >= 0"),
+    ),
+  ],
+);
+
+/**
+ * Componentes que integran un producto compuesto/combo (`admin.product_bundle_items`, SPEC-08 §7.2).
+ *
+ * Impide borrado de productos simples vinculados como componentes (`ON DELETE RESTRICT`) y prohíbe auto-referencias.
+ */
+export const cellProductBundleItems = cellAdminSchema.table(
+  "product_bundle_items",
+  {
+    id: uuid("id").notNull().default(sql`uuidv7()`),
+    clientId: uuid("client_id").notNull(),
+    bundleProductId: uuid("bundle_product_id").notNull(),
+    componentProductId: uuid("component_product_id").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...auditColumns(),
+  },
+  (table) => [
+    primaryKey({
+      name: "cell_product_bundle_items_pkey",
+      columns: [table.clientId, table.id],
+    }),
+    foreignKey({
+      name: "product_bundle_items_bundle_fk",
+      columns: [table.clientId, table.bundleProductId],
+      foreignColumns: [cellProducts.clientId, cellProducts.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "product_bundle_items_component_fk",
+      columns: [table.clientId, table.componentProductId],
+      foreignColumns: [cellProducts.clientId, cellProducts.id],
+    }).onDelete("restrict"),
+    uniqueIndex("product_bundle_items_unique_pair").on(
+      table.clientId,
+      table.bundleProductId,
+      table.componentProductId,
+    ),
+    index("product_bundle_items_by_component_idx").on(
+      table.clientId,
+      table.componentProductId,
+    ),
+    check("product_bundle_items_quantity_check", sql.raw("quantity > 0")),
+    check(
+      "product_bundle_items_no_self_ref_check",
+      sql.raw("bundle_product_id <> component_product_id"),
     ),
   ],
 );
@@ -268,7 +343,7 @@ export const cellProductEmbeddings = cellAdminSchema.table(
 );
 
 /**
- * Vínculo producto-archivo con texto alternativo independiente (`admin.product_media`, ADM-001 T-13, T-14, RF-07.14).
+ * Vínculo producto-archivo con tipo, portada única y texto alternativo (`admin.product_media`, ADM-001 T-13/T-14, SPEC-08 §7.3).
  */
 export const cellProductMedia = cellAdminSchema.table(
   "product_media",
@@ -277,6 +352,8 @@ export const cellProductMedia = cellAdminSchema.table(
     clientId: uuid("client_id").notNull(),
     productId: uuid("product_id").notNull(),
     mediaId: uuid("media_id").notNull(),
+    mediaKind: text("media_kind").notNull().default("image"),
+    isCover: boolean("is_cover").notNull().default(false),
     altText: text("alt_text"),
     sortOrder: integer("sort_order").notNull().default(0),
     ...auditColumns(),
@@ -287,6 +364,17 @@ export const cellProductMedia = cellAdminSchema.table(
       table.clientId,
       table.productId,
       table.mediaId,
+    ),
+    uniqueIndex("product_media_one_cover_per_product")
+      .on(table.clientId, table.productId)
+      .where(sql`is_cover = true`),
+    check(
+      "product_media_kind_check",
+      sql.raw("media_kind IN ('image', 'video', 'audio', 'pdf')"),
+    ),
+    check(
+      "product_media_cover_image_check",
+      sql.raw("NOT is_cover OR media_kind = 'image'"),
     ),
   ],
 );
@@ -329,6 +417,8 @@ export type CellClientMedia = typeof cellClientMedia.$inferSelect;
 export type NewCellClientMedia = typeof cellClientMedia.$inferInsert;
 export type CellProduct = typeof cellProducts.$inferSelect;
 export type NewCellProduct = typeof cellProducts.$inferInsert;
+export type CellProductBundleItem = typeof cellProductBundleItems.$inferSelect;
+export type NewCellProductBundleItem = typeof cellProductBundleItems.$inferInsert;
 export type CellProductEmbedding = typeof cellProductEmbeddings.$inferSelect;
 export type NewCellProductEmbedding = typeof cellProductEmbeddings.$inferInsert;
 export type CellProductMedia = typeof cellProductMedia.$inferSelect;

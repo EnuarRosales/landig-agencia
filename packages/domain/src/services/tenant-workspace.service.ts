@@ -1,4 +1,3 @@
-import { createHash, createHmac, randomBytes } from "node:crypto";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { withTenantCellTransaction } from "../db/cell-client";
@@ -25,8 +24,6 @@ import { tenantInvitations } from "../db/schemas/admin/chatwoot-media-onboarding
 import { users } from "../db/schemas/admin/users";
 import {
   cellProducts,
-  cellProductMedia,
-  cellClientMedia,
   cellClientUsage,
   cellClientBusinessInfo,
   cellTenantUsers,
@@ -38,102 +35,30 @@ import {
   cellOrderEvents,
 } from "../db/schemas/tenant/orders";
 import { appLogger } from "../utils/logger";
-import { env } from "../utils/env";
+import {
+  IMGPROXY_DEFAULTS,
+  signImgproxyPath,
+  buildImgproxyUrl,
+} from "../utils/imgproxy";
+import {
+  validateMediaMagicBytes,
+  type MediaMagicKind,
+} from "../utils/media-magic-bytes";
+import type {
+  LegacyAwareProductStatus,
+  ProductStatus,
+} from "./tenant-products-catalog.helpers";
+import {
+  DrizzleTenantProductsRepository,
+  TenantProductsAndMediaService,
+} from "./tenant-products-and-media.service";
 
 /**
- * Tipos de medios permitidos en el ecosistema Mocter.
+ * Tipos de medios permitidos en el ecosistema Mocter (`SPEC-08 D-04`).
  */
-export type AllowedMediaKind = "image" | "pdf";
+export type AllowedMediaKind = MediaMagicKind;
 
-/**
- * Configuración dinámica de firma y límites de `imgproxy` leída desde variables de entorno validadas.
- * Se resuelven por getter para reflejar cambios de entorno en runtime/test sin valores fijos inseguros.
- */
-export const IMGPROXY_DEFAULTS = {
-  maxDimensionPx: 4096,
-  get bucket(): string {
-    return env.S3_BUCKET ?? "media";
-  },
-  get keyHex(): string {
-    return env.IMGPROXY_KEY ?? "";
-  },
-  get saltHex(): string {
-    return env.IMGPROXY_SALT ?? "";
-  },
-  get baseUrl(): string {
-    return (env.IMGPROXY_PUBLIC_URL || env.IMGPROXY_BASE_URL || "").replace(/\/+$/, "");
-  },
-};
-
-/**
- * Genera la firma HMAC-SHA256 URL-safe en base64 para un path de imgproxy (CEL-RF-019, D-T1.4).
- *
- * @param path - Ruta relativa de transformación de imgproxy (debe iniciar con `/`).
- * @param keyHex - Clave HMAC hexadecimal; por defecto se lee desde `IMGPROXY_KEY`.
- * @param saltHex - Sal HMAC hexadecimal; por defecto se lee desde `IMGPROXY_SALT`.
- * @returns Firma codificada en Base64 URL-safe sin relleno `=`.
- */
-export function signImgproxyPath(
-  path: string,
-  keyHex: string = IMGPROXY_DEFAULTS.keyHex,
-  saltHex: string = IMGPROXY_DEFAULTS.saltHex,
-): string {
-  if (!keyHex || !saltHex) {
-    throw new Error("Configuración incompleta de imgproxy: IMGPROXY_KEY e IMGPROXY_SALT son obligatorios.");
-  }
-
-  const keyBin = Buffer.from(keyHex, "hex");
-  const saltBin = Buffer.from(saltHex, "hex");
-  const pathBin = Buffer.from(path, "utf8");
-
-  const hmac = createHmac("sha256", keyBin);
-  hmac.update(saltBin);
-  hmac.update(pathBin);
-
-  return hmac
-    .digest("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-/**
- * Construye la URL pública completa y firmada para servir recursos mediante imgproxy.
- *
- * @param storageKey - Clave del objeto almacenado en el bucket S3.
- * @param options - Opciones de redimensionamiento y formato de salida.
- * @returns URL firmada lista para consumo del navegador.
- */
-export function buildImgproxyUrl(
-  storageKey: string,
-  options: {
-    width?: number;
-    height?: number;
-    resizingType?: "fit" | "fill" | "auto";
-    format?: "webp" | "png" | "jpg";
-  } = {},
-): string {
-  const width = options.width || 400;
-  const height = options.height || 400;
-  if (width > IMGPROXY_DEFAULTS.maxDimensionPx || height > IMGPROXY_DEFAULTS.maxDimensionPx) {
-    throw new Error(`Dimensiones (${width}x${height}) exceden el límite máximo de ${IMGPROXY_DEFAULTS.maxDimensionPx}px.`);
-  }
-
-  const baseUrl = IMGPROXY_DEFAULTS.baseUrl;
-  if (!baseUrl) {
-    throw new Error("Configuración incompleta de imgproxy: IMGPROXY_PUBLIC_URL es obligatorio.");
-  }
-
-  const resizingType = options.resizingType || "fit";
-  const format = options.format || "webp";
-  const cleanKey = storageKey.replace(/^\/+/, "");
-  const path = `/resize:${resizingType}:${width}:${height}:0/plain/s3://${IMGPROXY_DEFAULTS.bucket}/${cleanKey}@${format}`;
-  const signature = signImgproxyPath(path);
-  return `${baseUrl}/${signature}${path}`;
-}
-
-import { validateMediaMagicBytes } from "../utils/media-magic-bytes";
-export { validateMediaMagicBytes };
+export { IMGPROXY_DEFAULTS, signImgproxyPath, buildImgproxyUrl, validateMediaMagicBytes };
 
 // ─────────────────────────────────────────────────────────────
 // DTOs de Salida y Entrada
@@ -170,7 +95,7 @@ export interface WorkspaceProductDto {
   salePriceCents?: number | null;
   currency: string;
   sku?: string | null;
-  status: "draft" | "published" | "archived";
+  status: ProductStatus;
   availability: "in_stock" | "out_of_stock" | "preorder" | "backorder";
   category?: string | null;
   mediaUrls: string[];
@@ -185,7 +110,7 @@ export interface CreateWorkspaceProductInput {
   currency?: string;
   sku?: string | null;
   category?: string | null;
-  status?: "draft" | "published" | "archived";
+  status?: LegacyAwareProductStatus;
   availability?: "in_stock" | "out_of_stock" | "preorder" | "backorder";
 }
 
@@ -394,30 +319,24 @@ export class MediaUploadError extends Error {
   }
 }
 
-const MIME_EXTENSION_MAP: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/gif": "gif",
-  "application/pdf": "pdf",
-};
-
-const MAX_UPLOAD_BYTES_BY_KIND: Record<AllowedMediaKind, number> = {
-  image: 10 * 1024 * 1024, // 10 MB
-  pdf: 25 * 1024 * 1024, // 25 MB
-};
-
 /**
  * Servicio unificado de backoffice del inquilino (`TenantWorkspaceService`, TNT-001 R4, ADM-001 T-42).
  *
  * Ejecuta operaciones transaccionales multi-inquilino sobre `pg-cell-XX` con aislamiento estricto
- * mediante `withTenantCellTransaction` bajo `FORCE ROW LEVEL SECURITY`, integrando almacenamiento
- * en SeaweedFS S3 (`bucket: media`) y firmas HMAC-SHA256 para `imgproxy`.
+ * mediante `withTenantCellTransaction` bajo `FORCE ROW LEVEL SECURITY`, delegando el dominio de
+ * productos y multimedia a `TenantProductsAndMediaService` (`SPEC-08 D-01`).
  */
 export class TenantWorkspaceService {
+  private readonly productsService: TenantProductsAndMediaService;
+
   constructor(
     private readonly s3Service: S3StorageService = new S3StorageService(),
-  ) {}
+    productsService?: TenantProductsAndMediaService,
+  ) {
+    this.productsService =
+      productsService ??
+      new TenantProductsAndMediaService(new DrizzleTenantProductsRepository(this.s3Service));
+  }
 
   /**
    * Resuelve el resumen consolidado del Tablero del inquilino.
@@ -565,155 +484,92 @@ export class TenantWorkspaceService {
   }
 
   /**
-   * Lista los productos del catálogo transaccional con URLs de multimedia firmadas.
+   * Lista los productos del catálogo transaccional delegando en `TenantProductsAndMediaService` (`SPEC-08 D-01`).
    */
   async getProducts(clientId: string): Promise<WorkspaceProductDto[]> {
-    return await withTenantCellTransaction(clientId, async (tx) => {
-      const rows = await tx
-        .select()
-        .from(cellProducts)
-        .where(and(eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
-        .orderBy(desc(cellProducts.createdAt));
+    const res = await this.productsService.listCatalog(clientId, { page: 1, limit: 100 });
+    if (!res.ok) return [];
 
-      if (rows.length === 0) return [];
-
-      // Obtener vínculos de multimedia
-      const productIds = rows.map((r) => r.id);
-      const mediaLinks = await tx
-        .select({
-          productId: cellProductMedia.productId,
-          mediaId: cellProductMedia.mediaId,
-        })
-        .from(cellProductMedia)
-        .where(and(eq(cellProductMedia.clientId, clientId), sql`${cellProductMedia.productId} IN ${productIds}`));
-
-      const mediaIds = [...new Set(mediaLinks.map((m) => m.mediaId))];
-      const mediaMap = new Map<string, string>();
-
-      if (mediaIds.length > 0) {
-        const portalDb = getDb();
-        const catalogRows = await portalDb
-          .select({
-            id: mediaCatalog.id,
-            storageKey: mediaCatalog.storageKey,
-          })
-          .from(mediaCatalog)
-          .where(sql`${mediaCatalog.id} IN ${mediaIds}`);
-
-        for (const cat of catalogRows) {
-          try {
-            mediaMap.set(cat.id, buildImgproxyUrl(cat.storageKey, { width: 400, height: 400 }));
-          } catch {
-            // Ignorar fallo de firma individual
-          }
-        }
-      }
-
-      const prodMediaMap = new Map<string, string[]>();
-      for (const link of mediaLinks) {
-        const url = mediaMap.get(link.mediaId);
-        if (url) {
-          const list = prodMediaMap.get(link.productId) || [];
-          list.push(url);
-          prodMediaMap.set(link.productId, list);
-        }
-      }
-
-      return rows.map((p) => ({
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        priceCents: p.priceCents,
-        salePriceCents: p.salePriceCents,
-        currency: p.currency || "COP",
-        sku: p.sku,
-        status: p.status as "draft" | "published" | "archived",
-        availability: p.availability as "in_stock" | "out_of_stock" | "preorder" | "backorder",
-        category: p.category,
-        mediaUrls: prodMediaMap.get(p.id) || [],
-        createdAt: p.createdAt ? new Date(p.createdAt).toISOString() : new Date().toISOString(),
-      }));
-    });
+    return res.data.items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      priceCents: item.priceCents,
+      salePriceCents: item.salePriceCents,
+      currency: item.currency || "COP",
+      sku: item.sku,
+      status: item.status,
+      availability: item.availability,
+      category: item.category,
+      mediaUrls: item.mediaUrls,
+      createdAt: item.createdAt,
+    }));
   }
 
   /**
-   * Crea un nuevo producto validando la cuota del plan (D-T2.5).
+   * Crea un producto delegando en `TenantProductsAndMediaService` (`SPEC-08 D-01`).
    */
   async createProduct(
     clientId: string,
     input: CreateWorkspaceProductInput,
     actor: string,
   ): Promise<WorkspaceProductDto> {
-    const portalDb = getDb();
+    const res = await this.productsService.createProduct(
+      clientId,
+      {
+        name: input.name,
+        description: input.description,
+        priceCents: input.priceCents,
+        salePriceCents: input.salePriceCents ?? null,
+        currency: input.currency,
+        sku: input.sku ?? null,
+        category: input.category ?? null,
+        status: input.status ?? "draft",
+        availability: input.availability ?? "in_stock",
+      },
+      actor,
+    );
 
-    // 1. Validar límite de productos del plan
-    const [client] = await portalDb
-      .select({ planId: clients.planId, currency: clients.currency })
-      .from(clients)
-      .where(eq(clients.id, clientId))
-      .limit(1);
-
-    if (client) {
-      const [limit] = await portalDb
-        .select({ value: planLimits.value, mode: planLimits.mode })
-        .from(planLimits)
-        .where(and(eq(planLimits.planId, client.planId), eq(planLimits.dimension, "products")))
-        .limit(1);
-
-      if (limit && limit.mode === "LIMITED" && limit.value !== null) {
-        const count = await withTenantCellTransaction(clientId, async (tx) => {
-          const [res] = await tx
-            .select({ count: sql<number>`count(*)::int` })
-            .from(cellProducts)
-            .where(and(eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)));
-          return res?.count ?? 0;
-        });
-
-        if (count >= limit.value) {
-          throw new Error(`Has alcanzado el límite máximo de ${limit.value} productos de tu plan. Actualiza tu plan para registrar más productos.`);
-        }
-      }
+    if (!res.ok) {
+      throw new Error(res.error);
     }
 
-    // 2. Insertar producto en celda
-    return await withTenantCellTransaction(clientId, async (tx) => {
-      const [created] = await tx
-        .insert(cellProducts)
-        .values({
-          clientId,
-          name: input.name,
-          description: input.description,
-          priceCents: input.priceCents,
-          salePriceCents: input.salePriceCents ?? null,
-          currency: input.currency || client?.currency || "COP",
-          sku: input.sku ?? null,
-          category: input.category ?? null,
-          status: input.status ?? "draft",
-          availability: input.availability ?? "in_stock",
-          createdBy: actor,
-          updatedBy: actor,
-        })
-        .returning();
-
+    const detail = await this.productsService.getProductDetail(clientId, res.data.id);
+    if (detail.ok) {
       return {
-        id: created.id,
-        name: created.name,
-        description: created.description,
-        priceCents: created.priceCents,
-        salePriceCents: created.salePriceCents,
-        currency: created.currency || "COP",
-        sku: created.sku,
-        status: created.status as "draft" | "published" | "archived",
-        availability: created.availability as "in_stock" | "out_of_stock" | "preorder" | "backorder",
-        category: created.category,
-        mediaUrls: [],
-        createdAt: created.createdAt ? new Date(created.createdAt).toISOString() : new Date().toISOString(),
+        id: detail.data.id,
+        name: detail.data.name,
+        description: detail.data.description,
+        priceCents: detail.data.priceCents,
+        salePriceCents: detail.data.salePriceCents,
+        currency: detail.data.currency || "COP",
+        sku: detail.data.sku,
+        status: detail.data.status,
+        availability: detail.data.availability,
+        category: detail.data.category,
+        mediaUrls: detail.data.mediaUrls,
+        createdAt: detail.data.createdAt,
       };
-    });
+    }
+
+    return {
+      id: res.data.id,
+      name: res.data.name,
+      description: res.data.description,
+      priceCents: res.data.priceCents,
+      salePriceCents: res.data.salePriceCents,
+      currency: res.data.currency || "COP",
+      sku: res.data.sku,
+      status: res.data.status as ProductStatus,
+      availability: res.data.availability as WorkspaceProductDto["availability"],
+      category: res.data.category,
+      mediaUrls: [],
+      createdAt: res.data.createdAt ? new Date(res.data.createdAt).toISOString() : new Date().toISOString(),
+    };
   }
 
   /**
-   * Actualiza un producto existente.
+   * Actualiza un producto existente delegando en `TenantProductsAndMediaService` (`SPEC-08 D-01`).
    */
   async updateProduct(
     clientId: string,
@@ -721,56 +577,62 @@ export class TenantWorkspaceService {
     input: Partial<CreateWorkspaceProductInput>,
     actor: string,
   ): Promise<WorkspaceProductDto | null> {
-    return await withTenantCellTransaction(clientId, async (tx) => {
-      const [updated] = await tx
-        .update(cellProducts)
-        .set({
-          ...input,
-          updatedAt: new Date(),
-          updatedBy: actor,
-        })
-        .where(and(eq(cellProducts.id, productId), eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
-        .returning();
+    const res = await this.productsService.updateProduct(
+      clientId,
+      productId,
+      {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.priceCents !== undefined ? { priceCents: input.priceCents } : {}),
+        ...(input.salePriceCents !== undefined ? { salePriceCents: input.salePriceCents } : {}),
+        ...(input.currency !== undefined ? { currency: input.currency } : {}),
+        ...(input.sku !== undefined ? { sku: input.sku } : {}),
+        ...(input.category !== undefined ? { category: input.category } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.availability !== undefined ? { availability: input.availability } : {}),
+      },
+      actor,
+    );
 
-      if (!updated) return null;
+    if (!res.ok) {
+      if (res.code === "NOT_FOUND" || res.code === "PRODUCT_NOT_FOUND") {
+        return null;
+      }
+      throw new Error(res.error);
+    }
 
-      return {
-        id: updated.id,
-        name: updated.name,
-        description: updated.description,
-        priceCents: updated.priceCents,
-        salePriceCents: updated.salePriceCents,
-        currency: updated.currency || "COP",
-        sku: updated.sku,
-        status: updated.status as "draft" | "published" | "archived",
-        availability: updated.availability as "in_stock" | "out_of_stock" | "preorder" | "backorder",
-        category: updated.category,
-        mediaUrls: [],
-        createdAt: updated.createdAt ? new Date(updated.createdAt).toISOString() : new Date().toISOString(),
-      };
-    });
+    return {
+      id: res.data.id,
+      name: res.data.name,
+      description: res.data.description,
+      priceCents: res.data.priceCents,
+      salePriceCents: res.data.salePriceCents,
+      currency: res.data.currency || "COP",
+      sku: res.data.sku,
+      status: res.data.status as ProductStatus,
+      availability: res.data.availability as WorkspaceProductDto["availability"],
+      category: res.data.category,
+      mediaUrls: [],
+      createdAt: res.data.createdAt ? new Date(res.data.createdAt).toISOString() : new Date().toISOString(),
+    };
   }
 
   /**
-   * Elimina lógicamente un producto (`deleted_at`).
+   * Elimina lógicamente un producto delegando en `TenantProductsAndMediaService` (`SPEC-08 D-01`).
    */
   async deleteProduct(clientId: string, productId: string, actor: string): Promise<boolean> {
-    return await withTenantCellTransaction(clientId, async (tx) => {
-      const rows = await tx
-        .update(cellProducts)
-        .set({
-          deletedAt: new Date(),
-          deletedBy: actor,
-        })
-        .where(and(eq(cellProducts.id, productId), eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
-        .returning({ id: cellProducts.id });
-
-      return rows.length > 0;
-    });
+    const res = await this.productsService.deleteProduct(clientId, productId, actor);
+    if (!res.ok) {
+      if (res.code === "NOT_FOUND" || res.code === "PRODUCT_NOT_FOUND") {
+        return false;
+      }
+      throw new Error(res.error);
+    }
+    return res.data.deleted;
   }
 
   /**
-   * Carga una imagen a SeaweedFS S3 y la asocia al producto devolviendo la URL firmada de imgproxy (CEL-RF-016, CEL-RF-019).
+   * Carga un archivo multimedia al producto delegando en `TenantProductsAndMediaService` (`SPEC-08 D-01`).
    */
   async uploadProductMedia(
     clientId: string,
@@ -782,193 +644,42 @@ export class TenantWorkspaceService {
     },
     actor: string,
   ): Promise<MediaUploadResult> {
-    // 1. Validar magic bytes y tamaño máximo antes de contactar a SeaweedFS (RN-SPEC-00-06)
-    const magic = validateMediaMagicBytes(file.buffer);
-    if (!magic.valid) {
-      throw new MediaUploadError(magic.error || "Formato de archivo inválido.", "VALIDATION", 400);
+    const res = await this.productsService.uploadAndAttachProductMedia(
+      clientId,
+      productId,
+      file,
+      actor,
+    );
+
+    if (!res.ok) {
+      const code =
+        res.code === "PRODUCT_NOT_FOUND"
+          ? "NOT_FOUND"
+          : res.code === "STORAGE_QUOTA_EXCEEDED" || res.code?.startsWith("QUOTA_EXCEEDED")
+            ? "QUOTA_EXCEEDED"
+            : res.code === "STORAGE_UNAVAILABLE"
+              ? "STORAGE_UNAVAILABLE"
+              : "VALIDATION";
+      const httpStatus =
+        code === "NOT_FOUND"
+          ? 404
+          : code === "QUOTA_EXCEEDED"
+            ? 422
+            : code === "STORAGE_UNAVAILABLE"
+              ? 503
+              : 400;
+      throw new MediaUploadError(res.error, code, httpStatus);
     }
-
-    const mime = magic.detectedMime || file.mimeType;
-    const mediaKind: AllowedMediaKind = mime.startsWith("image/") ? "image" : "pdf";
-    const maxBytes = MAX_UPLOAD_BYTES_BY_KIND[mediaKind];
-    if (file.buffer.byteLength > maxBytes) {
-      throw new MediaUploadError(
-        `El archivo supera el tamaño máximo permitido de ${Math.round(maxBytes / (1024 * 1024))} MB.`,
-        "VALIDATION",
-        400,
-      );
-    }
-
-    // 2. Validar pertenencia del producto al inquilino bajo RLS
-    const isOwned = await withTenantCellTransaction(clientId, async (tx) => {
-      const [p] = await tx
-        .select({ id: cellProducts.id })
-        .from(cellProducts)
-        .where(and(eq(cellProducts.id, productId), eq(cellProducts.clientId, clientId), isNull(cellProducts.deletedAt)))
-        .limit(1);
-      return !!p;
-    });
-    if (!isOwned) {
-      throw new MediaUploadError("El producto indicado no existe o no pertenece al inquilino.", "NOT_FOUND", 404);
-    }
-
-    // 3. Validar cuota de almacenamiento del plan (CEL-RF-016, CA-TNT-04)
-    const portalDb = getDb();
-    const [client] = await portalDb
-      .select({ planId: clients.planId })
-      .from(clients)
-      .where(eq(clients.id, clientId))
-      .limit(1);
-
-    if (client) {
-      const [limit] = await portalDb
-        .select({ value: planLimits.value, mode: planLimits.mode })
-        .from(planLimits)
-        .where(and(eq(planLimits.planId, client.planId), eq(planLimits.dimension, "storage_bytes")))
-        .limit(1);
-
-      if (limit && limit.mode === "LIMITED" && limit.value !== null) {
-        const currentBytes = await withTenantCellTransaction(clientId, async (tx) => {
-          const [u] = await tx
-            .select({ usedValue: cellClientUsage.usedValue })
-            .from(cellClientUsage)
-            .where(and(eq(cellClientUsage.clientId, clientId), eq(cellClientUsage.dimension, "storage_bytes")))
-            .limit(1);
-          return u?.usedValue ?? 0;
-        });
-
-        if (currentBytes + file.buffer.byteLength > limit.value) {
-          throw new MediaUploadError(
-            `Has alcanzado el límite de almacenamiento de ${Math.round(limit.value / (1024 * 1024))} MB de tu plan.`,
-            "QUOTA_EXCEEDED",
-            422,
-          );
-        }
-      }
-    }
-
-    const ext = MIME_EXTENSION_MAP[mime] || "bin";
-    const contentHash = createHash("sha256").update(file.buffer).digest("hex");
-    const storageKey = `products/${clientId}/${contentHash}.${ext}`;
-
-    // 4. Pre-firmar URL de imgproxy antes de mutar S3 o BD para evitar escrituras huérfanas si falta configuración
-    let signedUrl: string;
-    try {
-      signedUrl = buildImgproxyUrl(storageKey, { width: 600, height: 600 });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new MediaUploadError(msg, "STORAGE_UNAVAILABLE", 503);
-    }
-
-    // 5. Subir a SeaweedFS S3
-    const uploadRes = await this.s3Service.putObject(storageKey, file.buffer, mime);
-    if (!uploadRes.ok) {
-      appLogger.error(`[uploadProductMedia] Falló la subida a S3: ${uploadRes.error}`, undefined, {
-        clientId,
-        mediaKind,
-        sizeBytes: file.buffer.byteLength,
-      });
-      throw new MediaUploadError(
-        `Error al almacenar el archivo multimedia en S3: ${uploadRes.error}`,
-        "STORAGE_UNAVAILABLE",
-        503,
-      );
-    }
-
-    // 6. Registrar en catálogo de medios de control plane
-    const storagePoolId = "seaweedfs-main";
-    const mediaId = sql`uuidv7()`;
-    const [catItem] = await portalDb
-      .insert(mediaCatalog)
-      .values({
-        id: mediaId as any,
-        contentHash,
-        storagePoolId,
-        storageKey,
-        sizeBytes: file.buffer.byteLength,
-        mediaKind,
-        mimeType: mime,
-        sourceFormat: ext,
-        originalFilename: file.originalFilename,
-        processingStatus: "ready",
-        storageType: "internal",
-        createdBy: actor,
-        updatedBy: actor,
-      })
-      .onConflictDoUpdate({
-        target: [mediaCatalog.contentHash, mediaCatalog.storagePoolId],
-        set: {
-          updatedAt: new Date(),
-          updatedBy: actor,
-        },
-      })
-      .returning();
-
-    const actualMediaId =
-      catItem?.id ||
-      (await portalDb
-        .select({ id: mediaCatalog.id })
-        .from(mediaCatalog)
-        .where(and(eq(mediaCatalog.contentHash, contentHash), eq(mediaCatalog.storagePoolId, storagePoolId)))
-        .limit(1)
-        .then((r) => r[0]?.id));
-
-    // 7. Vincular archivo en la celda y actualizar consumo (D-T2.4)
-    await withTenantCellTransaction(clientId, async (tx) => {
-      // Registrar en client_media
-      await tx
-        .insert(cellClientMedia)
-        .values({
-          clientId,
-          mediaId: actualMediaId,
-          sizeBytes: file.buffer.byteLength,
-          createdBy: actor,
-          updatedBy: actor,
-        })
-        .onConflictDoNothing();
-
-      // Asociar a producto
-      await tx
-        .insert(cellProductMedia)
-        .values({
-          clientId,
-          productId,
-          mediaId: actualMediaId,
-          sortOrder: 0,
-          createdBy: actor,
-          updatedBy: actor,
-        })
-        .onConflictDoNothing();
-
-      // Actualizar contabilidad de uso de almacenamiento
-      await tx
-        .insert(cellClientUsage)
-        .values({
-          clientId,
-          dimension: "storage_bytes",
-          usedValue: file.buffer.byteLength,
-          createdBy: actor,
-          updatedBy: actor,
-        })
-        .onConflictDoUpdate({
-          target: [cellClientUsage.clientId, cellClientUsage.dimension],
-          set: {
-            usedValue: sql`${cellClientUsage.usedValue} + ${file.buffer.byteLength}`,
-            updatedAt: new Date(),
-            updatedBy: actor,
-          },
-        });
-    });
 
     return {
-      id: actualMediaId,
-      mediaId: actualMediaId,
-      mediaKind,
-      storageKey,
-      signedUrl,
-      originalFilename: file.originalFilename,
-      mimeType: mime,
-      sizeBytes: file.buffer.byteLength,
+      id: res.data.mediaId,
+      mediaId: res.data.mediaId,
+      mediaKind: res.data.mediaKind,
+      storageKey: res.data.url,
+      signedUrl: res.data.url,
+      originalFilename: res.data.originalFilename,
+      mimeType: res.data.mimeType,
+      sizeBytes: res.data.sizeBytes,
     };
   }
 

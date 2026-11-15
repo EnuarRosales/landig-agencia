@@ -1,343 +1,1130 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
+  ArrowDownUp,
+  Box,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Edit3,
+  Eye,
+  Layers,
   Package,
   Plus,
+  Power,
+  RefreshCw,
+  Search,
   Trash2,
   UploadCloud,
-  Image as ImageIcon,
   X,
-  AlertCircle,
-  CheckCircle2,
 } from "lucide-react";
-import type { WorkspaceBillingDto, WorkspaceProductDto } from "@mocter/domain";
+import type {
+  CatalogListResultDto,
+  ProductCompositionType,
+  ProductDetailDto,
+  ProductKind,
+  ProductListItemDto,
+  ProductStatus,
+  WorkspaceBillingDto,
+  WorkspaceProductDto,
+} from "@mocter/domain";
+import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
+import {
+  CatalogQuotaBanner,
+  type CatalogQuotaLimits,
+} from "@/components/catalog-quota-banner";
 import { ConfirmationModal } from "@/components/confirmation-modal";
-import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
-import { CatalogQuotaBanner } from "@/components/catalog-quota-banner";
+import { ProductDetailModal } from "./product-detail-modal";
+import { ProductFormModal, type ProductFormTab } from "./product-form-modal";
+import {
+  detailToListItem,
+  formatMoneyCents,
+  resolveInitialCatalog,
+} from "./product-ui-helpers";
 
-interface ProductsViewProps {
-  initialProducts: WorkspaceProductDto[];
+type SortByOption = "createdAt" | "name" | "priceCents" | "stock" | "status";
+
+export interface ProductsViewProps {
+  initialCatalog?: CatalogListResultDto | null;
+  initialProducts?: WorkspaceProductDto[];
   initialBilling?: WorkspaceBillingDto | null;
+  canDelete?: boolean;
+  locale?: AdminLocale;
+  hasInferenceAccess?: boolean;
+  initialCurrency?: string;
 }
 
-export function ProductsView({ initialProducts, initialBilling = null }: ProductsViewProps) {
-  const [products, setProducts] = useState<WorkspaceProductDto[]>(initialProducts);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<WorkspaceProductDto | null>(null);
+function buildQuotaBannerData(
+  billing: WorkspaceBillingDto | null,
+  fallbackProductsCount: number,
+): {
+  planName: string;
+  limits: CatalogQuotaLimits;
+  productsUsed: number;
+  storageBytesUsed: number;
+} | null {
+  if (!billing) return null;
 
-  // Estados de formulario de creación
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
-  const [sku, setSku] = useState("");
-  const [category, setCategory] = useState("");
-  const [status, setStatus] = useState<"draft" | "published">("published");
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const productsQuota = billing.quotas.find((q) => q.dimension === "products");
+  const storageQuota = billing.quotas.find(
+    (q) => q.dimension === "storage_bytes" || q.dimension === "media_storage_bytes",
+  );
 
-  // Estados de subida multimedia
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  return {
+    planName: billing.plan.name,
+    limits: {
+      products: productsQuota
+        ? { mode: productsQuota.mode, value: productsQuota.limit }
+        : { mode: "UNLIMITED", value: null },
+      imagesPerProduct: {
+        mode: billing.mediaLimits.imagesPerProduct.mode,
+        value: billing.mediaLimits.imagesPerProduct.value,
+      },
+      videosPerProduct: {
+        mode: billing.mediaLimits.videosPerProduct.mode,
+        value: billing.mediaLimits.videosPerProduct.value,
+      },
+      audiosPerProduct: {
+        mode: billing.mediaLimits.audiosPerProduct.mode,
+        value: billing.mediaLimits.audiosPerProduct.value,
+      },
+      pdfsPerProduct: {
+        mode: billing.mediaLimits.pdfsPerProduct.mode,
+        value: billing.mediaLimits.pdfsPerProduct.value,
+      },
+      storageBytes: storageQuota
+        ? { mode: storageQuota.mode, value: storageQuota.limit }
+        : { mode: "UNLIMITED", value: null },
+    },
+    productsUsed: Math.max(productsQuota?.used ?? 0, fallbackProductsCount),
+    storageBytesUsed: storageQuota?.used ?? 0,
+  };
+}
 
-  // Estados de eliminación
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [productToDelete, setProductToDelete] = useState<WorkspaceProductDto | null>(null);
-  const [deleting, setDeleting] = useState(false);
+/**
+ * Vista interactiva del Catálogo de Productos, Combos, Inventario y Multimedia.
+ */
+export function ProductsView({
+  initialCatalog = null,
+  initialProducts = [],
+  initialBilling = null,
+  canDelete = true,
+  locale = "es",
+  hasInferenceAccess = true,
+  initialCurrency = "COP",
+}: ProductsViewProps) {
+  const dict = getAdminDictionary(locale).workspace;
 
-  const handleCreateProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError(null);
+  const [catalog, setCatalog] = useState<CatalogListResultDto>(() =>
+    resolveInitialCatalog(initialCatalog, initialProducts),
+  );
+  const [loadingList, setLoadingList] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
 
-    const priceNum = parseFloat(price);
-    if (!name.trim()) {
-      setFormError("El nombre del producto es obligatorio.");
+  const [searchInput, setSearchInput] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ProductStatus | "all">("all");
+  const [kindFilter, setKindFilter] = useState<ProductKind | "all">("all");
+  const [compositionFilter, setCompositionFilter] = useState<ProductCompositionType | "all">(
+    "all",
+  );
+  const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<SortByOption>("createdAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [page, setPage] = useState(catalog.pagination?.page ?? 1);
+
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailProduct, setDetailProduct] = useState<ProductDetailDto | null>(null);
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [formMode, setFormMode] = useState<"create" | "edit">("create");
+  const [formInitialTab, setFormInitialTab] = useState<ProductFormTab>("general");
+  const [formLoadingDetail, setFormLoadingDetail] = useState(false);
+  const [formProduct, setFormProduct] = useState<ProductDetailDto | null>(null);
+
+  const [statusModalTarget, setStatusModalTarget] = useState<ProductListItemDto | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  const [deleteModalTarget, setDeleteModalTarget] = useState<ProductListItemDto | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [toastBanner, setToastBanner] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  const defaultCurrency = useMemo(() => {
+    const firstCurrency = catalog.items[0]?.currency;
+    return firstCurrency || initialCurrency || "COP";
+  }, [catalog.items, initialCurrency]);
+
+  const hasActiveFilters = Boolean(
+    searchInput.trim() ||
+      statusFilter !== "all" ||
+      kindFilter !== "all" ||
+      compositionFilter !== "all" ||
+      lowStockOnly,
+  );
+
+  const quotaBannerData = useMemo(
+    () => buildQuotaBannerData(initialBilling, catalog.pagination.total),
+    [initialBilling, catalog.pagination.total],
+  );
+
+  async function loadCatalog(overrides?: {
+    q?: string;
+    status?: ProductStatus | "all";
+    kind?: ProductKind | "all";
+    compositionType?: ProductCompositionType | "all";
+    lowStock?: boolean;
+    page?: number;
+    sortBy?: SortByOption;
+    sortDir?: "asc" | "desc";
+  }) {
+    const qVal = overrides?.q ?? searchInput;
+    const statusVal = overrides?.status ?? statusFilter;
+    const kindVal = overrides?.kind ?? kindFilter;
+    const compVal = overrides?.compositionType ?? compositionFilter;
+    const lowStockVal = overrides?.lowStock ?? lowStockOnly;
+    const pageVal = overrides?.page ?? page;
+    const sortByVal = overrides?.sortBy ?? sortBy;
+    const sortDirVal = overrides?.sortDir ?? sortDir;
+
+    setLoadingList(true);
+    setListError(null);
+
+    const params = new URLSearchParams();
+    params.set("page", String(pageVal));
+    params.set("limit", String(catalog.pagination.limit || 20));
+    params.set("sortBy", sortByVal);
+    params.set("sortDir", sortDirVal);
+
+    if (qVal.trim()) {
+      params.set("q", qVal.trim());
+    }
+    if (statusVal !== "all") {
+      params.set("status", statusVal);
+    }
+    if (kindVal !== "all") {
+      params.set("kind", kindVal);
+    }
+    if (compVal !== "all") {
+      params.set("compositionType", compVal);
+    }
+    if (lowStockVal) {
+      params.set("lowStock", "true");
+    }
+
+    const res = await workspaceFetch<CatalogListResultDto>(
+      `/api/tenant/products?${params.toString()}`,
+    );
+    setLoadingList(false);
+
+    if (!res.ok || !res.data || !Array.isArray(res.data.items) || !res.data.pagination) {
+      setListError(
+        res.error ||
+          (locale === "en"
+            ? "Could not refresh the product catalog."
+            : "No se pudo actualizar el catálogo de productos."),
+      );
       return;
     }
-    if (isNaN(priceNum) || priceNum <= 0) {
-      setFormError("El precio del producto debe ser mayor a cero.");
+
+    setCatalog(res.data);
+    setPage(res.data.pagination.page ?? 1);
+  }
+
+  function handleSearchInputChange(nextValue: string) {
+    setSearchInput(nextValue);
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    searchDebounceRef.current = setTimeout(() => {
+      setPage(1);
+      void loadCatalog({ q: nextValue, page: 1 });
+    }, 300);
+  }
+
+  function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+    setPage(1);
+    void loadCatalog({ q: searchInput, page: 1 });
+  }
+
+  function handleResetFilters() {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+    setSearchInput("");
+    setStatusFilter("all");
+    setKindFilter("all");
+    setCompositionFilter("all");
+    setLowStockOnly(false);
+    setSortBy("createdAt");
+    setSortDir("desc");
+    setPage(1);
+    void loadCatalog({
+      q: "",
+      status: "all",
+      kind: "all",
+      compositionType: "all",
+      lowStock: false,
+      sortBy: "createdAt",
+      sortDir: "desc",
+      page: 1,
+    });
+  }
+
+  async function openDetailModal(productId: string) {
+    setDetailOpen(true);
+    setDetailProduct(null);
+    setDetailLoading(true);
+    setDetailError(null);
+
+    const res = await workspaceFetch<ProductDetailDto>(
+      `/api/tenant/products/${encodeURIComponent(productId)}`,
+    );
+    setDetailLoading(false);
+    if (!res.ok || !res.data) {
+      setDetailError(
+        res.error ||
+          (locale === "en"
+            ? "Could not load the product detail."
+            : "No se pudo cargar el detalle del producto."),
+      );
+      return;
+    }
+    setDetailProduct(res.data);
+  }
+
+  function openCreateModal() {
+    setFormMode("create");
+    setFormInitialTab("general");
+    setFormProduct(null);
+    setFormLoadingDetail(false);
+    setFormOpen(true);
+  }
+
+  async function openEditModal(productId: string, initialTab: ProductFormTab = "general") {
+    setFormMode("edit");
+    setFormInitialTab(initialTab);
+    setFormProduct(null);
+    setFormLoadingDetail(true);
+    setFormOpen(true);
+
+    const res = await workspaceFetch<ProductDetailDto>(
+      `/api/tenant/products/${encodeURIComponent(productId)}`,
+    );
+    setFormLoadingDetail(false);
+    if (!res.ok || !res.data) {
+      setFormOpen(false);
+      setToastBanner({
+        type: "error",
+        message:
+          res.error ||
+          (locale === "en"
+            ? "Could not load the product for editing."
+            : "No se pudo cargar el producto para edición."),
+      });
+      return;
+    }
+    setFormProduct(res.data);
+  }
+
+  function handleFormSaved(detail: ProductDetailDto, meta: { isCreate: boolean }) {
+    const item = detailToListItem(detail);
+    setCatalog((prev) => {
+      const exists = prev.items.some((existing) => existing.id === item.id);
+      const nextItems = exists
+        ? prev.items.map((existing) => (existing.id === item.id ? item : existing))
+        : [item, ...prev.items];
+      return {
+        ...prev,
+        items: nextItems,
+        pagination: {
+          ...prev.pagination,
+          total: exists ? prev.pagination.total : prev.pagination.total + 1,
+        },
+      };
+    });
+    if (detailProduct?.id === detail.id) {
+      setDetailProduct(detail);
+    }
+    setFormOpen(false);
+    setFormProduct(null);
+    setToastBanner({
+      type: "success",
+      message: meta.isCreate
+        ? locale === "en"
+          ? "Product created and added to catalog."
+          : "Producto creado y agregado al catálogo."
+        : locale === "en"
+          ? "Product changes saved."
+          : "Cambios del producto guardados correctamente.",
+    });
+    void loadCatalog();
+  }
+
+  function handleProductChanged(detail: ProductDetailDto) {
+    const item = detailToListItem(detail);
+    setCatalog((prev) => ({
+      ...prev,
+      items: prev.items.map((existing) => (existing.id === item.id ? item : existing)),
+    }));
+    if (detailProduct?.id === detail.id) {
+      setDetailProduct(detail);
+    }
+  }
+
+  async function handleConfirmStatusToggle() {
+    if (!statusModalTarget) return;
+    const isCurrentlyActive = statusModalTarget.status === "active";
+    const targetStatus: ProductStatus = isCurrentlyActive ? "inactive" : "active";
+
+    setStatusLoading(true);
+    setStatusError(null);
+    const res = await workspaceFetch<ProductDetailDto>(
+      `/api/tenant/products/${encodeURIComponent(statusModalTarget.id)}/status`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: targetStatus }),
+      },
+    );
+    setStatusLoading(false);
+
+    if (!res.ok || !res.data) {
+      setStatusError(
+        res.error ||
+          (locale === "en"
+            ? "Could not update product status."
+            : "No se pudo actualizar el estado del producto."),
+      );
       return;
     }
 
-    setSaving(true);
-    try {
-      const res = await workspaceFetch<WorkspaceProductDto>("/api/tenant/products", {
-        method: "POST",
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || name.trim(),
-          priceCents: Math.round(priceNum * 100),
-          sku: sku.trim() || null,
-          category: category.trim() || null,
-          status,
-        }),
-      });
+    const updatedItem = detailToListItem(res.data);
+    setCatalog((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => (item.id === updatedItem.id ? updatedItem : item)),
+    }));
+    setStatusModalTarget(null);
+    setToastBanner({
+      type: "success",
+      message:
+        targetStatus === "active"
+          ? locale === "en"
+            ? "Product activated in catalog."
+            : "Producto activado en el catálogo."
+          : locale === "en"
+            ? "Product inactivated."
+            : "Producto inactivado.",
+    });
+    void loadCatalog();
+  }
 
-      if (!res.ok || !res.data) {
-        setFormError(res.error || "Error al crear el producto.");
-        return;
-      }
+  async function handleConfirmDelete() {
+    if (!deleteModalTarget || !canDelete) return;
 
-      setProducts((prev) => [res.data!, ...prev]);
-      setModalOpen(false);
-      setName("");
-      setDescription("");
-      setPrice("");
-      setSku("");
-      setCategory("");
-    } catch {
-      setFormError("Error inesperado al conectar con el servidor.");
-    } finally {
-      setSaving(false);
+    setDeleteLoading(true);
+    setDeleteError(null);
+    const res = await workspaceFetch<{ deleted: boolean }>(
+      `/api/tenant/products/${encodeURIComponent(deleteModalTarget.id)}`,
+      { method: "DELETE" },
+    );
+    setDeleteLoading(false);
+
+    if (!res.ok) {
+      setDeleteError(
+        res.error ||
+          (locale === "en"
+            ? "Could not delete this product."
+            : "No se pudo eliminar este producto."),
+      );
+      return;
     }
-  };
 
-  const handleUploadMedia = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedFile || !selectedProduct) return;
+    const deletedId = deleteModalTarget.id;
+    setCatalog((prev) => ({
+      ...prev,
+      items: prev.items.filter((item) => item.id !== deletedId),
+      pagination: {
+        ...prev.pagination,
+        total: Math.max(0, prev.pagination.total - 1),
+      },
+    }));
+    setDeleteModalTarget(null);
+    setToastBanner({
+      type: "success",
+      message:
+        locale === "en" ? "Product removed from catalog." : "Producto eliminado del catálogo.",
+    });
+    void loadCatalog();
+  }
 
-    setUploading(true);
-    setUploadError(null);
+  function renderStatusLabel(status: ProductStatus): string {
+    if (status === "active") return dict.productsFilterStatusActive;
+    if (status === "inactive") return dict.productsFilterStatusInactive;
+    return dict.productsFilterStatusDraft;
+  }
 
-    try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("productId", selectedProduct.id);
-
-      const res = await fetch("/api/tenant/media/upload", {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setUploadError(body.detail || "Error al subir la imagen.");
-        return;
-      }
-
-      const json = await res.json();
-      const signedUrl = json.data?.signedUrl;
-
-      if (signedUrl) {
-        setProducts((prev) =>
-          prev.map((p) =>
-            p.id === selectedProduct.id
-              ? { ...p, mediaUrls: [signedUrl, ...p.mediaUrls] }
-              : p,
-          ),
-        );
-      }
-
-      setUploadModalOpen(false);
-      setSelectedFile(null);
-      setSelectedProduct(null);
-    } catch {
-      setUploadError("Error de red al subir la imagen.");
-    } finally {
-      setUploading(false);
+  function renderStatusBadgeClass(status: ProductStatus): string {
+    if (status === "active") {
+      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30";
     }
-  };
-
-  const confirmDelete = (p: WorkspaceProductDto) => {
-    setProductToDelete(p);
-    setDeleteModalOpen(true);
-  };
-
-  const handleDelete = async () => {
-    if (!productToDelete) return;
-    setDeleting(true);
-    try {
-      const res = await workspaceFetch(`/api/tenant/products/${productToDelete.id}`, {
-        method: "DELETE",
-      });
-
-      if (res.ok) {
-        setProducts((prev) => prev.filter((p) => p.id !== productToDelete.id));
-        setDeleteModalOpen(false);
-        setProductToDelete(null);
-      }
-    } finally {
-      setDeleting(false);
+    if (status === "inactive") {
+      return "bg-slate-500/15 text-slate-600 dark:text-slate-300 border border-slate-500/30";
     }
-  };
+    return "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30";
+  }
+
+  function renderKindLabel(kind: ProductKind): string {
+    if (kind === "physical") return dict.productsFilterKindPhysical;
+    if (kind === "digital") return dict.productsFilterKindDigital;
+    return dict.productsFilterKindService;
+  }
+
+  function renderStockDisplay(item: ProductListItemDto) {
+    if (item.effectiveStock === null) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/10 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+          {dict.productsUnlimitedStock}
+        </span>
+      );
+    }
+
+    return (
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+            item.isLowStock || item.effectiveStock === 0
+              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+              : "bg-slate-500/10 text-[var(--dsn-text)]"
+          }`}
+        >
+          {item.effectiveStock}
+        </span>
+        {item.isLowStock && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300">
+            <AlertTriangle className="h-3 w-3" />
+            {dict.productsLowStockBadge}
+          </span>
+        )}
+        {item.hasInactiveComboComponent && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+            {dict.productsInactiveComponentWarning}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  const inventoryCountLabel =
+    catalog.pagination.total === 1 ? dict.productsCountSingular : dict.productsCountPlural;
 
   return (
     <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
+      {/* Cabecera Principal */}
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--dsn-border)] pb-5">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
-              Productos Y Catálogo Comercial
-            </h1>
-            <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-xs font-mono font-medium text-[var(--dsn-accent)] border border-cyan-500/20">
-              Catálogo Comercial
-            </span>
-          </div>
-          <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">
-            Administra tu portafolio de productos, precios, inventario y galería multimedia para tus canales de venta.
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
+            {dict.productsPageTitle}
+          </h1>
+          <p className="mt-1 text-xs md:text-sm text-[var(--dsn-text-secondary)]">
+            {dict.productsInventoryTitle}: {catalog.pagination.total} {inventoryCountLabel}
           </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadCatalog()}
+            disabled={loadingList}
+            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-4 w-4 text-[var(--dsn-accent)] ${loadingList ? "animate-spin" : ""}`}
+            />
+            <span>{locale === "en" ? "Refresh" : "Actualizar"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" />
+            <span>{dict.productsNewAction}</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Cuota del Plan */}
+      {quotaBannerData && (
+        <CatalogQuotaBanner
+          planName={quotaBannerData.planName}
+          limits={quotaBannerData.limits}
+          productsUsed={quotaBannerData.productsUsed}
+          storageBytesUsed={quotaBannerData.storageBytesUsed}
+          upgradeHref="/workspace/billing"
+          locale={locale}
+        />
+      )}
+
+      {/* Alerta Inline de Operación */}
+      {toastBanner && (
+        <div
+          role="status"
+          className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+            toastBanner.type === "success"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+              : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {toastBanner.type === "success" ? (
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+            ) : (
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+            )}
+            <span>{toastBanner.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastBanner(null)}
+            className="rounded-md p-1 hover:bg-black/5 dark:hover:bg-white/10"
+            aria-label={dict.productsCloseModal}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Métricas Resumidas */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+          <div className="text-xs font-medium text-[var(--dsn-text-secondary)]">
+            {dict.productsInventoryTitle}
+          </div>
+          <div className="mt-1 text-2xl font-bold text-[var(--dsn-text)]">
+            {catalog.pagination.total}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+          <div className="text-xs font-medium text-[var(--dsn-text-secondary)]">
+            {dict.productsSummaryActive}
+          </div>
+          <div className="mt-1 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+            {catalog.summary.totalActive}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+          <div className="text-xs font-medium text-[var(--dsn-text-secondary)]">
+            {dict.productsSummaryCombos}
+          </div>
+          <div className="mt-1 text-2xl font-bold text-[var(--dsn-text)]">
+            {catalog.summary.comboCount}
+          </div>
         </div>
 
         <button
           type="button"
-          onClick={() => setModalOpen(true)}
-          className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity"
+          onClick={() => {
+            const next = !lowStockOnly;
+            setLowStockOnly(next);
+            setPage(1);
+            void loadCatalog({ lowStock: next, page: 1 });
+          }}
+          className={`rounded-xl border p-4 text-left transition-colors ${
+            lowStockOnly
+              ? "border-amber-500 bg-amber-500/10"
+              : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] hover:border-amber-500/50"
+          }`}
         >
-          <Plus className="h-4 w-4" />
-          <span>Registrar Nuevo Producto</span>
+          <div className="flex items-center justify-between text-xs font-medium text-[var(--dsn-text-secondary)]">
+            <span>{dict.productsSummaryLowStock}</span>
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+          </div>
+          <div className="mt-1 text-2xl font-bold text-amber-600 dark:text-amber-400">
+            {catalog.summary.lowStockCount}
+          </div>
         </button>
-      </header>
+      </div>
 
-      {initialBilling && (() => {
-        const productsQuota = initialBilling.quotas.find((q) => q.dimension === "products");
-        const storageQuota = initialBilling.quotas.find((q) => q.dimension === "storage_bytes");
-        return (
-          <CatalogQuotaBanner
-            planName={initialBilling.plan.name}
-            productsUsed={products.length}
-            storageBytesUsed={storageQuota?.used}
-            upgradeHref="/workspace/billing"
-            limits={{
-              products: {
-                mode: productsQuota?.mode ?? "LIMITED",
-                value: productsQuota?.limit ?? 0,
-              },
-              imagesPerProduct: {
-                mode: initialBilling.mediaLimits.imagesPerProduct.mode,
-                value: initialBilling.mediaLimits.imagesPerProduct.value,
-              },
-              videosPerProduct: {
-                mode: initialBilling.mediaLimits.videosPerProduct.mode,
-                value: initialBilling.mediaLimits.videosPerProduct.value,
-              },
-              audiosPerProduct: {
-                mode: initialBilling.mediaLimits.audiosPerProduct.mode,
-                value: initialBilling.mediaLimits.audiosPerProduct.value,
-              },
-              pdfsPerProduct: {
-                mode: initialBilling.mediaLimits.pdfsPerProduct.mode,
-                value: initialBilling.mediaLimits.pdfsPerProduct.value,
-              },
-              storageBytes: {
-                mode: storageQuota?.mode ?? "LIMITED",
-                value: storageQuota?.limit ?? 0,
-              },
-            }}
-          />
-        );
-      })()}
+      {/* Barra de Búsqueda, Filtros y Ordenamiento */}
+      <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <form onSubmit={handleSearchSubmit} className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--dsn-text-secondary)]" />
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => handleSearchInputChange(e.target.value)}
+              placeholder={dict.productsSearchPlaceholder}
+              aria-label={dict.productsSearchPlaceholder}
+              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] py-2 pl-9 pr-3 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+            />
+          </form>
 
-      {/* Tabla de Productos */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden shadow-xs">
-        <div className="px-5 py-4 border-b border-[var(--dsn-border)] flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[var(--dsn-text)]">
-            Inventario De Productos
-          </h2>
-          <span className="text-xs text-[var(--dsn-text-secondary)] font-mono">
-            {products.length} {products.length === 1 ? "producto" : "productos"}
-          </span>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <select
+              aria-label={dict.productsColStatus}
+              value={statusFilter}
+              onChange={(e) => {
+                const next = e.target.value as ProductStatus | "all";
+                setStatusFilter(next);
+                setPage(1);
+                void loadCatalog({ status: next, page: 1 });
+              }}
+              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+            >
+              <option value="all">{dict.productsFilterAllStatuses}</option>
+              <option value="active">{dict.productsFilterStatusActive}</option>
+              <option value="draft">{dict.productsFilterStatusDraft}</option>
+              <option value="inactive">{dict.productsFilterStatusInactive}</option>
+            </select>
+
+            <select
+              aria-label={dict.productsFieldKindLabel}
+              value={kindFilter}
+              onChange={(e) => {
+                const next = e.target.value as ProductKind | "all";
+                setKindFilter(next);
+                setPage(1);
+                void loadCatalog({ kind: next, page: 1 });
+              }}
+              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+            >
+              <option value="all">{dict.productsFilterAllKinds}</option>
+              <option value="physical">{dict.productsFilterKindPhysical}</option>
+              <option value="digital">{dict.productsFilterKindDigital}</option>
+              <option value="service">{dict.productsFilterKindService}</option>
+            </select>
+
+            <select
+              aria-label={dict.productsFieldCompositionLabel}
+              value={compositionFilter}
+              onChange={(e) => {
+                const next = e.target.value as ProductCompositionType | "all";
+                setCompositionFilter(next);
+                setPage(1);
+                void loadCatalog({ compositionType: next, page: 1 });
+              }}
+              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+            >
+              <option value="all">{dict.productsFilterAllCompositions}</option>
+              <option value="simple">{dict.productsFilterCompositionSimple}</option>
+              <option value="combo">{dict.productsFilterCompositionCombo}</option>
+            </select>
+
+            <div className="flex items-center gap-1.5">
+              <select
+                aria-label={locale === "en" ? "Sort By" : "Ordenar Por"}
+                value={sortBy}
+                onChange={(e) => {
+                  const next = e.target.value as SortByOption;
+                  setSortBy(next);
+                  setPage(1);
+                  void loadCatalog({ sortBy: next, page: 1 });
+                }}
+                className="flex-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+              >
+                <option value="createdAt">{dict.productsSortNewest}</option>
+                <option value="name">{dict.productsSortName}</option>
+                <option value="priceCents">{dict.productsSortPrice}</option>
+                <option value="stock">{dict.productsSortStock}</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const nextDir = sortDir === "asc" ? "desc" : "asc";
+                  setSortDir(nextDir);
+                  void loadCatalog({ sortDir: nextDir, page: 1 });
+                }}
+                title={sortDir === "asc" ? "Ascendente" : "Descendente"}
+                aria-label={sortDir === "asc" ? "Ascendente" : "Descendente"}
+                className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-2 text-[var(--dsn-text)] hover:bg-[var(--dsn-surface)]"
+              >
+                <ArrowDownUp className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
 
-        {products.length === 0 ? (
-          <div className="p-12 text-center">
-            <Package className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto mb-3" />
-            <h3 className="text-sm font-semibold text-[var(--dsn-text)]">
-              No Tienes Productos Registrados
-            </h3>
-            <p className="text-xs text-[var(--dsn-text-secondary)] mt-1 max-w-sm mx-auto">
-              Comienza publicando tu primer producto para que tu asistente AI pueda ofrecerlo en tus canales.
-            </p>
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--dsn-border)] pt-2.5 text-xs">
+            <span className="text-[var(--dsn-text-secondary)]">
+              {locale === "en" ? "Active filters applied" : "Filtros activos aplicados"}
+            </span>
             <button
               type="button"
-              onClick={() => setModalOpen(true)}
-              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-3.5 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity"
+              onClick={handleResetFilters}
+              className="font-medium text-[var(--dsn-accent)] hover:underline"
             >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Registrar Primer Producto</span>
+              {locale === "en" ? "Clear All Filters" : "Limpiar Filtros"}
             </button>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-[var(--dsn-surface-secondary)]/40 text-[var(--dsn-text-secondary)] border-b border-[var(--dsn-border)]">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Miniatura</th>
-                  <th className="px-4 py-3 font-medium">Nombre Del Producto</th>
-                  <th className="px-4 py-3 font-medium">Precio</th>
-                  <th className="px-4 py-3 font-medium">Categoría</th>
-                  <th className="px-4 py-3 font-medium">Estado</th>
-                  <th className="px-4 py-3 font-medium text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--dsn-border)] text-[var(--dsn-text)]">
-                {products.map((p) => (
-                  <tr key={p.id} className="hover:bg-[var(--dsn-surface-secondary)]/20 transition-colors">
-                    <td className="px-4 py-3">
-                      {p.mediaUrls.length > 0 ? (
-                        <img
-                          src={p.mediaUrls[0]}
-                          alt={p.name}
-                          className="h-10 w-10 rounded-lg object-cover border border-[var(--dsn-border)]"
-                        />
-                      ) : (
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)] border border-[var(--dsn-border)]">
-                          <ImageIcon className="h-5 w-5 opacity-40" />
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-[var(--dsn-text)]">{p.name}</p>
-                      <p className="text-[11px] text-[var(--dsn-text-secondary)] line-clamp-1 max-w-xs">
-                        {p.description}
-                      </p>
-                      {p.sku && (
-                        <span className="font-mono text-[10px] text-[var(--dsn-text-secondary)]">
-                          SKU: {p.sku}
+        )}
+      </div>
+
+      {/* Error de Listado */}
+      {listError && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">
+          {listError}
+        </div>
+      )}
+
+      {/* Estado Vacío o Tabla/Tarjetas */}
+      {catalog.items.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-10 text-center">
+          <Package className="mx-auto h-10 w-10 text-[var(--dsn-text-secondary)]" />
+          <h2 className="mt-4 text-lg font-semibold text-[var(--dsn-text)]">
+            {hasActiveFilters
+              ? locale === "en"
+                ? "No Matching Products Found"
+                : "No Hay Productos Con Esos Filtros"
+              : dict.productsEmptyTitle}
+          </h2>
+          <p className="mx-auto mt-1 max-w-md text-sm text-[var(--dsn-text-secondary)]">
+            {hasActiveFilters
+              ? locale === "en"
+                ? "Try clearing your search or filter selections."
+                : "Prueba limpiando la búsqueda o ajustando los filtros seleccionados."
+              : dict.productsEmptyDesc}
+          </p>
+          <div className="mt-5 flex justify-center gap-3">
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-4 py-2 text-sm font-medium text-[var(--dsn-text)]"
+              >
+                {locale === "en" ? "Clear Filters" : "Limpiar Filtros"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity"
+              >
+                <Plus className="h-4 w-4" />
+                <span>{dict.productsFirstAction}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Vista Móvil (Mobile First) */}
+          <div className="grid grid-cols-1 gap-3 md:hidden">
+            {catalog.items.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 space-y-3"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] flex items-center justify-center">
+                    {item.coverImageUrl ? (
+                      <img
+                        src={item.coverImageUrl}
+                        alt={item.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Package className="h-6 w-6 text-[var(--dsn-text-secondary)]" />
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <h3 className="truncate font-semibold text-[var(--dsn-text)]">
+                        {item.name}
+                      </h3>
+                      {item.compositionType === "combo" && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--dsn-accent)]/15 px-2 py-0.5 text-xs font-medium text-[var(--dsn-accent)]">
+                          <Layers className="h-3 w-3" />
+                          {dict.productsFilterCompositionCombo}
                         </span>
                       )}
+                    </div>
+                    {item.sku && (
+                      <p className="mt-0.5 text-xs text-[var(--dsn-text-secondary)]">SKU: {item.sku}</p>
+                    )}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${renderStatusBadgeClass(
+                          item.status,
+                        )}`}
+                      >
+                        {renderStatusLabel(item.status)}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-xs text-[var(--dsn-text-secondary)]">
+                        <Box className="h-3 w-3" />
+                        {renderKindLabel(item.kind)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 rounded-lg bg-[var(--dsn-surface-secondary)] p-2.5 text-xs">
+                  <div>
+                    <div className="text-[var(--dsn-text-secondary)]">{dict.productsColPrice}</div>
+                    <div className="mt-0.5 font-semibold text-[var(--dsn-text)]">
+                      {formatMoneyCents(
+                        item.salePriceCents ?? item.priceCents,
+                        item.currency,
+                        locale,
+                      )}
+                    </div>
+                    <div className="text-[var(--dsn-text-secondary)]">
+                      {dict.productsMarginLabel}: {item.profitability.marginPct.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[var(--dsn-text-secondary)]">{dict.productsColStock}</div>
+                    <div className="mt-1">{renderStockDisplay(item)}</div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => void openDetailModal(item.id)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    <span>{dict.productsActionView}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void openEditModal(item.id, "general")}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                    <span>{dict.productsActionEdit}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void openEditModal(item.id, "media")}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                  >
+                    <UploadCloud className="h-3.5 w-3.5" />
+                    <span>{dict.productsActionUpload}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatusError(null);
+                      setStatusModalTarget(item);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                  >
+                    <Power className="h-3.5 w-3.5" />
+                    <span>
+                      {item.status === "active"
+                        ? dict.productsActionInactivate
+                        : dict.productsActionActivate}
+                    </span>
+                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteError(null);
+                        setDeleteModalTarget(item);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>{dict.productsActionDelete}</span>
+                    </button>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+
+          {/* Vista Escritorio */}
+          <div className="hidden overflow-x-auto rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] md:block">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-xs font-semibold text-[var(--dsn-text-secondary)]">
+                  <th className="px-4 py-3">{dict.productsColThumbnail}</th>
+                  <th className="px-4 py-3">{dict.productsColName}</th>
+                  <th className="px-4 py-3">{dict.productsColType}</th>
+                  <th className="px-4 py-3">{dict.productsColPrice}</th>
+                  <th className="px-4 py-3">{dict.productsColStock}</th>
+                  <th className="px-4 py-3">{dict.productsColStatus}</th>
+                  <th className="px-4 py-3 text-right">{dict.productsColActions}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--dsn-border)]">
+                {catalog.items.map((item) => (
+                  <tr key={item.id} className="hover:bg-[var(--dsn-surface-secondary)]/50">
+                    <td className="px-4 py-3">
+                      <div className="h-11 w-11 overflow-hidden rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] flex items-center justify-center">
+                        {item.coverImageUrl ? (
+                          <img
+                            src={item.coverImageUrl}
+                            alt={item.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <Package className="h-5 w-5 text-[var(--dsn-text-secondary)]" />
+                        )}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 font-mono font-semibold">
-                      ${(p.priceCents / 100).toLocaleString("es-CO")} {p.currency}
+
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => void openDetailModal(item.id)}
+                        className="text-left font-semibold text-[var(--dsn-text)] hover:text-[var(--dsn-accent)]"
+                      >
+                        {item.name}
+                      </button>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--dsn-text-secondary)]">
+                        {item.sku && <span>SKU: {item.sku}</span>}
+                        {item.category && <span>{item.category}</span>}
+                        {item.mediaCounts.image +
+                          item.mediaCounts.video +
+                          item.mediaCounts.audio +
+                          item.mediaCounts.pdf >
+                          0 && (
+                          <span>
+                            •{" "}
+                            {item.mediaCounts.image +
+                              item.mediaCounts.video +
+                              item.mediaCounts.audio +
+                              item.mediaCounts.pdf}{" "}
+                            {dict.productsTabMedia}
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-[var(--dsn-text-secondary)]">
-                      {p.category || "General"}
+
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs font-medium text-[var(--dsn-text)]">
+                          {renderKindLabel(item.kind)}
+                        </span>
+                        {item.compositionType === "combo" ? (
+                          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-[var(--dsn-accent)]/15 px-2 py-0.5 text-xs font-medium text-[var(--dsn-accent)]">
+                            <Layers className="h-3 w-3" />
+                            {dict.productsFilterCompositionCombo} ({item.comboComponentsCount})
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[var(--dsn-text-secondary)]">
+                            {dict.productsFilterCompositionSimple}
+                          </span>
+                        )}
+                      </div>
                     </td>
+
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-[var(--dsn-text)]">
+                        {formatMoneyCents(
+                          item.salePriceCents ?? item.priceCents,
+                          item.currency,
+                          locale,
+                        )}
+                      </div>
+                      {item.salePriceCents !== null && item.salePriceCents < item.priceCents && (
+                        <div className="text-xs text-[var(--dsn-text-secondary)] line-through">
+                          {formatMoneyCents(item.priceCents, item.currency, locale)}
+                        </div>
+                      )}
+                      <div className="text-xs text-[var(--dsn-text-secondary)]">
+                        {dict.productsMarginLabel}: {item.profitability.marginPct.toFixed(1)}%
+                      </div>
+                    </td>
+
+                    <td className="px-4 py-3">{renderStockDisplay(item)}</td>
+
                     <td className="px-4 py-3">
                       <span
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                          p.status === "published"
-                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                        }`}
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${renderStatusBadgeClass(
+                          item.status,
+                        )}`}
                       >
-                        {p.status === "published" ? "Publicado" : "Borrador"}
+                        {renderStatusLabel(item.status)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="inline-flex items-center gap-1.5">
+
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => void openDetailModal(item.id)}
+                          title={dict.productsActionView}
+                          aria-label={`${dict.productsActionView} ${item.name}`}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void openEditModal(item.id, "general")}
+                          title={dict.productsActionEdit}
+                          aria-label={`${dict.productsActionEdit} ${item.name}`}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void openEditModal(item.id, "media")}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                        >
+                          <UploadCloud className="h-3.5 w-3.5" />
+                          <span>{dict.productsActionUpload}</span>
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
-                            setSelectedProduct(p);
-                            setUploadModalOpen(true);
+                            setStatusError(null);
+                            setStatusModalTarget(item);
                           }}
-                          className="inline-flex min-h-[32px] items-center gap-1 rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-2.5 py-1 text-[11px] font-medium hover:bg-[var(--dsn-border)]/40 transition-colors"
+                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
                         >
-                          <UploadCloud className="h-3.5 w-3.5 text-cyan-400" />
-                          <span>Subir Foto</span>
+                          <Power className="h-3.5 w-3.5" />
+                          <span>
+                            {item.status === "active"
+                              ? dict.productsActionInactivate
+                              : dict.productsActionActivate}
+                          </span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => confirmDelete(p)}
-                          className="inline-flex min-h-[32px] items-center justify-center rounded-md border border-rose-500/20 bg-rose-500/10 p-1.5 text-rose-400 hover:bg-rose-500/20 transition-colors"
-                          title="Eliminar Producto"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteError(null);
+                              setDeleteModalTarget(item);
+                            }}
+                            title={dict.productsActionDelete}
+                            aria-label={`${dict.productsActionDelete} ${item.name}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span>{dict.productsActionDelete}</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -345,240 +1132,181 @@ export function ProductsView({ initialProducts, initialBilling = null }: Product
               </tbody>
             </table>
           </div>
-        )}
-      </section>
 
-      {/* Modal de Creación de Producto (Title Case en labels, Regla 4.8) */}
-      {modalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
-        >
-          <div className="relative w-full max-w-lg rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--dsn-border)]">
+          {/* Paginación */}
+          {catalog.pagination.totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-3 text-sm">
+              <div className="text-[var(--dsn-text-secondary)]">
+                {catalog.pagination.page} {dict.productsPaginationPageOf}{" "}
+                {catalog.pagination.totalPages} ({catalog.pagination.total} {inventoryCountLabel})
+              </div>
               <div className="flex items-center gap-2">
-                <Package className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
-                  Registrar Nuevo Producto
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalOpen(false)}
-                className="text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {formError && (
-              <div className="mt-4 flex items-center gap-2 rounded-lg bg-rose-500/10 p-3 text-xs text-rose-400 border border-rose-500/20">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleCreateProduct} className="mt-4 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
-                  Nombre del Producto *
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ej. Café de Origen Tostado"
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  required
-                />
-              </div>
-
-              <AiEnhanceTextarea
-                id="product-description-input"
-                fieldKey="product.description"
-                label="Descripción del Producto"
-                value={description}
-                onChange={setDescription}
-                context={{ productName: name, category }}
-                placeholder="Describe notas de sabor, presentación y características clave..."
-                rows={3}
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
-                    Precio en Pesos *
-                  </label>
-                  <input
-                    type="number"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="35000"
-                    min="100"
-                    step="100"
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs font-mono text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
-                    Código O SKU
-                  </label>
-                  <input
-                    type="text"
-                    value={sku}
-                    onChange={(e) => setSku(e.target.value)}
-                    placeholder="CF-001"
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs font-mono text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
-                    Categoría Comercial
-                  </label>
-                  <input
-                    type="text"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    placeholder="Bebidas"
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
-                    Estado Inicial
-                  </label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as any)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  >
-                    <option value="published">Publicado</option>
-                    <option value="draft">Borrador</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="mt-6 flex items-center justify-end gap-2 pt-4 border-t border-[var(--dsn-border)]">
                 <button
                   type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="rounded-lg border border-[var(--dsn-border)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
+                  disabled={catalog.pagination.page <= 1 || loadingList}
+                  onClick={() => {
+                    const nextPage = Math.max(1, catalog.pagination.page - 1);
+                    setPage(nextPage);
+                    void loadCatalog({ page: nextPage });
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-3 py-1.5 text-xs font-medium text-[var(--dsn-text)] disabled:opacity-50"
                 >
-                  Cancelar
+                  <ChevronLeft className="h-4 w-4" />
+                  <span>{dict.productsPaginationPrev}</span>
                 </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  {saving ? "Guardando..." : "Guardar Producto"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Carga Multimedia */}
-      {uploadModalOpen && selectedProduct && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
-        >
-          <div className="relative w-full max-w-md rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--dsn-border)]">
-              <div className="flex items-center gap-2">
-                <UploadCloud className="h-5 w-5 text-cyan-400" />
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
-                  Subir Fotografía Del Producto
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setUploadModalOpen(false)}
-                className="text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-[var(--dsn-text-secondary)] mt-2">
-              Producto: <span className="font-semibold text-[var(--dsn-text)]">{selectedProduct.name}</span>
-            </p>
-
-            {uploadError && (
-              <div className="mt-3 flex items-center gap-2 rounded-lg bg-rose-500/10 p-2.5 text-xs text-rose-400 border border-rose-500/20">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{uploadError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleUploadMedia} className="mt-4 space-y-4">
-              <div className="rounded-xl border-2 border-dashed border-[var(--dsn-border)] p-6 text-center hover:border-[var(--dsn-accent)] transition-colors">
-                <ImageIcon className="h-8 w-8 text-[var(--dsn-text-secondary)]/50 mx-auto mb-2" />
-                <p className="text-xs font-semibold text-[var(--dsn-text)]">
-                  {selectedFile ? selectedFile.name : "Selecciona una imagen desde tu equipo"}
-                </p>
-                <p className="text-[11px] text-[var(--dsn-text-secondary)] mt-0.5">
-                  Formatos admitidos: JPEG, PNG, WEBP (Máx. 10MB)
-                </p>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                  className="mt-3 block w-full text-xs text-[var(--dsn-text-secondary)] file:mr-2 file:rounded-md file:border-0 file:bg-[var(--dsn-accent)] file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:opacity-90"
-                  required
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setUploadModalOpen(false)}
-                  className="rounded-lg border border-[var(--dsn-border)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
+                  disabled={catalog.pagination.page >= catalog.pagination.totalPages || loadingList}
+                  onClick={() => {
+                    const nextPage = Math.min(
+                      catalog.pagination.totalPages,
+                      catalog.pagination.page + 1,
+                    );
+                    setPage(nextPage);
+                    void loadCatalog({ page: nextPage });
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-3 py-1.5 text-xs font-medium text-[var(--dsn-text)] disabled:opacity-50"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={uploading || !selectedFile}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50"
-                >
-                  {uploading ? "Subiendo..." : "Subir y Optimizar"}
+                  <span>{dict.productsPaginationNext}</span>
+                  <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
+            </div>
+          )}
+        </>
       )}
 
-      {/* Modal Accesible de Confirmación de Eliminación (Regla 4.17) */}
-      <ConfirmationModal
-        isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
-        onConfirm={handleDelete}
-        title="Eliminar Producto del Catálogo"
-        subtitle="Confirmación para retirar este producto de tu catálogo comercial."
-        variant="danger"
-        confirmText="Eliminar Producto"
-        confirmLoadingText="Eliminando..."
-        cancelText="Conservar Producto"
-        loading={deleting}
-        details={[
-          { label: "Nombre", value: productToDelete?.name || "" },
-          { label: "SKU", value: productToDelete?.sku || "Sin SKU", mono: true },
-          { label: "Precio", value: `$${((productToDelete?.priceCents || 0) / 100).toLocaleString("es-CO")}` },
-        ]}
-        warningTitle="Acción Irreversible"
-        warningMessage="El producto se marcará como retirado y dejará de estar disponible para tu asistente AI y clientes."
+      {/* Modal de Detalle Completo */}
+      <ProductDetailModal
+        isOpen={detailOpen}
+        product={detailProduct}
+        loading={detailLoading}
+        error={detailError}
+        locale={locale}
+        onClose={() => setDetailOpen(false)}
+        onEdit={(prod) => {
+          setDetailOpen(false);
+          setFormMode("edit");
+          setFormInitialTab("general");
+          setFormProduct(prod);
+          setFormLoadingDetail(false);
+          setFormOpen(true);
+        }}
       />
+
+      {/* Modal de Creación / Edición en 5 Pestañas */}
+      <ProductFormModal
+        isOpen={formOpen}
+        mode={formMode}
+        initialTab={formInitialTab}
+        initialProduct={formProduct}
+        loadingDetail={formLoadingDetail}
+        currency={defaultCurrency}
+        billing={initialBilling}
+        locale={locale}
+        hasInferenceAccess={hasInferenceAccess}
+        onClose={() => setFormOpen(false)}
+        onSaved={handleFormSaved}
+        onProductChanged={handleProductChanged}
+      />
+
+      {/* Modal de Confirmación de Cambio de Estado (Sin Diálogos Nativos) */}
+      <ConfirmationModal
+        isOpen={Boolean(statusModalTarget)}
+        onClose={() => {
+          if (!statusLoading) {
+            setStatusModalTarget(null);
+            setStatusError(null);
+          }
+        }}
+        onConfirm={() => void handleConfirmStatusToggle()}
+        title={
+          statusModalTarget?.status === "active"
+            ? dict.productsStatusModalInactivateTitle
+            : dict.productsStatusModalActivateTitle
+        }
+        subtitle={dict.productsStatusModalSubtitle}
+        variant={statusModalTarget?.status === "active" ? "warning" : "neutral"}
+        details={
+          statusModalTarget
+            ? [
+                { label: dict.productsFieldNameLabel, value: statusModalTarget.name },
+                {
+                  label: dict.productsFieldSkuLabel,
+                  value: statusModalTarget.sku || "—",
+                },
+                {
+                  label: dict.productsColStock,
+                  value:
+                    statusModalTarget.effectiveStock === null
+                      ? dict.productsUnlimitedStock
+                      : String(statusModalTarget.effectiveStock),
+                },
+              ]
+            : []
+        }
+        warningTitle={
+          statusModalTarget?.status === "active"
+            ? dict.productsActionInactivate
+            : dict.productsActionActivate
+        }
+        warningMessage={
+          statusModalTarget?.status === "active"
+            ? dict.productsStatusModalWarningInactivate
+            : dict.productsStatusModalWarningActivate
+        }
+        confirmText={
+          statusModalTarget?.status === "active"
+            ? dict.productsStatusConfirmInactivate
+            : dict.productsStatusConfirmActivate
+        }
+        cancelText={dict.productsCancelAction}
+        loading={statusLoading}
+        error={statusError}
+      />
+
+      {/* Modal de Confirmación de Eliminación (Solo Propietario, Sin Diálogos Nativos) */}
+      {canDelete && (
+        <ConfirmationModal
+          isOpen={Boolean(deleteModalTarget)}
+          onClose={() => {
+            if (!deleteLoading) {
+              setDeleteModalTarget(null);
+              setDeleteError(null);
+            }
+          }}
+          onConfirm={() => void handleConfirmDelete()}
+          title={dict.productsDeleteModalTitle}
+          subtitle={dict.productsDeleteModalSubtitle}
+          variant="danger"
+          details={
+            deleteModalTarget
+              ? [
+                  { label: dict.productsFieldNameLabel, value: deleteModalTarget.name },
+                  {
+                    label: dict.productsFieldSkuLabel,
+                    value: deleteModalTarget.sku || "—",
+                  },
+                  {
+                    label: dict.productsColPrice,
+                    value: formatMoneyCents(
+                      deleteModalTarget.salePriceCents ?? deleteModalTarget.priceCents,
+                      deleteModalTarget.currency,
+                      locale,
+                    ),
+                  },
+                ]
+              : []
+          }
+          warningTitle={dict.productsDeleteWarningTitle}
+          warningMessage={dict.productsDeleteWarningBody}
+          confirmText={dict.productsDeleteConfirmAction}
+          confirmLoadingText={dict.productsDeleteLoadingAction}
+          cancelText={dict.productsDeleteKeepAction}
+          loading={deleteLoading}
+          error={deleteError}
+        />
+      )}
     </div>
   );
 }
-

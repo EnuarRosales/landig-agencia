@@ -2,14 +2,34 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import * as domain from "@mocter/domain";
 import { GET as getDashboard } from "./dashboard/route";
-import { GET as getProducts, POST as createProduct } from "./products/route";
+import { POST as createProduct } from "./products/route";
 import { GET as getBilling } from "./billing/route";
+
+const { mockProductsService } = vi.hoisted(() => ({
+  mockProductsService: {
+    listCatalog: vi.fn(),
+    createProduct: vi.fn(),
+    getProductDetail: vi.fn(),
+    updateProduct: vi.fn(),
+    updateProductStatus: vi.fn(),
+    deleteProduct: vi.fn(),
+    uploadAndAttachProductMedia: vi.fn(),
+    setProductMediaCover: vi.fn(),
+    deleteProductMedia: vi.fn(),
+    resolveTenantMediaStreamSource: vi.fn(),
+    evaluateLowStockAfterStockMutation: vi.fn(async () => ({
+      ok: true as const,
+      data: { triggered: false },
+    })),
+  },
+}));
 
 vi.mock("@mocter/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof domain>();
   return {
     ...actual,
     resolveAuthenticatedPortalContext: vi.fn(),
+    getTenantProductsAndMediaService: vi.fn(() => mockProductsService),
     tenantWorkspaceService: {
       getDashboard: vi.fn(),
       getProducts: vi.fn(),
@@ -154,17 +174,33 @@ describe("Tenant Workspace Route Handlers", () => {
       capabilities: {},
     } as any);
 
-    vi.mocked(domain.tenantWorkspaceService.createProduct).mockResolvedValueOnce({
-      id: "prod-1",
-      name: "Café Especial Huila",
-      description: "Café de origen tostado medio.",
-      priceCents: 35000,
-      currency: "COP",
-      status: "published",
-      availability: "in_stock",
-      mediaUrls: [],
-      createdAt: new Date().toISOString(),
-    });
+    vi.mocked(mockProductsService.createProduct).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: "prod-1",
+        name: "Café Especial Huila",
+        description: "Café de origen tostado medio.",
+        priceCents: 35000,
+        currency: "COP",
+        status: "active",
+        availability: "in_stock",
+      },
+    } as any);
+
+    vi.mocked(mockProductsService.getProductDetail).mockResolvedValueOnce({
+      ok: true,
+      data: {
+        id: "prod-1",
+        name: "Café Especial Huila",
+        description: "Café de origen tostado medio.",
+        priceCents: 35000,
+        currency: "COP",
+        status: "active",
+        availability: "in_stock",
+        mediaUrls: [],
+        createdAt: new Date().toISOString(),
+      },
+    } as any);
 
     const req = new NextRequest("http://localhost:3003/api/tenant/products", {
       method: "POST",
