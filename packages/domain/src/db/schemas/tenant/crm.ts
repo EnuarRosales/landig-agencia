@@ -1,10 +1,14 @@
 import {
+  boolean,
   check,
   customType,
+  date,
+  foreignKey,
   index,
   integer,
   jsonb,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -61,8 +65,14 @@ export const cellContacts = cellAdminSchema.table(
     email: text("email"),
     /** Teléfono móvil principal en formato estándar E.164. */
     phoneMobile: text("phone_mobile"),
-    /** Teléfono fijo o secundario. */
+    /** Teléfono fijo o alterno heredado. */
     phoneLandline: text("phone_landline"),
+    /** Teléfono secundario o alterno comercial (SPEC-09). */
+    phoneSecondary: text("phone_secondary"),
+    /** Nombre de empresa o razón social asociada al contacto (SPEC-09). */
+    companyName: text("company_name"),
+    /** Fecha de nacimiento o cumpleaños del contacto (SPEC-09). */
+    birthDate: date("birth_date"),
     /** País de residencia o contacto. */
     country: text("country"),
     /** Departamento, estado o región. */
@@ -73,10 +83,14 @@ export const cellContacts = cellAdminSchema.table(
     addressLine: text("address_line"),
     /** Código postal. */
     postalCode: text("postal_code"),
-    /** Origen o canal inicial de captura. */
+    /** Origen inicial inmutable de captura del prospecto o contacto (SPEC-09). */
     source: text("source").notNull().default("manual"),
-    /** Subcanal o medio específico de contacto. */
+    /** Subcanal o medio específico heredado de captura. */
     channel: text("channel"),
+    /** Canal preferido de atención priorizando WhatsApp cuando hay móvil (SPEC-09). */
+    preferredChannel: text("preferred_channel"),
+    /** Último canal omnicanal desde el que interactuó el contacto (SPEC-09). */
+    lastChannel: text("last_channel"),
     /** Identificador de contacto correlacionado en la instancia central de Chatwoot. */
     chatwootContactId: integer("chatwoot_contact_id"),
     /** Usuario agente asignado para la atención del prospecto. */
@@ -92,10 +106,20 @@ export const cellContacts = cellAdminSchema.table(
     language: text("language").notNull().default("es"),
     /** Notas y observaciones internas de gestión comercial. */
     notes: text("notes"),
+    /** Calificación vigente del contacto entre 1 y 5 estrellas (cache de cabecera, SPEC-09). */
+    currentRatingStars: smallint("current_rating_stars"),
+    /** Comentario de la calificación vigente del contacto (SPEC-09). */
+    currentRatingComment: text("current_rating_comment"),
     /** Marca de tiempo de la primera interacción o contacto. */
     firstContactedAt: timestamp("first_contacted_at", { withTimezone: true }),
     /** Marca de tiempo de la interacción o actividad más reciente. */
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    /** Marca de tiempo del último mensaje entrante del cliente en cualquier canal omnicanal (SPEC-09). */
+    lastInboundMessageAt: timestamp("last_inbound_message_at", { withTimezone: true }),
+    /** Marca de tiempo del último mensaje entrante por WhatsApp para ventana 24h Meta (SPEC-09). */
+    lastWhatsappInboundAt: timestamp("last_whatsapp_inbound_at", { withTimezone: true }),
+    /** Marca de tiempo de conversión formal a etapa de cliente (SPEC-09). */
+    convertedToCustomerAt: timestamp("converted_to_customer_at", { withTimezone: true }),
     /** Marca de tiempo de baja lógica y anonimización irreversible. */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     /** Identidad del usuario o proceso que ejecutó la supresión. */
@@ -117,6 +141,14 @@ export const cellContacts = cellAdminSchema.table(
       .on(table.clientId, table.phoneMobile)
       .where(sql`phone_mobile IS NOT NULL`),
     index("contacts_client_stage_idx").on(table.clientId, table.stage),
+    index("contacts_client_last_wa_inbound_idx").on(
+      table.clientId,
+      table.lastWhatsappInboundAt,
+    ),
+    index("contacts_client_last_inbound_idx").on(
+      table.clientId,
+      table.lastInboundMessageAt,
+    ),
     check(
       "contacts_document_type_check",
       sql.raw(
@@ -126,13 +158,19 @@ export const cellContacts = cellAdminSchema.table(
     check(
       "contacts_source_check",
       sql.raw(
-        "source IN ('whatsapp', 'web', 'email', 'manual', 'referral', 'other')",
+        "source IN ('whatsapp', 'instagram', 'facebook', 'web', 'telegram', 'email', 'sms', 'manual', 'referral', 'import', 'api', 'other')",
       ),
     ),
     check(
       "contacts_stage_check",
       sql.raw(
         "stage IN ('new', 'in_conversation', 'qualified', 'customer', 'discarded')",
+      ),
+    ),
+    check(
+      "contacts_current_rating_stars_check",
+      sql.raw(
+        "current_rating_stars IS NULL OR (current_rating_stars >= 1 AND current_rating_stars <= 5)",
       ),
     ),
   ],
@@ -303,8 +341,108 @@ export const cellContactMemories = cellAdminSchema.table(
   ],
 );
 
+/**
+ * Historial inmutable de calificaciones comerciales de contactos (`admin.contact_ratings`, SPEC-09 §7.2).
+ *
+ * Permite registrar evaluaciones de 1 a 5 estrellas con comentario y trazabilidad del agente evaluador
+ * sin sobrescribir calificaciones históricas previas.
+ */
+export const cellContactRatings = cellAdminSchema.table(
+  "contact_ratings",
+  {
+    /** Identificador UUIDv7 de la calificación. */
+    id: uuid("id").notNull().default(sql`uuidv7()`),
+    /** Identificador del inquilino en la celda. */
+    clientId: uuid("client_id").notNull(),
+    /** Identificador del contacto evaluado. */
+    contactId: uuid("contact_id").notNull(),
+    /** Puntuación asignada de 1 a 5 estrellas. */
+    stars: smallint("stars").notNull(),
+    /** Comentario o justificación opcional de la evaluación. */
+    comment: text("comment"),
+    /** Identificador UUID del usuario evaluador (nulo si proviene de actor automatizado). */
+    ratedByUserId: uuid("rated_by_user_id"),
+    /** Nombre legible del actor que registró la calificación. */
+    ratedByName: text("rated_by_name").notNull(),
+    ...auditColumns(),
+  },
+  (table) => [
+    primaryKey({
+      name: "cell_contact_ratings_pkey",
+      columns: [table.clientId, table.id],
+    }),
+    foreignKey({
+      name: "contact_ratings_contact_fk",
+      columns: [table.clientId, table.contactId],
+      foreignColumns: [cellContacts.clientId, cellContacts.id],
+    }).onDelete("cascade"),
+    index("contact_ratings_by_contact_idx").on(
+      table.clientId,
+      table.contactId,
+      table.createdAt,
+    ),
+    check("contact_ratings_stars_check", sql.raw("stars >= 1 AND stars <= 5")),
+  ],
+);
+
+/**
+ * Libreta de múltiples direcciones por contacto (`admin.contact_addresses`, SPEC-09 §7.3).
+ *
+ * Garantiza como máximo una dirección predeterminada (`is_default = true`) por contacto
+ * mediante índice único parcial en `(client_id, contact_id)`.
+ */
+export const cellContactAddresses = cellAdminSchema.table(
+  "contact_addresses",
+  {
+    /** Identificador UUIDv7 de la dirección. */
+    id: uuid("id").notNull().default(sql`uuidv7()`),
+    /** Identificador del inquilino en la celda. */
+    clientId: uuid("client_id").notNull(),
+    /** Identificador del contacto propietario de la dirección. */
+    contactId: uuid("contact_id").notNull(),
+    /** Etiqueta descriptiva de la dirección (p. ej. Casa, Oficina, Bodega). */
+    label: text("label").notNull(),
+    /** País de la dirección. */
+    country: text("country").notNull().default("Colombia"),
+    /** Departamento, estado o región. */
+    state: text("state"),
+    /** Ciudad o municipio. */
+    city: text("city").notNull(),
+    /** Dirección física completa de entrega o correspondencia. */
+    addressLine: text("address_line").notNull(),
+    /** Barrio, sector o localidad opcional. */
+    neighborhood: text("neighborhood"),
+    /** Código postal opcional. */
+    postalCode: text("postal_code"),
+    /** Notas o puntos de referencia para entrega. */
+    referenceNotes: text("reference_notes"),
+    /** Indica si es la dirección principal predeterminada del contacto. */
+    isDefault: boolean("is_default").notNull().default(false),
+    ...auditColumns(),
+  },
+  (table) => [
+    primaryKey({
+      name: "cell_contact_addresses_pkey",
+      columns: [table.clientId, table.id],
+    }),
+    foreignKey({
+      name: "contact_addresses_contact_fk",
+      columns: [table.clientId, table.contactId],
+      foreignColumns: [cellContacts.clientId, cellContacts.id],
+    }).onDelete("cascade"),
+    index("contact_addresses_by_contact_idx").on(table.clientId, table.contactId),
+    uniqueIndex("contact_addresses_one_default_per_contact")
+      .on(table.clientId, table.contactId)
+      .where(sql`is_default = true`),
+  ],
+);
+
 export type CellContact = typeof cellContacts.$inferSelect;
 export type NewCellContact = typeof cellContacts.$inferInsert;
+export type CellContactRating = typeof cellContactRatings.$inferSelect;
+export type NewCellContactRating = typeof cellContactRatings.$inferInsert;
+export type CellContactAddress = typeof cellContactAddresses.$inferSelect;
+export type NewCellContactAddress = typeof cellContactAddresses.$inferInsert;
 export type CellProspectConsent = typeof cellProspectConsents.$inferSelect;
 export type NewCellProspectConsent = typeof cellProspectConsents.$inferInsert;
 export type CellPrivacyNotice = typeof cellPrivacyNotices.$inferSelect;

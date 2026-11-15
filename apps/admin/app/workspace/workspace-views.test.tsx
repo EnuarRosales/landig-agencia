@@ -6,6 +6,7 @@ import { ProductsView } from "./products/products-view";
 import { BillingView } from "./billing/billing-view";
 import { ProfileView } from "./profile/profile-view";
 import { BotView } from "./bot/bot-view";
+import { ContactsView } from "./contacts/contacts-view";
 import { TenantWorkspaceShell } from "@/components/tenant-workspace-shell";
 import type { CatalogListResultDto, ProductDetailDto } from "@mocter/domain";
 
@@ -1252,6 +1253,170 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
         generalPromptArea.value.split("### [I] INTENCIÓN COMERCIAL Y REGLA DE CATÁLOGO").length - 1;
       expect(countHeader).toBe(1);
       expect(generalPromptArea.value).toContain("30 días de garantía por defectos de fabricación.");
+    });
+  });
+
+  describe("ContactsView · CRM Omnicanal, Ventana WhatsApp 24h y Ficha 4 Pestañas", () => {
+    it("renders WhatsApp active window badge, quick inbox link, preferred channel, and hides delete for non-owner", () => {
+      const futureInbound = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      render(
+        <ContactsView
+          canDelete={false}
+          locale="es"
+          initialList={{
+            items: [
+              {
+                id: "c-wa-1",
+                fullName: "Camila Torres",
+                companyName: "Andes Roast",
+                phoneMobile: "+573001112233",
+                email: "camila@andes.co",
+                documentNumber: "10203040",
+                source: "instagram",
+                preferredChannel: "whatsapp_cloud",
+                lastChannel: "whatsapp_cloud",
+                stage: "qualified",
+                currentRatingStars: 5,
+                lastWhatsappInboundAt: futureInbound,
+                lastSeenAt: futureInbound,
+                defaultAddressSummary: {
+                  id: "addr-1",
+                  label: "Oficina",
+                  city: "Medellín",
+                  state: "Antioquia",
+                  country: "Colombia",
+                  addressLine: "Cra 43A # 1-50",
+                },
+              },
+            ],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+            quota: { used: 1, limit: 500, mode: "LIMITED" },
+          }}
+        />,
+      );
+
+      expect(screen.getAllByText("Camila Torres").length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Ventana Activa/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Instagram").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("5/5").length).toBeGreaterThan(0);
+      expect(screen.getByRole("link", { name: /Ir a Bandeja/i }).getAttribute("href")).toBe(
+        "/workspace/conversations",
+      );
+      expect(screen.queryByRole("button", { name: /Eliminar Camila Torres/i })).toBeNull();
+    });
+
+    it("opens multi-source creation modal with initial address unchecked and displays ConfirmationModal on owner delete", () => {
+      render(
+        <ContactsView
+          canDelete={true}
+          locale="es"
+          initialList={{
+            items: [
+              {
+                id: "c-2",
+                fullName: "Carlos Ruiz",
+                phoneMobile: "+573109998877",
+                email: null,
+                documentNumber: null,
+                source: "manual",
+                preferredChannel: "whatsapp_cloud",
+                stage: "new",
+                lastSeenAt: null,
+              },
+            ],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+            quota: { used: 1, limit: null, mode: "UNLIMITED" },
+          }}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /Registrar Contacto/i }));
+      const initialAddressCheckbox = screen.getByLabelText(/Agregar Dirección de Envío Inicial/i) as HTMLInputElement;
+      expect(initialAddressCheckbox.checked).toBe(false);
+      fireEvent.click(screen.getAllByRole("button", { name: /^Cancelar$/i })[0]!);
+
+      const deleteBtns = screen.getAllByRole("button", { name: /Eliminar Carlos Ruiz/i });
+      fireEvent.click(deleteBtns[0]!);
+      expect(screen.getAllByText("Eliminar Contacto del Directorio").length).toBeGreaterThan(0);
+    });
+
+    it("loads 4-tab contact detail modal when clicking Ver Ficha", async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({
+          ok: true,
+          data: {
+            id: "c-10",
+            fullName: "Diana Prince",
+            companyName: "Themyscira SAS",
+            phoneMobile: "+573152223344",
+            email: "diana@themyscira.co",
+            documentNumber: "900123456",
+            source: "web",
+            preferredChannel: "whatsapp_cloud",
+            stage: "customer",
+            language: "es",
+            tags: ["VIP"],
+            lastSeenAt: null,
+            addresses: [
+              {
+                id: "a-1",
+                label: "Principal",
+                country: "Colombia",
+                state: "Cundinamarca",
+                city: "Bogotá",
+                addressLine: "Cl 100 # 15-20",
+                neighborhood: "Chicó",
+                postalCode: null,
+                referenceNotes: null,
+                isDefault: true,
+              },
+            ],
+            ratingsHistory: [],
+            consents: [],
+            recentOrders: [],
+          },
+        }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      try {
+        render(
+          <ContactsView
+            canDelete={true}
+            locale="es"
+            initialList={{
+              items: [
+                {
+                  id: "c-10",
+                  fullName: "Diana Prince",
+                  phoneMobile: "+573152223344",
+                  email: "diana@themyscira.co",
+                  documentNumber: "900123456",
+                  source: "web",
+                  stage: "customer",
+                  lastSeenAt: null,
+                },
+              ],
+              pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+              quota: { used: 1, limit: null, mode: "UNLIMITED" },
+            }}
+          />,
+        );
+
+        const viewBtns = screen.getAllByRole("button", { name: /Ver Ficha/i });
+        fireEvent.click(viewBtns[0]!);
+
+        await waitFor(() => {
+          expect(screen.getByText("Datos Generales")).toBeTruthy();
+          expect(screen.getByText("Direcciones de Envío")).toBeTruthy();
+          expect(screen.getByText("Calificación e Historial")).toBeTruthy();
+          expect(screen.getByText("Atención y Consentimiento")).toBeTruthy();
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
   });
 });

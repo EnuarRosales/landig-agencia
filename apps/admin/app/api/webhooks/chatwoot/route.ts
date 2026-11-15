@@ -10,23 +10,102 @@ const defaultClientsRepo = new DrizzleClientsRepository();
 const defaultCrmRepo = new DrizzleCrmRepository();
 const defaultCrmService = new CrmService(defaultCrmRepo);
 
+interface ChatwootActor {
+  id?: number;
+  name?: string;
+  phone_number?: string;
+  email?: string;
+  type?: string;
+}
+
 /**
- * Estructura tipada esperada de eventos de webhook emitidos por Chatwoot.
+ * Estructura tipada esperada de eventos omnicanal de webhook emitidos por Chatwoot.
  */
 interface ChatwootWebhookPayload {
+  event?: string;
   account?: { id?: number };
   account_id?: number;
   id?: number;
   name?: string;
   phone_number?: string;
   email?: string;
-  sender?: { id?: number; name?: string; phone_number?: string; email?: string };
-  meta?: { sender?: { id?: number; name?: string; phone_number?: string; email?: string } };
+  channel?: string;
+  created_at?: string | number;
+  message_type?: string | number;
+  sender?: ChatwootActor;
+  contact?: ChatwootActor;
+  meta?: { sender?: ChatwootActor };
   inbox?: { channel_type?: string };
+  conversation?: {
+    channel?: string;
+    created_at?: string | number;
+    last_activity_at?: string | number;
+    meta?: { sender?: ChatwootActor };
+  };
+}
+
+function parseChatwootTimestamp(raw: string | number | undefined): Date | undefined {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const ms = raw < 1_000_000_000_000 ? raw * 1000 : raw;
+    const date = new Date(ms);
+    return Number.isNaN(date.getTime()) ? undefined : date;
+  }
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    const numeric = Number(raw);
+    if (!Number.isNaN(numeric) && /^\d+(\.\d+)?$/.test(raw.trim())) {
+      const ms = numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+      const date = new Date(ms);
+      return Number.isNaN(date.getTime()) ? undefined : date;
+    }
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? undefined : date;
+  }
+  return undefined;
+}
+
+function extractChatwootContact(payload: ChatwootWebhookPayload): ChatwootActor | undefined {
+  const isMessageEvent =
+    payload.event === "message_created" || payload.event === "message_updated";
+
+  if (isMessageEvent) {
+    const convSender = payload.conversation?.meta?.sender ?? payload.meta?.sender ?? payload.contact;
+    const msgSender =
+      payload.sender && payload.sender.type !== "user" ? payload.sender : undefined;
+    const resolved = msgSender ?? convSender;
+    if (resolved && typeof resolved.id === "number") {
+      return resolved;
+    }
+    if (convSender && typeof convSender.id === "number") {
+      return convSender;
+    }
+    return undefined;
+  }
+
+  const metaSender = payload.conversation?.meta?.sender ?? payload.meta?.sender;
+  const sender = payload.sender?.type !== "user" ? payload.sender : undefined;
+
+  if (payload.contact && typeof payload.contact.id === "number") {
+    return payload.contact;
+  }
+  if (sender && typeof sender.id === "number") {
+    return sender;
+  }
+  if (metaSender && typeof metaSender.id === "number") {
+    return metaSender;
+  }
+  if (typeof payload.id === "number") {
+    return {
+      id: payload.id,
+      name: payload.name,
+      phone_number: payload.phone_number,
+      email: payload.email,
+    };
+  }
+  return undefined;
 }
 
 /**
- * Generador del Route Handler de webhooks de Chatwoot con inyección de dependencias.
+ * Generador del Route Handler omnicanal de webhooks de Chatwoot con inyección de dependencias.
  */
 export function createChatwootWebhookHandler(
   clientsRepo: Pick<DrizzleClientsRepository, "findTenantByChatwootAccountId"> = defaultClientsRepo,
@@ -62,26 +141,43 @@ export function createChatwootWebhookHandler(
 
       const { clientId, cellId } = tenantRouting;
 
-      // 2. Extraer datos de contacto de la carga útil multicanal
-      const sender = payload?.sender ?? payload?.meta?.sender;
-      const contactId = payload?.id ?? sender?.id;
+      // 2. Extraer datos omnicanal de contacto y tipo de mensaje
+      const contact = extractChatwootContact(payload);
+      const contactId = contact?.id;
 
       if (typeof contactId !== "number") {
         return NextResponse.json({ ok: true, status: "ignored_no_contact" }, { status: 200 });
       }
 
-      const name = (payload?.name ?? sender?.name ?? "").trim() || `Contacto Chatwoot #${contactId}`;
-      const phoneMobile = (payload?.phone_number ?? sender?.phone_number ?? "").trim() || undefined;
-      const email = (payload?.email ?? sender?.email ?? "").trim() || undefined;
-      const channel = payload?.inbox?.channel_type ?? "whatsapp";
+      const isIncomingMessage =
+        payload.message_type === "incoming" || payload.message_type === 0;
+      const messageTimestamp = parseChatwootTimestamp(
+        payload.created_at ?? payload.conversation?.last_activity_at ?? payload.conversation?.created_at,
+      );
+      const channel =
+        payload.conversation?.channel ?? payload.inbox?.channel_type ?? payload.channel ?? "whatsapp";
 
-      // 3. Delegar ingesta idempotente al CrmService en la celda correspondiente
+      const fallbackName =
+        payload.event === "message_created" || payload.event === "message_updated"
+          ? contact?.name
+          : (payload.name ?? contact?.name);
+      const name = (fallbackName ?? "").trim() || `Contacto Chatwoot #${contactId}`;
+      const phoneMobile =
+        (contact?.phone_number ?? (payload.event?.startsWith("message_") ? undefined : payload.phone_number) ?? "").trim() ||
+        undefined;
+      const email =
+        (contact?.email ?? (payload.event?.startsWith("message_") ? undefined : payload.email) ?? "").trim() ||
+        undefined;
+
+      // 3. Delegar ingesta omnicanal idempotente al CrmService en la celda correspondiente
       const ingestionResult = await crmService.ingestFromChatwoot(cellId, clientId, {
         chatwootContactId: contactId,
         name,
         phoneMobile,
         email,
         channel,
+        isIncomingMessage,
+        messageTimestamp,
         executedBy: "chatwoot-webhook",
       });
 
@@ -102,6 +198,7 @@ export function createChatwootWebhookHandler(
         {
           ok: true,
           action: ingestionResult.data.action,
+          isWhatsapp: ingestionResult.data.isWhatsapp,
           duplicateWarning: ingestionResult.data.duplicateWarning ?? false,
         },
         { status: 200 },
@@ -117,7 +214,7 @@ export function createChatwootWebhookHandler(
 }
 
 /**
- * Route Handler receptor de webhooks de Chatwoot en mocter-admin (CRM-001 §5, T-04, T-08).
+ * Route Handler receptor omnicanal de webhooks de Chatwoot en mocter-admin (CRM-001 / SPEC-09).
  *
  * - **Método:** `POST`
  * - **Ruta:** `/api/webhooks/chatwoot`

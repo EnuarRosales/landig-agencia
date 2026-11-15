@@ -131,4 +131,118 @@ describe("CRM-001 / CHW-001 · Chatwoot Webhook Route Handler", () => {
       }),
     );
   });
+
+  it("extrae contacto real, canal WhatsApp y marca isIncomingMessage=true en message_created entrante", async () => {
+    mockClientsRepo.findTenantByChatwootAccountId.mockResolvedValue({
+      clientId: "11111111-1111-7111-8111-111111111111",
+      cellId: "pg-cell-01",
+    });
+
+    mockCrmService.ingestFromChatwoot.mockResolvedValue(
+      ok({
+        prospect: { id: "p-wa" } as CellContact,
+        action: "updated",
+        isWhatsapp: true,
+      }),
+    );
+
+    const req = createRequest({
+      event: "message_created",
+      id: 999999,
+      message_type: "incoming",
+      created_at: 1763220000,
+      account: { id: 101 },
+      conversation: {
+        channel: "Channel::Whatsapp",
+        meta: {
+          sender: {
+            id: 7788,
+            name: "Lucía WhatsApp",
+            phone_number: "+573101112233",
+          },
+        },
+      },
+      sender: {
+        id: 7788,
+        name: "Lucía WhatsApp",
+        phone_number: "+573101112233",
+        type: "contact",
+      },
+    });
+
+    const res = await handler(req);
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { ok: boolean; isWhatsapp?: boolean };
+    expect(json.ok).toBe(true);
+    expect(json.isWhatsapp).toBe(true);
+    expect(mockCrmService.ingestFromChatwoot).toHaveBeenCalledWith(
+      "pg-cell-01",
+      "11111111-1111-7111-8111-111111111111",
+      expect.objectContaining({
+        chatwootContactId: 7788,
+        name: "Lucía WhatsApp",
+        phoneMobile: "+573101112233",
+        channel: "Channel::Whatsapp",
+        isIncomingMessage: true,
+        messageTimestamp: new Date(1763220000 * 1000),
+      }),
+    );
+  });
+
+  it("preserva canal Instagram sin marcar WhatsApp y usa meta.sender cuando message_type es outgoing", async () => {
+    mockClientsRepo.findTenantByChatwootAccountId.mockResolvedValue({
+      clientId: "11111111-1111-7111-8111-111111111111",
+      cellId: "pg-cell-01",
+    });
+
+    mockCrmService.ingestFromChatwoot.mockResolvedValue(
+      ok({
+        prospect: { id: "p-ig" } as CellContact,
+        action: "reconciled",
+        isWhatsapp: false,
+      }),
+    );
+
+    const req = createRequest({
+      event: "message_created",
+      id: 888777,
+      message_type: "outgoing",
+      created_at: "2026-11-15T18:00:00.000Z",
+      account: { id: 101 },
+      inbox: { channel_type: "Channel::Instagram" },
+      conversation: {
+        meta: {
+          sender: {
+            id: 4455,
+            name: "Sofía IG",
+            email: "sofia@ig.test",
+          },
+        },
+      },
+      sender: {
+        id: 12,
+        name: "Agente Mocter",
+        type: "user",
+      },
+    });
+
+    const res = await handler(req);
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { ok: boolean; action: string; isWhatsapp?: boolean };
+    expect(json.ok).toBe(true);
+    expect(json.action).toBe("reconciled");
+    expect(json.isWhatsapp).toBe(false);
+    expect(mockCrmService.ingestFromChatwoot).toHaveBeenCalledWith(
+      "pg-cell-01",
+      "11111111-1111-7111-8111-111111111111",
+      expect.objectContaining({
+        chatwootContactId: 4455,
+        name: "Sofía IG",
+        email: "sofia@ig.test",
+        channel: "Channel::Instagram",
+        isIncomingMessage: false,
+        messageTimestamp: new Date("2026-11-15T18:00:00.000Z"),
+      }),
+    );
+  });
 });

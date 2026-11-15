@@ -1,11 +1,17 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { CrmService } from "./crm.service";
+import {
+  computeWhatsappWindow,
+  normalizeChatwootChannel,
+} from "./crm-omnichannel.helpers";
 import type {
   ICrmRepository,
   CrmQualityMetrics,
 } from "../repositories/crm.repository.interface";
 import type {
   CellContact,
+  CellContactAddress,
+  CellContactRating,
   CellProspectConsent,
   CellPrivacyNotice,
 } from "../db/schemas/tenant/crm";
@@ -17,6 +23,52 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
   let mockRepo: ICrmRepository;
   let service: CrmService;
 
+  function buildMockContact(overrides: Partial<CellContact> = {}): CellContact {
+    const now = new Date();
+    return {
+      id: "22222222-2222-7222-8222-222222222222",
+      clientId,
+      fullName: "Carlos Pérez",
+      documentType: null,
+      documentNumber: null,
+      email: null,
+      phoneMobile: "+573001234567",
+      phoneLandline: null,
+      phoneSecondary: null,
+      companyName: null,
+      birthDate: null,
+      country: null,
+      state: null,
+      city: null,
+      addressLine: null,
+      postalCode: null,
+      source: "manual",
+      channel: null,
+      preferredChannel: "whatsapp",
+      lastChannel: "manual",
+      chatwootContactId: null,
+      assignedUserId: null,
+      stage: "new",
+      tags: [],
+      language: "es",
+      notes: null,
+      currentRatingStars: null,
+      currentRatingComment: null,
+      firstContactedAt: now,
+      lastSeenAt: now,
+      lastInboundMessageAt: null,
+      lastWhatsappInboundAt: null,
+      convertedToCustomerAt: null,
+      deletedAt: null,
+      deletedBy: null,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: "user-1",
+      updatedBy: "user-1",
+      ...overrides,
+    };
+  }
+
   beforeEach(() => {
     mockRepo = {
       createContact: vi.fn(),
@@ -24,12 +76,23 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
       findContactById: vi.fn(),
       findContactByChatwootId: vi.fn(),
       findContactsByPhone: vi.fn(),
+      findContactsByEmail: vi.fn().mockResolvedValue([]),
+      findActiveDuplicateContact: vi.fn().mockResolvedValue(null),
       listContacts: vi.fn(),
+      softDeleteContact: vi.fn(),
       anonymizeContact: vi.fn(),
+      addContactRating: vi.fn(),
+      listContactRatings: vi.fn().mockResolvedValue([]),
+      listContactAddresses: vi.fn().mockResolvedValue([]),
+      createContactAddress: vi.fn(),
+      updateContactAddress: vi.fn(),
+      deleteContactAddress: vi.fn(),
+      listDefaultAddressesByContactIds: vi.fn().mockResolvedValue(new Map()),
+      listRecentOrdersForContact: vi.fn().mockResolvedValue([]),
       createConsent: vi.fn(),
       findActiveConsent: vi.fn(),
       revokeConsent: vi.fn(),
-      listConsentsByProspect: vi.fn(),
+      listConsentsByProspect: vi.fn().mockResolvedValue([]),
       createPrivacyNotice: vi.fn(),
       findPublishedPrivacyNotice: vi.fn(),
       upsertContactProfile: vi.fn(),
@@ -79,37 +142,10 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
     });
 
     it("permite el alta mínima con 2 campos válidos (nombre + teléfono E.164)", async () => {
-      const expectedContact: CellContact = {
-        id: "22222222-2222-7222-8222-222222222222",
-        clientId,
+      const expectedContact = buildMockContact({
         fullName: "Carlos Pérez",
-        documentType: null,
-        documentNumber: null,
-        email: null,
         phoneMobile: "+573001234567",
-        phoneLandline: null,
-        country: null,
-        state: null,
-        city: null,
-        addressLine: null,
-        postalCode: null,
-        source: "manual",
-        channel: null,
-        chatwootContactId: null,
-        assignedUserId: null,
-        stage: "new",
-        tags: [],
-        language: "es",
-        notes: null,
-        firstContactedAt: new Date(),
-        lastSeenAt: new Date(),
-        deletedAt: null,
-        deletedBy: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        createdBy: "user-1",
-        updatedBy: "user-1",
-      };
+      });
 
       vi.mocked(mockRepo.createContact).mockResolvedValue(expectedContact);
 
@@ -131,7 +167,7 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
     });
 
     it("normaliza el correo a minúsculas en el alta", async () => {
-      vi.mocked(mockRepo.createContact).mockResolvedValue({} as any);
+      vi.mocked(mockRepo.createContact).mockResolvedValue(buildMockContact());
 
       await service.createProspect(cellId, clientId, {
         fullName: "María Gómez",
@@ -145,37 +181,9 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
     });
 
     it("permite actualizar etapa, notas y agente asignado", async () => {
-      const existing: CellContact = {
-        id: "22222222-2222-7222-8222-222222222222",
-        clientId,
-        fullName: "Carlos Pérez",
-        documentType: null,
-        documentNumber: null,
+      const existing = buildMockContact({
         email: "carlos@test.com",
-        phoneMobile: "+573001234567",
-        phoneLandline: null,
-        country: null,
-        state: null,
-        city: null,
-        addressLine: null,
-        postalCode: null,
-        source: "manual",
-        channel: null,
-        chatwootContactId: null,
-        assignedUserId: null,
-        stage: "new",
-        tags: [],
-        language: "es",
-        notes: null,
-        firstContactedAt: new Date(),
-        lastSeenAt: new Date(),
-        deletedAt: null,
-        deletedBy: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        createdBy: "user-1",
-        updatedBy: "user-1",
-      };
+      });
 
       vi.mocked(mockRepo.findContactById).mockResolvedValue(existing);
       vi.mocked(mockRepo.updateContact).mockResolvedValue({
@@ -197,39 +205,18 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
     });
   });
 
-  describe("T-04 · Ingesta idempotente desde Chatwoot y detección de colisiones", () => {
+  describe("T-04 · Ingesta omnicanal desde Chatwoot y reconciliación sin duplicados", () => {
     it("actualiza lastSeenAt cuando el chatwootContactId ya existe en el sistema", async () => {
-      const existing: CellContact = {
+      const existing = buildMockContact({
         id: "33333333-3333-7333-8333-333333333333",
-        clientId,
         fullName: "Laura Restrepo",
-        documentType: null,
-        documentNumber: null,
-        email: null,
         phoneMobile: "+573109876543",
-        phoneLandline: null,
-        country: null,
-        state: null,
-        city: null,
-        addressLine: null,
-        postalCode: null,
         source: "whatsapp",
         channel: "whatsapp",
+        lastChannel: "whatsapp_cloud",
         chatwootContactId: 4501,
-        assignedUserId: null,
         stage: "in_conversation",
-        tags: [],
-        language: "es",
-        notes: null,
-        firstContactedAt: new Date("2026-10-01"),
-        lastSeenAt: new Date("2026-10-01"),
-        deletedAt: null,
-        deletedBy: null,
-        createdAt: new Date("2026-10-01"),
-        updatedAt: new Date("2026-10-01"),
-        createdBy: "chatwoot-webhook",
-        updatedBy: "chatwoot-webhook",
-      };
+      });
 
       vi.mocked(mockRepo.findContactByChatwootId).mockResolvedValue(existing);
       vi.mocked(mockRepo.updateContact).mockResolvedValue({
@@ -241,60 +228,94 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
         chatwootContactId: 4501,
         name: "Laura Restrepo",
         phoneMobile: "+573109876543",
+        channel: "Channel::Whatsapp",
+        isIncomingMessage: true,
         executedBy: "chatwoot-webhook",
       });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.data.action).toBe("updated");
+        expect(result.data.isWhatsapp).toBe(true);
       }
-      expect(mockRepo.updateContact).toHaveBeenCalled();
+      expect(mockRepo.updateContact).toHaveBeenCalledWith(
+        cellId,
+        clientId,
+        existing.id,
+        expect.objectContaining({
+          lastChannel: "whatsapp_cloud",
+          lastInboundMessageAt: expect.any(Date),
+          lastWhatsappInboundAt: expect.any(Date),
+        }),
+      );
       expect(mockRepo.createContact).not.toHaveBeenCalled();
     });
 
-    it("crea un nuevo prospecto e identifica conflicto de duplicidad si el teléfono ya existía en otro contacto", async () => {
+    it("reconcilia contacto manual existente por teléfono único conservando source original y enlazando chatwootContactId", async () => {
       vi.mocked(mockRepo.findContactByChatwootId).mockResolvedValue(null);
 
-      const manualContact: CellContact = {
+      const manualContact = buildMockContact({
         id: "44444444-4444-7444-8444-444444444444",
-        clientId,
         fullName: "Andrés Manual",
-        documentType: null,
-        documentNumber: null,
-        email: null,
         phoneMobile: "+573150001122",
-        phoneLandline: null,
-        country: null,
-        state: null,
-        city: null,
-        addressLine: null,
-        postalCode: null,
         source: "manual",
-        channel: null,
         chatwootContactId: null,
-        assignedUserId: null,
-        stage: "new",
-        tags: [],
-        language: "es",
-        notes: null,
-        firstContactedAt: new Date(),
-        lastSeenAt: new Date(),
-        deletedAt: null,
-        deletedBy: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        createdBy: "agent-1",
-        updatedBy: "agent-1",
-      };
+      });
       vi.mocked(mockRepo.findContactsByPhone).mockResolvedValue([manualContact]);
-
-      const newCreated: CellContact = {
+      vi.mocked(mockRepo.updateContact).mockResolvedValue({
         ...manualContact,
+        chatwootContactId: 9988,
+        lastChannel: "instagram",
+      });
+
+      const result = await service.ingestFromChatwoot(cellId, clientId, {
+        chatwootContactId: 9988,
+        name: "Andrés IG",
+        phoneMobile: "+573150001122",
+        channel: "Channel::Instagram",
+        isIncomingMessage: true,
+        executedBy: "chatwoot-webhook",
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.action).toBe("reconciled");
+        expect(result.data.isWhatsapp).toBe(false);
+        expect(result.data.prospect.source).toBe("manual");
+      }
+      expect(mockRepo.updateContact).toHaveBeenCalledWith(
+        cellId,
+        clientId,
+        manualContact.id,
+        expect.objectContaining({
+          chatwootContactId: 9988,
+          lastChannel: "instagram",
+          lastInboundMessageAt: expect.any(Date),
+        }),
+      );
+      expect(mockRepo.updateContact).not.toHaveBeenCalledWith(
+        cellId,
+        clientId,
+        manualContact.id,
+        expect.objectContaining({
+          lastWhatsappInboundAt: expect.anything(),
+        }),
+      );
+      expect(mockRepo.createContact).not.toHaveBeenCalled();
+    });
+
+    it("crea un nuevo prospecto con advertencia cuando existen múltiples contactos ambiguos con el mismo teléfono", async () => {
+      vi.mocked(mockRepo.findContactByChatwootId).mockResolvedValue(null);
+      const dup1 = buildMockContact({ id: "44444444-4444-7444-8444-444444444444", phoneMobile: "+573150001122" });
+      const dup2 = buildMockContact({ id: "44444444-4444-7444-8444-444444444445", phoneMobile: "+573150001122" });
+      vi.mocked(mockRepo.findContactsByPhone).mockResolvedValue([dup1, dup2]);
+
+      const newCreated = buildMockContact({
         id: "55555555-5555-7555-8555-555555555555",
         fullName: "Andrés WhatsApp",
         source: "whatsapp",
         chatwootContactId: 9988,
-      };
+      });
       vi.mocked(mockRepo.createContact).mockResolvedValue(newCreated);
 
       const result = await service.ingestFromChatwoot(cellId, clientId, {
@@ -332,6 +353,11 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
         updatedBy: "bot",
       };
 
+      vi.mocked(mockRepo.findContactById).mockResolvedValue(
+        buildMockContact({
+          id: "22222222-2222-7222-8222-222222222222",
+        }),
+      );
       vi.mocked(mockRepo.createConsent).mockResolvedValue(expectedConsent);
 
       const result = await service.recordConsent(cellId, clientId, {
@@ -411,37 +437,22 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
   describe("T-07 · Supresión con anonimización irreversible (D-04)", () => {
     it("anonimiza los campos identificables de un contacto sin eliminar sus consentimientos históricos", async () => {
       const prospectId = "88888888-8888-7888-8888-888888888888";
-      const existing: CellContact = {
+      const existing = buildMockContact({
         id: prospectId,
-        clientId,
         fullName: "Juan Supresión",
         documentType: "CC",
         documentNumber: "12345678",
         email: "juan@supresion.com",
         phoneMobile: "+573111112233",
-        phoneLandline: null,
         country: "CO",
         state: "Antioquia",
         city: "Medellín",
         addressLine: "Calle 10 # 40-20",
         postalCode: "050021",
-        source: "manual",
-        channel: null,
-        chatwootContactId: null,
-        assignedUserId: null,
         stage: "customer",
         tags: ["vip"],
-        language: "es",
         notes: "Notas confidenciales",
-        firstContactedAt: new Date(),
-        lastSeenAt: new Date(),
-        deletedAt: null,
-        deletedBy: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        createdBy: "user-1",
-        updatedBy: "user-1",
-      };
+      });
 
       vi.mocked(mockRepo.findContactById).mockResolvedValue(existing);
 
@@ -546,37 +557,19 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
     });
 
     it("registra únicamente tratamiento de datos cuando el usuario selecciona accept_treatment", async () => {
-      vi.mocked(mockRepo.findContactById).mockResolvedValue({
-        id: "22222222-2222-7222-8222-222222222222",
-        clientId,
-        fullName: "Diana Prince",
-        documentType: null,
-        documentNumber: null,
-        email: null,
-        phoneMobile: "+573009998877",
-        phoneLandline: null,
-        country: null,
-        state: null,
-        city: null,
-        addressLine: null,
-        postalCode: null,
-        source: "whatsapp",
-        channel: "whatsapp",
-        chatwootContactId: 9988,
-        assignedUserId: null,
-        stage: "new",
-        tags: [],
-        language: "es",
-        notes: null,
-        firstContactedAt: new Date(),
-        lastSeenAt: new Date(),
-        deletedAt: null,
-        deletedBy: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        createdBy: "bot",
-        updatedBy: "bot",
-      });
+      vi.mocked(mockRepo.findContactById).mockResolvedValue(
+        buildMockContact({
+          id: "22222222-2222-7222-8222-222222222222",
+          fullName: "Diana Prince",
+          phoneMobile: "+573009998877",
+          source: "whatsapp",
+          channel: "whatsapp",
+          lastChannel: "whatsapp",
+          chatwootContactId: 9988,
+          createdBy: "bot",
+          updatedBy: "bot",
+        }),
+      );
 
       const fakeConsent: CellProspectConsent = {
         id: "consent-treat-1",
@@ -612,37 +605,19 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
     });
 
     it("registra tratamiento y comunicaciones comerciales cuando el usuario selecciona accept_all", async () => {
-      vi.mocked(mockRepo.findContactById).mockResolvedValue({
-        id: "22222222-2222-7222-8222-222222222222",
-        clientId,
-        fullName: "Diana Prince",
-        documentType: null,
-        documentNumber: null,
-        email: null,
-        phoneMobile: "+573009998877",
-        phoneLandline: null,
-        country: null,
-        state: null,
-        city: null,
-        addressLine: null,
-        postalCode: null,
-        source: "whatsapp",
-        channel: "whatsapp",
-        chatwootContactId: 9988,
-        assignedUserId: null,
-        stage: "new",
-        tags: [],
-        language: "es",
-        notes: null,
-        firstContactedAt: new Date(),
-        lastSeenAt: new Date(),
-        deletedAt: null,
-        deletedBy: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        createdBy: "bot",
-        updatedBy: "bot",
-      });
+      vi.mocked(mockRepo.findContactById).mockResolvedValue(
+        buildMockContact({
+          id: "22222222-2222-7222-8222-222222222222",
+          fullName: "Diana Prince",
+          phoneMobile: "+573009998877",
+          source: "whatsapp",
+          channel: "whatsapp",
+          lastChannel: "whatsapp",
+          chatwootContactId: 9988,
+          createdBy: "bot",
+          updatedBy: "bot",
+        }),
+      );
 
       vi.mocked(mockRepo.createConsent)
         .mockResolvedValueOnce({
@@ -798,6 +773,180 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
       if (!newRes.ok) {
         expect(newRes.error).toBe("Has alcanzado el límite de contactos incluido en tu plan.");
         expect(newRes.code).toBe("QUOTA_EXCEEDED");
+      }
+    });
+  });
+
+  describe("SPEC-09 · Ventana 24h WhatsApp, Omnicanalidad, Calificaciones, Direcciones y Conversión", () => {
+    it("calcula ventana WhatsApp 24h exclusivamente con lastWhatsappInboundAt (active, expired, none)", () => {
+      const now = new Date("2026-11-15T12:00:00.000Z");
+
+      expect(computeWhatsappWindow(null, now)).toEqual({
+        status: "none",
+        expiresAt: null,
+        remainingSeconds: 0,
+      });
+
+      const twoHoursAgo = new Date("2026-11-15T10:00:00.000Z");
+      const activeWin = computeWhatsappWindow(twoHoursAgo, now);
+      expect(activeWin.status).toBe("active");
+      expect(activeWin.remainingSeconds).toBe(22 * 3600);
+
+      const expiredInbound = new Date("2026-11-14T11:59:00.000Z");
+      const expiredWin = computeWhatsappWindow(expiredInbound, now);
+      expect(expiredWin.status).toBe("expired");
+      expect(expiredWin.remainingSeconds).toBe(0);
+    });
+
+    it("normaliza canales omnicanal de Chatwoot sin colapsarlos todos a WhatsApp", () => {
+      expect(normalizeChatwootChannel("Channel::Whatsapp")).toEqual({
+        source: "whatsapp",
+        channel: "whatsapp_cloud",
+        isWhatsapp: true,
+      });
+      expect(normalizeChatwootChannel("Channel::Instagram")).toEqual({
+        source: "instagram",
+        channel: "instagram",
+        isWhatsapp: false,
+      });
+      expect(normalizeChatwootChannel("Channel::FacebookPage")).toEqual({
+        source: "facebook",
+        channel: "facebook",
+        isWhatsapp: false,
+      });
+      expect(normalizeChatwootChannel("Channel::WebWidget")).toEqual({
+        source: "web",
+        channel: "website",
+        isWhatsapp: false,
+      });
+    });
+
+    it("rechaza creación manual duplicada con código CONFLICT y fechas de cumpleaños futuras", async () => {
+      const futureRes = await service.createProspect(cellId, clientId, {
+        fullName: "Futuro",
+        phoneMobile: "+573001112233",
+        birthDate: "2099-01-01",
+        createdBy: "user-1",
+      });
+      expect(futureRes.ok).toBe(false);
+      if (!futureRes.ok) {
+        expect(futureRes.code).toBe("VALIDATION_ERROR");
+      }
+
+      vi.mocked(mockRepo.findActiveDuplicateContact!).mockResolvedValueOnce(
+        buildMockContact({ id: "existing-dup", fullName: "Laura Existente" }),
+      );
+      const dupRes = await service.createProspect(cellId, clientId, {
+        fullName: "Laura Nueva",
+        phoneMobile: "+573001234567",
+        source: "referral",
+        createdBy: "user-1",
+      });
+      expect(dupRes.ok).toBe(false);
+      if (!dupRes.ok) {
+        expect(dupRes.code).toBe("CONFLICT");
+      }
+    });
+
+    it("califica un contacto 1..5 estrellas dejando historial y rechaza fuera de rango", async () => {
+      const invalid = await service.rateContact(cellId, clientId, "c-1", {
+        stars: 6,
+        ratedByName: "Agente",
+      });
+      expect(invalid.ok).toBe(false);
+
+      const rating: CellContactRating = {
+        id: "r-1",
+        clientId,
+        contactId: "c-1",
+        stars: 5,
+        comment: "Comprador mayorista recurrente",
+        ratedByUserId: "u-1",
+        ratedByName: "Ana",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "Ana",
+        updatedBy: "Ana",
+      };
+      vi.mocked(mockRepo.addContactRating!).mockResolvedValueOnce({
+        rating,
+        contact: buildMockContact({
+          id: "c-1",
+          currentRatingStars: 5,
+          currentRatingComment: "Comprador mayorista recurrente",
+        }),
+      });
+
+      const rated = await service.rateContact(cellId, clientId, "c-1", {
+        stars: 5,
+        comment: "Comprador mayorista recurrente",
+        ratedByUserId: "u-1",
+        ratedByName: "Ana",
+      });
+      expect(rated.ok).toBe(true);
+      if (rated.ok) {
+        expect(rated.data.rating.stars).toBe(5);
+        expect(rated.data.contact.currentRatingStars).toBe(5);
+      }
+    });
+
+    it("gestiona múltiples direcciones y registra conversión al pasar a customer", async () => {
+      const contact = buildMockContact({ id: "c-1", stage: "qualified" });
+      vi.mocked(mockRepo.findContactById).mockResolvedValue(contact);
+      vi.mocked(mockRepo.updateContact).mockResolvedValue({
+        ...contact,
+        stage: "customer",
+        convertedToCustomerAt: new Date(),
+      });
+
+      const stageRes = await service.updateStage(cellId, clientId, "c-1", "customer", "owner");
+      expect(stageRes.ok).toBe(true);
+      expect(mockRepo.updateContact).toHaveBeenCalledWith(
+        cellId,
+        clientId,
+        "c-1",
+        expect.objectContaining({
+          stage: "customer",
+          convertedToCustomerAt: expect.any(Date),
+        }),
+      );
+
+      const addr: CellContactAddress = {
+        id: "a-1",
+        clientId,
+        contactId: "c-1",
+        label: "Oficina",
+        country: "Colombia",
+        state: "Antioquia",
+        city: "Medellín",
+        addressLine: "Cra 43A # 1-50",
+        neighborhood: "El Poblado",
+        postalCode: null,
+        referenceNotes: "Recepción piso 4",
+        isDefault: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: "owner",
+        updatedBy: "owner",
+      };
+      vi.mocked(mockRepo.createContactAddress!).mockResolvedValueOnce(addr);
+      const addrRes = await service.createContactAddress(cellId, clientId, "c-1", {
+        label: "Oficina",
+        city: "Medellín",
+        addressLine: "Cra 43A # 1-50",
+        isDefault: true,
+        actor: "owner",
+      });
+      expect(addrRes.ok).toBe(true);
+
+      vi.mocked(mockRepo.deleteContactAddress!).mockResolvedValueOnce({
+        deleted: true,
+        promotedAddressId: "a-2",
+      });
+      const delRes = await service.deleteContactAddress(cellId, clientId, "c-1", "a-1", "owner");
+      expect(delRes.ok).toBe(true);
+      if (delRes.ok) {
+        expect(delRes.data.promotedAddressId).toBe("a-2");
       }
     });
   });
