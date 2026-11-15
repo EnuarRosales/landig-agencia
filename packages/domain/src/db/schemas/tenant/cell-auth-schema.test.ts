@@ -75,6 +75,7 @@ describe("ADM-001 T-04 · Separación de las dos líneas de migración Drizzle",
       "0009_cell_phase4_conversation_state_rls_grants_comments",
       "0010_cell_phase5_payment_channels",
       "0011_cell_phase5_payment_channels_rls_grants_comments",
+      "0012_add_product_cost_price_cents",
     ]);
     for (const tag of cellTags) {
       expect(controlTags).not.toContain(tag);

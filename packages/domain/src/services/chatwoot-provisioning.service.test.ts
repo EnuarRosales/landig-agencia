@@ -472,6 +472,52 @@ describe("T4 & T5 · Chatwoot Provisioning and Plan Synchronization Service", ()
       );
     });
 
+    it("ensureAccountWebhook maneja respuestas reales de Chatwoot con { payload: { webhooks: [...] } } sin lanzar webhooks.find is not a function", async () => {
+      const fakeFetch = vi
+        .fn()
+        // 1. GET webhooks -> objeto { payload: { webhooks: [] } } como retorna Chatwoot v4
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ payload: { webhooks: [] } }),
+        })
+        // 2. POST webhooks -> webhook creado
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ payload: { webhook: { id: 702, url: "http://admin-portal:3003/api/webhooks/chatwoot" } } }),
+        })
+        // 3. Segundo llamado con webhook ya existente en { payload: { webhooks: [...] } }
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            payload: { webhooks: [{ id: 702, url: "http://admin-portal:3003/api/webhooks/chatwoot" }] },
+          }),
+        });
+      globalThis.fetch = fakeFetch;
+
+      const gw = new ChatwootHttpPlatformGateway({
+        baseUrl: "http://chatwoot:3000",
+        platformToken: "plat-tok",
+      });
+
+      const created = await gw.ensureAccountWebhook({
+        accountId: 10,
+        serviceToken: "svc-tok",
+        webhookUrl: "http://admin-portal:3003/api/webhooks/chatwoot",
+      });
+      expect(created.id).toBe(702);
+
+      const existing = await gw.ensureAccountWebhook({
+        accountId: 10,
+        serviceToken: "svc-tok",
+        webhookUrl: "http://admin-portal:3003/api/webhooks/chatwoot",
+      });
+      expect(existing).toEqual({
+        id: 702,
+        url: "http://admin-portal:3003/api/webhooks/chatwoot",
+      });
+      expect(fakeFetch).toHaveBeenCalledTimes(3);
+    });
+
     it("ensureMemberUserInAccount crea el usuario y lo asocia a la cuenta con su rol", async () => {
       const fakeFetch = vi
         .fn()

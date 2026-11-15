@@ -37,7 +37,9 @@ Toda confirmación contextual (eliminación física, retiro lógico, drenado de 
   - **Acción Destructiva / Crítica (Hard Delete):** Icono `Trash2` o `AlertTriangle` en tono carmesí (`text-rose-600 dark:text-rose-400`).
   - **Advertencia / Retiro / Drenado (Soft Delete / Draining):** Icono `Archive`, `ShieldAlert` o `AlertTriangle` en tono ámbar (`text-amber-600 dark:text-amber-400`).
   - **Restablecimiento / Operación Neutral:** Icono `RefreshCw` o `Info` en tono de acento (`text-[var(--dsn-accent)]`).
-- **Título:** Formulado obligatoriamente en formato **Tipo Título (Title Case)** estricto con las iniciales en mayúscula (AGENTS.md §4.8), por ejemplo: *«Eliminación De Célula De Datos»*, *«Drenado De Célula De Datos»*, *«Restauración De Marca Visual»*.
+- **Título:** Formulado obligatoriamente en formato **Tipo Título (Title Case)** gramatical estándar (AGENTS.md §4.8). Las palabras léxicas principales (sustantivos, verbos, adjetivos y adverbios) inician con mayúscula, mientras que las palabras funcionales o de enlace (artículos, conjunciones coordinantes y preposiciones cortas como *de*, *del*, *y*, *o*, *en*, *con*, *por*, *para*, *a*) van en minúscula salvo al inicio de la frase. Quedan prohibidas las mayúsculas sostenidas (`uppercase`). Ejemplos:
+  - ✅ Correcto: *«Eliminación de Célula de Datos»*, *«Drenado de Célula de Datos»*, *«Restauración de Marca Visual»*, *«Productos y Catálogo Comercial»*.
+  - ❌ Incorrecto: *«ELIMINACIÓN DE CÉLULA»* (mayúsculas sostenidas) o *«Productos Y Catálogo Comercial»* (enlace capitalizado innecesariamente).
 - **Botón de Cierre:** Icono `X` (`h-4 w-4`) en la esquina superior derecha con hover suave (`hover:bg-[var(--dsn-surface-secondary)]`).
 
 ### 2.3 Tarjeta de Metadatos del Recurso (Summary Card)

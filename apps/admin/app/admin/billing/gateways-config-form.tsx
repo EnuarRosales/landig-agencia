@@ -35,7 +35,7 @@ const BRE_B_KEY_TYPE_OPTIONS = [
   { value: "email", label: "Correo Electrónico" },
   { value: "document", label: "Documento / NIT" },
   { value: "alphanumeric", label: "Llave Alfanumérica" },
-  { value: "merchant_code", label: "Código De Comercio" },
+  { value: "merchant_code", label: "Código de Comercio" },
 ] as const;
 
 export function GatewaysConfigForm({ initialGateways }: GatewaysConfigFormProps) {
@@ -403,12 +403,12 @@ export function GatewaysConfigForm({ initialGateways }: GatewaysConfigFormProps)
                         <div className="flex items-center justify-between mb-1">
                           <label className="block text-xs font-semibold text-[var(--dsn-text)]">
                             {isWompi
-                              ? "Secreto De Eventos Wompi (Checksum Secret)"
-                              : "Secreto De Firma Webhook Stripe (whsec_...)"}
+                              ? "Secreto de Eventos Wompi (Checksum Secret)"
+                              : "Secreto de Firma Webhook Stripe (whsec_...)"}
                           </label>
                           {g.hasWebhookSecret && (
                             <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
-                              <ShieldCheck className="h-3 w-3" /> Cifrado Con AES-256-GCM
+                              <ShieldCheck className="h-3 w-3" /> Cifrado con AES-256-GCM
                             </span>
                           )}
                         </div>
@@ -432,8 +432,8 @@ export function GatewaysConfigForm({ initialGateways }: GatewaysConfigFormProps)
                   <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/60 p-3">
                     <label className="block text-[11px] font-semibold text-[var(--dsn-text-secondary)] mb-1">
                       {isBreB
-                        ? "Ruta De Recepción De Comprobantes Bre-B"
-                        : `URL Canónica Para El Webhook De ${isWompi ? "Wompi" : "Stripe"}`}
+                        ? "Ruta de Recepción de Comprobantes Bre-B"
+                        : `URL Canónica para el Webhook de ${isWompi ? "Wompi" : "Stripe"}`}
                     </label>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs text-[var(--dsn-accent)] truncate select-all">
@@ -476,8 +476,8 @@ export function GatewaysConfigForm({ initialGateways }: GatewaysConfigFormProps)
                   ) : (
                     <span>
                       {isBreB
-                        ? "Guardar Configuración De Bre-B"
-                        : `Guardar Configuración De ${isWompi ? "Wompi" : "Stripe"}`}
+                        ? "Guardar Configuración de Bre-B"
+                        : `Guardar Configuración de ${isWompi ? "Wompi" : "Stripe"}`}
                     </span>
                   )}
                 </button>

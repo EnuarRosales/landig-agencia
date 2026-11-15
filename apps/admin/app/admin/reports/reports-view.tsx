@@ -43,7 +43,7 @@ export function ReportsView({ initialData }: ReportsViewProps) {
       ["Total Almacenado", initialData.storage.totalBytes.toString()],
       [],
       ["Inferencia AI", "Tokens"],
-      ["Bots De Atención", initialData.aiUsage.botTokens.toString()],
+      ["Bots de Atención", initialData.aiUsage.botTokens.toString()],
       ["Asistente AI Assist", initialData.aiUsage.assistTokens.toString()],
       ["Total Tokens", initialData.aiUsage.totalTokens.toString()],
     ];

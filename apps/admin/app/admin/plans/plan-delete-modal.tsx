@@ -92,7 +92,7 @@ export function PlanDeleteModal({
               <Trash2 className="h-5 w-5 text-rose-600 dark:text-rose-400" />
             )}
             <h2 id="delete-plan-modal-title" className="text-base font-bold text-[var(--dsn-text)]">
-              {willRetire ? "Retiro De Plan Comercial" : "Eliminación De Plan Comercial"}
+              {willRetire ? "Retiro de Plan Comercial" : "Eliminación de Plan Comercial"}
             </h2>
           </div>
           <button

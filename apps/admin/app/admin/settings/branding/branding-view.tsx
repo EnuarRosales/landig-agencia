@@ -352,8 +352,8 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
               {/* Paleta de Colores */}
               <div className="border-t border-[var(--dsn-border)] pt-4 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--dsn-text-secondary)]">
-                    Paleta De Colores Corporativa
+                  <h3 className="text-xs font-bold tracking-wider text-[var(--dsn-text-secondary)]">
+                    Paleta de Colores Corporativa
                   </h3>
                   <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold border ${
                     isAccessible
@@ -606,10 +606,10 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="border-b border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 text-[var(--dsn-text-secondary)] uppercase tracking-wider font-semibold">
+                <thead className="border-b border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 text-[var(--dsn-text-secondary)] tracking-wider font-semibold">
                   <tr>
                     <th scope="col" className="px-4 py-3">Comercio / Inquilino</th>
-                    <th scope="col" className="px-4 py-3">Estado De Marca</th>
+                    <th scope="col" className="px-4 py-3">Estado de Marca</th>
                     <th scope="col" className="px-4 py-3">Color Primario</th>
                     <th scope="col" className="px-4 py-3">Dominio Personalizado</th>
                     <th scope="col" className="px-4 py-3 text-right">Acciones</th>
@@ -706,7 +706,7 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
           setResetError(null);
         }}
         onConfirm={handleConfirmResetTenant}
-        title="Restauración De Marca Visual"
+        title="Restauración de Marca Visual"
         subtitle="Reversión a los valores predeterminados de Mocter."
         variant="warning"
         icon={<RotateCcw className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
@@ -729,7 +729,7 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
               ]
             : []
         }
-        warningTitle="Reversión A Identidad Canónica Mocter"
+        warningTitle="Reversión a Identidad Canónica Mocter"
         warningMessage={
           <p>
             Esta acción restablecerá el logo corporativo, favicon, paleta personalizada y tipografía del comercio a los valores oficiales de la plataforma Mocter.

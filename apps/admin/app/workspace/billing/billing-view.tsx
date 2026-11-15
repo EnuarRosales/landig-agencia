@@ -212,10 +212,10 @@ export function PlanCapabilitiesMatrix({
   const dict = getAdminDictionary(locale).workspace;
 
   const groupLabels: Record<WorkspaceBillingCapabilityItem["category"], string> = {
-    channels: locale === "en" ? "Service Channels" : "Canales De Atención",
-    automation: locale === "en" ? "Automation & Campaigns" : "Automatización Y Campañas",
+    channels: locale === "en" ? "Service Channels" : "Canales de Atención",
+    automation: locale === "en" ? "Automation & Campaigns" : "Automatización y Campañas",
     ai: locale === "en" ? "Artificial Intelligence" : "Inteligencia Artificial",
-    team: locale === "en" ? "Team & Operations" : "Equipo Y Operación",
+    team: locale === "en" ? "Team & Operations" : "Equipo y Operación",
   };
 
   const groups = (["channels", "ai", "automation", "team"] as const)

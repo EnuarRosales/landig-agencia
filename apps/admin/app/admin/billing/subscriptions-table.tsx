@@ -252,12 +252,16 @@ export function SubscriptionsTable({ initialSubscriptions, metrics }: Subscripti
                         {sub.status === "trialing" && sub.trialEndsAt ? (
                           <div className="flex items-center gap-1 text-cyan-400">
                             <Clock className="h-3 w-3" />
-                            <span>Fin trial: {new Date(sub.trialEndsAt).toLocaleDateString("es-CO")}</span>
+                            <span suppressHydrationWarning>
+                              Fin trial: {new Date(sub.trialEndsAt).toLocaleDateString("es-CO", { timeZone: "America/Bogota" })}
+                            </span>
                           </div>
                         ) : (
                           <div className="flex items-center gap-1">
                             <Calendar className="h-3 w-3" />
-                            <span>{new Date(sub.currentPeriodEnd).toLocaleDateString("es-CO")}</span>
+                            <span suppressHydrationWarning>
+                              {new Date(sub.currentPeriodEnd).toLocaleDateString("es-CO", { timeZone: "America/Bogota" })}
+                            </span>
                           </div>
                         )}
                       </td>

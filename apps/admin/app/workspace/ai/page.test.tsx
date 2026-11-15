@@ -127,7 +127,7 @@ describe("SPEC-02 T-07 · Workspace AiSettingsView", () => {
 
     render(<AiSettingsView initialOverview={baseOverview} isOwner={true} />);
 
-    expect(screen.getByLabelText("Proveedor De Inteligencia Artificial")).toBeDefined();
+    expect(screen.getByLabelText("Proveedor de Inteligencia Artificial")).toBeDefined();
     expect(screen.getByText(/••••4321/)).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: /Probar Conexión/i }));
@@ -186,7 +186,7 @@ describe("SPEC-02 T-07 · Workspace AiSettingsView", () => {
     render(<AiSettingsView initialOverview={baseOverview} isOwner={true} />);
 
     const providerSelect = screen.getByLabelText(
-      "Proveedor De Inteligencia Artificial",
+      "Proveedor de Inteligencia Artificial",
     ) as HTMLSelectElement;
     fireEvent.change(providerSelect, { target: { value: "deepseek" } });
 
@@ -194,13 +194,13 @@ describe("SPEC-02 T-07 · Workspace AiSettingsView", () => {
       "Modelo Preferido",
     ) as HTMLSelectElement;
     const tempInput = screen.getByLabelText(
-      /Temperatura De Respuesta/i,
+      /Temperatura de Respuesta/i,
     ) as HTMLInputElement;
     const tokensInput = screen.getByLabelText(
-      "Límite Máximo De Tokens",
+      "Límite Máximo de Tokens",
     ) as HTMLInputElement;
     const prioritySelect = screen.getByLabelText(
-      "Rol De Prioridad (Respaldo Automático)",
+      "Rol de Prioridad (Respaldo Automático)",
     ) as HTMLSelectElement;
 
     expect(modelSelect.value).toBe("m-ds-chat");
@@ -209,11 +209,11 @@ describe("SPEC-02 T-07 · Workspace AiSettingsView", () => {
     expect(prioritySelect.value).toBe("secondary");
     expect(screen.getByAltText("DeepSeek")).toBeDefined();
 
-    fireEvent.change(screen.getByLabelText("API Key Del Proveedor"), {
+    fireEvent.change(screen.getByLabelText("API Key del Proveedor"), {
       target: { value: "sk-deepseek-test-9999" },
     });
     fireEvent.click(
-      screen.getByRole("button", { name: /Guardar Y Activar Credencial/i }),
+      screen.getByRole("button", { name: /Guardar y Activar Credencial/i }),
     );
 
     await waitFor(() => {

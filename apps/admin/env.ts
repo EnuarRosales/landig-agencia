@@ -89,6 +89,9 @@ export const env = createEnv({
     NEXT_PUBLIC_SAAS_LOGO_URL: z
       .string()
       .optional(),
+    NEXT_PUBLIC_NODE_ENV: z
+      .enum(["development", "test", "production"])
+      .default("development"),
   },
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
@@ -118,6 +121,7 @@ export const env = createEnv({
     NEXT_PUBLIC_CHATWOOT_URL: process.env.NEXT_PUBLIC_CHATWOOT_URL,
     NEXT_PUBLIC_SAAS_BRAND_NAME: process.env.NEXT_PUBLIC_SAAS_BRAND_NAME,
     NEXT_PUBLIC_SAAS_LOGO_URL: process.env.NEXT_PUBLIC_SAAS_LOGO_URL,
+    NEXT_PUBLIC_NODE_ENV: process.env.NEXT_PUBLIC_NODE_ENV || process.env.NODE_ENV,
   },
   skipValidation: shouldSkipEnvValidation(),
 });

@@ -40,8 +40,8 @@ describe("mocter-admin Phase 2 · i18n, DSN-001 & ADM-001 T-27, T-29, T-37", () 
     const es = getAdminDictionary("es");
     const en = getAdminDictionary("en");
 
-    expect(es.onboarding.aiEnhanceButton).toBe("Mejorar con AI");
-    expect(en.onboarding.aiEnhanceButton).toBe("Enhance with AI");
+    expect(es.onboarding.step1SubmitCta).toBe("Guardar y Continuar al Paso 2");
+    expect(en.onboarding.step1SubmitCta).toBe("Save & Continue To Step 2");
     expect(es.leads.exportCsv).toBe("Exportar CSV");
     expect(en.leads.exportCsv).toBe("Export CSV");
     expect(es.notifications.maskedSecretLabel).toContain("AES-256-GCM");

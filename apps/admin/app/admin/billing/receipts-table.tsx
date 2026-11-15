@@ -163,10 +163,14 @@ export function ReceiptsTable({ invoices, receipts }: ReceiptsTableProps) {
                         </span>
                       </td>
                       <td className="py-3.5 px-4 font-mono text-[11px] text-[var(--dsn-text-secondary)]">
-                        {new Date(inv.createdAt).toLocaleDateString("es-CO")}
+                        <span suppressHydrationWarning>
+                          {new Date(inv.createdAt).toLocaleDateString("es-CO", { timeZone: "America/Bogota" })}
+                        </span>
                       </td>
                       <td className="py-3.5 px-4 font-mono text-[11px] text-[var(--dsn-text-secondary)]">
-                        {inv.paidAt ? new Date(inv.paidAt).toLocaleDateString("es-CO") : "—"}
+                        <span suppressHydrationWarning>
+                          {inv.paidAt ? new Date(inv.paidAt).toLocaleDateString("es-CO", { timeZone: "America/Bogota" }) : "—"}
+                        </span>
                       </td>
                     </tr>
                   );

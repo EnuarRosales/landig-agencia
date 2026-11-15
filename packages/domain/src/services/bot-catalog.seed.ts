@@ -1,6 +1,9 @@
-/**
- * Semilla canónica versionada del catálogo de gobernanza de IA y Bots (BOT-001 T-03).
- */
+import { eq } from "drizzle-orm";
+import { getDb } from "../db/client";
+import { aiModels, botPresets, botTones } from "../db/schemas/admin/bot-catalog";
+import { appLogger } from "../utils/logger";
+
+type DrizzleClient = ReturnType<typeof getDb>;
 
 export const INITIAL_AI_PROVIDERS = [
   {
@@ -71,57 +74,14 @@ export const INITIAL_AI_PROVIDERS = [
   },
 ] as const;
 
-export const INITIAL_BOT_TONES = [
-  {
-    code: "cercano",
-    labels: { es: "Cercano y empático", en: "Warm & empathetic" },
-    description: {
-      es: "Lenguaje cálido, amable y accesible para venta consultiva y fidelización.",
-      en: "Friendly and approachable tone for conversational commerce.",
-    },
-    isActive: true,
-    sortOrder: 1,
-  },
-  {
-    code: "formal",
-    labels: { es: "Profesional y formal", en: "Professional & formal" },
-    description: {
-      es: "Respetuoso, corporativo y directo, ideal para servicios B2B.",
-      en: "Corporate and respectful communication for B2B contexts.",
-    },
-    isActive: true,
-    sortOrder: 2,
-  },
-  {
-    code: "entusiasta",
-    labels: { es: "Entusiasta y enérgico", en: "Enthusiastic & vibrant" },
-    description: {
-      es: "Dinámico y motivador, optimizado para promociones y retail.",
-      en: "Dynamic and motivating tone, ideal for consumer promotions.",
-    },
-    isActive: true,
-    sortOrder: 3,
-  },
-  {
-    code: "conciso",
-    labels: { es: "Conciso y resolutivo", en: "Concise & direct" },
-    description: {
-      es: "Respuestas breves y al grano enfocadas en resolver rápido.",
-      en: "Short and actionable answers focused on high resolution speed.",
-    },
-    isActive: true,
-    sortOrder: 4,
-  },
-] as const;
-
 export const INITIAL_CHATWOOT_CHANNEL_TYPES = [
   {
     code: "website",
     labels: { es: "Widget Web (Livechat)", en: "Website Livechat" },
     provisioning: "api",
     notes: {
-      es: "Aprovisionamiento nativo inmediato mediante API de Chatwoot.",
-      en: "Direct provisioning via Chatwoot API.",
+      es: "Aprovisionamiento nativo inmediato mediante API de mensajería.",
+      en: "Direct provisioning via messaging API.",
     },
     isAdmissible: true,
     sortOrder: 1,
@@ -131,8 +91,8 @@ export const INITIAL_CHATWOOT_CHANNEL_TYPES = [
     labels: { es: "WhatsApp Cloud API", en: "WhatsApp Cloud API" },
     provisioning: "oauth",
     notes: {
-      es: "Conexión mediada por flujo Meta Business en Chatwoot.",
-      en: "Meta Business OAuth flow mediated by Chatwoot.",
+      es: "Conexión mediada por flujo Meta Business.",
+      en: "Meta Business OAuth flow.",
     },
     isAdmissible: true,
     sortOrder: 2,
@@ -142,8 +102,8 @@ export const INITIAL_CHATWOOT_CHANNEL_TYPES = [
     labels: { es: "WhatsApp vía Twilio", en: "WhatsApp via Twilio" },
     provisioning: "oauth",
     notes: {
-      es: "Configuración de credenciales Twilio en Chatwoot.",
-      en: "Twilio credentials configuration in Chatwoot.",
+      es: "Configuración de credenciales Twilio.",
+      en: "Twilio credentials configuration.",
     },
     isAdmissible: true,
     sortOrder: 3,
@@ -216,3 +176,198 @@ export const INITIAL_BOT_DEFAULTS = {
   version: 1,
 } as const;
 
+export interface SeedBotToneDefinition {
+  code: string;
+  labels: { es: string; en: string };
+  description: { es: string; en: string };
+  sortOrder: number;
+}
+
+export interface SeedBotPresetDefinition {
+  code: string;
+  labels: { es: string; en: string };
+  preferredModelIds: string[];
+  temperature: string;
+  maxTokens: number;
+  recommendedFor: { es: string; en: string };
+  sortOrder: number;
+}
+
+/**
+ * Catálogo inicial de tonos comunicacionales para asistentes virtuales (`SPEC-06 D-02`, `BOT-001 §4.1`).
+ */
+export const INITIAL_BOT_TONES: SeedBotToneDefinition[] = [
+  {
+    code: "friendly_close",
+    labels: { es: "Cercano y Amigable", en: "Warm and Friendly" },
+    description: {
+      es: "Trato cálido, empático y conversacional orientado a generar confianza rápida.",
+      en: "Warm, empathetic, conversational style focused on quick trust building.",
+    },
+    sortOrder: 1,
+  },
+  {
+    code: "professional_clear",
+    labels: { es: "Profesional y Directo", en: "Professional and Direct" },
+    description: {
+      es: "Respuestas claras, respetuosas y estructuradas sin rodeos innecesarios.",
+      en: "Clear, respectful, and structured answers without unnecessary filler.",
+    },
+    sortOrder: 2,
+  },
+  {
+    code: "consultative_expert",
+    labels: { es: "Consultivo y Experto", en: "Consultative and Expert" },
+    description: {
+      es: "Guía al cliente con recomendaciones comparativas basadas en necesidades.",
+      en: "Guides customers with tailored comparative recommendations.",
+    },
+    sortOrder: 3,
+  },
+  {
+    code: "dynamic_commercial",
+    labels: { es: "Dinámico y Comercial", en: "Dynamic and Persuasive" },
+    description: {
+      es: "Enfocado en resaltar beneficios clave y agilizar el cierre del pedido.",
+      en: "Focused on highlighting key benefits and speeding up order closing.",
+    },
+    sortOrder: 4,
+  },
+];
+
+/**
+ * Presets base de asistente virtual vinculados a modelos activos de `admin.ai_models` (`SPEC-06 D-02`).
+ */
+export const INITIAL_BOT_PRESETS: SeedBotPresetDefinition[] = [
+  {
+    code: "quick_sales",
+    labels: { es: "Ventas Rápidas", en: "Fast Sales" },
+    preferredModelIds: ["gpt-4o-mini", "gemini-1.5-flash", "openai/gpt-4o-mini"],
+    temperature: "0.4",
+    maxTokens: 700,
+    recommendedFor: {
+      es: "Catálogos ágiles que buscan responder precios, disponibilidad y cerrar pedidos en pocos turnos.",
+      en: "Fast-moving catalogs focused on pricing, stock answers, and quick checkout.",
+    },
+    sortOrder: 1,
+  },
+  {
+    code: "consultative_advisor",
+    labels: { es: "Asesor Consultivo", en: "Consultative Advisor" },
+    preferredModelIds: ["gpt-4o", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+    temperature: "0.6",
+    maxTokens: 1100,
+    recommendedFor: {
+      es: "Productos técnicos o servicios que requieren orientación comparativa antes de comprar.",
+      en: "Technical products or services needing comparative guidance before purchase.",
+    },
+    sortOrder: 2,
+  },
+  {
+    code: "support_booking",
+    labels: { es: "Soporte y Reservas", en: "Support and Bookings" },
+    preferredModelIds: ["claude-3-5-haiku-20241022", "gpt-4o-mini", "deepseek-chat"],
+    temperature: "0.3",
+    maxTokens: 800,
+    recommendedFor: {
+      es: "Atención postventa, seguimiento de pedidos y agendamiento preciso con baja variabilidad.",
+      en: "Post-sale support, order tracking, and accurate scheduling with low variance.",
+    },
+    sortOrder: 3,
+  },
+];
+
+/**
+ * Objetivos comerciales predefinidos para el selector del Paso 4 de onboarding (`SPEC-06 ONB-09`).
+ */
+export const BOT_OBJECTIVE_OPTIONS = [
+  {
+    code: "close_whatsapp_sales",
+    labels: {
+      es: "Vender productos y cerrar pedidos por chat",
+      en: "Sell products and close orders via chat",
+    },
+  },
+  {
+    code: "qualify_leads",
+    labels: {
+      es: "Calificar clientes potenciales y agendar contacto",
+      en: "Qualify leads and schedule follow-up",
+    },
+  },
+  {
+    code: "customer_support_faq",
+    labels: {
+      es: "Resolver dudas frecuentes y guiar compras",
+      en: "Answer FAQs and guide customer purchases",
+    },
+  },
+] as const;
+
+/**
+ * Siembra de forma idempotente `admin.bot_tones` y `admin.bot_presets` cuando aún no existen registros activos.
+ * Garantiza disponibilidad inmediata tanto en `/onboarding` como en `/admin/ai`.
+ */
+export async function ensureDefaultBotCatalogSeeded(dbClient?: DrizzleClient): Promise<void> {
+  const db = dbClient ?? getDb();
+
+  try {
+    for (const tone of INITIAL_BOT_TONES) {
+      await db
+        .insert(botTones)
+        .values({
+          code: tone.code,
+          labels: tone.labels,
+          description: tone.description,
+          isActive: true,
+          sortOrder: tone.sortOrder,
+          createdBy: "system.seed",
+          updatedBy: "system.seed",
+        })
+        .onConflictDoNothing({ target: botTones.code });
+    }
+
+    const activeModels = await db
+      .select({ id: aiModels.id, modelId: aiModels.modelId })
+      .from(aiModels)
+      .where(eq(aiModels.isActive, true));
+
+    if (activeModels.length === 0) {
+      return;
+    }
+
+    for (const preset of INITIAL_BOT_PRESETS) {
+      let resolvedModelId: string | undefined;
+      for (const candidateCode of preset.preferredModelIds) {
+        const match = activeModels.find((m: { id: string; modelId: string }) => m.modelId === candidateCode);
+        if (match) {
+          resolvedModelId = match.id;
+          break;
+        }
+      }
+      if (!resolvedModelId) {
+        resolvedModelId = activeModels[0]?.id;
+      }
+      if (!resolvedModelId) continue;
+
+      await db
+        .insert(botPresets)
+        .values({
+          code: preset.code,
+          labels: preset.labels,
+          modelId: resolvedModelId,
+          temperature: preset.temperature,
+          maxTokens: preset.maxTokens,
+          recommendedFor: preset.recommendedFor,
+          isActive: true,
+          sortOrder: preset.sortOrder,
+          createdBy: "system.seed",
+          updatedBy: "system.seed",
+        })
+        .onConflictDoNothing({ target: botPresets.code });
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.warn(`[ensureDefaultBotCatalogSeeded] No se pudo sembrar catálogo base de IA: ${msg}`);
+  }
+}

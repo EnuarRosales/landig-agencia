@@ -358,7 +358,7 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
               setMigrateModalOpen(true);
             }}
             disabled={loadingAction !== null}
-            title="Ejecutar Migraciones Pendientes De Esquema"
+            title="Ejecutar Migraciones Pendientes de Esquema"
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/30 transition-colors border border-[var(--dsn-border)]"
           >
             <GitBranch className="h-3 w-3" />
@@ -371,7 +371,7 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
           type="button"
           onClick={handleOpenEditModal}
           disabled={loadingAction !== null}
-          title="Editar Configuración De La Célula"
+          title="Editar Configuración de la Célula"
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)] transition-colors border border-[var(--dsn-border)]"
         >
           <Pencil className="h-3 w-3" />
@@ -386,7 +386,7 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
             setDeleteModalOpen(true);
           }}
           disabled={loadingAction !== null}
-          title="Eliminar Célula De Datos"
+          title="Eliminar Célula de Datos"
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/30 transition-colors border border-[var(--dsn-border)]"
         >
           <Trash2 className="h-3 w-3" />
@@ -560,7 +560,7 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
                 )}
                 <div>
                   <h3 className="text-sm font-bold text-[var(--dsn-text)]">
-                    {handshakeResult?.ok ? "Verificación De Conexión Exitosa" : "Fallo De Verificación De Conexión"}
+                    {handshakeResult?.ok ? "Verificación de Conexión Exitosa" : "Fallo de Verificación de Conexión"}
                   </h3>
                   <p className="text-xs text-[var(--dsn-text-secondary)]">
                     Célula: {cell.code} ({cell.topologyType})
@@ -987,19 +987,19 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
           setDrainError(null);
         }}
         onConfirm={handleExecuteDrain}
-        title="Drenado De Célula De Datos"
+        title="Drenado de Célula de Datos"
         subtitle="Congelación de altas y cese de asignación de nuevos inquilinos."
         variant="warning"
         icon={<PowerOff className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
         details={[
-          { label: "Código De Célula", value: cell.code, mono: true },
-          { label: "Nivel De Servicio", value: cell.tier },
-          { label: "Topología De Despliegue", value: cell.topologyType },
+          { label: "Código de Célula", value: cell.code, mono: true },
+          { label: "Nivel de Servicio", value: cell.tier },
+          { label: "Topología de Despliegue", value: cell.topologyType },
           { label: "Inquilinos Activos", value: cell.currentClients },
           { label: "Capacidad Máxima", value: cell.maxClients },
           { label: "Estado Actual", value: cell.status },
         ]}
-        warningTitle="Cese De Asignación En El Router Global"
+        warningTitle="Cese de Asignación en el Router Global"
         warningMessage={
           <p>
             Al colocar la célula en estado <strong className="font-bold">Drenando (draining)</strong>,
@@ -1008,7 +1008,7 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
             mantendrán su conectividad normal sin interrupción hasta su migración.
           </p>
         }
-        confirmText="Confirmar Drenado De Célula"
+        confirmText="Confirmar Drenado de Célula"
         confirmLoadingText="Drenando Célula..."
         loading={drainLoading}
         error={drainError}
@@ -1022,19 +1022,19 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
           setDeleteError(null);
         }}
         onConfirm={handleConfirmDelete}
-        title="Eliminación De Célula De Datos"
+        title="Eliminación de Célula de Datos"
         subtitle="Retiro permanente del Router Global y base de datos."
         variant="danger"
         icon={<Trash2 className="h-5 w-5 text-rose-600 dark:text-rose-400" />}
         details={[
-          { label: "Código De Célula", value: cell.code, mono: true },
-          { label: "Nivel De Servicio", value: cell.tier },
+          { label: "Código de Célula", value: cell.code, mono: true },
+          { label: "Nivel de Servicio", value: cell.tier },
           { label: "Host PgBouncer", value: cell.pgbouncerHost, mono: true },
           { label: "Inquilinos Vinculados", value: cell.currentClients },
         ]}
         warningTitle={
           cell.currentClients > 0
-            ? "Eliminación Bloqueada Por Integridad Referencial"
+            ? "Eliminación Bloqueada por Integridad Referencial"
             : "Eliminación Física Definitiva"
         }
         warningMessage={
@@ -1069,7 +1069,7 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
           setMigrateError(null);
         }}
         onConfirm={handleConfirmMigrate}
-        title="Ejecutar Migraciones De Esquema"
+        title="Ejecutar Migraciones de Esquema"
         subtitle={`Aplicación de migraciones pendientes del journal Drizzle en ${cell.code}.`}
         variant="neutral"
         icon={<GitBranch className="h-5 w-5 text-cyan-400" />}
@@ -1081,10 +1081,10 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
         details={[
           { label: "Célula", value: cell.code, mono: true },
           { label: "Host", value: cell.pgbouncerHost || "Local", mono: true },
-          { label: "Base De Datos", value: cell.databaseName, mono: true },
+          { label: "Base de Datos", value: cell.databaseName, mono: true },
           { label: "Estado Operativo", value: cell.status, mono: true },
         ]}
-        warningTitle="Actualización De Modelo De Datos Celular"
+        warningTitle="Actualización de Modelo de Datos Celular"
         warningMessage="Esta operación aplicará las transiciones de esquema SQL pendientes sobre la base de datos de la célula. Se garantiza idempotencia mediante registro criptográfico en __drizzle_migrations."
       />
     </>

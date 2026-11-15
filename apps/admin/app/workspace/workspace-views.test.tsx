@@ -141,10 +141,10 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       const openBtn = screen.getByText("Registrar Nuevo Producto");
       fireEvent.click(openBtn);
 
-      expect(screen.getByText("Nombre Del Producto *")).toBeDefined();
-      expect(screen.getByText("Descripción Del Producto")).toBeDefined();
-      expect(screen.getByText("Precio En Pesos *")).toBeDefined();
-      expect(screen.getByText("Mejorar Con AI")).toBeDefined();
+      expect(screen.getByText("Nombre del Producto *")).toBeDefined();
+      expect(screen.getByText("Descripción del Producto")).toBeDefined();
+      expect(screen.getByText("Precio en Pesos *")).toBeDefined();
+      expect(screen.getByText("Mejorar con AI")).toBeDefined();
     });
 
     it("renders CatalogQuotaBanner with real product usage and exhaustion warning when limit reached (SPEC-03 T-06)", () => {
@@ -367,9 +367,9 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       );
 
       expect(screen.getByTestId("billing-checkout-panel")).toBeDefined();
-      expect(screen.queryByRole("button", { name: "Comenzar Periodo De Prueba" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Comenzar Periodo de Prueba" })).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: /Plan Crecimiento/i }));
-      fireEvent.click(screen.getByRole("button", { name: "Generar Orden De Pago" }));
+      fireEvent.click(screen.getByRole("button", { name: "Generar Orden de Pago" }));
 
       await waitFor(() => {
         expect(screen.getByTestId("breb-qr-checkout-card")).toBeDefined();
@@ -379,7 +379,7 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       expect(screen.getByText("901234567")).toBeDefined();
       expect(screen.getAllByText("$ 149.000 COP").length).toBeGreaterThanOrEqual(2);
 
-      const fileInput = screen.getByLabelText(/Comprobante De Transferencia/i) as HTMLInputElement;
+      const fileInput = screen.getByLabelText(/Comprobante de Transferencia/i) as HTMLInputElement;
       const voucherFile = new File(["fake-png"], "comprobante.png", { type: "image/png" });
       fireEvent.change(fileInput, { target: { files: [voucherFile] } });
 
@@ -446,8 +446,8 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       );
 
       expect(screen.getByText("Tu Suscripción Ha Vencido")).toBeDefined();
-      expect(screen.getByText("Mi Plan Y Cuotas")).toBeDefined();
-      expect(screen.queryByText("Productos Y Catálogo")).toBeNull();
+      expect(screen.getByText("Mi Plan y Cuotas")).toBeDefined();
+      expect(screen.queryByText("Productos y Catálogo")).toBeNull();
       expect(screen.queryByText("Tablero")).toBeNull();
     });
   });
@@ -538,12 +538,12 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       );
 
       expect(screen.getByText("mocter.co/synergia-market")).toBeDefined();
-      const slugInput = screen.getByLabelText("URL Pública Del Comercio") as HTMLInputElement;
+      const slugInput = screen.getByLabelText("URL Pública del Comercio") as HTMLInputElement;
       expect(slugInput.readOnly).toBe(true);
 
       const nameInput = screen.getByLabelText("Nombre Comercial") as HTMLInputElement;
       fireEvent.change(nameInput, { target: { value: "Synergia Renombrada" } });
-      fireEvent.change(screen.getByLabelText("Idioma Del Comercio"), {
+      fireEvent.change(screen.getByLabelText("Idioma del Comercio"), {
         target: { value: "en" },
       });
 
@@ -639,8 +639,8 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       );
 
       // Crear nuevo canal mediante modal
-      fireEvent.click(screen.getByRole("button", { name: "Agregar Canal De Pago" }));
-      fireEvent.change(screen.getByLabelText("Canal De Pago"), {
+      fireEvent.click(screen.getByRole("button", { name: "Agregar Canal de Pago" }));
+      fireEvent.change(screen.getByLabelText("Canal de Pago"), {
         target: { value: "daviplata" },
       });
       fireEvent.change(screen.getByLabelText("Nombre Visible"), {
@@ -749,7 +749,7 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
         </TenantWorkspaceShell>,
       );
 
-      expect(screen.getByText("Perfil Del Negocio")).toBeDefined();
+      expect(screen.getByText("Perfil del Negocio")).toBeDefined();
     });
   });
 });

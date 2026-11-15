@@ -533,20 +533,20 @@ export function RbacView({ initialData }: RbacViewProps) {
                               }`}
                             >
                               <ShieldCheck className="h-3 w-3" />
-                              {r === "tenant_owner" ? "Dueño De Comercio" : r === "tenant_agent" ? "Agente De Soporte" : r}
+                              {r === "tenant_owner" ? "Dueño de Comercio" : r === "tenant_agent" ? "Agente de Soporte" : r}
                             </span>
                           ))}
                         </td>
                         <td className="px-4 py-3">
                           <span
                             className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium ${
-                              u.clientName && u.clientName !== "Pendiente De Onboarding"
+                              u.clientName && u.clientName !== "Pendiente de Onboarding"
                                 ? "bg-emerald-500/10 text-emerald-400"
                                 : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                             }`}
                           >
                             <Building2 className="h-3 w-3" />
-                            {u.clientName || "Pendiente De Onboarding"}
+                            {u.clientName || "Pendiente de Onboarding"}
                           </span>
                         </td>
                         <td className="px-4 py-3 font-mono text-[10px] text-[var(--dsn-text-secondary)]">
@@ -1007,7 +1007,7 @@ export function RbacView({ initialData }: RbacViewProps) {
                 className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden"
               >
                 <div className="border-b border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-4 py-2.5">
-                  <h4 className="text-xs font-bold text-[var(--dsn-text)] uppercase tracking-wider">
+                  <h4 className="text-xs font-bold text-[var(--dsn-text)] tracking-wider">
                     {m.module}
                   </h4>
                 </div>
@@ -1264,13 +1264,13 @@ export function RbacView({ initialData }: RbacViewProps) {
                     htmlFor="role-name"
                     className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
                   >
-                    Nombre Descriptivo Del Rol
+                    Nombre Descriptivo del Rol
                   </label>
                   <input
                     id="role-name"
                     type="text"
                     required
-                    placeholder="ej. Auditor De Cumplimiento"
+                    placeholder="ej. Auditor de Cumplimiento"
                     value={roleForm.name}
                     onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })}
                     className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
@@ -1412,7 +1412,7 @@ export function RbacView({ initialData }: RbacViewProps) {
                   <span className="font-mono text-[11px] text-[var(--dsn-text)]">{detailUser.id}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)] font-medium">Ámbito De Identidad</span>
+                  <span className="text-[10px] text-[var(--dsn-text-secondary)] font-medium">Ámbito de Identidad</span>
                   <span className="font-mono text-[11px] uppercase text-[var(--dsn-accent)]">{detailUser.scope}</span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1420,7 +1420,7 @@ export function RbacView({ initialData }: RbacViewProps) {
                   <span className="font-medium text-[var(--dsn-text)]">{detailUser.clientName || "Sin cliente vinculado"}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)] font-medium">Ubicación De Célula</span>
+                  <span className="text-[10px] text-[var(--dsn-text-secondary)] font-medium">Ubicación de Célula</span>
                   <span className="font-mono text-[11px] text-[var(--dsn-text)]">{detailUser.identityLocation}</span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1470,7 +1470,7 @@ export function RbacView({ initialData }: RbacViewProps) {
         confirmText={statusConfirm.targetStatus === "disabled" ? "Suspender Usuario" : "Reactivar Usuario"}
         confirmLoadingText="Actualizando Estado..."
         loading={statusConfirm.loading}
-        warningTitle={statusConfirm.targetStatus === "disabled" ? "Acceso Restringido" : "Reactivación De Credenciales"}
+        warningTitle={statusConfirm.targetStatus === "disabled" ? "Acceso Restringido" : "Reactivación de Credenciales"}
         warningMessage={
           statusConfirm.targetStatus === "disabled"
             ? "Al suspender este usuario, se revocarán todas sus sesiones activas y se impedirá el inicio de sesión hasta que un Platform Owner lo reactive."

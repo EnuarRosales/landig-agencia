@@ -5,7 +5,7 @@ import { AdminBrandingView } from "./branding-view";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Identidad De Marca Y Marca Blanca · mocter-admin",
+  title: "Identidad de Marca y Marca Blanca · mocter-admin",
   description: "Configuración de marca corporativa SaaS y gobernanza de marca blanca para comercios.",
 };
 

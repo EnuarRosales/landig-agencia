@@ -146,13 +146,13 @@ export function UserProfileModal({
 
           {/* Atributos del Operador */}
           <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-4 space-y-3">
-            <h4 className="text-[11px] font-semibold text-[var(--dsn-text-secondary)] uppercase tracking-wider">
-              Identidad Y Permisos
+            <h4 className="text-[11px] font-semibold text-[var(--dsn-text-secondary)] tracking-wider">
+              Identidad y Permisos
             </h4>
 
             {/* Identificador UUID */}
             <div className="flex items-center justify-between gap-2 border-b border-[var(--dsn-border)]/50 pb-2">
-              <span className="text-[var(--dsn-text-secondary)]">ID Único De Usuario:</span>
+              <span className="text-[var(--dsn-text-secondary)]">ID Único de Usuario:</span>
               <div className="flex items-center gap-1.5 font-mono text-[11px]">
                 <span className="text-[var(--dsn-text)]">{user.id}</span>
                 <button
@@ -182,7 +182,7 @@ export function UserProfileModal({
 
             {/* Autoridad de Rol */}
             <div className="flex items-center justify-between">
-              <span className="text-[var(--dsn-text-secondary)]">Rol De Plataforma:</span>
+              <span className="text-[var(--dsn-text-secondary)]">Rol de Plataforma:</span>
               <span className="font-semibold text-emerald-400 font-mono">
                 {user.role} (Acceso Total)
               </span>
@@ -191,8 +191,8 @@ export function UserProfileModal({
 
           {/* Diagnóstico de Sesión Activa */}
           <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-4 space-y-3">
-            <h4 className="text-[11px] font-semibold text-[var(--dsn-text-secondary)] uppercase tracking-wider">
-              Diagnóstico De Sesión Activa
+            <h4 className="text-[11px] font-semibold text-[var(--dsn-text-secondary)] tracking-wider">
+              Diagnóstico de Sesión Activa
             </h4>
 
             <div className="flex items-center justify-between border-b border-[var(--dsn-border)]/50 pb-2">

@@ -51,11 +51,11 @@ const CHANNEL_LABELS_ES: Record<TenantPaymentChannelCode, string> = {
   bancolombia: "Bancolombia",
   bre_b: "Bre-B (Llave Bancaria)",
   pse: "PSE",
-  card_link: "Link De Pago Con Tarjeta",
-  cash_on_delivery: "Pago Contra Entrega",
+  card_link: "Link de Pago con Tarjeta",
+  cash_on_delivery: "Pago contra Entrega",
   efecty: "Efecty / Corresponsal",
   bank_transfer: "Transferencia Bancaria",
-  other: "Otro Medio De Pago",
+  other: "Otro Medio de Pago",
 };
 
 const CHANNEL_LABELS_EN: Record<TenantPaymentChannelCode, string> = {

@@ -205,13 +205,13 @@ export function BotView({ initialConfig }: BotViewProps) {
         {/* Políticas Comerciales */}
         <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xs space-y-4">
           <h2 className="text-sm font-bold text-[var(--dsn-text)]">
-            Políticas Comerciales Y De Garantía
+            Políticas Comerciales y de Garantía
           </h2>
 
           <AiEnhanceTextarea
             id="bot-warranty-policy"
             fieldKey="policy.warranty"
-            label="Política De Garantías"
+            label="Política de Garantías"
             rows={2}
             value={warrantyPolicy}
             onChange={setWarrantyPolicy}
@@ -222,7 +222,7 @@ export function BotView({ initialConfig }: BotViewProps) {
           <AiEnhanceTextarea
             id="bot-returns-policy"
             fieldKey="policy.returns"
-            label="Política De Cambios Y Devoluciones"
+            label="Política de Cambios y Devoluciones"
             rows={2}
             value={returnsPolicy}
             onChange={setReturnsPolicy}
@@ -233,7 +233,7 @@ export function BotView({ initialConfig }: BotViewProps) {
           <AiEnhanceTextarea
             id="bot-order-confirmation"
             fieldKey="bot.order_confirmation_message"
-            label="Mensaje De Confirmación De Pedido"
+            label="Mensaje de Confirmación de Pedido"
             rows={2}
             value={orderMessage}
             onChange={setOrderMessage}

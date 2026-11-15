@@ -57,4 +57,14 @@ Reutilizada tanto en frontend (Paso 3 y formulario de productos `SPEC-08`) como 
   - `apps/admin/app/onboarding/steps/step-assistant-payments.tsx` [Nuevo] (consume presets/objetivos de `SPEC-10` y selector/edición rápida de `SPEC-05`)
   - `apps/admin/app/onboarding/steps/step-billing.tsx` [Nuevo] (envuelve `<BillingCheckoutPanel />` de `SPEC-04`)
 - **Indicador de pasos:** Mobile First (`Paso X De 5` + barra horizontal), labels en Title Case, i18n `es`/`en` con cambio reactivo si el usuario alterna el idioma en el Paso 1.
+- **Blindaje cliente Turbopack:** Los componentes `"use client"` importan únicamente tipos (`import type`) desde `@mocter/domain`; la función pura `calculateProductProfitability` tiene espejo local seguro en `apps/admin/lib/pricing-margin.ts` con idéntica fórmula y precisión que `packages/domain/src/utils/pricing-margin.ts`.
+
+---
+
+## 4. Decisiones Técnicas Acordadas
+
+1. **Esquema de producto (`D-01`):** `packages/domain/src/db/schemas/tenant/tenancy-catalog.ts` añade `costPriceCents: bigint("cost_price_cents", { mode: "number" })` con migración en celda (`pg-cell-XX`). `saveFirstProductStep` / `completeStep3Product` guarda `costPriceCents` (nullable) y persiste el precio de venta en `cell_products.price_cents` (`sale_price_cents` permanece `NULL`). En Paso 3 UI, la imagen de portada opcional y el logo del Paso 1 en alta autónoma muestran previsualización inmediata en cliente y se suben a SeaweedFS una vez creado/resuelto el `clientId` o `productId` para evitar archivos huérfanos.
+2. **Catálogos IA (`D-02`):** Se agrega seed idempotente en migración/servicio para `admin.bot_tones` (`cercano`, `profesional`, `consultivo`, `dinamico`) y `admin.bot_presets` (`ventas_rapidas`, `asesor_consultivo`, `soporte_resolutivo`) usando modelos activos de `admin.ai_models`.
+3. **Finalización en Paso 5 (`D-03`):** `completeOnboardingStep` (`step5_complete`) soporta `completionMode: "trial" | "free" | "pending_payment_review" | "paid"`, inicializando el trial vía `BillingService.activateTrialForTenant`, activando `clients.lifecycle_status = 'activo'`, cerrando `onboarding_sessions` y devolviendo `redirectTo: "/workspace"`.
+
 

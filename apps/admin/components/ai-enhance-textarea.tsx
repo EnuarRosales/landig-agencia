@@ -125,7 +125,7 @@ export function AiEnhanceTextarea({
       setErrorCode("AI_BYOK_REQUIRED");
       setErrorMessage(
         isEs
-          ? "Para usar 'Mejorar Con AI' configura tu proveedor de Inteligencia Artificial."
+          ? "Para usar 'Mejorar con AI' configura tu proveedor de Inteligencia Artificial."
           : "To use 'Improve With AI' configure your Artificial Intelligence provider.",
       );
       return;
@@ -217,7 +217,7 @@ export function AiEnhanceTextarea({
                 ? "Mejorando..."
                 : "Improving..."
               : isEs
-                ? "Mejorar Con AI"
+                ? "Mejorar con AI"
                 : "Improve With AI"}
           </span>
         </button>
@@ -267,14 +267,14 @@ export function AiEnhanceTextarea({
             <span className="inline-flex items-center gap-1.5">
               <Sparkles className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
               {isEs
-                ? "Propuesta Sugerida Por AI (Editable Antes De Aceptar)"
+                ? "Propuesta Sugerida por AI (Editable antes de Aceptar)"
                 : "AI Suggested Proposal (Editable Before Accepting)"}
             </span>
           </div>
 
           <textarea
             rows={rows}
-            aria-label={isEs ? "Vista Previa De Sugerencia AI" : "AI Suggestion Preview"}
+            aria-label={isEs ? "Vista Previa de Sugerencia AI" : "AI Suggestion Preview"}
             value={editedSuggestion}
             onChange={(e) => setEditedSuggestion(e.target.value)}
             className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden leading-relaxed"

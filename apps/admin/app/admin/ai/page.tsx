@@ -4,7 +4,7 @@ import { Cpu, Layers, Sparkles, Percent } from "lucide-react";
 import { AiGovernanceView } from "./ai-governance-view";
 
 export const metadata = {
-  title: "Gobernanza De IA y Prompts · mocter-admin",
+  title: "Gobernanza de IA y Prompts · mocter-admin",
   description: "Control de proveedores LLM, margen de inferencia, bloques de prompts y guardrails.",
 };
 

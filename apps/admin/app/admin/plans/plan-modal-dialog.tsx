@@ -56,7 +56,7 @@ const MIB_IN_BYTES = 1048576;
 
 const CAPABILITY_FUNCTIONAL_GROUPS: Record<string, { title: string; codes: string[] }> = {
   channels: {
-    title: "Canales Y Conexión",
+    title: "Canales y Conexión",
     codes: [
       "channel_whatsapp",
       "channel_email",
@@ -71,11 +71,11 @@ const CAPABILITY_FUNCTIONAL_GROUPS: Record<string, { title: string; codes: strin
     ],
   },
   management: {
-    title: "Administración Y Colaboración",
+    title: "Administración y Colaboración",
     codes: ["agent_management", "inbox_management", "team_management", "assignment_v2"],
   },
   productivity: {
-    title: "Productividad Y Automatización",
+    title: "Productividad y Automatización",
     codes: [
       "agent_bots",
       "automations",
@@ -88,7 +88,7 @@ const CAPABILITY_FUNCTIONAL_GROUPS: Record<string, { title: string; codes: strin
     ],
   },
   contacts: {
-    title: "Contactos Y Datos",
+    title: "Contactos y Datos",
     codes: [
       "crm",
       "crm_integration",
@@ -110,7 +110,7 @@ const CAPABILITY_FUNCTIONAL_GROUPS: Record<string, { title: string; codes: strin
     ],
   },
   branding: {
-    title: "Correo Y Personalización",
+    title: "Correo y Personalización",
     codes: [
       "branded_email_templates",
       "custom_reply_domain",
@@ -118,11 +118,11 @@ const CAPABILITY_FUNCTIONAL_GROUPS: Record<string, { title: string; codes: strin
     ],
   },
   reporting: {
-    title: "Información Y Autoservicio",
+    title: "Información y Autoservicio",
     codes: ["reports", "report_rollup", "help_center"],
   },
   special: {
-    title: "Opciones Con Tratamiento Especial",
+    title: "Opciones con Tratamiento Especial",
     codes: ["captain_classifier", "captain_tasks", "chatwoot_v4"],
   },
 };

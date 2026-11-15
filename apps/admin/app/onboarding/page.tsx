@@ -6,23 +6,23 @@ import {
   tenantOnboardingService,
   tenantWorkspaceService,
 } from "@mocter/domain";
+import { resolveActiveLocale } from "@/lib/i18n";
 import { TenantOnboardingWizard } from "./tenant-onboarding-wizard";
 
 export const dynamic = "force-dynamic";
 
+export interface OnboardingPageProps {
+  searchParams?: Promise<{ plan?: string }>;
+}
+
 /**
- * Página principal del Asistente de Onboarding en 3 Pasos (ADM-001 D-36, TNT-001 RF-03).
- *
- * Servidor autoritativo:
- * - Resuelve la sesión y verifica que el usuario sea prospecto o inquilino en estado 'alta'.
- * - Carga el estado inicial (pre-cargando los datos del comercio en alta manual o vacío en alta autónoma).
- * - Renderiza el cascarón limpio sin barras laterales corporativas ni de comercio (PortalShellRouter).
+ * Página principal del asistente unificado de onboarding en 5 pasos (`SPEC-06`).
  */
-export default async function OnboardingPage() {
+export default async function OnboardingPage({ searchParams }: OnboardingPageProps) {
   const cookieStore = await cookies();
-  const isProduction = process.env.NODE_ENV === "production";
-  const sidCookieName = isProduction ? "__Host-mocter_sid" : "mocter_sid";
-  const sid = (cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value)?.trim();
+  const sid = (
+    cookieStore.get("__Host-mocter_sid")?.value || cookieStore.get("mocter_sid")?.value
+  )?.trim();
 
   if (!sid) {
     redirect("/es/login");
@@ -33,19 +33,27 @@ export default async function OnboardingPage() {
     redirect("/es/login");
   }
 
-  // Si el inquilino ya está activado, enviarlo a su espacio de trabajo
   if (portalContext.scope === "tenant" && portalContext.lifecycleStatus === "activo") {
     redirect("/workspace");
   }
 
-  const stateRes = await tenantOnboardingService.getOnboardingState(portalContext.user.id);
+  const resolvedParams = searchParams ? await searchParams : undefined;
+  const preselectedPlanCode = resolvedParams?.plan?.trim() || undefined;
+
+  const stateRes = await tenantOnboardingService.getOnboardingState(portalContext.user.id, {
+    preselectedPlanCode,
+  });
+
   const initialState = stateRes.ok
     ? stateRes.data
     : {
         step: 1 as const,
+        stepKey: "business" as const,
         client: null,
         draft: {},
         availablePlans: [],
+        botCatalog: { tones: [], presets: [], objectives: [] },
+        paymentChannels: [],
       };
 
   const clientIdForBilling =
@@ -59,6 +67,15 @@ export default async function OnboardingPage() {
     }
   }
 
-  return <TenantOnboardingWizard initialState={initialState} initialBilling={initialBilling} />;
-}
+  const initialLocale = resolveActiveLocale({
+    tenantLocale: initialState.client?.locale || initialState.draft.business?.locale,
+  });
 
+  return (
+    <TenantOnboardingWizard
+      initialState={initialState}
+      initialBilling={initialBilling}
+      initialLocale={initialLocale}
+    />
+  );
+}

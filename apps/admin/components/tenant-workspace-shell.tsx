@@ -110,7 +110,7 @@ export function TenantWorkspaceShell({
   const user: CurrentUserDto = currentUser || {
     id: "00000000-0000-0000-0000-000000000000",
     email: "comercio@mocter.co",
-    displayName: "Propietario Del Comercio",
+    displayName: "Propietario del Comercio",
     role: "tenant_owner",
     status: "active",
   };
@@ -170,7 +170,7 @@ export function TenantWorkspaceShell({
     },
     {
       href: "/workspace/products",
-      label: "Productos Y Catálogo",
+      label: "Productos y Catálogo",
       icon: Package,
     },
     {
@@ -180,35 +180,35 @@ export function TenantWorkspaceShell({
     },
     {
       href: "/workspace/orders",
-      label: "Pedidos Y Ventas",
+      label: "Pedidos y Ventas",
       icon: ShoppingCart,
     },
     {
       href: "/workspace/bot",
-      label: "Asistente AI Y Bot",
+      label: "Asistente AI y Bot",
       badge: "AI",
       icon: Bot,
     },
     {
       href: "/workspace/ai",
-      label: "Proveedores Y Llaves AI",
+      label: "Proveedores y Llaves AI",
       badge: "BYOK",
       icon: KeyRound,
     },
     {
       href: "/workspace/team",
-      label: "Equipo Y Miembros",
+      label: "Equipo y Miembros",
       icon: ShieldCheck,
     },
     {
       href: "/workspace/profile",
-      label: dict.navProfile || "Perfil Del Negocio",
+      label: dict.navProfile || "Perfil del Negocio",
       icon: Building2,
       ownerOnly: true,
     },
     {
       href: "/workspace/billing",
-      label: "Mi Plan Y Cuotas",
+      label: "Mi Plan y Cuotas",
       icon: CreditCard,
     },
 
@@ -222,7 +222,7 @@ export function TenantWorkspaceShell({
     },
     {
       href: "/workspace/branding",
-      label: "Identidad Y Marca Blanca",
+      label: "Identidad y Marca Blanca",
       badge: "Marca",
       icon: Paintbrush,
       capabilityCode: "custom_branding",
@@ -230,7 +230,7 @@ export function TenantWorkspaceShell({
     },
     {
       href: "/workspace/community",
-      label: "Comunidad De Comercios",
+      label: "Comunidad de Comercios",
       badge: "Red",
       icon: Globe,
       capabilityCode: "community_feed",
@@ -238,7 +238,7 @@ export function TenantWorkspaceShell({
     },
     {
       href: "/workspace/reports",
-      label: "Informes Y Analítica",
+      label: "Informes y Analítica",
       badge: "Datos",
       icon: BarChart3,
       capabilityCode: "data_export",
@@ -767,14 +767,14 @@ export function TenantWorkspaceShell({
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="font-bold text-sm text-[var(--dsn-text)] truncate">
-                    {user.displayName || "Propietario Del Comercio"}
+                    {user.displayName || "Propietario del Comercio"}
                   </h3>
                   <p className="text-xs text-[var(--dsn-text-secondary)] truncate">
                     {user.email}
                   </p>
                   <div className="mt-1 flex items-center gap-2">
                     <span className="rounded bg-[var(--dsn-accent)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30">
-                      {user.role === "tenant_owner" ? "Propietario Del Comercio" : "Agente Del Comercio"}
+                      {user.role === "tenant_owner" ? "Propietario del Comercio" : "Agente del Comercio"}
                     </span>
                     <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30">
                       Activo
@@ -800,14 +800,14 @@ export function TenantWorkspaceShell({
                   </div>
                 </div>
                 <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">Plan De Suscripción</span>
+                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">Plan de Suscripción</span>
                   <p className="font-semibold text-xs mt-0.5 text-[var(--dsn-accent)] truncate">{tenantInfo.planName}</p>
                 </div>
               </div>
 
               <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/20 p-3 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">ID De Usuario</span>
+                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">ID de Usuario</span>
                   <button
                     type="button"
                     onClick={copyUserId}
@@ -855,7 +855,7 @@ export function TenantWorkspaceShell({
                 </div>
                 <div>
                   <h2 id="switch-store-title" className="text-base font-bold text-[var(--dsn-text)]">
-                    Cambio De Comercio
+                    Cambio de Comercio
                   </h2>
                   <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
                     Membresía activa del operador
@@ -891,7 +891,7 @@ export function TenantWorkspaceShell({
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-200">
                 <div className="flex items-center gap-2 font-semibold text-xs mb-1">
                   <Shield className="h-4 w-4 text-amber-400" />
-                  <span>Espacio Dedicado Y Membresía Única</span>
+                  <span>Espacio Dedicado y Membresía Única</span>
                 </div>
                 <p className="text-[11px] leading-relaxed text-amber-200/90">
                   Tu cuenta se encuentra anclada de manera autoritativa al espacio de datos dedicado de este comercio.
@@ -918,7 +918,7 @@ export function TenantWorkspaceShell({
         isOpen={logoutModalOpen}
         onClose={() => setLogoutModalOpen(false)}
         onConfirm={handleConfirmLogout}
-        title="Cerrar Sesión En El Comercio"
+        title="Cerrar Sesión en el Comercio"
         subtitle="Finalizar la sesión operativa activa en el backoffice de tu comercio."
         variant="warning"
         confirmText="Cerrar Sesión Definitivamente"
@@ -927,11 +927,11 @@ export function TenantWorkspaceShell({
         loading={logoutLoading}
         details={[
           { label: "Comercio", value: tenantInfo.name },
-          { label: "Operador", value: user.displayName || "Propietario Del Comercio" },
+          { label: "Operador", value: user.displayName || "Propietario del Comercio" },
           { label: "Correo Electrónico", value: user.email, mono: true },
-          { label: "Identificador Del Comercio", value: tenantInfo.slug, mono: true },
+          { label: "Identificador del Comercio", value: tenantInfo.slug, mono: true },
         ]}
-        warningTitle="Finalización De Sesión Segura"
+        warningTitle="Finalización de Sesión Segura"
         warningMessage="Se revocará el token de autenticación del servidor y deberás volver a ingresar credenciales para acceder al backoffice."
       />
     </div>

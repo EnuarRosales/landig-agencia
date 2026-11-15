@@ -204,6 +204,27 @@ export function getChatwootHttpConfig(options?: ChatwootHttpPlatformGatewayOptio
 }
 
 /**
+ * Extrae de forma segura una lista de entidades desde respuestas heterogéneas de la API de Chatwoot
+ * (arreglos directos, `payload` como arreglo o `payload.<clave>` anidado).
+ */
+function extractChatwootList<T>(data: unknown, nestedKey?: string): T[] {
+  if (Array.isArray(data)) return data as T[];
+  if (data && typeof data === "object") {
+    const record = data as Record<string, unknown>;
+    if (nestedKey && Array.isArray(record[nestedKey])) {
+      return record[nestedKey] as T[];
+    }
+    const payload = record.payload;
+    if (Array.isArray(payload)) return payload as T[];
+    if (payload && typeof payload === "object" && nestedKey) {
+      const nested = (payload as Record<string, unknown>)[nestedKey];
+      if (Array.isArray(nested)) return nested as T[];
+    }
+  }
+  return [];
+}
+
+/**
  * Adaptador HTTP para interactuar con la Platform API de Chatwoot v4.19.1.
  */
 export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
@@ -313,9 +334,7 @@ export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
       });
       if (listRes.ok) {
         const usersList: any = await listRes.json();
-        const usersArray: Array<{ id: number; email: string }> = Array.isArray(usersList)
-          ? usersList
-          : (usersList?.payload || []);
+        const usersArray = extractChatwootList<{ id: number; email: string }>(usersList, "users");
         const found = usersArray.find((u) => u.email?.toLowerCase() === email.toLowerCase());
         if (found) {
           userId = found.id;
@@ -384,7 +403,7 @@ export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
 
     if (listRes.ok) {
       const listData: any = await listRes.json();
-      const inboxes: any[] = Array.isArray(listData) ? listData : (listData?.payload || []);
+      const inboxes = extractChatwootList<any>(listData, "inboxes");
       const existingWebWidget = inboxes.find(
         (i) => i.channel_type === "Channel::WebWidget" || i.channel?.type === "web_widget",
       );
@@ -462,7 +481,7 @@ export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
       });
       if (listRes.ok) {
         const listData: any = await listRes.json();
-        const labels: any[] = Array.isArray(listData) ? listData : (listData?.payload || []);
+        const labels = extractChatwootList<any>(listData, "labels");
         const found = labels.find((l) => l.title?.toLowerCase() === params.title.toLowerCase());
         if (found && typeof found.id === "number") {
           return { chatwootLabelId: found.id };
@@ -500,9 +519,7 @@ export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
 
     if (listRes.ok) {
       const listData: any = await listRes.json();
-      const webhooks: Array<{ id: number; url: string }> = Array.isArray(listData)
-        ? listData
-        : (listData?.payload || []);
+      const webhooks = extractChatwootList<{ id: number; url: string }>(listData, "webhooks");
       const existing = webhooks.find((w) => w.url === params.webhookUrl);
       if (existing) {
         return { id: existing.id, url: existing.url };
@@ -566,9 +583,7 @@ export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
       });
       if (listRes.ok) {
         const usersList: any = await listRes.json();
-        const usersArray: Array<{ id: number; email: string }> = Array.isArray(usersList)
-          ? usersList
-          : (usersList?.payload || []);
+        const usersArray = extractChatwootList<{ id: number; email: string }>(usersList, "users");
         const found = usersArray.find((u) => u.email?.toLowerCase() === params.email.toLowerCase());
         if (found) {
           userId = found.id;

@@ -536,7 +536,7 @@ export function AdminShell({ children, currentUser, tenantCapabilities }: AdminS
         isOpen={logoutModalOpen}
         onClose={() => setLogoutModalOpen(false)}
         onConfirm={handleConfirmLogout}
-        title="Cerrar Sesión En Mocter"
+        title="Cerrar Sesión en Mocter"
         subtitle="Finalizar la sesión operativa del operador en mocter-admin."
         variant="warning"
         confirmText="Cerrar Sesión Definitivamente"
@@ -546,9 +546,9 @@ export function AdminShell({ children, currentUser, tenantCapabilities }: AdminS
         details={[
           { label: "Operador", value: user.displayName || "Platform Owner" },
           { label: "Correo Electrónico", value: user.email, mono: true },
-          { label: "Rol De Plataforma", value: user.role, mono: true },
+          { label: "Rol de Plataforma", value: user.role, mono: true },
         ]}
-        warningTitle="Finalización De Sesión Segura"
+        warningTitle="Finalización de Sesión Segura"
         warningMessage="Se revocará el token de autenticación del servidor y deberás volver a ingresar credenciales para acceder al backoffice."
       />
     </div>

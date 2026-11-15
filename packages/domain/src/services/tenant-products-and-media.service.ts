@@ -22,6 +22,7 @@ export interface TenantProductInput {
   name: string;
   description: string;
   priceCents: number;
+  costPriceCents?: number | null;
   currency?: string;
   sku?: string | null;
   gtin?: string | null;
@@ -137,6 +138,7 @@ export class InMemoryTenantProductsRepository implements ITenantProductsReposito
       status: input.status ?? "draft",
       sortOrder: 0,
       priceCents: input.priceCents,
+      costPriceCents: input.costPriceCents ?? null,
       salePriceCents: null,
       currency: input.currency ?? "COP",
       priceNote: null,

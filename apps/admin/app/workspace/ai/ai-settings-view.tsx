@@ -412,11 +412,11 @@ export function AiSettingsView({
                 ? "Your store is operating with included AI access during the trial period."
                 : "Tu comercio está operando con acceso AI incluido durante el periodo de prueba."}
             </p>
-            <p className="text-[var(--dsn-text-secondary)]">
+            <p className="text-[var(--dsn-text-secondary)]" suppressHydrationWarning>
               {overview.trialEndsAt
                 ? isEn
-                  ? `Estimated trial period end: ${new Date(overview.trialEndsAt).toLocaleDateString("en-US")}. You can connect your own API Key anytime to take direct control.`
-                  : `Vigencia estimada del periodo de prueba: ${new Date(overview.trialEndsAt).toLocaleDateString("es-CO")}. Puedes conectar tu propia API Key en cualquier momento para tomar el control directo.`
+                  ? `Estimated trial period end: ${new Date(overview.trialEndsAt).toLocaleDateString("en-US", { timeZone: "America/Bogota" })}. You can connect your own API Key anytime to take direct control.`
+                  : `Vigencia estimada del periodo de prueba: ${new Date(overview.trialEndsAt).toLocaleDateString("es-CO", { timeZone: "America/Bogota" })}. Puedes conectar tu propia API Key en cualquier momento para tomar el control directo.`
                 : isEn
                   ? "You can connect your own API Key at any time to operate without trial limits."
                   : "Puedes conectar tu propia API Key en cualquier momento para operar sin límites de prueba."}
@@ -461,7 +461,7 @@ export function AiSettingsView({
                 <KeyRound className="h-4 w-4 text-[var(--dsn-accent)]" />
               )}
               <h2 className="text-sm font-bold text-[var(--dsn-text)]">
-                {isEn ? "Configure Provider Credential" : "Configurar Credencial Del Proveedor"}
+                {isEn ? "Configure Provider Credential" : "Configurar Credencial del Proveedor"}
               </h2>
             </div>
             {selectedProviderMeta?.docsUrl && (
@@ -802,7 +802,7 @@ export function AiSettingsView({
         title={
           isEn
             ? "Revoke AI Provider Credential"
-            : "Revocar Credencial De Proveedor AI"
+            : "Revocar Credencial de Proveedor AI"
         }
         subtitle={
           isEn
@@ -812,7 +812,7 @@ export function AiSettingsView({
         warningTitle={
           isEn
             ? "Irreversible Action On Current Credential"
-            : "Acción Irreversible Sobre La Credencial Actual"
+            : "Acción Irreversible sobre la Credencial Actual"
         }
         warningMessage={
           isEn

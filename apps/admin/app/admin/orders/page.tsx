@@ -87,7 +87,7 @@ export default async function AdminOrdersPage() {
     },
     {
       number: "Logística Andina (logistica-andina)",
-      customerName: "Corporativo VIP A Medida",
+      customerName: "Corporativo VIP a Medida",
       customerPhone: "gerencia@andina.co",
       source: "Anual",
       status: "Activa",

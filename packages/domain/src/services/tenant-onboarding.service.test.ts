@@ -114,10 +114,19 @@ describe("TenantOnboardingService", () => {
       const res = await service.getOnboardingState("user-1");
       expect(res.ok).toBe(true);
       if (res.ok) {
-        expect(res.data.step).toBe(2);
+        expect(res.data.step).toBe(1);
+        expect(res.data.stepKey).toBe("business");
         expect(res.data.client?.slug).toBe("synergia-market");
         expect(res.data.client?.cellCode).toBe("cell-01");
       }
+    });
+
+    it("maps legacy 'bot_channel' session step to Step 4 ('assistant_payments')", async () => {
+      const { mapLegacyStep, stepKeyToNumber } = await import("./tenant-onboarding.service");
+      expect(mapLegacyStep("bot_channel")).toBe("assistant_payments");
+      expect(stepKeyToNumber(mapLegacyStep("bot_channel"))).toBe(4);
+      expect(stepKeyToNumber(mapLegacyStep("plan"))).toBe(2);
+      expect(stepKeyToNumber(mapLegacyStep("billing"))).toBe(5);
     });
   });
 
@@ -389,17 +398,34 @@ describe("TenantOnboardingService", () => {
         return await cb(mockTx as any);
       });
 
-      const res = await service.completeStep2FirstProduct("user-1", {
+      const res = await service.saveFirstProductStep("user-1", {
         name: "Camisa Oxford Premium",
         description: "Algodón egipcio 100% de alta densidad.",
-        priceCents: 120000,
+        costPriceCents: 60000,
+        salePriceCents: 120000,
       });
 
       expect(res.ok).toBe(true);
       if (res.ok) {
-        expect(res.data.nextStep).toBe(3);
+        expect(res.data.nextStep).toBe(4);
         expect(res.data.name).toBe("Camisa Oxford Premium");
+        expect(res.data.profitability.profitCents).toBe(60000);
+        expect(res.data.profitability.marginPct).toBe(50);
         expect(res.data.productId).toBeDefined();
+      }
+    });
+
+    it("rejects negative costPriceCents in Step 3", async () => {
+      const res = await service.saveFirstProductStep("user-1", {
+        name: "Camisa Oxford",
+        description: "Algodón egipcio 100% de alta densidad.",
+        costPriceCents: -100,
+        salePriceCents: 120000,
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("INVALID_COST_PRICE");
       }
     });
   });
@@ -431,21 +457,37 @@ describe("TenantOnboardingService", () => {
     });
 
     it("persists bot configuration, transitions lifecycle to 'activo', and returns /workspace redirect", async () => {
+      const { users: tUsers, clients: tClients, onboardingSessions: tSessions } = await import(
+        "../db/schemas/admin"
+      );
       const mockUser = { id: "user-1", email: "owner@test.com", activeClientId: "client-1" };
-      const mockClient = { id: "client-1", lifecycleStatus: "alta" };
-      let selectCount = 0;
+      const mockClient = {
+        id: "client-1",
+        displayName: "Synergia",
+        locale: "es",
+        planId: "plan-free",
+        lifecycleStatus: "alta",
+      };
       const mockDb = {
         select: vi.fn().mockImplementation(() => ({
-          from: vi.fn().mockImplementation(() => ({
-            where: vi.fn().mockImplementation(() => ({
-              limit: vi.fn().mockImplementation(async () => {
-                selectCount++;
-                if (selectCount === 1) return [mockUser];
-                if (selectCount === 2) return [mockClient];
-                return [];
-              }),
-            })),
-          })),
+          from: vi.fn().mockImplementation((table: unknown) => {
+            let rows: any[] = [];
+            if (table === tUsers) rows = [mockUser];
+            else if (table === tClients) rows = [mockClient];
+            else if (table === tSessions) rows = [{ startedAt: new Date(), draftPayload: {} }];
+
+            const makeWhereRes = () => {
+              const p = Promise.resolve(rows);
+              return Object.assign(p, {
+                limit: vi.fn().mockResolvedValue(rows.slice(0, 1)),
+                orderBy: vi.fn().mockResolvedValue(rows),
+              });
+            };
+
+            return {
+              where: vi.fn().mockImplementation(makeWhereRes),
+            };
+          }),
         })),
         update: vi.fn().mockReturnValue({
           set: vi.fn().mockReturnValue({
@@ -456,6 +498,9 @@ describe("TenantOnboardingService", () => {
       vi.spyOn(dbModule, "getDb").mockReturnValue(mockDb as any);
 
       const mockTx = {
+        delete: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue({}),
+        }),
         insert: vi.fn().mockReturnValue({
           values: vi.fn().mockReturnValue({
             onConflictDoUpdate: vi.fn().mockResolvedValue({}),
@@ -468,8 +513,11 @@ describe("TenantOnboardingService", () => {
       });
 
       const res = await service.completeStep3BotAndActivate("user-1", {
-        botPreset: "asesor_comercial",
-        paymentMethods: ["Nequi", "Contraentrega"],
+        botPreset: "quick_sales",
+        botObjective: "Vender productos por chat",
+        paymentChannels: [
+          { channelCode: "nequi", displayName: "Nequi", accountIdentifier: "3001234567" },
+        ],
       });
 
       expect(res.ok).toBe(true);

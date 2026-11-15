@@ -253,6 +253,13 @@
       "when": 1794694487036,
       "tag": "0035_add_client_commercial_email",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794698528857,
+      "tag": "0036_onboarding_five_steps_step_check",
+      "breakpoints": true
     }
   ]
 }

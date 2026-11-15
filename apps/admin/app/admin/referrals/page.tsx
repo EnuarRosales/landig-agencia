@@ -3,7 +3,7 @@ import { fetchAdminReferralsOverview } from "@mocter/domain";
 import { ReferralsView } from "./referrals-view";
 
 export const metadata = {
-  title: "Programa De Referidos · mocter-admin",
+  title: "Programa de Referidos · mocter-admin",
   description: "Gobernanza comercial, créditos de afiliación y métricas de líderes comunitarios.",
 };
 

@@ -54,11 +54,11 @@ export function ProductsView({ initialProducts, initialBilling = null }: Product
 
     const priceNum = parseFloat(price);
     if (!name.trim()) {
-      setFormError("El Nombre Del Producto es obligatorio.");
+      setFormError("El nombre del producto es obligatorio.");
       return;
     }
     if (isNaN(priceNum) || priceNum <= 0) {
-      setFormError("El Precio Del Producto debe ser mayor a cero.");
+      setFormError("El precio del producto debe ser mayor a cero.");
       return;
     }
 
@@ -382,13 +382,13 @@ export function ProductsView({ initialProducts, initialBilling = null }: Product
             <form onSubmit={handleCreateProduct} className="mt-4 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
-                  Nombre Del Producto *
+                  Nombre del Producto *
                 </label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Ej. Café De Origen Tostado"
+                  placeholder="Ej. Café de Origen Tostado"
                   className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden"
                   required
                 />
@@ -397,7 +397,7 @@ export function ProductsView({ initialProducts, initialBilling = null }: Product
               <AiEnhanceTextarea
                 id="product-description-input"
                 fieldKey="product.description"
-                label="Descripción Del Producto"
+                label="Descripción del Producto"
                 value={description}
                 onChange={setDescription}
                 context={{ productName: name, category }}
@@ -408,7 +408,7 @@ export function ProductsView({ initialProducts, initialBilling = null }: Product
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
-                    Precio En Pesos *
+                    Precio en Pesos *
                   </label>
                   <input
                     type="number"
@@ -550,7 +550,7 @@ export function ProductsView({ initialProducts, initialBilling = null }: Product
                   disabled={uploading || !selectedFile}
                   className="inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
-                  {uploading ? "Subiendo..." : "Subir Y Optimizar"}
+                  {uploading ? "Subiendo..." : "Subir y Optimizar"}
                 </button>
               </div>
             </form>
@@ -563,7 +563,7 @@ export function ProductsView({ initialProducts, initialBilling = null }: Product
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
         onConfirm={handleDelete}
-        title="Eliminar Producto Del Catálogo"
+        title="Eliminar Producto del Catálogo"
         subtitle="Confirmación para retirar este producto de tu catálogo comercial."
         variant="danger"
         confirmText="Eliminar Producto"

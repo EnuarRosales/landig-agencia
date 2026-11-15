@@ -264,15 +264,20 @@ Característica: Asistente de Onboarding unificado en 5 pasos
 
 ## 14. Definition of Done
 
-- [ ] Esquema `admin.onboarding_sessions` y `TenantOnboardingService` migrados al flujo oficial de **5 pasos** con retrocompatibilidad.
-- [ ] Logo de Mocter estandarizado integrado en la vista `/onboarding` idéntico al de Login/Registro (`ONB-01`).
-- [ ] Todos los campos nuevos (`commercialEmail`, `websiteUrl`, `phone`, `locale`, `logoMediaId`, `costPriceCents` + utilidad calculada, objetivo/preset del bot, etiquetas Chatwoot, Paso 5 pago/trial) integrados y sincronizados.
-- [ ] Pruebas unitarias y E2E/integración cubriendo recorrido de 5 pasos, cálculo de margen, conflicto de slug y persistencia de borrador.
-- [ ] `pnpm lint`, `pnpm test`, `drizzle-kit check` en verde + protocolo §4.18 ejecutado.
+- [x] Esquema `admin.onboarding_sessions` y `TenantOnboardingService` migrados al flujo oficial de **5 pasos** con retrocompatibilidad.
+- [x] Logo de Mocter estandarizado integrado en la vista `/onboarding` idéntico al de Login/Registro (`ONB-01`).
+- [x] Todos los campos nuevos (`commercialEmail`, `websiteUrl`, `phone`, `locale`, `logoMediaId`, `costPriceCents` + utilidad calculada, objetivo/preset del bot, etiquetas Chatwoot, Paso 5 pago/trial) integrados y sincronizados.
+- [x] Pruebas unitarias y E2E/integración cubriendo recorrido de 5 pasos, cálculo de margen, conflicto de slug y persistencia de borrador.
+- [x] `pnpm lint` (en `@mocter/domain`, `@mocter/web` y archivos de `SPEC-06`), pruebas focalizadas + suites completas, `drizzle-kit check` en verde + protocolo §4.18 ejecutado.
 
 ---
 
-## 15. Propuestas a Validar (PV-xx)
+## 15. Propuestas a Validar (PV-xx) y Decisiones de Implementación
 
-Todas las propuestas (`ONB-07` en 5 pasos y `ONB-12` con Bre-B/trial) fueron confirmadas expresamente por el usuario. Sin preguntas pendientes.
+Todas las propuestas (`ONB-07` en 5 pasos y `ONB-12` con Bre-B/trial) fueron confirmadas expresamente por el usuario. Adicionalmente, durante la validación técnica previa a la implementación se acordaron las siguientes decisiones vinculantes:
+
+- **D-01 · Alineación de precio y costo en `cell_products` (`SPEC-06` ↔ `SPEC-08`):** Se incorpora la columna nullable `cost_price_cents` (`BIGINT CHECK (cost_price_cents IS NULL OR cost_price_cents >= 0)`) en `cell_products` junto con su migración de celda desde `SPEC-06`. El campo obligatorio **Precio De Venta** del Paso 3 se persiste en `cell_products.price_cents` (precio regular al público en `SPEC-08`), reservando `cell_products.sale_price_cents` (`NULL` en onboarding) para precios promocionales futuros en `SPEC-08`.
+- **D-02 · Seed idempotente de catálogos de asistente IA (`admin.bot_tones` y `admin.bot_presets`):** Para garantizar integridad referencial de `admin.tenant_bots.tone_id` (`NOT NULL`) y disponibilidad inmediata de catálogos reales en el Paso 4 y en `/admin/ai`, se incluye un seed idempotente de tonos comunicacionales base y presets vinculados a modelos activos de `admin.ai_models`.
+- **D-03 · Cierre del Paso 5 (`billing`) para prueba, plan gratuito y pago Bre-B:** El Paso 5 expone acción explícita para iniciar el periodo de prueba (cuando el plan seleccionado tiene `trial_days > 0`) o activar el comercio directamente (cuando el plan es gratuito `$0`). Si el inquilino reporta un comprobante Bre-B (`pending_review`) dentro del Paso 5, el onboarding completa la transición a `/workspace` activando su periodo de prueba en paralelo mientras el operador verifica el comprobante (o activando la operación con pago en verificación si `trial_days = 0`).
+
 

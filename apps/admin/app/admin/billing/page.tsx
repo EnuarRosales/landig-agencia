@@ -3,7 +3,7 @@ import { fetchAdminPlans, getBillingService } from "@mocter/domain";
 import { BillingTabsView } from "./billing-tabs-view";
 
 export const metadata = {
-  title: "Facturación Y Planes · mocter-admin",
+  title: "Facturación y Planes · mocter-admin",
   description: "Gobernanza comercial, catálogo de planes, suscripciones de inquilinos y pasarelas Wompi / Stripe.",
 };
 

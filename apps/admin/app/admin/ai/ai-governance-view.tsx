@@ -1032,7 +1032,7 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
               <span className="rounded-full bg-[var(--dsn-accent)]/10 px-2.5 py-1 text-[11px] font-medium text-[var(--dsn-accent)]">
                 {platformKeys.some((pk) => pk.status === "active")
                   ? "Credencial Activa Configurada"
-                  : "Pendiente De Configuración"}
+                  : "Pendiente de Configuración"}
               </span>
             </div>
 
@@ -1040,7 +1040,7 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
               {/* Formulario de registro / rotación */}
               <form onSubmit={handleSavePlatformKey} className="space-y-4 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] p-4">
                 <h3 className="text-xs font-semibold text-[var(--dsn-text)]">
-                  Registrar O Rotar Credencial Activa
+                  Registrar o Rotar Credencial Activa
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2261,7 +2261,7 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
           if (!retireLoading) setKeyToRetire(null);
         }}
         onConfirm={handleConfirmRetireKey}
-        title="Retirar Llave De Prueba De Plataforma"
+        title="Retirar Llave de Prueba de Plataforma"
         subtitle="Esta credencial dejará de usarse para asistencia durante el onboarding y pruebas."
         variant="warning"
         details={
@@ -2273,7 +2273,7 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
               ]
             : undefined
         }
-        warningTitle="Impacto En Nuevas Pruebas"
+        warningTitle="Impacto en Nuevas Pruebas"
         warningMessage="Si no existe otra llave activa en plataforma, los espacios en periodo de prueba requerirán configurar su propia llave de proveedor para usar asistencia con AI."
         confirmText="Confirmar Retiro"
         confirmLoadingText="Retirando Credencial..."
@@ -2299,7 +2299,7 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
               ]
             : undefined
         }
-        warningTitle="Validación De Integridad Referencial"
+        warningTitle="Validación de Integridad Referencial"
         warningMessage="Esta acción verifica que no existan llaves de plataforma o credenciales de comercios activas ni bots en operación vinculados al proveedor."
         confirmText="Confirmar Eliminación"
         confirmLoadingText="Eliminando Proveedor..."
@@ -2325,7 +2325,7 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
               ]
             : undefined
         }
-        warningTitle="Impacto En Catálogo"
+        warningTitle="Impacto en Catálogo"
         warningMessage="Los comercios ya no podrán seleccionar este modelo para nuevas configuraciones de bot o asistencia."
         confirmText="Confirmar Eliminación"
         confirmLoadingText="Eliminando Modelo..."

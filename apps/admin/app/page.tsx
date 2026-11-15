@@ -67,7 +67,7 @@ export default async function AdminHomePage() {
       badge: "Omnicanal",
     },
     {
-      title: "Directorio De Inquilinos y Comercios",
+      title: "Directorio de Inquilinos y Comercios",
       description: "Supervisión del universo de comercios, control de suspensión y enrutamiento a celdas.",
       href: "/admin/tenants",
       badge: "Tenencia",
@@ -79,7 +79,7 @@ export default async function AdminHomePage() {
       badge: "Inferencia",
     },
     {
-      title: "Programa De Referidos y Afiliados",
+      title: "Programa de Referidos y Afiliados",
       description: "Modelo de recompensas por recomendación, códigos de comercio y créditos acumulados.",
       href: "/admin/referrals",
       badge: "Crecimiento",

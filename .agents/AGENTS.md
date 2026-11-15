@@ -104,7 +104,11 @@ Todo **campo de texto libre (`textarea`)** que el inquilino redacte cuenta con *
 
 Toda vista de Mocter se diseña **Mobile First**: la versión móvil se define primero y el escritorio la amplía, nunca al revés. El look & feel vive en el sistema de diseño [DSN-001](docs/specs/dsn-001-sistema-diseno/requirements.md): tokens en capas, paleta parametrizable (SaaS e inquilino por plan), tipografía (Chakra Petch/Space Grotesk · Inter/Geist · IBM Plex Mono), tablas con paginación/filtros/ordenamiento en todo el sistema, alto contraste (WCAG 2.2 AA) y el contrato de marca blanca por capas.
 
-**Regla de presentación para formularios:** En los label de los atributos que se capturen en formularios, queda prohibido el uso de letras en mayúsculas sostenidas (uppercase). Se debe usar siempre formato **Tipo Título (Title Case)** con las primeras letras en mayúscula (ej. «Nombre Del Platform Owner», «Correo Electrónico Corporativo»). Ningún label debe utilizar clases como uppercase ni fuentes tipográficas que fuercen la representación en mayúsculas sostenidas.
+**Regla de presentación para formularios:** En los label de los atributos que se capturen en formularios y en los títulos de vistas o modales, queda prohibido el uso de letras en mayúsculas sostenidas (`uppercase`). Se debe usar siempre formato **Tipo Título (Title Case)** gramatical estándar: las palabras léxicas principales (sustantivos, verbos, adjetivos, pronombres no clíticos) inician con mayúscula, mientras que las palabras gramaticales de enlace (artículos definidos/indefinidos, conjunciones y preposiciones cortas como _de_, _del_, _y_, _o_, _en_, _con_, _para_, _por_, _a_) deben escribirse en minúscula, salvo que inicien la frase.
+
+- ✅ Correcto: _«Nombre del Platform Owner»_, _«Correo Electrónico Corporativo»_, _«Productos y Catálogo Comercial»_.
+- ❌ Incorrecto: _«NOMBRE DEL NEGOCIO»_ (mayúsculas sostenidas) o _«Nombre Del Platform Owner»_ / _«Productos Y Catálogo»_ (partículas gramaticales capitalizadas).
+  Ningún label debe utilizar clases como `uppercase` ni fuentes tipográficas que fuercen la representación en mayúsculas sostenidas.
 
 ### 4.9 Time-to-value: operación en una sesión corta
 

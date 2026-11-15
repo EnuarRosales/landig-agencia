@@ -266,7 +266,7 @@ describe("BOT-001 / BOT-002 / AI-001 · Gobernanza de Inteligencia Artificial y 
     // 3. Abrir ConfirmationModal al retirar la credencial activa
     fireEvent.click(screen.getByRole("button", { name: "Retirar" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
-    expect(screen.getByText("Retirar Llave De Prueba De Plataforma")).toBeTruthy();
+    expect(screen.getByText("Retirar Llave de Prueba de Plataforma")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Mantener Activa" }));
 
     // 4. Pestaña Biblioteca De Prompts Maestros y edición de prompt

@@ -172,6 +172,7 @@ export const cellProducts = cellAdminSchema.table(
     availability: text("availability").notNull().default("in_stock"),
     status: text("status").notNull().default("draft"),
     sortOrder: integer("sort_order").notNull().default(0),
+    costPriceCents: bigint("cost_price_cents", { mode: "number" }),
     priceCents: bigint("price_cents", { mode: "number" }).notNull(),
     salePriceCents: bigint("sale_price_cents", { mode: "number" }),
     currency: char("currency", { length: 3 }),
@@ -229,6 +230,10 @@ export const cellProducts = cellAdminSchema.table(
       sql.raw("status IN ('draft', 'published', 'archived')"),
     ),
     check("products_price_check", sql.raw("price_cents >= 0")),
+    check(
+      "products_cost_price_non_negative_check",
+      sql.raw("cost_price_cents IS NULL OR cost_price_cents >= 0"),
+    ),
   ],
 );
 

@@ -113,14 +113,14 @@ export default async function WorkspaceConversationsPage() {
         <div className="flex items-center gap-2">
           <MessageSquare className="h-5 w-5 text-cyan-400" />
           <h1 className="text-base font-bold text-[var(--dsn-text)]">
-            Bandeja De Conversaciones Omnicanal
+            Bandeja de Conversaciones Omnicanal
           </h1>
         </div>
       </header>
       <div className="flex-1 w-full rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden">
         <iframe
           src="/api/auth/chatwoot/embed?scope=workspace"
-          title="Bandeja De Atención Omnicanal"
+          title="Bandeja de Atención Omnicanal"
           className="w-full h-full border-0"
           allow="camera; microphone; clipboard-read; clipboard-write; autoplay; keyboard-map"
         />

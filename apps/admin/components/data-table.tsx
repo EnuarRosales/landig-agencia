@@ -162,7 +162,7 @@ export function DataTable<Row extends Record<string, unknown>>({
             data-testid="desktop-table-view"
           >
             <table className="w-full border-collapse text-left">
-              <thead className="sticky top-0 bg-[var(--dsn-surface-secondary)] text-xs uppercase text-[var(--dsn-text-secondary)]">
+              <thead className="sticky top-0 bg-[var(--dsn-surface-secondary)] text-xs text-[var(--dsn-text-secondary)]">
                 <tr>
                   {columns.map((col) => (
                     <th key={col.key} scope="col" className={cellPadding}>

@@ -102,6 +102,8 @@ describe("ADM-001 D-31 · Consola de Gobernanza de Usuarios, Roles y Permisos (R
         activeUsers: 2,
         totalRoles: 2,
         totalPermissions: 2,
+        platformUsersCount: 1,
+        tenantUsersCount: 1,
       },
       users: [
         {
@@ -114,6 +116,8 @@ describe("ADM-001 D-31 · Consola de Gobernanza de Usuarios, Roles y Permisos (R
           createdAt: "2026-10-24",
         },
       ],
+      platformUsers: [],
+      tenantUsers: [],
       roles: [
         {
           key: "platform_owner",
@@ -133,7 +137,7 @@ describe("ADM-001 D-31 · Consola de Gobernanza de Usuarios, Roles y Permisos (R
             {
               key: "platform.governance.manage",
               module: "Gobierno y Control",
-              name: "Control Supremo Del Sistema",
+              name: "Control Supremo del Sistema",
               description: "Supervisión total",
               isCritical: true,
             },
@@ -142,7 +146,7 @@ describe("ADM-001 D-31 · Consola de Gobernanza de Usuarios, Roles y Permisos (R
       ],
     };
 
-    const element = <RbacView initialData={mockData} />;
+    const element = <RbacView initialData={mockData as any} />;
     expect(React.isValidElement(element)).toBe(true);
   });
 });

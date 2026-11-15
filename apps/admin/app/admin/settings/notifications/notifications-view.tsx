@@ -959,7 +959,7 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
               <div className="flex items-center gap-2">
                 <FileText className="h-5 w-5 text-[var(--dsn-accent)]" />
                 <h3 id="modal-template-title" className="text-base font-bold text-[var(--dsn-text)]">
-                  {templateForm.id ? "Editar Plantilla Vinculada" : "Nueva Plantilla De Correo Vinculada"}
+                  {templateForm.id ? "Editar Plantilla Vinculada" : "Nueva Plantilla de Correo Vinculada"}
                 </h3>
               </div>
               <button

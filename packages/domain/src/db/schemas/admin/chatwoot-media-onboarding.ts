@@ -121,7 +121,9 @@ export const onboardingSessions = adminSchema.table(
   () => [
     check(
       "onboarding_sessions_step_check",
-      sql.raw("current_step IN ('business', 'product', 'bot_channel', 'completed')"),
+      sql.raw(
+        "current_step IN ('business', 'plan', 'product', 'assistant_payments', 'billing', 'completed')",
+      ),
     ),
     check(
       "onboarding_sessions_status_check",

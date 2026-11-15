@@ -96,12 +96,12 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
 
     const expectedLabels = [
       "Tablero",
-      "Productos Y Catálogo",
+      "Productos y Catálogo",
       "Contactos CRM",
-      "Pedidos Y Ventas",
-      "Asistente AI Y Bot",
-      "Equipo Y Miembros",
-      "Mi Plan Y Cuotas",
+      "Pedidos y Ventas",
+      "Asistente AI y Bot",
+      "Equipo y Miembros",
+      "Mi Plan y Cuotas",
     ];
 
     for (const label of expectedLabels) {
@@ -170,9 +170,9 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
 
     expect(screen.getAllByText("Conversaciones Omnicanal").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/Chatwoot/i)).toBeNull();
-    expect(screen.getAllByText("Identidad Y Marca Blanca").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Comunidad De Comercios").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Informes Y Analítica").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Identidad y Marca Blanca").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Comunidad de Comercios").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Informes y Analítica").length).toBeGreaterThanOrEqual(1);
   });
 
   it("7. Despliega el menú HUD y abre el modal de confirmación de logout accesible (Regla 4.17)", () => {
@@ -194,7 +194,7 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
       const logoutBtn = screen.getAllByText("Cerrar Sesión")[0];
       fireEvent.click(logoutBtn);
 
-      expect(screen.getByText("Cerrar Sesión En El Comercio")).toBeDefined();
+      expect(screen.getByText("Cerrar Sesión en el Comercio")).toBeDefined();
       expect(screen.getByText("Cerrar Sesión Definitivamente")).toBeDefined();
     }
   });
@@ -218,8 +218,8 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
       const switchBtn = screen.getAllByText("Cambiar Comercio")[0];
       fireEvent.click(switchBtn);
 
-      expect(screen.getByText("Cambio De Comercio")).toBeDefined();
-      expect(screen.getByText(/Espacio Dedicado Y Membresía Única/i)).toBeDefined();
+      expect(screen.getByText("Cambio de Comercio")).toBeDefined();
+      expect(screen.getByText(/Espacio Dedicado y Membresía Única/i)).toBeDefined();
     }
   });
 });

@@ -1,60 +1,75 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import {
-  Store,
-  Package,
-  Bot,
-  Sparkles,
-  CheckCircle2,
-  ArrowRight,
-  ShieldCheck,
-  CreditCard,
-  Truck,
-  HelpCircle,
-  AlertCircle,
-  Loader2,
-} from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import type { TenantOnboardingStateDto, WorkspaceBillingDto } from "@mocter/domain";
-import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
-import { CatalogQuotaBanner, formatStorageBytes } from "@/components/catalog-quota-banner";
-import { BillingCheckoutPanel } from "@/components/billing-checkout-panel";
+import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
+import { StepBusiness } from "./steps/step-business";
+import { StepPlan } from "./steps/step-plan";
+import { StepProduct } from "./steps/step-product";
+import {
+  StepAssistantPayments,
+  type OnboardingPaymentChannelItem,
+} from "./steps/step-assistant-payments";
+import { StepBilling } from "./steps/step-billing";
 
 export interface TenantOnboardingWizardProps {
   initialState: TenantOnboardingStateDto;
   initialBilling?: WorkspaceBillingDto | null;
+  initialLocale?: AdminLocale;
+}
+
+function cleanSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 50);
 }
 
 /**
- * Asistente unificado de onboarding en 3 pasos (ADM-001 D-36, TNT-001 RF-03).
- *
- * Directivas de diseño:
- * - Mobile First (DSN-001).
- * - Etiquetas de formulario exclusivamente en Tipo Título (Title Case, Regla 4.8).
- * - Asistencia AI en campo de texto libre con «Mejorar Con AI» (AI-001, Regla 4.7).
- * - Cero diálogos nativos del navegador (Regla 4.17).
- * - Cero códigos de especificaciones en vistas visibles (Regla 4.15).
+ * Asistente unificado de onboarding en 5 pasos (`SPEC-06`).
  */
 export function TenantOnboardingWizard({
   initialState,
   initialBilling = null,
+  initialLocale = "es",
 }: TenantOnboardingWizardProps) {
   const router = useRouter();
-  const [billingDetails, setBillingDetails] = useState<WorkspaceBillingDto | null>(initialBilling);
 
-  const [step, setStep] = useState<1 | 2 | 3>(
-    initialState.step === "completed" ? 3 : (initialState.step as 1 | 2 | 3),
+  const initialStepNum: 1 | 2 | 3 | 4 | 5 =
+    initialState.step === "completed" ? 5 : initialState.step;
+
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(initialStepNum);
+  const [locale, setLocale] = useState<AdminLocale>(
+    initialState.client?.locale || initialState.draft.business?.locale || initialLocale,
   );
+  const [clientId, setClientId] = useState<string>(initialState.client?.id || "");
+  const [billingDetails, setBillingDetails] = useState<WorkspaceBillingDto | null>(initialBilling);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Estado del Paso 1: Negocio y Plan
+  const dict = getAdminDictionary(locale).onboarding;
+
+  // Paso 1: Negocio
   const [displayName, setDisplayName] = useState(
     initialState.client?.displayName || initialState.draft.business?.displayName || "",
   );
   const [slug, setSlug] = useState(
     initialState.client?.slug || initialState.draft.business?.slug || "",
+  );
+  const [commercialEmail, setCommercialEmail] = useState(
+    initialState.client?.commercialEmail || initialState.draft.business?.commercialEmail || "",
+  );
+  const [websiteUrl, setWebsiteUrl] = useState(
+    initialState.client?.websiteUrl || initialState.draft.business?.websiteUrl || "",
+  );
+  const [phone, setPhone] = useState(
+    initialState.client?.phone || initialState.draft.business?.phone || "",
   );
   const [currency, setCurrency] = useState(
     initialState.client?.currency || initialState.draft.business?.currency || "COP",
@@ -62,38 +77,114 @@ export function TenantOnboardingWizard({
   const [timezone, setTimezone] = useState(
     initialState.client?.timezone || initialState.draft.business?.timezone || "America/Bogota",
   );
-  const [selectedPlanCode, setSelectedPlanCode] = useState(
-    initialState.client?.planCode || initialState.draft.business?.planCode || "free",
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(
+    initialState.client?.logoUrl || null,
+  );
+  const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  // Paso 2: Plan
+  const defaultPlanCode =
+    initialState.draft.plan?.planCode ||
+    initialState.client?.planCode ||
+    initialState.draft.business?.planCode ||
+    initialState.availablePlans[0]?.code ||
+    "free";
+  const [selectedPlanCode, setSelectedPlanCode] = useState<string>(defaultPlanCode);
+  const [cycle, setCycle] = useState<"monthly" | "annual">(
+    initialState.draft.plan?.cycle === "annual" ? "annual" : "monthly",
   );
 
-  // Estado del Paso 2: Primer Producto
-  const [productName, setProductName] = useState(
-    initialState.draft.firstProduct?.name || "",
-  );
+  // Paso 3: Primer Producto
+  const [productName, setProductName] = useState(initialState.draft.firstProduct?.name || "");
   const [productDescription, setProductDescription] = useState(
     initialState.draft.firstProduct?.description || "",
   );
-  const [productPrice, setProductPrice] = useState<number | string>(
-    initialState.draft.firstProduct?.priceCents
-      ? initialState.draft.firstProduct.priceCents / 100
-      : 85000,
+  const [costPriceInput, setCostPriceInput] = useState(
+    initialState.draft.firstProduct?.costPriceCents != null
+      ? String(initialState.draft.firstProduct.costPriceCents / 100)
+      : "",
   );
+  const [salePriceInput, setSalePriceInput] = useState(() => {
+    const cents =
+      initialState.draft.firstProduct?.salePriceCents ??
+      initialState.draft.firstProduct?.priceCents;
+    return cents ? String(cents / 100) : "85000";
+  });
   const [productKind, setProductKind] = useState<"physical" | "digital" | "service">(
     initialState.draft.firstProduct?.kind || "physical",
   );
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(
+    initialState.draft.firstProduct?.coverMediaUrl || null,
+  );
+  const [pendingCoverFile, setPendingCoverFile] = useState<File | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
 
-  // Estado del Paso 3: Asistente Virtual y Activación
-  const [botPreset, setBotPreset] = useState(
-    initialState.draft.botConfig?.botPreset || "friendly_sales",
+  // Paso 4: Asistente y Canales de Pago
+  const [botName, setBotName] = useState(
+    initialState.draft.assistantAndPayments?.botName ||
+      (initialState.client?.displayName
+        ? `Asistente ${initialState.client.displayName}`
+        : "Asistente Comercial"),
   );
-  const [paymentMethods, setPaymentMethods] = useState<string[]>(
-    initialState.draft.botConfig?.paymentMethods || ["Nequi", "Daviplata", "Bancolombia", "Contraentrega"],
+  const [botObjective, setBotObjective] = useState(
+    initialState.draft.assistantAndPayments?.botObjective ||
+      initialState.botCatalog.objectives[0]?.labels[locale] ||
+      "Vender productos y cerrar pedidos por chat",
   );
-  const [orderMessage, setOrderMessage] = useState(
-    "¡Gracias por tu pedido! Nuestro equipo lo está preparando y nos pondremos en contacto contigo de inmediato.",
+  const [botPresetId, setBotPresetId] = useState(
+    initialState.draft.assistantAndPayments?.botPresetId ||
+      initialState.botCatalog.presets[0]?.id ||
+      "",
+  );
+  const [botToneId, setBotToneId] = useState(
+    initialState.draft.assistantAndPayments?.botToneId ||
+      initialState.botCatalog.tones[0]?.id ||
+      "",
+  );
+  const [paymentChannels, setPaymentChannels] = useState<OnboardingPaymentChannelItem[]>(() => {
+    if (initialState.paymentChannels && initialState.paymentChannels.length > 0) {
+      return initialState.paymentChannels.map((c) => ({
+        channelCode: c.channelCode,
+        displayName: c.displayName,
+        accountIdentifier: c.accountIdentifier || "",
+        accountHolderName: c.accountHolderName || "",
+        instructions: c.instructions || "",
+        isActive: c.isActive,
+      }));
+    }
+    return [
+      {
+        channelCode: "nequi",
+        displayName: "Nequi",
+        accountIdentifier: "",
+        accountHolderName: "",
+        instructions: "",
+        isActive: true,
+      },
+      {
+        channelCode: "cash_on_delivery",
+        displayName: "Pago Contra Entrega",
+        accountIdentifier: "",
+        accountHolderName: "",
+        instructions: "Pago al recibir el pedido",
+        isActive: true,
+      },
+    ];
+  });
+  const [orderConfirmationMessage, setOrderConfirmationMessage] = useState(
+    initialState.draft.assistantAndPayments?.orderConfirmationMessage ||
+      "¡Gracias por tu pedido! Nuestro equipo lo está preparando y nos pondremos en contacto contigo de inmediato.",
   );
 
-  // Auto-generación de slug a partir del nombre comercial
+  const selectedPlan = useMemo(
+    () =>
+      initialState.availablePlans.find((p) => p.code === selectedPlanCode) ||
+      initialState.availablePlans[0] ||
+      null,
+    [initialState.availablePlans, selectedPlanCode],
+  );
+
   function handleDisplayNameChange(val: string) {
     setDisplayName(val);
     if (!initialState.client?.slug && (!slug || slug === cleanSlug(displayName))) {
@@ -101,23 +192,87 @@ export function TenantOnboardingWizard({
     }
   }
 
-  function cleanSlug(text: string): string {
-    return text
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 50);
+  async function uploadLogoToServer(file: File): Promise<void> {
+    setUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/tenant/profile/logo", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.detail || json.error || "No se pudo subir el logotipo.");
+      }
+      if (json.data?.logoUrl) {
+        setLogoPreviewUrl(json.data.logoUrl);
+      }
+      setPendingLogoFile(null);
+    } finally {
+      setUploadingLogo(false);
+    }
   }
 
-  function togglePaymentMethod(method: string) {
-    setPaymentMethods((prev) =>
-      prev.includes(method) ? prev.filter((m) => m !== method) : [...prev, method],
-    );
+  async function handleLogoFileSelect(file: File) {
+    setError(null);
+    if (clientId) {
+      try {
+        await uploadLogoToServer(file);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+
+    if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+      setLogoPreviewUrl(URL.createObjectURL(file));
+    }
+    setPendingLogoFile(file);
   }
 
-  // Envío del Paso 1
+  async function uploadCoverToServer(file: File): Promise<void> {
+    setUploadingCover(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/tenant/onboarding/product-cover", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.detail || json.error || "No se pudo subir la portada.");
+      }
+      if (json.data?.coverMediaUrl) {
+        setCoverPreviewUrl(json.data.coverMediaUrl);
+      }
+      setPendingCoverFile(null);
+    } finally {
+      setUploadingCover(false);
+    }
+  }
+
+  function handleCoverFileSelect(file: File) {
+    setError(null);
+    if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+      setCoverPreviewUrl(URL.createObjectURL(file));
+    }
+    setPendingCoverFile(file);
+  }
+
+  async function refreshBillingSnapshot() {
+    try {
+      const res = await fetch("/api/tenant/billing", { method: "GET" });
+      const json = await res.json();
+      if (res.ok && json.ok && json.data) {
+        setBillingDetails(json.data as WorkspaceBillingDto);
+      }
+    } catch {
+      // Mantiene estado existente si falla silenciosamente
+    }
+  }
+
   async function handleStep1Submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -131,17 +286,26 @@ export function TenantOnboardingWizard({
           action: "step1_business",
           displayName: displayName.trim(),
           slug: slug.trim(),
+          commercialEmail: commercialEmail.trim() || null,
+          websiteUrl: websiteUrl.trim() || null,
+          phone: phone.trim() || null,
+          locale,
           currency,
           timezone,
           planCode: selectedPlanCode,
         }),
       });
-
       const json = await res.json();
       if (!res.ok || !json.ok) {
-        throw new Error(json.detail || json.error || "No se pudo guardar la información del negocio.");
+        throw new Error(json.detail || json.error || "No se pudo guardar el Paso 1.");
       }
 
+      if (json.data?.clientId) {
+        setClientId(json.data.clientId);
+      }
+      if (pendingLogoFile) {
+        await uploadLogoToServer(pendingLogoFile);
+      }
       setStep(2);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -150,50 +314,26 @@ export function TenantOnboardingWizard({
     }
   }
 
-  // Envío del Paso 2
   async function handleStep2Submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
     try {
-      const priceVal = Number(productPrice);
-      if (priceVal <= 0) {
-        throw new Error("El precio de venta debe ser un número mayor a cero.");
-      }
-
       const res = await fetch("/api/tenant/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "step2_product",
-          name: productName.trim(),
-          description: productDescription.trim(),
-          priceCents: Math.round(priceVal * 100),
-          currency,
-          kind: productKind,
+          action: "step2_plan",
+          planId: selectedPlan?.id,
+          planCode: selectedPlanCode,
+          cycle,
         }),
       });
-
       const json = await res.json();
       if (!res.ok || !json.ok) {
-        throw new Error(json.detail || json.error || "No se pudo registrar el primer producto.");
+        throw new Error(json.detail || json.error || "No se pudo guardar el plan.");
       }
-
-      if (!billingDetails) {
-        try {
-          const billingRes = await fetch("/api/tenant/billing", { cache: "no-store" });
-          if (billingRes && billingRes.ok) {
-            const billingJson = await billingRes.json();
-            if (billingJson?.ok && billingJson.data) {
-              setBillingDetails(billingJson.data as WorkspaceBillingDto);
-            }
-          }
-        } catch {
-          // Mantiene transición al Paso 3 aunque falle carga opcional
-        }
-      }
-
       setStep(3);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -202,8 +342,51 @@ export function TenantOnboardingWizard({
     }
   }
 
-  // Envío del Paso 3
   async function handleStep3Submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      const saleNum = Number(salePriceInput);
+      if (!Number.isFinite(saleNum) || saleNum <= 0) {
+        throw new Error("El precio de venta debe ser mayor a cero.");
+      }
+      const costNum = costPriceInput.trim() === "" ? null : Number(costPriceInput);
+      if (costNum !== null && (!Number.isFinite(costNum) || costNum < 0)) {
+        throw new Error("El precio de costo no puede ser negativo.");
+      }
+
+      const res = await fetch("/api/tenant/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "step3_product",
+          name: productName.trim(),
+          description: productDescription.trim(),
+          costPriceCents: costNum !== null ? Math.round(costNum * 100) : null,
+          salePriceCents: Math.round(saleNum * 100),
+          currency,
+          kind: productKind,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.detail || json.error || "No se pudo guardar el producto.");
+      }
+
+      if (pendingCoverFile) {
+        await uploadCoverToServer(pendingCoverFile);
+      }
+      setStep(4);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleStep4Submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
@@ -213,633 +396,268 @@ export function TenantOnboardingWizard({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "step3_activate",
-          botPreset,
-          paymentMethods,
-          orderMessage: orderMessage.trim(),
+          action: "step4_assistant_payments",
+          botName: botName.trim(),
+          botObjective,
+          botPresetId: botPresetId || undefined,
+          botToneId: botToneId || undefined,
+          paymentChannels,
+          orderConfirmationMessage: orderConfirmationMessage.trim(),
         }),
       });
-
       const json = await res.json();
       if (!res.ok || !json.ok) {
-        throw new Error(json.detail || json.error || "No se pudo activar el comercio.");
+        throw new Error(
+          json.detail || json.error || "No se pudo guardar la configuración del asistente.",
+        );
       }
 
-      // Redirección determinística al espacio de trabajo operativo
-      router.push("/workspace");
-      router.refresh();
+      await refreshBillingSnapshot();
+      setStep(5);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setLoading(false);
     }
   }
 
+  async function handleCompleteOnboarding(
+    mode: "trial" | "free" | "pending_payment_review" | "paid",
+  ) {
+    setError(null);
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/tenant/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "step5_complete",
+          completionMode: mode,
+          planCode: selectedPlanCode,
+          cycle,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.detail || json.error || "No se pudo completar la activación.");
+      }
+
+      router.push(json.data?.redirectTo || "/workspace");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const stepsOrder: Array<1 | 2 | 3 | 4 | 5> = [1, 2, 3, 4, 5];
+  const progressPct = Math.round((step / 5) * 100);
+
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-8 p-4 md:px-8 md:py-10">
-      {/* Encabezado con estética HUD */}
-      <header className="text-center space-y-2">
-        <div className="inline-flex items-center gap-2 rounded-full border border-[var(--dsn-accent)]/30 bg-[var(--dsn-accent)]/10 px-3 py-1 text-xs font-mono font-semibold text-[var(--dsn-accent)]">
-          <Sparkles className="h-3.5 w-3.5" />
-          <span>Configuración Inicial Del Comercio</span>
-        </div>
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-[var(--dsn-text)]">
-          Bienvenido a Mocter
-        </h1>
-        <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] max-w-lg mx-auto">
-          Completa estos tres pasos guiados para dejar tu catálogo y asistente listos para operar en minutos.
-        </p>
-      </header>
+    <div className="min-h-screen bg-[var(--dsn-bg)] px-4 py-6 sm:px-6 md:py-10">
+      <div className="mx-auto max-w-4xl space-y-6">
+        {/* Cabecera Oficial Con Medallón Circular De Mocter Centrado (estilo Login) */}
+        <header className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-5 py-6 text-center shadow-xs">
+          <div className="mb-4 flex justify-center">
+            <div className="group relative flex items-center justify-center">
+              {/* Halo de luz ambiental con el gradiente de Mocter */}
+              <div className="absolute -inset-2 rounded-full bg-gradient-to-tr from-[#2f6bff] via-[#22d3ee] to-[#2f6bff] opacity-50 blur-xl transition-all duration-300 group-hover:opacity-80" />
 
-      {/* Stepper HUD Mobile First */}
-      <nav aria-label="Progreso del asistente de onboarding" className="grid grid-cols-3 gap-2 sm:gap-4">
-        <button
-          type="button"
-          onClick={() => step > 1 && setStep(1)}
-          disabled={step === 1}
-          className={`flex flex-col sm:flex-row items-center gap-2 p-3 rounded-xl border text-left transition-all ${
-            step === 1
-              ? "border-[var(--dsn-accent)] bg-[var(--dsn-surface)] shadow-md"
-              : step > 1
-              ? "border-emerald-500/40 bg-[var(--dsn-surface)]/60 text-emerald-400 cursor-pointer"
-              : "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 opacity-50 cursor-not-allowed"
-          }`}
-        >
-          <div
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-bold text-xs ${
-              step === 1
-                ? "bg-[var(--dsn-accent)] text-white"
-                : step > 1
-                ? "bg-emerald-500/20 text-emerald-400"
-                : "bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]"
-            }`}
-          >
-            {step > 1 ? <CheckCircle2 className="h-4 w-4" /> : "1"}
-          </div>
-          <div className="hidden sm:block truncate">
-            <p className="text-xs font-bold text-[var(--dsn-text)] truncate">Tu Negocio</p>
-            <p className="text-[10px] text-[var(--dsn-text-secondary)] truncate">Nombre y Moneda</p>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => step > 2 && setStep(2)}
-          disabled={step < 2}
-          className={`flex flex-col sm:flex-row items-center gap-2 p-3 rounded-xl border text-left transition-all ${
-            step === 2
-              ? "border-[var(--dsn-accent)] bg-[var(--dsn-surface)] shadow-md"
-              : step > 2
-              ? "border-emerald-500/40 bg-[var(--dsn-surface)]/60 text-emerald-400 cursor-pointer"
-              : "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 opacity-50 cursor-not-allowed"
-          }`}
-        >
-          <div
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-bold text-xs ${
-              step === 2
-                ? "bg-[var(--dsn-accent)] text-white"
-                : step > 2
-                ? "bg-emerald-500/20 text-emerald-400"
-                : "bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]"
-            }`}
-          >
-            {step > 2 ? <CheckCircle2 className="h-4 w-4" /> : "2"}
-          </div>
-          <div className="hidden sm:block truncate">
-            <p className="text-xs font-bold text-[var(--dsn-text)] truncate">Primer Producto</p>
-            <p className="text-[10px] text-[var(--dsn-text-secondary)] truncate">Catálogo Inicial</p>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          disabled={step < 3}
-          className={`flex flex-col sm:flex-row items-center gap-2 p-3 rounded-xl border text-left transition-all ${
-            step === 3
-              ? "border-[var(--dsn-accent)] bg-[var(--dsn-surface)] shadow-md"
-              : "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 opacity-50 cursor-not-allowed"
-          }`}
-        >
-          <div
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-bold text-xs ${
-              step === 3
-                ? "bg-[var(--dsn-accent)] text-white"
-                : "bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]"
-            }`}
-          >
-            3
-          </div>
-          <div className="hidden sm:block truncate">
-            <p className="text-xs font-bold text-[var(--dsn-text)] truncate">Asistente y Pagos</p>
-            <p className="text-[10px] text-[var(--dsn-text-secondary)] truncate">Activación Final</p>
-          </div>
-        </button>
-      </nav>
-
-      {/* Banner de error */}
-      {error && (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-xs text-red-400 animate-in fade-in"
-        >
-          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="font-semibold">Revisa los datos ingresados:</p>
-            <p className="mt-0.5">{error}</p>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          PASO 1: INFORMACIÓN DEL NEGOCIO Y PLAN
-         ───────────────────────────────────────────────────────────── */}
-      {step === 1 && (
-        <form
-          onSubmit={handleStep1Submit}
-          className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 md:p-8 shadow-xl space-y-6"
-        >
-          <div className="flex items-center gap-3 pb-4 border-b border-[var(--dsn-border)]">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)]">
-              <Store className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-[var(--dsn-text)]">
-                Identidad y Moneda Del Comercio
-              </h2>
-              <p className="text-xs text-[var(--dsn-text-secondary)]">
-                Define cómo verán tus clientes tu tienda virtual y el identificador web único.
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="displayName"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
-                Nombre Comercial Del Negocio
-              </label>
-              <input
-                id="displayName"
-                type="text"
-                required
-                value={displayName}
-                onChange={(e) => handleDisplayNameChange(e.target.value)}
-                placeholder="Ejemplo: Synergia Market"
-                className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 text-xs text-[var(--dsn-text)] placeholder-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)]"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="slug"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
-                Identificador De La Tienda (Slug Web)
-              </label>
-              <div className="flex items-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 focus-within:border-[var(--dsn-accent)] focus-within:ring-1 focus-within:ring-[var(--dsn-accent)]">
-                <span className="text-xs font-mono text-[var(--dsn-text-secondary)] select-none">
-                  mocter.co/
-                </span>
-                <input
-                  id="slug"
-                  type="text"
-                  required
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                  placeholder="synergia-market"
-                  className="w-full min-h-[44px] bg-transparent pl-1 text-xs font-mono text-[var(--dsn-text)] placeholder-[var(--dsn-text-secondary)]/50 focus:outline-hidden"
-                />
-              </div>
-              <p className="mt-1 text-[11px] text-[var(--dsn-text-secondary)]">
-                Solo letras minúsculas, números y guiones. Será el enlace público de tu catálogo.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label
-                  htmlFor="currency"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-                >
-                  Moneda Principal De Operación
-                </label>
-                <select
-                  id="currency"
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)]"
-                >
-                  <option value="COP">COP · Peso Colombiano</option>
-                  <option value="USD">USD · Dólar Estadounidense</option>
-                  <option value="EUR">EUR · Euro</option>
-                  <option value="MXN">MXN · Peso Mexicano</option>
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="timezone"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-                >
-                  Zona Horaria Comercial
-                </label>
-                <select
-                  id="timezone"
-                  value={timezone}
-                  onChange={(e) => setTimezone(e.target.value)}
-                  className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)]"
-                >
-                  <option value="America/Bogota">América / Bogotá (GMT-5)</option>
-                  <option value="America/Mexico_City">América / Ciudad de México (GMT-6)</option>
-                  <option value="America/New_York">América / Nueva York (GMT-5)</option>
-                  <option value="America/Lima">América / Lima (GMT-5)</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Selector de Plan */}
-            {initialState.availablePlans.length > 0 && (
-              <div>
-                <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-2">
-                  Plan Comercial Seleccionado
-                </label>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {initialState.availablePlans.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setSelectedPlanCode(p.code)}
-                      className={`p-3.5 rounded-xl border text-left transition-all ${
-                        selectedPlanCode === p.code
-                          ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/10 ring-1 ring-[var(--dsn-accent)]"
-                          : "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] hover:border-[var(--dsn-border-strong)]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs text-[var(--dsn-text)]">{p.name}</span>
-                        {selectedPlanCode === p.code && (
-                          <CheckCircle2 className="h-4 w-4 text-[var(--dsn-accent)]" />
-                        )}
-                      </div>
-                      <p className="mt-1 font-mono text-sm font-extrabold text-[var(--dsn-text)]">
-                        {p.priceMonthlyCents === 0
-                          ? "Gratuito"
-                          : `$${(p.priceMonthlyCents / 100).toLocaleString("es-CO")}/mes`}
-                      </p>
-                      <p className="mt-1 text-[10px] text-[var(--dsn-text-secondary)] line-clamp-2">
-                        {p.description}
-                      </p>
-                      {p.catalogLimits && (
-                        <p className="mt-2 border-t border-[var(--dsn-border)]/50 pt-2 text-[10px] font-mono text-[var(--dsn-text-secondary)]">
-                          {p.catalogLimits.products.mode === "UNLIMITED"
-                            ? "Productos: Ilimitados"
-                            : `Productos: ${p.catalogLimits.products.value ?? 0}`}{" "}
-                          ·{" "}
-                          {p.catalogLimits.imagesPerProduct.mode === "UNLIMITED"
-                            ? "Imágenes: ∞"
-                            : `Imágenes: ${p.catalogLimits.imagesPerProduct.value ?? 0}`}{" "}
-                          ·{" "}
-                          {p.catalogLimits.storageBytes.mode === "UNLIMITED"
-                            ? "Espacio: ∞"
-                            : formatStorageBytes(p.catalogLimits.storageBytes.value)}
-                        </p>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="pt-4 border-t border-[var(--dsn-border)] flex justify-end">
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-[var(--dsn-accent)] px-6 py-2.5 text-xs font-bold text-white shadow-md transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95 disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Guardando Información...</span>
-                </>
-              ) : (
-                <>
-                  <span>Guardar y Continuar Al Paso 2</span>
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────
-          PASO 2: PRIMER PRODUCTO DEL CATÁLOGO
-         ───────────────────────────────────────────────────────────── */}
-      {step === 2 && (
-        <form
-          onSubmit={handleStep2Submit}
-          className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 md:p-8 shadow-xl space-y-6"
-        >
-          <div className="flex items-center gap-3 pb-4 border-b border-[var(--dsn-border)]">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)]">
-              <Package className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-[var(--dsn-text)]">
-                Publica Tu Primer Producto
-              </h2>
-              <p className="text-xs text-[var(--dsn-text-secondary)]">
-                Agrega un artículo inicial para que tu catálogo quede activo de inmediato.
-              </p>
-            </div>
-          </div>
-
-          {(() => {
-            const activePlan =
-              initialState.availablePlans.find((p) => p.code === selectedPlanCode) ||
-              initialState.availablePlans.find((p) => p.id === initialState.client?.planId);
-            const activeLimits = activePlan?.catalogLimits || initialState.currentCatalogSummary;
-            return activeLimits ? (
-              <CatalogQuotaBanner
-                planName={activePlan?.name}
-                limits={activeLimits}
-                compact
-                locale={initialState.client?.locale === "en" ? "en" : "es"}
-              />
-            ) : null;
-          })()}
-
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="sm:col-span-2">
-                <label
-                  htmlFor="productName"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-                >
-                  Nombre Del Producto
-                </label>
-                <input
-                  id="productName"
-                  type="text"
-                  required
-                  value={productName}
-                  onChange={(e) => setProductName(e.target.value)}
-                  placeholder="Ejemplo: Camisa Oxford Premium"
-                  className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 text-xs text-[var(--dsn-text)] placeholder-[var(--dsn-text-secondary)]/50 focus:border-[var(--dsn-accent)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)]"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="productPrice"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-                >
-                  Precio De Venta ({currency})
-                </label>
-                <input
-                  id="productPrice"
-                  type="number"
-                  required
-                  min="1"
-                  step="any"
-                  value={productPrice}
-                  onChange={(e) => setProductPrice(e.target.value)}
-                  className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 text-xs font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)]"
+              {/* Medallón circular blanco con borde de contraste y relieve */}
+              <div className="relative flex h-20 w-20 sm:h-24 sm:w-24 items-center justify-center rounded-full border-2 border-white/60 bg-white p-3 shadow-[0_10px_35px_rgba(34,211,238,0.35),0_2px_10px_rgba(0,0,0,0.4)] ring-4 ring-white/15">
+                <Image
+                  src="/images/mocter-logo.png"
+                  alt="Mocter Logo"
+                  width={64}
+                  height={64}
+                  className="h-12 w-12 sm:h-14 sm:w-14 object-contain"
+                  priority
                 />
               </div>
             </div>
+          </div>
 
-            <div>
-              <label
-                htmlFor="productKind"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
-                Tipo De Producto
-              </label>
-              <select
-                id="productKind"
-                value={productKind}
-                onChange={(e) => setProductKind(e.target.value as any)}
-                className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)]"
-              >
-                <option value="physical">Producto Físico (Con Inventario y Despacho)</option>
-                <option value="service">Servicio o Asesoría Profesional</option>
-                <option value="digital">Contenido o Producto Digital</option>
-              </select>
-            </div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
+            {dict.headerTitle}
+          </h1>
+          <p className="mt-1.5 text-xs sm:text-sm text-[var(--dsn-text-secondary)]">
+            {dict.headerSubtitle}
+          </p>
+        </header>
 
-            <AiEnhanceTextarea
-              id="productDescription"
-              fieldKey="onboarding.product_description"
-              label="Descripción Detallada Del Producto"
-              required
-              rows={4}
-              value={productDescription}
-              onChange={setProductDescription}
-              fallbackDraft={productName}
-              context={{ productName, currency, productKind }}
-              placeholder="Describe los beneficios, materiales y características principales de tu producto..."
-              inputHint="Usa «Mejorar Con AI» para redactar un texto persuasivo orientado a la conversión comercial."
+        {/* Indicador Progresivo De 5 Pasos (Mobile First) */}
+        <div className="space-y-2.5">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--dsn-surface-secondary)]">
+            <div
+              className="h-full rounded-full bg-[var(--dsn-accent)] transition-all duration-300"
+              style={{ width: `${progressPct}%` }}
             />
           </div>
 
-          <div className="pt-4 border-t border-[var(--dsn-border)] flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setStep(1)}
-              className="text-xs font-semibold text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-            >
-              Volver Al Paso 1
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-[var(--dsn-accent)] px-6 py-2.5 text-xs font-bold text-white shadow-md transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95 disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Publicando Producto...</span>
-                </>
-              ) : (
-                <>
-                  <span>Crear Producto y Continuar Al Paso 3</span>
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </button>
+          <nav
+            aria-label={dict.headerTitle}
+            className="grid grid-cols-5 gap-1.5 sm:gap-2"
+          >
+            {stepsOrder.map((num) => {
+              const isCurrent = step === num;
+              const isDone = step > num;
+              return (
+                <button
+                  key={num}
+                  type="button"
+                  aria-current={isCurrent ? "step" : undefined}
+                  disabled={num > step || loading}
+                  onClick={() => {
+                    if (num < step) {
+                      setError(null);
+                      setStep(num);
+                    }
+                  }}
+                  className={`flex items-center justify-center sm:justify-start gap-2 rounded-xl border px-2 py-2 text-xs font-semibold transition-colors ${
+                    isCurrent
+                      ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)] text-[var(--dsn-accent-fg)] shadow-xs"
+                      : isDone
+                        ? "border-[var(--dsn-accent)]/40 bg-[var(--dsn-accent)]/10 text-[var(--dsn-text)]"
+                        : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] opacity-70"
+                  }`}
+                >
+                  <span className="font-mono">{num}</span>
+                  <span className="hidden md:inline truncate">{dict.stepTitles[num]}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* Alerta De Error */}
+        {error && (
+          <div
+            role="alert"
+            className="flex items-start gap-2.5 rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs sm:text-sm text-rose-500"
+          >
+            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+            <span>{error}</span>
           </div>
-        </form>
-      )}
+        )}
 
-      {/* ─────────────────────────────────────────────────────────────
-          PASO 3: ASISTENTE VIRTUAL Y ACTIVACIÓN
-         ───────────────────────────────────────────────────────────── */}
-      {step === 3 && (
-        <form
-          onSubmit={handleStep3Submit}
-          className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 md:p-8 shadow-xl space-y-6"
-        >
-          <div className="flex items-center gap-3 pb-4 border-b border-[var(--dsn-border)]">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)]">
-              <Bot className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-[var(--dsn-text)]">
-                Configura Tu Asistente y Métodos De Pago
-              </h2>
-              <p className="text-xs text-[var(--dsn-text-secondary)]">
-                Define el tono de atención automática para responder preguntas y cerrar pedidos.
-              </p>
-            </div>
-          </div>
+        {/* Renderizado Modular De Pasos 1..5 */}
+        {step === 1 && (
+          <StepBusiness
+            locale={locale}
+            displayName={displayName}
+            slug={slug}
+            isSlugReadOnly={Boolean(initialState.client?.slug)}
+            commercialEmail={commercialEmail}
+            websiteUrl={websiteUrl}
+            phone={phone}
+            currency={currency}
+            timezone={timezone}
+            logoPreviewUrl={logoPreviewUrl}
+            uploadingLogo={uploadingLogo}
+            loading={loading}
+            onDisplayNameChange={handleDisplayNameChange}
+            onSlugChange={(val) => setSlug(cleanSlug(val))}
+            onCommercialEmailChange={setCommercialEmail}
+            onWebsiteUrlChange={setWebsiteUrl}
+            onPhoneChange={setPhone}
+            onLocaleChange={(nextLoc) => setLocale(nextLoc)}
+            onCurrencyChange={setCurrency}
+            onTimezoneChange={setTimezone}
+            onLogoFileSelect={handleLogoFileSelect}
+            onSubmit={handleStep1Submit}
+          />
+        )}
 
-          <div className="space-y-5">
-            <div>
-              <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-2">
-                Preset Del Asistente Virtual
-              </label>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {[
-                  {
-                    key: "friendly_sales",
-                    title: "Asesor Comercial Amigable",
-                    desc: "Tono cálido, persuasivo y enfocado en cerrar ventas y resolver dudas con entusiasmo.",
-                  },
-                  {
-                    key: "technical_expert",
-                    title: "Soporte Técnico y Resolutivo",
-                    desc: "Respuestas precisas, analíticas y detalladas sobre especificaciones y garantías.",
-                  },
-                  {
-                    key: "formal_corporate",
-                    title: "Atención Corporativa y Formal",
-                    desc: "Estilo sobrio, institucional y protocolario ideal para servicios B2B.",
-                  },
-                ].map((preset) => (
-                  <button
-                    key={preset.key}
-                    type="button"
-                    onClick={() => setBotPreset(preset.key)}
-                    className={`p-3.5 rounded-xl border text-left transition-all ${
-                      botPreset === preset.key
-                        ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/10 ring-1 ring-[var(--dsn-accent)]"
-                        : "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] hover:border-[var(--dsn-border-strong)]"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-[var(--dsn-text)]">{preset.title}</span>
-                      {botPreset === preset.key && (
-                        <CheckCircle2 className="h-4 w-4 text-[var(--dsn-accent)]" />
-                      )}
-                    </div>
-                    <p className="mt-1.5 text-[11px] text-[var(--dsn-text-secondary)] leading-relaxed">
-                      {preset.desc}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </div>
+        {step === 2 && (
+          <StepPlan
+            locale={locale}
+            currency={currency}
+            plans={initialState.availablePlans}
+            selectedPlanCode={selectedPlanCode}
+            cycle={cycle}
+            loading={loading}
+            onSelectPlanCode={setSelectedPlanCode}
+            onChangeCycle={setCycle}
+            onBack={() => {
+              setError(null);
+              setStep(1);
+            }}
+            onSubmit={handleStep2Submit}
+          />
+        )}
 
-            <div>
-              <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-2">
-                Métodos De Pago Habilitados
-              </label>
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                {["Nequi", "Daviplata", "Bancolombia", "Contraentrega", "Tarjeta Débito", "Tarjeta Crédito", "Transferencia PSE", "Efecty"].map(
-                  (method) => {
-                    const active = paymentMethods.includes(method);
-                    return (
-                      <button
-                        key={method}
-                        type="button"
-                        onClick={() => togglePaymentMethod(method)}
-                        className={`flex items-center justify-between rounded-lg border p-2.5 text-xs font-semibold transition-all ${
-                          active
-                            ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)]"
-                            : "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                        }`}
-                      >
-                        <span>{method}</span>
-                        {active && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
-                      </button>
-                    );
-                  },
-                )}
-              </div>
-            </div>
+        {step === 3 && (
+          <StepProduct
+            locale={locale}
+            currency={currency}
+            planName={selectedPlan?.names?.[locale] || selectedPlan?.name}
+            catalogLimits={selectedPlan?.catalogLimits || initialState.currentCatalogSummary}
+            productName={productName}
+            productDescription={productDescription}
+            costPriceInput={costPriceInput}
+            salePriceInput={salePriceInput}
+            productKind={productKind}
+            coverPreviewUrl={coverPreviewUrl}
+            uploadingCover={uploadingCover}
+            loading={loading}
+            onProductNameChange={setProductName}
+            onProductDescriptionChange={setProductDescription}
+            onCostPriceInputChange={setCostPriceInput}
+            onSalePriceInputChange={setSalePriceInput}
+            onProductKindChange={setProductKind}
+            onCoverFileSelect={handleCoverFileSelect}
+            onBack={() => {
+              setError(null);
+              setStep(2);
+            }}
+            onSubmit={handleStep3Submit}
+          />
+        )}
 
-            <div>
-              <label
-                htmlFor="orderMessage"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
-                Mensaje De Confirmación De Pedidos
-              </label>
-              <textarea
-                id="orderMessage"
-                rows={2}
-                value={orderMessage}
-                onChange={(e) => setOrderMessage(e.target.value)}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)]"
-              />
-            </div>
+        {step === 4 && (
+          <StepAssistantPayments
+            locale={locale}
+            botCatalog={initialState.botCatalog}
+            botName={botName}
+            botObjective={botObjective}
+            botPresetId={botPresetId}
+            botToneId={botToneId}
+            paymentChannels={paymentChannels}
+            orderConfirmationMessage={orderConfirmationMessage}
+            loading={loading}
+            onBotNameChange={setBotName}
+            onBotObjectiveChange={setBotObjective}
+            onBotPresetIdChange={setBotPresetId}
+            onBotToneIdChange={setBotToneId}
+            onPaymentChannelsChange={setPaymentChannels}
+            onOrderConfirmationMessageChange={setOrderConfirmationMessage}
+            onBack={() => {
+              setError(null);
+              setStep(3);
+            }}
+            onSubmit={handleStep4Submit}
+          />
+        )}
 
-            {billingDetails &&
-              ((billingDetails.availablePlans && billingDetails.availablePlans.length > 0) ||
-                (billingDetails.availableChannels &&
-                  billingDetails.availableChannels.length > 0)) && (
-                <div className="pt-2">
-                  <BillingCheckoutPanel
-                    clientId={billingDetails.tenant?.id || initialState.client?.id || ""}
-                    country={billingDetails.tenant?.country}
-                    currency={billingDetails.tenant?.currency || currency}
-                    customerEmail={billingDetails.tenant?.email}
-                    currentPlanId={billingDetails.plan.id}
-                    subscription={billingDetails.subscription}
-                    pendingBreBReport={billingDetails.pendingBreBReport}
-                    latestRejectedBreBReport={billingDetails.latestRejectedBreBReport}
-                    availablePlans={billingDetails.availablePlans || []}
-                    availableChannels={billingDetails.availableChannels || []}
-                    locale="es"
-                    mode="onboarding"
-                    isOwner
-                  />
-                </div>
-              )}
-          </div>
-
-          <div className="pt-4 border-t border-[var(--dsn-border)] flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setStep(2)}
-              className="text-xs font-semibold text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-            >
-              Volver Al Paso 2
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-xs font-bold text-white shadow-lg transition-all hover:bg-emerald-500 active:scale-95 disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Activando Comercio...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="h-4 w-4" />
-                  <span>Activar Comercio e Ir Al Espacio De Trabajo</span>
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      )}
+        {step === 5 && (
+          <StepBilling
+            locale={locale}
+            clientId={clientId}
+            currency={currency}
+            selectedPlan={selectedPlan}
+            cycle={cycle}
+            billingDetails={billingDetails}
+            loading={loading}
+            onBack={() => {
+              setError(null);
+              setStep(4);
+            }}
+            onCompleteOnboarding={handleCompleteOnboarding}
+          />
+        )}
+      </div>
     </div>
   );
 }
-

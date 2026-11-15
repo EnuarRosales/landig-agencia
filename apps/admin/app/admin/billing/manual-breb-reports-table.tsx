@@ -158,7 +158,7 @@ export function ManualBreBReportsTable({ initialReports }: ManualBreBReportsTabl
         <div className="flex flex-wrap items-center gap-2">
           <Filter className="h-4 w-4 text-[var(--dsn-text-secondary)] shrink-0" />
           <select
-            aria-label="Filtrar Por Estado De Revisión"
+            aria-label="Filtrar por Estado de Revisión"
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value as typeof statusFilter);
@@ -268,7 +268,7 @@ export function ManualBreBReportsTable({ initialReports }: ManualBreBReportsTabl
                             ? "Aprobado"
                             : rep.status === "rejected"
                               ? "Rechazado"
-                              : "Pendiente De Revisión"}
+                              : "Pendiente de Revisión"}
                         </span>
                         {rep.status === "rejected" && rep.rejectionReason && (
                           <p className="mt-1 max-w-[220px] truncate text-[11px] text-red-300" title={rep.rejectionReason}>
@@ -383,7 +383,7 @@ export function ManualBreBReportsTable({ initialReports }: ManualBreBReportsTabl
                 type="button"
                 onClick={() => setVoucherModalReport(null)}
                 className="rounded-lg p-1.5 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-                aria-label="Cerrar Visor De Comprobante"
+                aria-label="Cerrar Visor de Comprobante"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -435,7 +435,7 @@ export function ManualBreBReportsTable({ initialReports }: ManualBreBReportsTabl
         onConfirm={() => {
           if (approveTarget) return executeReview(approveTarget, "approve");
         }}
-        title="Confirmar Aprobación De Pago Bre-B"
+        title="Confirmar Aprobación de Pago Bre-B"
         subtitle="Esta acción concilia la factura, genera el recibo y activa inmediatamente el plan contratado."
         variant="neutral"
         details={
@@ -448,9 +448,9 @@ export function ManualBreBReportsTable({ initialReports }: ManualBreBReportsTabl
               ]
             : []
         }
-        warningTitle="Impacto En El Servicio Del Inquilino"
+        warningTitle="Impacto en el Servicio del Inquilino"
         warningMessage="Asegúrate de haber validado en tu extracto bancario Bre-B que el valor exacto en COP ingresó antes de aprobar."
-        confirmText="Aprobar Y Activar Plan"
+        confirmText="Aprobar y Activar Plan"
         confirmLoadingText="Conciliando Pago..."
         cancelText="Cancelar"
         loading={actionLoading}

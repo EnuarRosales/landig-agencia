@@ -119,4 +119,6 @@ export * from "./services/tenant-workspace.service";
 export * from "./services/tenant-profile.service";
 export * from "./services/tenant-payment-channels.service";
 export * from "./services/cell-migration.service";
+export * from "./services/bot-catalog.seed";
+export * from "./utils/pricing-margin";
 export { eq, and, or, sql, desc, asc, isNull, isNotNull, inArray } from "drizzle-orm";

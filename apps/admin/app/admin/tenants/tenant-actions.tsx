@@ -173,7 +173,7 @@ export function TenantActions({
       setResendModalOpen(false);
       setInfoModal({
         isOpen: true,
-        title: "Invitación De Onboarding Enviada",
+        title: "Invitación de Onboarding Enviada",
         subtitle: "Notificación y credenciales de acceso despachadas por SMTP.",
         variant: "neutral",
         message: `Se enviaron exitosamente las instrucciones de bienvenida y activación a ${sentTo}. La entrega quedó registrada en la bitácora de notificaciones.`,
@@ -204,7 +204,7 @@ export function TenantActions({
       setChatwootModalOpen(false);
       setInfoModal({
         isOpen: true,
-        title: "Sincronización De Chatwoot Exitosa",
+        title: "Sincronización de Chatwoot Exitosa",
         subtitle: "Configuración de atención omnicanal completada.",
         variant: "neutral",
         message: `La cuenta de Chatwoot para ${name} ha sido aprovisionada exitosamente. Se configuraron los buzones, cuotas y etiquetas canónicas.`,
@@ -286,7 +286,7 @@ export function TenantActions({
       setDeleteModalOpen(false);
       setInfoModal({
         isOpen: true,
-        title: "Baja Procesada Con Éxito",
+        title: "Baja Procesada con Éxito",
         subtitle: "Comercio retirado de la plataforma.",
         variant: "neutral",
         message: `El inquilino "${name}" fue dado de baja y su enrutamiento celular quedó en modo solo lectura.`,
@@ -336,7 +336,7 @@ export function TenantActions({
             <MessageSquare className="h-3 w-3 text-cyan-400" />
           )}
           <span className="hidden sm:inline">
-            {tenant?.chatwoot?.state === "failed" ? "Reintentar Sincronización" : "Aprovisionar En Chatwoot"}
+            {tenant?.chatwoot?.state === "failed" ? "Reintentar Sincronización" : "Aprovisionar en Chatwoot"}
           </span>
         </button>
       )}
@@ -630,7 +630,7 @@ export function TenantActions({
           setDeleteError(null);
         }}
         onConfirm={handleExecuteDelete}
-        title="Baja De Inquilino Y Comercio"
+        title="Baja de Inquilino y Comercio"
         subtitle="Retiro del plano de control y cese de acceso a la plataforma."
         variant="danger"
         icon={<Trash2 className="h-5 w-5 text-rose-600 dark:text-rose-400" />}
@@ -640,7 +640,7 @@ export function TenantActions({
           { label: "Plan", value: tenant?.planName || "Plan Asignado" },
           { label: "Célula", value: tenant?.cellCode || "Célula Activa", mono: true },
         ]}
-        warningTitle="Acción Crítica De Retiro"
+        warningTitle="Acción Crítica de Retiro"
         warningMessage={
           <p>
             Al confirmar la baja de este comercio, se suspenderá inmediatamente el acceso al portal de administración,
@@ -648,8 +648,8 @@ export function TenantActions({
             Los datos históricos se conservan para fines de auditoría y cumplimiento normativo.
           </p>
         }
-        confirmText="Confirmar Baja De Inquilino"
-        confirmLoadingText="Dando De Baja..."
+        confirmText="Confirmar Baja de Inquilino"
+        confirmLoadingText="Dando de Baja..."
         loading={deleteLoading}
         error={deleteError}
       />
@@ -662,7 +662,7 @@ export function TenantActions({
           setResendError(null);
         }}
         onConfirm={handleExecuteResend}
-        title="Reenviar Invitación De Onboarding"
+        title="Reenviar Invitación de Onboarding"
         subtitle="Generación de nuevo enlace seguro de activación y bienvenida."
         variant="neutral"
         icon={<Mail className="h-5 w-5 text-[var(--dsn-accent)]" />}
@@ -671,7 +671,7 @@ export function TenantActions({
           { label: "Destinatario", value: tenant?.contactEmail || tenant?.ownerEmail || editForm.contactEmail },
           { label: "Propietario", value: tenant?.ownerName || editForm.ownerDisplayName || "Propietario Principal" },
         ]}
-        warningTitle="Notificación De Acceso Transaccional"
+        warningTitle="Notificación de Acceso Transaccional"
         warningMessage={
           <p>
             Se generará un nuevo token criptográfico de establecimiento de contraseña y verificación de correo.
@@ -692,7 +692,7 @@ export function TenantActions({
           setChatwootError(null);
         }}
         onConfirm={handleExecuteChatwootProvision}
-        title={tenant?.chatwoot?.state === "failed" ? "Reintentar Sincronización" : "Aprovisionar En Chatwoot"}
+        title={tenant?.chatwoot?.state === "failed" ? "Reintentar Sincronización" : "Aprovisionar en Chatwoot"}
         subtitle="Sincronización del buzón de atención omnicanal, etiquetas canónicas y límites de agentes."
         variant="neutral"
         icon={<MessageSquare className="h-5 w-5 text-cyan-400" />}
@@ -702,13 +702,13 @@ export function TenantActions({
           { label: "Plan", value: tenant?.planName || "Plan Comercial" },
           { label: "Estado Actual", value: tenant?.chatwoot?.state || "Sin Aprovisionar" },
         ]}
-        warningTitle="Sincronización De Plataforma"
+        warningTitle="Sincronización de Plataforma"
         warningMessage={
           <p>
             Se conectará con la API de Chatwoot para aprovisionar o actualizar la cuenta corporativa, registrar el buzón webchat, sincronizar las 6 etiquetas comerciales canónicas y registrar el webhook de eventos.
           </p>
         }
-        confirmText={tenant?.chatwoot?.state === "failed" ? "Reintentar Sincronización" : "Aprovisionar En Chatwoot"}
+        confirmText={tenant?.chatwoot?.state === "failed" ? "Reintentar Sincronización" : "Aprovisionar en Chatwoot"}
         confirmLoadingText="Sincronizando..."
         loading={chatwootLoading}
         error={chatwootError}
@@ -722,7 +722,7 @@ export function TenantActions({
           setStatusError(null);
         }}
         onConfirm={() => handleStatusChange("suspendido")}
-        title="Suspender Operación Del Comercio"
+        title="Suspender Operación del Comercio"
         subtitle="Interrupción temporal de acceso al portal y servicios del inquilino."
         variant="warning"
         icon={<ShieldAlert className="h-5 w-5 text-amber-500" />}
@@ -731,7 +731,7 @@ export function TenantActions({
           { label: "Slug", value: tenant?.slug || editForm.slug, mono: true },
           { label: "Estado Actual", value: "Activo" },
         ]}
-        warningTitle="Advertencia De Suspensión Temporal"
+        warningTitle="Advertencia de Suspensión Temporal"
         warningMessage={
           <p>
             Los usuarios asociados a este inquilino no podrán iniciar sesión ni operar en la plataforma
@@ -752,7 +752,7 @@ export function TenantActions({
           setStatusError(null);
         }}
         onConfirm={() => handleStatusChange("activo")}
-        title="Reactivar Operación Del Comercio"
+        title="Reactivar Operación del Comercio"
         subtitle="Restablecimiento del acceso completo a los servicios del inquilino."
         variant="neutral"
         icon={<PlayCircle className="h-5 w-5 text-emerald-500" />}
@@ -761,7 +761,7 @@ export function TenantActions({
           { label: "Slug", value: tenant?.slug || editForm.slug, mono: true },
           { label: "Estado Actual", value: status === "alta" ? "En Alta / Onboarding" : "Suspendido" },
         ]}
-        warningTitle="Restablecimiento De Acceso"
+        warningTitle="Restablecimiento de Acceso"
         warningMessage={
           <p>
             Al reactivar este comercio, los usuarios vinculados podrán ingresar nuevamente a su portal
@@ -783,7 +783,7 @@ export function TenantActions({
         subtitle={infoModal.subtitle}
         variant={infoModal.variant}
         icon={<CheckCircle className="h-5 w-5 text-emerald-500" />}
-        warningTitle="Notificación Del Sistema"
+        warningTitle="Notificación del Sistema"
         warningMessage={<p>{infoModal.message}</p>}
         confirmText="Entendido"
         cancelText="Cerrar"

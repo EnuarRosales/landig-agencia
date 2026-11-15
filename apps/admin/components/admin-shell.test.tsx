@@ -105,8 +105,8 @@ describe("apps/admin · AdminShell Component (Profile & Logout)", () => {
       const logoutButton = screen.getAllByRole("button", { name: /Cerrar Sesión/i })[0];
       fireEvent.click(logoutButton);
 
-      expect(screen.getByText("Cerrar Sesión En Mocter")).toBeDefined();
-      expect(screen.getByText("Finalización De Sesión Segura")).toBeDefined();
+      expect(screen.getByText("Cerrar Sesión en Mocter")).toBeDefined();
+      expect(screen.getByText("Finalización de Sesión Segura")).toBeDefined();
 
       const confirmButton = screen.getByRole("button", { name: "Cerrar Sesión Definitivamente" });
       fireEvent.click(confirmButton);
