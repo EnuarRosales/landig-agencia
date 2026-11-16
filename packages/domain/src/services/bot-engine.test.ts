@@ -47,7 +47,9 @@ describe("BOT-002 T-04 · Compositor en runtime", () => {
     expect(res.data.prompt).toContain("Serum A");
     expect(res.data.prompt).toContain("Servientrega");
     expect(res.data.prompt).toContain("¡Hola!");
-    expect(res.data.usedBlocks.every((b) => b.version === 1)).toBe(true);
+    expect(res.data.usedBlocks.every((b) => b.version >= 1)).toBe(true);
+    const orderFlowBlock = res.data.usedBlocks.find((b) => b.blockKey === "core.order_flow");
+    expect(orderFlowBlock?.version).toBeGreaterThanOrEqual(2);
   });
 
   it("no mezcla productos: solo el producto activo entra al prompt", () => {

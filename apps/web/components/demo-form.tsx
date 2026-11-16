@@ -1,9 +1,10 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useActionState } from "react";
 import { submitDemoRequest } from "@/app/actions/demo-request";
 import { demoRequestInitialState } from "@/app/actions/types";
+import { PhoneE164Input } from "@/components/phone-e164-input";
 
 const fieldClasses =
   "w-full rounded-xl border border-stroke bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[15px] text-txt placeholder:text-muted focus:border-a2 focus:outline-none";
@@ -14,6 +15,7 @@ function FieldError({ message }: { message: string | undefined }) {
 
 export function DemoForm() {
   const t = useTranslations("form");
+  const locale = useLocale();
   const [state, formAction, pending] = useActionState(
     submitDemoRequest,
     demoRequestInitialState,
@@ -99,33 +101,23 @@ export function DemoForm() {
               }
             />
           </div>
-          <div>
-            <label htmlFor="lead-phone" className="mb-1 block text-[14px] font-medium">
-              {t("phone")}
-            </label>
-            <input
-              id="lead-phone"
-              name="phone"
-              type="tel"
-              required
-              autoComplete="tel"
-              placeholder={t("phonePlaceholder")}
-              aria-invalid={Boolean(fieldErrors.phone)}
-              className={
-                fieldClasses +
-                (fieldErrors.phone ? " border-hot" : "")
-              }
-            />
-            <FieldError
-              message={
-                fieldErrors.phone
-                  ? fieldErrors.phone === "required"
-                    ? t("errRequired")
-                    : t("errPhone")
-                  : undefined
-              }
-            />
-          </div>
+          <PhoneE164Input
+            id="lead-phone"
+            name="phone"
+            label={t("phone")}
+            required
+            locale={locale}
+            placeholder={t("phonePlaceholder")}
+            countryAriaLabel={t("phoneCountryAria")}
+            helperText={t("phoneHelper")}
+            errorText={
+              fieldErrors.phone
+                ? fieldErrors.phone === "required"
+                  ? t("errRequired")
+                  : t("errPhone")
+                : undefined
+            }
+          />
         </div>
 
         <div>

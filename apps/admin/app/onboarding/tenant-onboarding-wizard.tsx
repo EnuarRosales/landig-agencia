@@ -71,6 +71,9 @@ export function TenantOnboardingWizard({
   const [phone, setPhone] = useState(
     initialState.client?.phone || initialState.draft.business?.phone || "",
   );
+  const [countryCode, setCountryCode] = useState(
+    (initialState.client as { countryCode?: string | null } | null)?.countryCode || "CO",
+  );
   const [currency, setCurrency] = useState(
     initialState.client?.currency || initialState.draft.business?.currency || "COP",
   );
@@ -289,6 +292,7 @@ export function TenantOnboardingWizard({
           commercialEmail: commercialEmail.trim() || null,
           websiteUrl: websiteUrl.trim() || null,
           phone: phone.trim() || null,
+          countryCode: countryCode || "CO",
           locale,
           currency,
           timezone,
@@ -552,6 +556,7 @@ export function TenantOnboardingWizard({
             commercialEmail={commercialEmail}
             websiteUrl={websiteUrl}
             phone={phone}
+            countryCode={countryCode}
             currency={currency}
             timezone={timezone}
             logoPreviewUrl={logoPreviewUrl}
@@ -562,6 +567,7 @@ export function TenantOnboardingWizard({
             onCommercialEmailChange={setCommercialEmail}
             onWebsiteUrlChange={setWebsiteUrl}
             onPhoneChange={setPhone}
+            onCountryCodeChange={setCountryCode}
             onLocaleChange={(nextLoc) => setLocale(nextLoc)}
             onCurrencyChange={setCurrency}
             onTimezoneChange={setTimezone}

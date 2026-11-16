@@ -5,11 +5,13 @@ import {
   check,
   index,
   integer,
+  jsonb,
   primaryKey,
   text,
   timestamp,
   uniqueIndex,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { cellAdminSchema } from "./namespace";
@@ -61,14 +63,33 @@ export const cellOrders = cellAdminSchema.table(
     customerPhone: text("customer_phone").notNull(),
     /** Documento de identidad del cliente (obligatorio si el método es 'office'). */
     customerDocument: text("customer_document"),
+    /** Código ISO 3166-1 alpha-2 del país de entrega congelado en el pedido (SPEC-20). */
+    countryCode: char("country_code", { length: 2 }).notNull().default("CO"),
+    /** Código ISO 3166-2 de la subdivisión administrativa de entrega (SPEC-20). */
+    subdivisionCode: varchar("subdivision_code", { length: 16 }),
     /** Dirección física de entrega. */
     addressLine: text("address_line"),
+    /** Complemento estructural del inmueble: apartamento, torre, conjunto, piso (SPEC-20). */
+    addressComplement: text("address_complement"),
+    /** Barrio, colonia o sector urbano de entrega (SPEC-20). */
+    neighborhood: text("neighborhood"),
     /** Ciudad o municipio de entrega. */
     city: text("city"),
-    /** Departamento o provincia de entrega. */
+    /** Departamento, estado o provincia de entrega. */
     state: text("state"),
     /** Código postal de entrega. */
     postalCode: text("postal_code"),
+    /** Indicaciones operativas de entrega para el mensajero (SPEC-20). */
+    referenceNotes: text("reference_notes"),
+    /** Estado determinístico de homologación geográfica del pedido (SPEC-20). */
+    geoResolutionStatus: text("geo_resolution_status").notNull().default("unresolved"),
+    /** Texto crudo de ubicación original recibido antes de homologación (SPEC-20). */
+    rawLocationInput: text("raw_location_input"),
+    /** Snapshot ACL de identificadores logísticos externos para despacho (SPEC-20). */
+    providerGeoRefs: jsonb("provider_geo_refs")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     /** Subtotal acumulado de las líneas de producto en centavos (sin decimales flotantes). */
     subtotalCents: bigint("subtotal_cents", { mode: "number" }).notNull(),
     /** Costo de envío aplicado en centavos. */
@@ -113,6 +134,12 @@ export const cellOrders = cellAdminSchema.table(
     check("orders_shipping_cents_check", sql.raw("shipping_cents >= 0")),
     check("orders_discount_cents_check", sql.raw("discount_cents >= 0")),
     check("orders_total_cents_check", sql.raw("total_cents >= 0")),
+    check(
+      "orders_geo_resolution_status_check",
+      sql.raw(
+        "geo_resolution_status IN ('resolved', 'soft_normalized', 'ambiguous', 'unresolved')",
+      ),
+    ),
   ],
 );
 

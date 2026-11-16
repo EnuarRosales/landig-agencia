@@ -90,16 +90,19 @@ Consolidar una **única fuente de verdad operativa del Asistente AI** entre Onbo
 
 ### 7.1 `admin.tenant_bots` (extensión en `packages/domain/src/db/schemas/admin/bot-tenancy.ts`)
 - Reutiliza columnas existentes: `id`, `clientId`, `name`, `objective`, `toneId`, `presetId`, `status` (`'active' | 'paused'`), `revision`, `persona`, `instructions`, `allowedTopics`, `excludedTopics`, `handoffTriggers`, `maxTurns`, `greetingMessage` (mapeado o sincronizado con `welcome_message`), `fallbackMessage`, `responseLanguage`, `answerPolicy`, `maxMessagesPerContact`.
-- Agregar columnas estructuradas con comentarios SQL:
+- Agregar columnas estructuradas con comentarios SQL (`AGENTS.md §4.5`), unificando **`SPEC-10` + `SPEC-19` + `SPEC-20`**:
   - `default_messages`: `JSONB` `TenantBotDefaultMessages` tipado con las 6 claves obligatorias (`welcome`, `order_confirmation`, `dispatch_tracking`, `delivery_issue`, `out_of_hours`, `handoff`), cada una con `{ body: string; enabled: boolean; updatedAt: string }`.
-  - `business_hours`: `JSONB` `{ timezone: string; enabled: boolean; schedule: Record<'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun', { open: string; close: string; closed: boolean }> }` para evaluar cuándo aplicar `out_of_hours`.
+  - `business_hours`: `JSONB` `{ timezone: string; enabled: boolean; schedule: Record<'mon'|'tue'|'wed'|'thu'|'fri'|'sat'|'sun', { open: string; close: string; closed: boolean }> }` para evaluar cuándo aplicar `out_of_hours`. **`timezone` se inicializa por defecto desde `clients.timezone` / `clients.country_code` (`SPEC-20`), nunca hardcoded a `America/Bogota`.**
+  - `classifier_prompt`: `TEXT` nullable para persistir el prompt del clasificador de conversaciones (`SPEC-19`), evitando pérdida de estado al recargar `/workspace/bot`.
 - Incremento automático de `revision` al actualizar configuración para trazabilidad de prompts compuestos.
 
 ### 7.2 `cell_client_business_info` (en `pg-cell-XX` — `tenancy-catalog.ts`)
 - Garantizar exposición y actualización de `returns_policy`, `warranty_policy`, **`shipping_policy`**, `faqs` (`Array<{ question: string; answer: string }>`), `order_message` (sincronizado con `default_messages.order_confirmation.body`) y `bot_preset` (código sincronizado con `preset_id`).
+- **Contrato unificado `shipping_policy` (`JSONB` estructurado extendido):** se conserva la columna existente `JSONB` (compatible con Onboarding Paso 4) con forma `{ freeShipping: boolean; defaultCostCents: number; policyText?: string; deliveryRules?: Array<{ regionCode: string | null; city: string | null; days: string }> }`. `/workspace/bot` edita `policyText` mediante `<AiEnhanceTextarea />` junto con los flags/reglas de envío, y el backend serializa `policyText` + `deliveryRules` hacia `PromptComposer.renderBusiness`.
 
-### 7.3 `cell_tenant_labels` (etiquetas predeterminadas Chatwoot `ONB-11`)
-- Set estándar creado automáticamente por `ensureDefaultChatwootLabels(clientId)` (si no existen ya para el comercio):
+### 7.3 `cell_tenant_labels` (etiquetas predeterminadas Chatwoot `ONB-11` + `SPEC-19`)
+- Agregar columnas estructuradas en `cell_tenant_labels` para soportar clasificación `SPEC-19` persistente: `category` (`'operational' | 'functional'`, default `'operational'`), `activation_rule` (`TEXT` nullable) y `side_effects` (`TEXT` nullable).
+- Set estándar creado automáticamente por `ensureDefaultChatwootLabels(clientId)` (si no existen ya para el comercio), compuesto por las 6 etiquetas operacionales de `SPEC-10` + las 5 funcionales de `SPEC-19` (idempotente por `client_id, title`):
   1. `nuevo_pedido` («Nuevo Pedido», `#2563EB`)
   2. `pendiente_pago` («Pendiente De Pago», `#D97706`)
   3. `pagado` («Pagado», `#16A34A`)
@@ -257,7 +260,7 @@ Característica: Configuración unificada del Asistente AI, políticas y 6 mensa
 
 ## 13. Dependencias y riesgos
 
-- **Dependencias:** `SPEC-02` (AI enhance y prompts maestros por cada mensaje/política), `SPEC-05` (idioma y canales de pago), `SPEC-06` (Paso 4 de Onboarding), `SPEC-17` (botón de guardado al final `AIB-04`).
+- **Dependencias:** `SPEC-02` (AI enhance y prompts maestros por cada mensaje/política), `SPEC-05` (idioma y canales de pago), `SPEC-06` (Paso 4 de Onboarding), `SPEC-17` (botón de guardado al final `AIB-04`), **`SPEC-19` (clasificador y prompt general en `/workspace/bot`)**, **`SPEC-20` (país/zona horaria por `clients.country_code`, terminología territorial y captura conversacional E.164)**.
 - **Riesgos:**
   - *Desfase entre `cell_client_business_info` y `admin.tenant_bots`:* Mitigado haciendo de `BotService` el único servicio escritor coordinado de ambos destinos en la transacción/hook de guardado.
 
@@ -266,13 +269,18 @@ Característica: Configuración unificada del Asistente AI, políticas y 6 mensa
 ## 14. Definition of Done
 
 - [ ] Eliminado arreglo `PRESETS` hardcoded en `bot-view.tsx`; conectado a catálogo dinámico de `admin.bot_presets`, `admin.bot_tones` y `admin.tenant_bots`.
-- [ ] `shippingPolicy`, FAQs, 6 mensajes clave con AI real, horario de fuera de horario y `ensureDefaultChatwootLabels` implementados y sincronizados con Onboarding Paso 4.
-- [ ] Reemplazado error handling inseguro en `apps/admin/app/api/tenant/bot/route.ts` por `handle()` RFC 9457.
+- [ ] `shippingPolicy` (JSONB estructurado + `policyText` AI), FAQs, 6 mensajes clave con AI real, `classifier_prompt` y etiquetas `SPEC-19` persistentes, horario de fuera de horario con zona horaria del país (`SPEC-20`) y `ensureDefaultChatwootLabels` implementados y sincronizados con Onboarding Paso 4.
+- [ ] `ClientGeneralPromptContext` (`bot-ui-helpers.ts`) y los 6 mensajes predeterminados internacionalizados con `countryCode` + `shippingPolicy` + placeholders E.164/internacionales (`{{customer_phone}}`, `{{shipping_summary}}`), y captura tolerante de teléfonos locales en chat (`SPEC-20`).
+- [ ] Reemplazado error handling inseguro en `apps/admin/app/api/tenant/bot/route.ts` por `handle()` RFC 9457 y validación RBAC `tenancy_owner` en `PUT`.
 - [ ] `pnpm lint`, `pnpm test`, `drizzle-kit check` en verde + protocolo §4.18 ejecutado.
 
 ---
 
 ## 15. Propuestas a Validar (PV-xx)
 
-Todas las definiciones (`PV-03`: 6 mensajes clave predeterminados asistidos por AI; `ONB-11`: sincronía Paso 4 + etiquetas Chatwoot) fueron aprobadas. Sin preguntas pendientes.
+Todas las definiciones (`PV-03`: 6 mensajes clave predeterminados asistidos por AI; `ONB-11`: sincronía Paso 4 + etiquetas Chatwoot; **decisiones `/grill-me` de convergencia `SPEC-10` ↔ `SPEC-19` ↔ `SPEC-20`**) fueron aprobadas:
+1. **Persistencia unificada `SPEC-10` + `SPEC-19`:** `admin.tenant_bots` y `cell_tenant_labels` persisten también `instructions`, `classifier_prompt` y etiquetas funcionales/operacionales personalizadas.
+2. **`shipping_policy` JSONB extendido:** mantiene `{ freeShipping, defaultCostCents, policyText, deliveryRules }` editable con AI en `/workspace/bot` y serializable a `PromptComposer`.
+3. **Alineación internacional (`SPEC-20`):** `business_hours.timezone` derivado de `clients.timezone`/`country_code`; `ClientGeneralPromptContext` y los 6 mensajes adaptados a `countryCode` + `shippingPolicy`.
+4. **Híbrido E.164 en chat vs UI:** UI exige `<PhoneE164Input />` estricto; el bot normaliza teléfonos locales de compradores en chat usando `clients.country_code` (`allowLocalWithDefaultCountry: true`).
 

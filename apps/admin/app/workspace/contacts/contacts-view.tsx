@@ -20,6 +20,8 @@ import {
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
 import { ConfirmationModal } from "@/components/confirmation-modal";
+import { GeoAddressFields } from "@/components/geo-address-fields";
+import { PhoneE164Input } from "@/components/phone-e164-input";
 import { ContactDetailModal } from "./contact-detail-modal";
 import {
   CRM_CHANNELS,
@@ -89,10 +91,15 @@ export function ContactsView({
   const [notes, setNotes] = useState("");
   const [includeInitialAddress, setIncludeInitialAddress] = useState(false);
   const [addrLabel, setAddrLabel] = useState("Casa");
+  const [addrCountryCode, setAddrCountryCode] = useState("CO");
   const [addrCountry, setAddrCountry] = useState("Colombia");
+  const [addrSubdivisionCode, setAddrSubdivisionCode] = useState("");
   const [addrState, setAddrState] = useState("");
   const [addrCity, setAddrCity] = useState("");
+  const [addrNeighborhood, setAddrNeighborhood] = useState("");
   const [addrLine, setAddrLine] = useState("");
+  const [addrComplement, setAddrComplement] = useState("");
+  const [addrPostalCode, setAddrPostalCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -166,10 +173,15 @@ export function ContactsView({
     setNotes("");
     setIncludeInitialAddress(false);
     setAddrLabel("Casa");
+    setAddrCountryCode("CO");
     setAddrCountry("Colombia");
+    setAddrSubdivisionCode("");
     setAddrState("");
     setAddrCity("");
+    setAddrNeighborhood("");
     setAddrLine("");
+    setAddrComplement("");
+    setAddrPostalCode("");
     setFormError(null);
   };
 
@@ -202,10 +214,15 @@ export function ContactsView({
           initialAddress: includeInitialAddress
             ? {
                 label: addrLabel.trim() || "Casa",
+                countryCode: addrCountryCode.trim() || "CO",
                 country: addrCountry.trim() || "Colombia",
+                subdivisionCode: addrSubdivisionCode.trim() || null,
                 state: addrState.trim() || null,
                 city: addrCity.trim(),
+                neighborhood: addrNeighborhood.trim() || null,
                 addressLine: addrLine.trim(),
+                addressComplement: addrComplement.trim() || null,
+                postalCode: addrPostalCode.trim() || null,
                 isDefault: true,
               }
             : null,
@@ -782,16 +799,14 @@ export function ContactsView({
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                    {w.crmFieldPhoneMobile}
-                  </label>
-                  <input
-                    type="tel"
+                <div className="md:col-span-2">
+                  <PhoneE164Input
+                    id="create-contact-phone-mobile"
+                    label={w.crmFieldPhoneMobile}
                     value={phoneMobile}
-                    onChange={(e) => setPhoneMobile(e.target.value)}
-                    placeholder="+573001234567"
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 font-mono text-xs text-[var(--dsn-text)]"
+                    defaultCountryCode={addrCountryCode}
+                    locale={locale}
+                    onChange={(next) => setPhoneMobile(next)}
                   />
                 </div>
                 <div>
@@ -806,15 +821,14 @@ export function ContactsView({
                     className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)]"
                   />
                 </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                    {w.crmFieldPhoneSecondary}
-                  </label>
-                  <input
-                    type="tel"
+                <div className="md:col-span-2">
+                  <PhoneE164Input
+                    id="create-contact-phone-secondary"
+                    label={w.crmFieldPhoneSecondary}
                     value={phoneSecondary}
-                    onChange={(e) => setPhoneSecondary(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 font-mono text-xs text-[var(--dsn-text)]"
+                    defaultCountryCode={addrCountryCode}
+                    locale={locale}
+                    onChange={(next) => setPhoneSecondary(next)}
                   />
                 </div>
                 <div>
@@ -898,7 +912,7 @@ export function ContactsView({
                 </label>
 
                 {includeInitialAddress && (
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="space-y-3">
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
                         {w.crmAddressLabel} *
@@ -911,53 +925,42 @@ export function ContactsView({
                         className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
                       />
                     </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                        {w.crmAddressCountry} *
-                      </label>
-                      <input
-                        type="text"
-                        required={includeInitialAddress}
-                        value={addrCountry}
-                        onChange={(e) => setAddrCountry(e.target.value)}
-                        className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                        {w.crmAddressState}
-                      </label>
-                      <input
-                        type="text"
-                        value={addrState}
-                        onChange={(e) => setAddrState(e.target.value)}
-                        className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                        {w.crmAddressCity} *
-                      </label>
-                      <input
-                        type="text"
-                        required={includeInitialAddress}
-                        value={addrCity}
-                        onChange={(e) => setAddrCity(e.target.value)}
-                        className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                        {w.crmAddressLine} *
-                      </label>
-                      <input
-                        type="text"
-                        required={includeInitialAddress}
-                        value={addrLine}
-                        onChange={(e) => setAddrLine(e.target.value)}
-                        className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                      />
-                    </div>
+                    <GeoAddressFields
+                      idPrefix="create-contact-addr"
+                      locale={locale}
+                      requiredFields={{
+                        country: includeInitialAddress,
+                        city: includeInitialAddress,
+                        addressLine: includeInitialAddress,
+                      }}
+                      values={{
+                        countryCode: addrCountryCode,
+                        country: addrCountry,
+                        subdivisionCode: addrSubdivisionCode,
+                        state: addrState,
+                        city: addrCity,
+                        neighborhood: addrNeighborhood,
+                        addressLine: addrLine,
+                        addressComplement: addrComplement,
+                        postalCode: addrPostalCode,
+                      }}
+                      onChange={(patch) => {
+                        if (patch.countryCode !== undefined)
+                          setAddrCountryCode(patch.countryCode);
+                        if (patch.country !== undefined) setAddrCountry(patch.country);
+                        if (patch.subdivisionCode !== undefined)
+                          setAddrSubdivisionCode(patch.subdivisionCode);
+                        if (patch.state !== undefined) setAddrState(patch.state);
+                        if (patch.city !== undefined) setAddrCity(patch.city);
+                        if (patch.neighborhood !== undefined)
+                          setAddrNeighborhood(patch.neighborhood);
+                        if (patch.addressLine !== undefined) setAddrLine(patch.addressLine);
+                        if (patch.addressComplement !== undefined)
+                          setAddrComplement(patch.addressComplement);
+                        if (patch.postalCode !== undefined)
+                          setAddrPostalCode(patch.postalCode);
+                      }}
+                    />
                   </div>
                 )}
               </div>

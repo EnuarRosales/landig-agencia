@@ -1,4 +1,5 @@
 import { sql, desc, asc, eq, and, ne, isNull, inArray } from "drizzle-orm";
+import { normalizeAndValidatePhoneE164 } from "../geo/index";
 import { getDb } from "../db/client";
 import { withTenantCellTransaction } from "../db/cell-client";
 import {
@@ -2248,17 +2249,17 @@ export async function fetchAdminEmailSettings(): Promise<AdminEmailSettingsDto> 
     return {
       provider: activeProvider
         ? {
-            id: activeProvider.id,
-            name: activeProvider.name,
-            driver: activeProvider.driver,
-            host: activeProvider.host,
-            port: activeProvider.port,
-            secure: activeProvider.secure,
-            username: activeProvider.username,
-            hasPassword: Boolean(activeProvider.passwordCiphertext),
-            maskedSecret: "••••••••",
-            status: activeProvider.status,
-          }
+          id: activeProvider.id,
+          name: activeProvider.name,
+          driver: activeProvider.driver,
+          host: activeProvider.host,
+          port: activeProvider.port,
+          secure: activeProvider.secure,
+          username: activeProvider.username,
+          hasPassword: Boolean(activeProvider.passwordCiphertext),
+          maskedSecret: "••••••••",
+          status: activeProvider.status,
+        }
         : null,
       senders: refreshedSenders.map((s) => ({
         id: s.id,
@@ -2704,10 +2705,10 @@ export async function fetchAdminTenantsOverview(): Promise<AdminTenantsOverviewD
         updatedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : new Date().toISOString(),
         chatwoot: r.chatwootState
           ? {
-              state: r.chatwootState as "pending" | "provisioning" | "active" | "failed",
-              chatwootAccountId: r.chatwootAccountId,
-              lastError: r.chatwootLastError,
-            }
+            state: r.chatwootState as "pending" | "provisioning" | "active" | "failed",
+            chatwootAccountId: r.chatwootAccountId,
+            lastError: r.chatwootLastError,
+          }
           : undefined,
       };
     });
@@ -3102,6 +3103,18 @@ export async function createAdminTenant(input: CreateAdminTenantInput): Promise<
     return err("El correo del propietario debe ser un email válido.", "INVALID_EMAIL");
   }
 
+  let normalizedPhone: string | null = null;
+  if (input.phone && input.phone.trim().length > 0) {
+    const phoneRes = normalizeAndValidatePhoneE164({
+      rawPhone: input.phone,
+      allowLocalWithDefaultCountry: false,
+    });
+    if (!phoneRes.ok) {
+      return err(phoneRes.error, "INVALID_PHONE");
+    }
+    normalizedPhone = phoneRes.data.e164;
+  }
+
   try {
     // 1. Verificar unicidad de slug
     const existingClient = await db.select({ id: clients.id }).from(clients).where(eq(clients.slug, slug)).limit(1);
@@ -3174,7 +3187,7 @@ export async function createAdminTenant(input: CreateAdminTenantInput): Promise<
         displayName: input.displayName.trim(),
         slug,
         contactEmail: ownerEmail,
-        phone: input.phone?.trim() || null,
+        phone: normalizedPhone,
         ownerUserId: ownerId,
         planId: selectedPlan.id,
         lifecycleStatus: "alta",
@@ -3896,6 +3909,22 @@ export async function updateAdminTenant(input: UpdateAdminTenantInput): Promise<
 
     const newLifecycle = input.lifecycleStatus ?? current.lifecycleStatus;
 
+    let updatedPhone = current.phone;
+    if (input.phone !== undefined) {
+      if (input.phone && input.phone.trim().length > 0) {
+        const phoneRes = normalizeAndValidatePhoneE164({
+          rawPhone: input.phone,
+          allowLocalWithDefaultCountry: false,
+        });
+        if (!phoneRes.ok) {
+          return err(phoneRes.error, "INVALID_PHONE");
+        }
+        updatedPhone = phoneRes.data.e164;
+      } else {
+        updatedPhone = null;
+      }
+    }
+
     // Actualizar registro del inquilino
     await db
       .update(clients)
@@ -3903,7 +3932,7 @@ export async function updateAdminTenant(input: UpdateAdminTenantInput): Promise<
         displayName: input.displayName ? input.displayName.trim() : current.displayName,
         slug: newSlug,
         contactEmail: input.contactEmail ? input.contactEmail.trim().toLowerCase() : current.contactEmail,
-        phone: input.phone !== undefined ? (input.phone ? input.phone.trim() : null) : current.phone,
+        phone: updatedPhone,
         locale: input.locale ?? current.locale,
         planId: newPlanId,
         lifecycleStatus: newLifecycle,
@@ -4709,19 +4738,37 @@ export async function fetchAdminAiGovernanceOverview(): Promise<AdminAiGovernanc
       }
     }
 
-    // 2. Auto-inicialización de Bloques de Prompt de BOT-002
+    // 2. Auto-inicialización y promoción de Bloques de Prompt de BOT-002 / SPEC-20
     const existingBlocks = await db.select().from(botPromptBlocks);
-    if (existingBlocks.length === 0) {
-      for (const b of INITIAL_PROMPT_BLOCKS) {
-        await db.insert(botPromptBlocks).values({
-          blockKey: b.blockKey,
-          version: b.version,
-          content: b.content,
-          status: "active",
-          createdBy: operator,
-          updatedBy: operator,
-        });
+    for (const b of INITIAL_PROMPT_BLOCKS) {
+      const sameVersionExists = existingBlocks.some(
+        (row) => row.blockKey === b.blockKey && row.version === b.version,
+      );
+      if (sameVersionExists) {
+        continue;
       }
+      const activeForKey = existingBlocks.find(
+        (row) => row.blockKey === b.blockKey && row.status === "active",
+      );
+      const canPromoteOverSeed =
+        !activeForKey ||
+        (activeForKey.createdBy === "system.seed" && activeForKey.version < b.version);
+
+      if (activeForKey && canPromoteOverSeed) {
+        await db
+          .update(botPromptBlocks)
+          .set({ status: "retired", updatedAt: new Date(), updatedBy: operator })
+          .where(eq(botPromptBlocks.id, activeForKey.id));
+      }
+
+      await db.insert(botPromptBlocks).values({
+        blockKey: b.blockKey,
+        version: b.version,
+        content: b.content,
+        status: canPromoteOverSeed ? "active" : "retired",
+        createdBy: "system.seed",
+        updatedBy: "system.seed",
+      });
     }
 
     // 3. Auto-inicialización de Parámetros Globales (botDefaults)
@@ -5234,8 +5281,8 @@ export async function saveAdminPlatformTrialKey(
     const now = new Date();
     const monthlyTokenCap =
       input.monthlyTokenCap !== undefined &&
-      input.monthlyTokenCap !== null &&
-      Number(input.monthlyTokenCap) > 0
+        input.monthlyTokenCap !== null &&
+        Number(input.monthlyTokenCap) > 0
         ? Math.trunc(Number(input.monthlyTokenCap))
         : null;
     const modelDefaultTemp = matchedModel
@@ -6044,9 +6091,9 @@ export async function deleteAdminAiProvider(
         .where(and(eq(tenantBots.providerId, existing.id), isNull(tenantBots.deletedAt))),
       childModelIds.length > 0
         ? db
-            .select({ count: sql<number>`COUNT(*)::int` })
-            .from(botPresets)
-            .where(and(inArray(botPresets.modelId, childModelIds), eq(botPresets.isActive, true)))
+          .select({ count: sql<number>`COUNT(*)::int` })
+          .from(botPresets)
+          .where(and(inArray(botPresets.modelId, childModelIds), eq(botPresets.isActive, true)))
         : Promise.resolve([{ count: 0 }]),
     ]);
 
@@ -6094,19 +6141,19 @@ export async function deleteAdminAiProvider(
         .where(eq(tenantBots.providerId, existing.id)),
       childModelIds.length > 0
         ? db
-            .select({ count: sql<number>`COUNT(*)::int` })
-            .from(botPresets)
-            .where(inArray(botPresets.modelId, childModelIds))
+          .select({ count: sql<number>`COUNT(*)::int` })
+          .from(botPresets)
+          .where(inArray(botPresets.modelId, childModelIds))
         : Promise.resolve([{ count: 0 }]),
     ]);
 
     const hasHistory =
       Number(usageHistoryRows[0]?.count ?? 0) +
-        Number(anyByokRows[0]?.count ?? 0) +
-        Number(anyModelSettingRows[0]?.count ?? 0) +
-        Number(anyPlatformKeyRows[0]?.count ?? 0) +
-        Number(anyBotRows[0]?.count ?? 0) +
-        Number(anyPresetRows[0]?.count ?? 0) >
+      Number(anyByokRows[0]?.count ?? 0) +
+      Number(anyModelSettingRows[0]?.count ?? 0) +
+      Number(anyPlatformKeyRows[0]?.count ?? 0) +
+      Number(anyBotRows[0]?.count ?? 0) +
+      Number(anyPresetRows[0]?.count ?? 0) >
       0;
 
     const now = new Date();
@@ -6580,10 +6627,10 @@ export async function deleteAdminAiModel(
 
     const hasHistory =
       Number(usageRows[0]?.count ?? 0) +
-        Number(anyModelSettings[0]?.count ?? 0) +
-        Number(anyPlatformKeys[0]?.count ?? 0) +
-        Number(anyBots[0]?.count ?? 0) +
-        Number(anyPresets[0]?.count ?? 0) >
+      Number(anyModelSettings[0]?.count ?? 0) +
+      Number(anyPlatformKeys[0]?.count ?? 0) +
+      Number(anyBots[0]?.count ?? 0) +
+      Number(anyPresets[0]?.count ?? 0) >
       0;
 
     const now = new Date();
@@ -7200,21 +7247,21 @@ export async function fetchAdminBrandingSettings(): Promise<AdminBrandingSetting
 
     const platformBranding: AdminPlatformBrandingDto = rootBranding
       ? {
-          brandName: rootBranding.brandName || "Mocter",
-          logoUrl: rootBranding.logoUrl,
-          faviconUrl: rootBranding.faviconUrl,
-          palette: {
-            primary: rootBranding.palette?.primary || "#2F6BFF",
-            primaryForeground: rootBranding.palette?.primaryForeground || "#FFFFFF",
-            accent: rootBranding.palette?.accent || "#22D3EE",
-            accentForeground: rootBranding.palette?.accentForeground || "#0F172A",
-            background: rootBranding.palette?.background || "#0F172A",
-            foreground: rootBranding.palette?.foreground || "#F8FAFC",
-          },
-          customDomain: rootBranding.customDomain || "mocter.co",
-          customFont: rootBranding.customFont || "Chakra Petch, Inter, sans-serif",
-          removeMocterBranding: rootBranding.removeMocterBranding ?? false,
-        }
+        brandName: rootBranding.brandName || "Mocter",
+        logoUrl: rootBranding.logoUrl,
+        faviconUrl: rootBranding.faviconUrl,
+        palette: {
+          primary: rootBranding.palette?.primary || "#2F6BFF",
+          primaryForeground: rootBranding.palette?.primaryForeground || "#FFFFFF",
+          accent: rootBranding.palette?.accent || "#22D3EE",
+          accentForeground: rootBranding.palette?.accentForeground || "#0F172A",
+          background: rootBranding.palette?.background || "#0F172A",
+          foreground: rootBranding.palette?.foreground || "#F8FAFC",
+        },
+        customDomain: rootBranding.customDomain || "mocter.co",
+        customFont: rootBranding.customFont || "Chakra Petch, Inter, sans-serif",
+        removeMocterBranding: rootBranding.removeMocterBranding ?? false,
+      }
       : defaultPlatform;
 
     const tenantsBrandings: AdminTenantBrandingItemDto[] = allClients.map((c) => {

@@ -25,6 +25,8 @@ import type {
   TenantProfileDto,
 } from "@mocter/domain";
 import { ConfirmationModal } from "@/components/confirmation-modal";
+import { GeoAddressFields } from "@/components/geo-address-fields";
+import { PhoneE164Input } from "@/components/phone-e164-input";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 export interface ProfileViewProps {
@@ -124,10 +126,15 @@ export function ProfileView({
   const [localeValue, setLocaleValue] = useState<"es" | "en">(initialProfile?.locale ?? "es");
   const [currency, setCurrency] = useState(initialProfile?.currency ?? "COP");
   const [timezone, setTimezone] = useState(initialProfile?.timezone ?? "America/Bogota");
+  const [countryCode, setCountryCode] = useState(initialProfile?.countryCode ?? "CO");
   const [country, setCountry] = useState(initialProfile?.country ?? "");
+  const [subdivisionCode, setSubdivisionCode] = useState(initialProfile?.subdivisionCode ?? "");
   const [stateRegion, setStateRegion] = useState(initialProfile?.state ?? "");
   const [city, setCity] = useState(initialProfile?.city ?? "");
   const [addressLine, setAddressLine] = useState(initialProfile?.addressLine ?? "");
+  const [addressComplement, setAddressComplement] = useState(
+    initialProfile?.addressComplement ?? "",
+  );
   const [postalCode, setPostalCode] = useState(initialProfile?.postalCode ?? "");
 
   const [instagram, setInstagram] = useState(initialProfile?.socialLinks?.instagram ?? "");
@@ -196,10 +203,13 @@ export function ProfileView({
           locale: localeValue,
           currency,
           timezone,
+          countryCode: countryCode.trim() || null,
           country: country.trim() || null,
+          subdivisionCode: subdivisionCode.trim() || null,
           state: stateRegion.trim() || null,
           city: city.trim() || null,
           addressLine: addressLine.trim() || null,
+          addressComplement: addressComplement.trim() || null,
           postalCode: postalCode.trim() || null,
           socialLinks: {
             instagram: instagram.trim() || undefined,
@@ -657,20 +667,14 @@ export function ProfileView({
             </div>
 
             <div>
-              <label
-                htmlFor="profile-phone"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
-                {dict.profilePhoneLabel}
-              </label>
-              <input
+              <PhoneE164Input
                 id="profile-phone"
-                type="text"
-                disabled={readOnly}
+                label={dict.profilePhoneLabel}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+57 300 000 0000"
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+                defaultCountryCode={countryCode}
+                disabled={readOnly}
+                locale={activeLocale}
+                onChange={(nextVal) => setPhone(nextVal)}
               />
             </div>
 
@@ -819,91 +823,36 @@ export function ProfileView({
               />
             </div>
 
-            <div>
-              <label
-                htmlFor="profile-country"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
-                {dict.profileCountryLabel}
-              </label>
-              <input
-                id="profile-country"
-                type="text"
-                disabled={readOnly}
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                placeholder="CO"
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="profile-state"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
-                {dict.profileStateLabel}
-              </label>
-              <input
-                id="profile-state"
-                type="text"
-                disabled={readOnly}
-                value={stateRegion}
-                onChange={(e) => setStateRegion(e.target.value)}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="profile-city"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
-                {dict.profileCityLabel}
-              </label>
-              <input
-                id="profile-city"
-                type="text"
-                disabled={readOnly}
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label
-                htmlFor="profile-address"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
-                {dict.profileAddressLabel}
-              </label>
-              <input
-                id="profile-address"
-                type="text"
-                disabled={readOnly}
-                value={addressLine}
-                onChange={(e) => setAddressLine(e.target.value)}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="profile-postal-code"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
-                {dict.profilePostalCodeLabel}
-              </label>
-              <input
-                id="profile-postal-code"
-                type="text"
-                disabled={readOnly}
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
-              />
-            </div>
+          <GeoAddressFields
+            idPrefix="profile"
+            locale={activeLocale}
+            disabled={readOnly}
+            showNeighborhood={false}
+            showAddressLine
+            showComplement
+            showPostalCode
+            values={{
+              countryCode,
+              country,
+              subdivisionCode,
+              state: stateRegion,
+              city,
+              addressLine,
+              addressComplement,
+              postalCode,
+            }}
+            onChange={(patch) => {
+              if (patch.countryCode !== undefined) setCountryCode(patch.countryCode);
+              if (patch.country !== undefined) setCountry(patch.country);
+              if (patch.subdivisionCode !== undefined) setSubdivisionCode(patch.subdivisionCode);
+              if (patch.state !== undefined) setStateRegion(patch.state);
+              if (patch.city !== undefined) setCity(patch.city);
+              if (patch.addressLine !== undefined) setAddressLine(patch.addressLine);
+              if (patch.addressComplement !== undefined)
+                setAddressComplement(patch.addressComplement);
+              if (patch.postalCode !== undefined) setPostalCode(patch.postalCode);
+            }}
+          />
           </div>
         </section>
 

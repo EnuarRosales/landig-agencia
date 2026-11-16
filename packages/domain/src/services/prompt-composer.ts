@@ -135,6 +135,44 @@ function formatMoney(cents: number, currency: string, locale: PromptLocale): str
   return `${amount} ${currency}`;
 }
 
+import type { TenantShippingPolicy } from "../db/schemas/tenant/tenancy-catalog";
+
+/**
+ * Serializa de manera uniforme una política de envíos (`string` heredado o JSONB {@link TenantShippingPolicy})
+ * hacia texto limpio consumible por {@link PromptComposer} (`SPEC-10` + `SPEC-20`).
+ */
+export function serializeShippingPolicyForPrompt(
+  rawPolicy: string | TenantShippingPolicy | null | undefined,
+  currency = "USD",
+  locale: PromptLocale = "es",
+): string | null {
+  if (!rawPolicy) return null;
+  if (typeof rawPolicy === "string") {
+    const trimmed = rawPolicy.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  const parts: string[] = [];
+  if (typeof rawPolicy.policyText === "string" && rawPolicy.policyText.trim().length > 0) {
+    parts.push(rawPolicy.policyText.trim());
+  }
+  if (rawPolicy.freeShipping === true) {
+    parts.push(locale === "es" ? "Envío gratis disponible." : "Free shipping available.");
+  } else if (typeof rawPolicy.defaultCostCents === "number" && rawPolicy.defaultCostCents > 0) {
+    const formatted = formatMoney(rawPolicy.defaultCostCents, currency, locale);
+    parts.push(locale === "es" ? `Tarifa base de envío: ${formatted}.` : `Base shipping fee: ${formatted}.`);
+  }
+  if (Array.isArray(rawPolicy.deliveryRules)) {
+    for (const rule of rawPolicy.deliveryRules) {
+      if (rule && typeof rule.days === "string" && rule.days.trim()) {
+        const target = [rule.city, rule.regionCode].filter(Boolean).join(", ") || (locale === "es" ? "cobertura general" : "general coverage");
+        parts.push(`${target}: ${rule.days.trim()}`);
+      }
+    }
+  }
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
 function renderBusiness(b: PromptBusinessContext, locale: PromptLocale): string {
   const t =
     locale === "es"

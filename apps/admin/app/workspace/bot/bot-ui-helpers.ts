@@ -3,11 +3,26 @@
  *
  * Implementa:
  * - Generación auto-hidratada e idempotente del «Prompt General de Operación del Cliente» (Plano 2)
- *   bajo la metodología secuencial `IDEAL` (`[I]`, `[D]`, `[E]`, `[A]`, `[L]`).
- * - Catálogo visual de Etiquetas Funcionales (color orientativo de la conversación en Chatwoot) y
- *   Etiquetas Operativas (acciones automáticas: handoff a humano, pausa de bot, notificación por correo
- *   y registro de pedido) junto con su compilador `IDEAL` para el «Prompt Clasificador de Conversaciones».
+ *   bajo la metodología secuencial `IDEAL` (`[I]`, `[D]`, `[E]`, `[A]`, `[L]`), alineada con país ISO,
+ *   envíos y canales de pago configurados por el comercio.
+ * - Catálogo visual de Etiquetas Funcionales y Etiquetas Operativas junto con su compilador `IDEAL`
+ *   para el «Prompt Clasificador de Conversaciones».
  */
+
+import { getCountryAddressProfile, getLocalizedCountryName } from "@mocter/domain/geo";
+
+export interface ShippingDeliveryRuleUi {
+  regionCode: string | null;
+  city: string | null;
+  days: string;
+}
+
+export interface ShippingPolicyUi {
+  freeShipping?: boolean;
+  defaultCostCents?: number;
+  policyText?: string;
+  deliveryRules?: ShippingDeliveryRuleUi[];
+}
 
 export interface ClientGeneralPromptContext {
   /** Identificador del preset de personalidad activo. */
@@ -16,6 +31,18 @@ export interface ClientGeneralPromptContext {
   presetName?: string;
   /** Descripción del tono comercial del preset. */
   presetDescription?: string;
+  /** País ISO 3166-1 alpha-2 del comercio. */
+  countryCode?: string;
+  /** Código de moneda operativa del comercio. */
+  currency?: string;
+  /** Idioma activo (`"es"` o `"en"`). */
+  locale?: "es" | "en";
+  /** Nombre comercial del negocio. */
+  businessName?: string;
+  /** Canales o métodos de pago habilitados. */
+  paymentMethods?: string[];
+  /** Política de envíos estructurada del comercio. */
+  shippingPolicy?: ShippingPolicyUi | null;
   /** Política de garantías configurada por el inquilino. */
   warrantyPolicy?: string;
   /** Política de cambios y devoluciones configurada por el inquilino. */
@@ -149,9 +176,150 @@ export const OPERATIONAL_CLASSIFIER_LABELS_UI: ReadonlyArray<ClassifierLabelUiIt
   },
 ];
 
+export function serializeShippingPolicyUi(
+  shipping: ShippingPolicyUi | null | undefined,
+  countryCode = "CO",
+  currency = "USD",
+  locale: "es" | "en" = "es",
+): string {
+  const countryName = getLocalizedCountryName(countryCode, locale);
+  if (!shipping) {
+    return locale === "en"
+      ? `Standard nationwide coverage in ${countryName} according to confirmed destination.`
+      : `Cobertura nacional estándar en ${countryName} según ciudad y destino confirmado.`;
+  }
+
+  const parts: string[] = [];
+  if (shipping.freeShipping) {
+    parts.push(locale === "en" ? "Free standard shipping included" : "Envío gratuito habilitado");
+  } else if (typeof shipping.defaultCostCents === "number" && shipping.defaultCostCents > 0) {
+    const amount = (shipping.defaultCostCents / 100).toFixed(2);
+    parts.push(
+      locale === "en"
+        ? `Base shipping fee: ${amount} ${currency}`
+        : `Costo base de envío: ${amount} ${currency}`,
+    );
+  }
+
+  if (shipping.policyText?.trim()) {
+    parts.push(shipping.policyText.trim());
+  }
+
+  if (shipping.deliveryRules && shipping.deliveryRules.length > 0) {
+    const ruleLines = shipping.deliveryRules
+      .map((rule) => {
+        const zone = [rule.city, rule.regionCode].filter(Boolean).join(", ") || countryName;
+        return `${zone}: ${rule.days}`;
+      })
+      .join(" | ");
+    parts.push(ruleLines);
+  }
+
+  return (
+    parts.join(". ") ||
+    (locale === "en"
+      ? `Standard nationwide coverage in ${countryName}.`
+      : `Cobertura estándar en ${countryName} sujeta a destino confirmado.`)
+  );
+}
+
+/**
+ * Genera mensajes predeterminados localizados en cliente para restaurar valores base desde `/workspace/bot`.
+ */
+export function buildClientDefaultMessages(locale: "es" | "en" = "es") {
+  const now = new Date().toISOString();
+  if (locale === "en") {
+    return {
+      welcome: {
+        body: "Hi! Welcome to {{business_name}}. I can help you explore our products and guide your purchase.",
+        enabled: true,
+        updatedAt: now,
+      },
+      order_confirmation: {
+        body: "Thank you for your order, {{customer_name}}! Reference {{order_code}} · Total {{order_total}} · Phone {{customer_phone}}. {{shipping_summary}}",
+        enabled: true,
+        updatedAt: now,
+      },
+      dispatch_tracking: {
+        body: "Hi {{customer_name}}, your order {{order_code}} is on the way. Tracking: {{tracking_code}}. {{shipping_summary}}",
+        enabled: true,
+        updatedAt: now,
+      },
+      delivery_issue: {
+        body: "Hi {{customer_name}}, we noticed an update regarding your order {{order_code}}. Please confirm your address and phone {{customer_phone}} so we can coordinate delivery.",
+        enabled: false,
+        updatedAt: now,
+      },
+      out_of_hours: {
+        body: "Hi! At {{business_name}} our support team is currently offline. Your message is queued and we will respond during {{business_hours_summary}}.",
+        enabled: true,
+        updatedAt: now,
+      },
+      handoff: {
+        body: "I am transferring you to a specialist from {{business_name}} right now so they can help you personally.",
+        enabled: true,
+        updatedAt: now,
+      },
+    };
+  }
+
+  return {
+    welcome: {
+      body: "¡Hola! Bienvenido a {{business_name}}. Estoy aquí para asesorarte con nuestros productos y ayudarte con tu pedido.",
+      enabled: true,
+      updatedAt: now,
+    },
+    order_confirmation: {
+      body: "¡Gracias por tu compra, {{customer_name}}! Pedido {{order_code}} · Total {{order_total}} · Teléfono {{customer_phone}}. {{shipping_summary}}",
+      enabled: true,
+      updatedAt: now,
+    },
+    dispatch_tracking: {
+      body: "Hola {{customer_name}}, tu pedido {{order_code}} fue despachado. Guía de rastreo: {{tracking_code}}. {{shipping_summary}}",
+      enabled: true,
+      updatedAt: now,
+    },
+    delivery_issue: {
+      body: "Hola {{customer_name}}, detectamos una novedad con la entrega de tu pedido {{order_code}}. Confírmanos tu dirección y teléfono {{customer_phone}} para coordinar la entrega.",
+      enabled: false,
+      updatedAt: now,
+    },
+    out_of_hours: {
+      body: "¡Hola! En {{business_name}} estamos fuera de nuestro horario de atención. Dejamos tu mensaje registrado y te responderemos en {{business_hours_summary}}.",
+      enabled: true,
+      updatedAt: now,
+    },
+    handoff: {
+      body: "En un momento te comunico con un asesor de {{business_name}} para atender tu solicitud personalmente.",
+      enabled: true,
+      updatedAt: now,
+    },
+  };
+}
+
+/**
+ * Construye un horario semanal base derivado del país ISO del comercio.
+ */
+export function buildClientDefaultBusinessHours(countryCode = "CO") {
+  const profile = getCountryAddressProfile(countryCode);
+  return {
+    timezone: profile.defaultTimezone || "UTC",
+    enabled: false,
+    schedule: {
+      mon: { open: "08:00", close: "18:00", closed: false },
+      tue: { open: "08:00", close: "18:00", closed: false },
+      wed: { open: "08:00", close: "18:00", closed: false },
+      thu: { open: "08:00", close: "18:00", closed: false },
+      fri: { open: "08:00", close: "18:00", closed: false },
+      sat: { open: "09:00", close: "13:00", closed: false },
+      sun: { open: "09:00", close: "13:00", closed: true },
+    },
+  };
+}
+
 /**
  * Construye la plantilla recomendada del «Prompt General de Operación del Cliente» (Plano 2)
- * siguiendo la metodología secuencial `IDEAL` y pre-hidratando las políticas del formulario.
+ * siguiendo la metodología secuencial `IDEAL` y pre-hidratando país, envíos, medios de pago y políticas.
  */
 export function buildRecommendedClientGeneralPromptTemplate(
   ctx?: ClientGeneralPromptContext,
@@ -160,6 +328,19 @@ export function buildRecommendedClientGeneralPromptTemplate(
   const presetDesc =
     ctx?.presetDescription?.trim() ||
     "Tono cálido, cercano y conversacional que asesora con fluidez comercial.";
+  const countryCode = ctx?.countryCode || "CO";
+  const profile = getCountryAddressProfile(countryCode);
+  const countryName = getLocalizedCountryName(countryCode, "es");
+  const shippingSummary = serializeShippingPolicyUi(
+    ctx?.shippingPolicy,
+    countryCode,
+    ctx?.currency || profile.defaultCurrency,
+    "es",
+  );
+  const paymentLine =
+    ctx?.paymentMethods && ctx.paymentMethods.length > 0
+      ? ctx.paymentMethods.join(", ")
+      : "Medios de pago oficiales configurados en el comercio";
   const warrantyText =
     ctx?.warrantyPolicy?.trim() ||
     "Garantía directa por defectos de fabricación según los términos informados al confirmar el pedido.";
@@ -174,20 +355,19 @@ export function buildRecommendedClientGeneralPromptTemplate(
     CLIENT_GENERAL_PROMPT_HEADER,
     "",
     "### [I] INTENCIÓN COMERCIAL Y REGLA DE CATÁLOGO",
-    "- Actúa como el asistente virtual oficial del comercio con el objetivo de asesorar, generar confianza y cerrar pedidos de forma autónoma.",
+    `- Actúa como el asistente virtual oficial del comercio${ctx?.businessName ? ` (${ctx.businessName})` : ""} con el objetivo de asesorar, generar confianza y cerrar pedidos de forma autónoma.`,
     "- Regla de catálogo: si el negocio comercializa un único producto estrella, preséntalo desde el primer contacto sin esperar palabras clave; si opera múltiples productos, identifica primero la necesidad del cliente y aplica únicamente la venta cruzada autorizada en cada ficha de producto.",
     "",
-    "### [D] DETALLE OPERATIVO, TIEMPOS DE ENTREGA Y MEDIOS DE PAGO",
-    "- Tiempos de entrega y cobertura por zona:",
-    "  - Bogotá y Soacha: entrega rápida en 24 horas hábiles con pago contraentrega (Efectivo, Nequi o Daviplata).",
-    "  - Resto del país (envío nacional): entrega de 1 a 4 días hábiles por transportadora aliada (Interrapidísimo o Coordinadora), disponible a domicilio o para reclamar en oficina principal.",
-    "- Medios de pago autorizados: Pago contraentrega (según cobertura de transportadora), Nequi, Daviplata y transferencia Bancolombia.",
+    "### [D] DETALLE OPERATIVO, ENVÍOS INTERNACIONALES Y MEDIOS DE PAGO",
+    `- País principal de operación: ${countryName} (${countryCode}) · Moneda operativa: ${ctx?.currency || profile.defaultCurrency}.`,
+    `- Política y tiempos de entrega configurados: ${shippingSummary}`,
+    `- Medios de pago autorizados: ${paymentLine}.`,
     `- Política de garantías vigente: ${warrantyText}`,
     `- Política de cambios y devoluciones: ${returnsText}`,
     "",
-    "### [E] ESTILO DE RESPUESTA, CASOS ESPECIALES Y CIERRE CON REDES",
+    "### [E] ESTILO DE RESPUESTA, CASOS ESPECIALES Y CIERRE",
     `- Personalidad activa (${presetTitle}): ${presetDesc}`,
-    "- Tuteo amigable, uso natural de emojis, máximo 4 líneas por burbuja y máximo 2 preguntas por turno.",
+    "- Trato cercano y respetuoso, uso natural de emojis, máximo 4 líneas por burbuja y máximo 2 preguntas por turno.",
     `- Mensaje base al confirmar pedido: "${orderConfirmText}"`,
     "- Casos especiales del negocio:",
     "  - Si el cliente envía comprobante de pago: agradece, confirma recepción para validación y solicita los datos de envío si aún faltan.",
@@ -195,8 +375,8 @@ export function buildRecommendedClientGeneralPromptTemplate(
     "",
     "### [A] ACCIÓN Y FLUJO GENERAL DE ATENCIÓN",
     "1. Continúa la conversación con naturalidad sin repetir el saludo automático inicial del canal.",
-    "2. Resuelve inquietudes logísticas, de pagos o garantías con las reglas de este plano y apoya la argumentación de producto en el Prompt Maestro de cada artículo (Plano 3).",
-    "3. Captura el nombre del cliente cuando responda a tu pregunta y conduce al cierre solicitando los datos de despacho en un solo mensaje (`🏠 Domicilio` o `🏢 Oficina de Transportadora`).",
+    "2. Resuelve inquietudes logísticas, de pagos o garantías con las reglas de este plano y apoya la argumentación de producto en el Prompt Maestro de cada artículo.",
+    "3. Para registrar el pedido solicita: nombre completo, teléfono (en formato local o internacional), país si aplica, división administrativa (departamento/estado/provincia), ciudad, barrio o colonia, dirección exacta y complemento (apartamento, conjunto o referencia).",
     "",
     "### [L] LÍMITES GLOBALES DEL COMERCIO",
     "- Prohibido inventar tiempos de entrega, costos de flete, descuentos o cuentas bancarias no declaradas en este documento.",

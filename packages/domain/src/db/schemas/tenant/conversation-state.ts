@@ -1,4 +1,16 @@
-import { check, index, integer, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  char,
+  check,
+  index,
+  integer,
+  jsonb,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { cellAdminSchema } from "./namespace";
 import { auditColumns } from "../shared/audit-columns";
@@ -24,8 +36,33 @@ export const cellConversationState = cellAdminSchema.table(
     productId: uuid("product_id"),
     /** Cantidad solicitada del producto activo. */
     quantity: integer("quantity"),
+    /** Código ISO 3166-1 alpha-2 del país inferido o informado (SPEC-20). */
+    countryCode: char("country_code", { length: 2 }),
+    /** Código ISO 3166-2 de la subdivisión territorial informada o resuelta (SPEC-20). */
+    subdivisionCode: varchar("subdivision_code", { length: 16 }),
+    /** Nombre textual del departamento, estado o provincia capturado en conversación. */
+    stateName: text("state_name"),
     /** Ciudad informada por el cliente. */
     city: text("city"),
+    /** Barrio, colonia o sector urbano capturado en conversación (SPEC-20). */
+    neighborhood: text("neighborhood"),
+    /** Dirección física principal capturada en conversación (SPEC-20). */
+    addressLine: text("address_line"),
+    /** Complemento estructural del inmueble: apartamento, torre, conjunto, piso (SPEC-20). */
+    addressComplement: text("address_complement"),
+    /** Código postal informado o inferido (SPEC-20). */
+    postalCode: varchar("postal_code", { length: 20 }),
+    /** Notas o puntos de referencia operativos para el mensajero (SPEC-20). */
+    referenceNotes: text("reference_notes"),
+    /** Estado de resolución determinística geográfica en la conversación (SPEC-20). */
+    geoResolutionStatus: text("geo_resolution_status").notNull().default("unresolved"),
+    /** Cadena cruda de ubicación informada por el usuario antes de homologación. */
+    rawLocationInput: text("raw_location_input"),
+    /** Referencias homologadas de operadores logísticos externos (`dropi`, `effi`, `mercadolibre`). */
+    providerGeoRefs: jsonb("provider_geo_refs")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     /** Nombre informado por el cliente. */
     customerName: text("customer_name"),
     /** Método de envío elegido (`home` u `office`). */
@@ -64,6 +101,12 @@ export const cellConversationState = cellAdminSchema.table(
       ),
     ),
     check("conversation_state_quantity_check", sql.raw("quantity IS NULL OR quantity > 0")),
+    check(
+      "conversation_state_geo_status_check",
+      sql.raw(
+        "geo_resolution_status IN ('resolved', 'soft_normalized', 'ambiguous', 'unresolved')",
+      ),
+    ),
   ],
 );
 

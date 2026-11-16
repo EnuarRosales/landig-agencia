@@ -467,10 +467,13 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       locale: "es" as const,
       currency: "COP",
       timezone: "America/Bogota",
-      country: "CO",
+      countryCode: "CO",
+      country: "Colombia",
+      subdivisionCode: "CO-ANT",
       state: "Antioquia",
       city: "Medellín",
       addressLine: "Calle 10 # 40-20",
+      addressComplement: null,
       postalCode: "050021",
       industry: "Retail",
       taxId: "900123456-7",
@@ -1098,7 +1101,7 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
 
       fireEvent.click(screen.getByText("Prompt Maestro"));
       fireEvent.click(screen.getByText("Insertar Estructura Recomendada"));
-      expect(screen.getByText(/\/ 32,000/)).toBeDefined();
+      expect(screen.getByText(/\/ 32[.,]000/)).toBeDefined();
     });
 
     it("automatically closes ProductFormModal and shows confirmation banner when Guardar Producto succeeds", async () => {
@@ -1205,54 +1208,162 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
     });
   });
 
-  describe("BotView · SPEC-19 Prompt General IDEAL & Dynamic Classifier (Functional vs. Operational)", () => {
-    it("renders Client General Prompt (Plano 2) and Dynamic Conversation Classifier with Chatwoot colors and operational side effects", () => {
+  describe("BotView · Unified Bot, Dynamic Catalog, Messages & Classifier", () => {
+    it("renders Unified Bot tabs, inserts recommended international IDEAL template, and displays seeded labels", () => {
       render(
         <BotView
+          locale="es"
+          readOnly={false}
           initialConfig={{
-            botPreset: "natural_rhythm",
-            remindersEnabled: true,
-            warrantyPolicy: "30 días de garantía por defectos de fabricación.",
-            returnsPolicy: "Cambios dentro de los primeros 5 días hábiles.",
-            orderMessage: "Tu pedido ha sido confirmado.",
-            faqs: [],
-            paymentMethods: [],
+            bot: {
+              id: "bot-1",
+              name: "Asistente Mocter",
+              status: "active",
+              revision: 1,
+              objective: "Atender consultas y cerrar pedidos",
+              presetId: "preset-1",
+              presetCode: "natural_rhythm",
+              toneId: "tone-1",
+              toneCode: "cercano",
+              persona: null,
+              instructions: "",
+              allowedTopics: null,
+              excludedTopics: null,
+              handoffTriggers: ["asesor"],
+              responseLanguage: "es",
+              answerPolicy: "solo_conocimiento",
+              maxTurns: 20,
+              maxMessagesPerContact: 60,
+              classifierPrompt: "",
+              defaultMessages: {
+                welcome: { body: "Hola", enabled: true, updatedAt: "2026-11-15T00:00:00Z" },
+                order_confirmation: {
+                  body: "Pedido {{order_number}} confirmado.",
+                  enabled: true,
+                  updatedAt: "2026-11-15T00:00:00Z",
+                },
+                dispatch_tracking: {
+                  body: "Tu guía es {{tracking_code}}.",
+                  enabled: true,
+                  updatedAt: "2026-11-15T00:00:00Z",
+                },
+                delivery_issue: {
+                  body: "Novedad en la entrega de {{order_number}}.",
+                  enabled: true,
+                  updatedAt: "2026-11-15T00:00:00Z",
+                },
+                out_of_hours: {
+                  body: "Nuestro horario es {{business_hours}}.",
+                  enabled: true,
+                  updatedAt: "2026-11-15T00:00:00Z",
+                },
+                handoff: {
+                  body: "Te conectamos con un asesor.",
+                  enabled: true,
+                  updatedAt: "2026-11-15T00:00:00Z",
+                },
+              },
+              businessHours: {
+                timezone: "America/Bogota",
+                enabled: false,
+                schedule: {
+                  mon: { open: "08:00", close: "18:00", closed: false },
+                  tue: { open: "08:00", close: "18:00", closed: false },
+                  wed: { open: "08:00", close: "18:00", closed: false },
+                  thu: { open: "08:00", close: "18:00", closed: false },
+                  fri: { open: "08:00", close: "18:00", closed: false },
+                  sat: { open: "09:00", close: "13:00", closed: false },
+                  sun: { open: "09:00", close: "13:00", closed: true },
+                },
+              },
+            },
+            policies: {
+              botPreset: "natural_rhythm",
+              remindersEnabled: true,
+              warrantyPolicy: "30 días de garantía por defectos de fabricación.",
+              returnsPolicy: "Cambios dentro de los primeros 5 días hábiles.",
+              shippingPolicy: { freeShipping: true, policyText: "Envío asegurado." },
+              orderMessage: "Tu pedido ha sido confirmado.",
+              faqs: [],
+              paymentMethods: ["Bancolombia"],
+            },
+            labels: [
+              {
+                id: "lbl-1",
+                title: "lead-caliente",
+                description: "Intención de compra directa",
+                color: "#F97316",
+                origin: "system",
+                state: "synced",
+                category: "functional",
+                activationRule: "Consulta precio o medios de pago",
+                sideEffects: null,
+              },
+              {
+                id: "lbl-2",
+                title: "soporte_humano",
+                description: "Solicita asesor",
+                color: "#EC4899",
+                origin: "system",
+                state: "synced",
+                category: "operational",
+                activationRule: "Pide hablar con humano",
+                sideEffects: "handoff_human,pause_bot",
+              },
+            ],
+            catalog: {
+              objectives: [{ code: "sales", labels: { es: "Cerrar pedidos", en: "Close orders" } }],
+              presets: [
+                {
+                  id: "preset-1",
+                  code: "natural_rhythm",
+                  labels: { es: "Ritmo Natural", en: "Natural Rhythm" },
+                  recommendedFor: { es: "Tono cálido", en: "Warm tone" },
+                  temperature: "0.7",
+                  maxTokens: 600,
+                },
+              ],
+              tones: [
+                {
+                  id: "tone-1",
+                  code: "cercano",
+                  labels: { es: "Cercano", en: "Friendly" },
+                  description: null,
+                },
+              ],
+            },
+            context: {
+              businessName: "Synergia Store",
+              locale: "es",
+              countryCode: "CO",
+              currency: "COP",
+              timezone: "America/Bogota",
+            },
+            defaultLabelsInitialized: true,
           }}
         />,
       );
 
-      expect(
-        screen.getByText("Prompt General de Operación del Cliente (Metodología IDEAL)"),
-      ).toBeDefined();
-      expect(
-        screen.getByText(
-          "Clasificador Dinámico de Conversaciones (Etiquetas Funcionales y Operativas)",
-        ),
-      ).toBeDefined();
+      expect(screen.getByText("Prompt General de Operación del Cliente")).toBeDefined();
 
-      // Etiquetas funcionales y colores en Chatwoot
-      expect(screen.getByText("Lead Caliente")).toBeDefined();
-      expect(screen.getByText("#F97316")).toBeDefined();
-      expect(screen.getByText("Compra Realizada")).toBeDefined();
-      expect(screen.getByText("#10B981")).toBeDefined();
-
-      // Etiquetas operativas y efectos secundarios
-      expect(screen.getByText("Soporte Humano")).toBeDefined();
-      expect(screen.getAllByText("Dirigir a Agente Humano").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("Pausar Bot").length).toBeGreaterThanOrEqual(1);
-
-      // Idempotencia del botón «Insertar Estructura IDEAL del Negocio»
-      const insertBusinessBtn = screen.getByText("Insertar Estructura IDEAL del Negocio");
-      fireEvent.click(insertBusinessBtn);
-      fireEvent.click(insertBusinessBtn);
+      const insertBtn = screen.getByRole("button", { name: "Insertar Estructura Recomendada" });
+      fireEvent.click(insertBtn);
+      fireEvent.click(insertBtn);
 
       const generalPromptArea = screen.getByLabelText(
-        "Prompt General de Operación del Cliente",
+        "Instrucciones Generales del Asistente",
       ) as HTMLTextAreaElement;
       const countHeader =
         generalPromptArea.value.split("### [I] INTENCIÓN COMERCIAL Y REGLA DE CATÁLOGO").length - 1;
       expect(countHeader).toBe(1);
       expect(generalPromptArea.value).toContain("30 días de garantía por defectos de fabricación.");
+
+      fireEvent.click(screen.getByRole("button", { name: "Etiquetas y Clasificador" }));
+      expect(screen.getByText("lead-caliente")).toBeDefined();
+      expect(screen.getByText("soporte_humano")).toBeDefined();
+
+      fireEvent.click(screen.getByRole("button", { name: "Mensajes y Horarios" }));
+      expect(screen.getByText("Horario de Atención y Zona Horaria")).toBeDefined();
     });
   });
 

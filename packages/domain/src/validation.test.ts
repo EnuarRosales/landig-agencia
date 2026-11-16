@@ -10,26 +10,37 @@ const validLead = {
 };
 
 describe("leadSchema", () => {
-  it("accepts a complete valid lead and returns it unchanged", () => {
+  it("accepts a complete valid lead and normalizes phone to strict E.164", () => {
     const result = leadSchema.safeParse(validLead);
 
     expect(result.success).toBe(true);
     if (!result.success) return;
 
-    expect(result.data).toEqual(validLead);
+    expect(result.data).toEqual({ ...validLead, phone: "+34600123456" });
   });
 
   it("normalizes an absent message to null", () => {
     const result = leadSchema.safeParse({
       name: "Grace Hopper",
       email: "grace@example.com",
-      phone: "600 123 456",
+      phone: "+34 600 123 456",
     });
 
     expect(result.success).toBe(true);
     if (!result.success) return;
 
     expect(result.data.message).toBeNull();
+    expect(result.data.phone).toBe("+34600123456");
+  });
+
+  it("rejects phone numbers without E.164 international country calling code", () => {
+    const result = leadSchema.safeParse({
+      name: "Grace Hopper",
+      email: "grace@example.com",
+      phone: "3001234567",
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it("accepts an explicit null message as null", () => {

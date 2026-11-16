@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useMemo, useRef } from "react";
 import { ArrowRight, ImagePlus, Loader2, Store } from "lucide-react";
+import { getCountryAddressProfile, listCountryOptions } from "@mocter/domain/geo";
+import { PhoneE164Input } from "@/components/phone-e164-input";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 export interface StepBusinessProps {
@@ -12,6 +14,7 @@ export interface StepBusinessProps {
   commercialEmail: string;
   websiteUrl: string;
   phone: string;
+  countryCode?: string;
   currency: string;
   timezone: string;
   logoPreviewUrl: string | null;
@@ -22,6 +25,7 @@ export interface StepBusinessProps {
   onCommercialEmailChange: (val: string) => void;
   onWebsiteUrlChange: (val: string) => void;
   onPhoneChange: (val: string) => void;
+  onCountryCodeChange?: (val: string) => void;
   onLocaleChange: (loc: AdminLocale) => void;
   onCurrencyChange: (val: string) => void;
   onTimezoneChange: (val: string) => void;
@@ -40,6 +44,7 @@ export function StepBusiness({
   commercialEmail,
   websiteUrl,
   phone,
+  countryCode = "CO",
   currency,
   timezone,
   logoPreviewUrl,
@@ -50,6 +55,7 @@ export function StepBusiness({
   onCommercialEmailChange,
   onWebsiteUrlChange,
   onPhoneChange,
+  onCountryCodeChange,
   onLocaleChange,
   onCurrencyChange,
   onTimezoneChange,
@@ -58,6 +64,7 @@ export function StepBusiness({
 }: StepBusinessProps) {
   const dict = getAdminDictionary(locale).onboarding;
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const countryOptions = useMemo(() => listCountryOptions(locale), [locale]);
 
   return (
     <form
@@ -185,21 +192,42 @@ export function StepBusiness({
           />
         </div>
 
+        <div className="sm:col-span-2">
+          <PhoneE164Input
+            id="onb-phone"
+            label={dict.step1PhoneLabel}
+            value={phone}
+            defaultCountryCode={countryCode}
+            locale={locale}
+            onChange={(val) => onPhoneChange(val)}
+          />
+        </div>
+
         <div>
           <label
-            htmlFor="onb-phone"
+            htmlFor="onb-country-code"
             className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
           >
-            {dict.step1PhoneLabel}
+            {locale === "en" ? "Operating Country" : "País de Operación"}
           </label>
-          <input
-            id="onb-phone"
-            type="tel"
-            value={phone}
-            onChange={(e) => onPhoneChange(e.target.value)}
-            placeholder="+57 300 123 4567"
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-          />
+          <select
+            id="onb-country-code"
+            value={countryCode}
+            onChange={(e) => {
+              const next = e.target.value;
+              onCountryCodeChange?.(next);
+              const prof = getCountryAddressProfile(next);
+              if (prof.defaultCurrency) onCurrencyChange(prof.defaultCurrency);
+              if (prof.defaultTimezone) onTimezoneChange(prof.defaultTimezone);
+            }}
+            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+          >
+            {countryOptions.map((opt) => (
+              <option key={opt.countryCode} value={opt.countryCode} className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
+                {opt.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="sm:col-span-2">
@@ -259,6 +287,21 @@ export function StepBusiness({
             </option>
             <option value="USD" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
               USD — US Dollar
+            </option>
+            <option value="MXN" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
+              MXN — Peso Mexicano
+            </option>
+            <option value="ARS" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
+              ARS — Peso Argentino
+            </option>
+            <option value="CLP" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
+              CLP — Peso Chileno
+            </option>
+            <option value="PEN" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
+              PEN — Sol Peruano
+            </option>
+            <option value="EUR" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
+              EUR — Euro
             </option>
           </select>
         </div>

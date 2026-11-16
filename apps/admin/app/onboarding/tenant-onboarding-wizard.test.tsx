@@ -195,8 +195,9 @@ describe("TenantOnboardingWizard (5 pasos · SPEC-06)", () => {
       "https://synergia.co",
     );
     expect((screen.getByLabelText("Teléfono o WhatsApp (Opcional)") as HTMLInputElement).value).toBe(
-      "+573001112233",
+      "3001112233",
     );
+    expect(screen.getByText("+573001112233")).toBeDefined();
   });
 
   it("genera el slug automáticamente cuando el usuario escribe su nombre comercial en Alta Autónoma", () => {

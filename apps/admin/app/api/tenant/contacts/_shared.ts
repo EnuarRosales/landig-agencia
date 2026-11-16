@@ -7,6 +7,7 @@ import {
   CONTACT_DOCUMENT_TYPES,
   CONTACT_SOURCES,
   CONTACT_STAGES,
+  normalizeAndValidatePhoneE164,
 } from "@mocter/domain";
 
 export const PROBLEM_CONTENT_TYPE = "application/problem+json";
@@ -20,6 +21,32 @@ function emptyStringToNull(value: unknown): unknown {
 
 const optionalTrimmedText = (max: number) =>
   z.preprocess(emptyStringToNull, z.string().trim().max(max).nullable().optional());
+
+const optionalStrictE164Phone = z.preprocess(
+  emptyStringToNull,
+  z
+    .string()
+    .trim()
+    .max(32)
+    .superRefine((val, ctx) => {
+      const res = normalizeAndValidatePhoneE164({
+        rawPhone: val,
+        allowLocalWithDefaultCountry: false,
+      });
+      if (!res.ok) {
+        ctx.addIssue({ code: "custom", message: res.error });
+      }
+    })
+    .transform((val) => {
+      const res = normalizeAndValidatePhoneE164({
+        rawPhone: val,
+        allowLocalWithDefaultCountry: false,
+      });
+      return res.ok ? res.data.e164 : val;
+    })
+    .nullable()
+    .optional(),
+);
 
 export const listContactsQuerySchema = z.object({
   query: z.string().trim().max(200).optional(),
@@ -40,9 +67,12 @@ export const listContactsQuerySchema = z.object({
 export const createAddressBodySchema = z.object({
   label: z.string().trim().min(1, "La etiqueta de dirección es obligatoria.").max(60),
   country: z.string().trim().min(2, "El país es obligatorio.").max(60).default("Colombia"),
+  countryCode: optionalTrimmedText(8),
   state: optionalTrimmedText(120),
+  subdivisionCode: optionalTrimmedText(16),
   city: z.string().trim().min(1, "La ciudad es obligatoria.").max(120),
   addressLine: z.string().trim().min(3, "La dirección física es obligatoria.").max(500),
+  addressComplement: optionalTrimmedText(255),
   neighborhood: optionalTrimmedText(120),
   postalCode: optionalTrimmedText(20),
   referenceNotes: optionalTrimmedText(500),
@@ -52,9 +82,12 @@ export const createAddressBodySchema = z.object({
 export const updateAddressBodySchema = z.object({
   label: z.string().trim().min(1).max(60).optional(),
   country: z.string().trim().min(2).max(60).optional(),
+  countryCode: optionalTrimmedText(8),
   state: optionalTrimmedText(120),
+  subdivisionCode: optionalTrimmedText(16),
   city: z.string().trim().min(1).max(120).optional(),
   addressLine: z.string().trim().min(3).max(500).optional(),
+  addressComplement: optionalTrimmedText(255),
   neighborhood: optionalTrimmedText(120),
   postalCode: optionalTrimmedText(20),
   referenceNotes: optionalTrimmedText(500),
@@ -68,8 +101,8 @@ export const createContactBodySchema = z.object({
     emptyStringToNull,
     z.string().trim().email("Correo electrónico no válido.").max(255).nullable().optional(),
   ),
-  phoneMobile: optionalTrimmedText(32),
-  phoneSecondary: optionalTrimmedText(32),
+  phoneMobile: optionalStrictE164Phone,
+  phoneSecondary: optionalStrictE164Phone,
   phoneLandline: optionalTrimmedText(32),
   documentType: z.preprocess(
     emptyStringToNull,
@@ -94,10 +127,13 @@ export const createContactBodySchema = z.object({
   language: z.enum(["es", "en"]).optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   notes: optionalTrimmedText(2000),
+  countryCode: optionalTrimmedText(8),
   country: optionalTrimmedText(60),
+  subdivisionCode: optionalTrimmedText(16),
   state: optionalTrimmedText(120),
   city: optionalTrimmedText(120),
   addressLine: optionalTrimmedText(500),
+  addressComplement: optionalTrimmedText(255),
   postalCode: optionalTrimmedText(20),
   initialAddress: createAddressBodySchema.nullable().optional(),
 });
@@ -114,8 +150,8 @@ export const updateContactBodySchema = z.object({
     emptyStringToNull,
     z.string().trim().email("Correo electrónico no válido.").max(255).nullable().optional(),
   ),
-  phoneMobile: optionalTrimmedText(32),
-  phoneSecondary: optionalTrimmedText(32),
+  phoneMobile: optionalStrictE164Phone,
+  phoneSecondary: optionalStrictE164Phone,
   phoneLandline: optionalTrimmedText(32),
   documentType: z.preprocess(
     emptyStringToNull,
@@ -139,10 +175,13 @@ export const updateContactBodySchema = z.object({
   language: z.enum(["es", "en"]).optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   notes: optionalTrimmedText(2000),
+  countryCode: optionalTrimmedText(8),
   country: optionalTrimmedText(60),
+  subdivisionCode: optionalTrimmedText(16),
   state: optionalTrimmedText(120),
   city: optionalTrimmedText(120),
   addressLine: optionalTrimmedText(500),
+  addressComplement: optionalTrimmedText(255),
   postalCode: optionalTrimmedText(20),
 });
 

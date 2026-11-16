@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { PhoneE164Input } from "@/components/phone-e164-input";
 
 export interface CrmContactItem {
   id: string;
@@ -486,19 +487,16 @@ export function ContactsDashboard({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300">
-                    {i18n.labelPhoneMobile}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="+573001234567"
-                    value={newPhone}
-                    onChange={(e) => setNewPhone(e.target.value)}
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
+              <div className="space-y-3">
+                <PhoneE164Input
+                  id="crm-create-phone"
+                  name="phoneMobile"
+                  label={i18n.labelPhoneMobile || defaultTranslations.labelPhoneMobile}
+                  required={false}
+                  defaultCountryCode="CO"
+                  initialValue={newPhone}
+                  onValidChange={(val) => setNewPhone(val)}
+                />
                 <div>
                   <label className="block text-xs font-medium text-zinc-300">
                     {i18n.labelEmail}
@@ -642,20 +640,21 @@ export function ContactsDashboard({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300">
-                    {i18n.labelPhoneMobile}
-                  </label>
-                  <input
-                    type="text"
-                    value={editingContact.phoneMobile || ""}
-                    onChange={(e) =>
-                      setEditingContact({ ...editingContact, phoneMobile: e.target.value || null })
-                    }
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
+              <div className="space-y-3">
+                <PhoneE164Input
+                  key={editingContact.id}
+                  id="crm-edit-phone"
+                  name="phoneMobile"
+                  label={i18n.labelPhoneMobile || defaultTranslations.labelPhoneMobile}
+                  required={false}
+                  defaultCountryCode="CO"
+                  initialValue={editingContact.phoneMobile || ""}
+                  onValidChange={(val) =>
+                    setEditingContact((prev) =>
+                      prev ? { ...prev, phoneMobile: val || null } : prev,
+                    )
+                  }
+                />
                 <div>
                   <label className="block text-xs font-medium text-zinc-300">
                     {i18n.labelEmail}

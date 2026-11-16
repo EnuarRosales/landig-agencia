@@ -4,6 +4,8 @@ import * as domain from "@mocter/domain";
 import { GET as getDashboard } from "./dashboard/route";
 import { POST as createProduct } from "./products/route";
 import { GET as getBilling } from "./billing/route";
+import { GET as getBot, PUT as putBot } from "./bot/route";
+import { POST as createOrder } from "./orders/route";
 
 const { mockProductsService } = vi.hoisted(() => ({
   mockProductsService: {
@@ -24,12 +26,25 @@ const { mockProductsService } = vi.hoisted(() => ({
   },
 }));
 
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return {
+    ...actual,
+    after: vi.fn((fn: () => void) => fn()),
+  };
+});
+
 vi.mock("@mocter/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof domain>();
   return {
     ...actual,
     resolveAuthenticatedPortalContext: vi.fn(),
     getTenantProductsAndMediaService: vi.fn(() => mockProductsService),
+    syncPendingLabelsToChatwootNonBlocking: vi.fn(async () => undefined),
+    botConfigUnifiedService: {
+      getUnifiedConfig: vi.fn(),
+      updateUnifiedConfig: vi.fn(),
+    },
     tenantWorkspaceService: {
       getDashboard: vi.fn(),
       getProducts: vi.fn(),
@@ -292,6 +307,92 @@ describe("Tenant Workspace Route Handlers", () => {
     expect(json.ok).toBe(true);
     expect(json.data.mediaLimits.audiosPerProduct.value).toBe(2);
     expect(json.data.capabilities.channel_whatsapp).toBe(true);
+  });
+
+  it("should allow GET /api/tenant/bot via unified service and block non-owner PUT with 403", async () => {
+    vi.mocked(domain.resolveAuthenticatedPortalContext).mockResolvedValueOnce({
+      scope: "tenant",
+      user: { id: "u-agent", email: "agent@shop.co", displayName: "Agent", status: "active", emailVerifiedAt: null },
+      session: { id: "sid-1" },
+      role: "tenant_agent",
+      effectiveRoles: ["tenant_agent"],
+      lifecycleStatus: "activo",
+      activeClientId: "client-1",
+      activeClient: { id: "client-1", name: "Shop", slug: "shop" },
+      activeCellId: null,
+      activeCellCode: null,
+      planName: "Plan Pro",
+      capabilities: {},
+    } as any);
+
+    vi.mocked(domain.botConfigUnifiedService.getUnifiedConfig).mockResolvedValueOnce({
+      ok: true,
+      data: { bot: { name: "Asistente" } } as any,
+    });
+
+    const getRes = await getBot(
+      new NextRequest("http://localhost:3003/api/tenant/bot", {
+        method: "GET",
+        headers: { cookie: "mocter_sid=test-sid" },
+      }),
+    );
+    expect(getRes.status).toBe(200);
+
+    vi.mocked(domain.resolveAuthenticatedPortalContext).mockResolvedValueOnce({
+      scope: "tenant",
+      user: { id: "u-agent", email: "agent@shop.co", displayName: "Agent", status: "active", emailVerifiedAt: null },
+      session: { id: "sid-1" },
+      role: "tenant_agent",
+      effectiveRoles: ["tenant_agent"],
+      lifecycleStatus: "activo",
+      activeClientId: "client-1",
+      activeClient: { id: "client-1", name: "Shop", slug: "shop" },
+      activeCellId: null,
+      activeCellCode: null,
+      planName: "Plan Pro",
+      capabilities: {},
+    } as any);
+
+    const putForbidden = await putBot(
+      new NextRequest("http://localhost:3003/api/tenant/bot", {
+        method: "PUT",
+        headers: { cookie: "mocter_sid=test-sid", "content-type": "application/json" },
+        body: JSON.stringify({ name: "Hacker" }),
+      }),
+    );
+    expect(putForbidden.status).toBe(403);
+    expect(putForbidden.headers.get("content-type")).toContain("application/problem+json");
+  });
+
+  it("should enforce strict E.164 on POST /api/tenant/orders", async () => {
+    vi.mocked(domain.resolveAuthenticatedPortalContext).mockResolvedValueOnce({
+      scope: "tenant",
+      user: { id: "u-owner", email: "owner@shop.co", displayName: "Owner", status: "active", emailVerifiedAt: null },
+      session: { id: "sid-1" },
+      role: "tenant_owner",
+      effectiveRoles: ["tenant_owner"],
+      lifecycleStatus: "activo",
+      activeClientId: "client-1",
+      activeClient: { id: "client-1", name: "Shop", slug: "shop" },
+      activeCellId: null,
+      activeCellCode: null,
+      planName: "Plan Pro",
+      capabilities: {},
+    } as any);
+
+    const badOrder = await createOrder(
+      new NextRequest("http://localhost:3003/api/tenant/orders", {
+        method: "POST",
+        headers: { cookie: "mocter_sid=test-sid", "content-type": "application/json" },
+        body: JSON.stringify({
+          customerName: "Pedro",
+          customerPhone: "3001234567",
+          totalCents: 5000000,
+        }),
+      }),
+    );
+    expect(badOrder.status).toBe(400);
+    expect(domain.tenantWorkspaceService.createOrder).not.toHaveBeenCalled();
   });
 });
 

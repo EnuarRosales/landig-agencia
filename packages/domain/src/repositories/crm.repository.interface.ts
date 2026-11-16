@@ -75,9 +75,12 @@ export interface ContactDuplicateCriteria {
 export interface ContactAddressWriteInput {
   label: string;
   country?: string;
+  countryCode?: string | null;
   state?: string | null;
+  subdivisionCode?: string | null;
   city: string;
   addressLine: string;
+  addressComplement?: string | null;
   neighborhood?: string | null;
   postalCode?: string | null;
   referenceNotes?: string | null;

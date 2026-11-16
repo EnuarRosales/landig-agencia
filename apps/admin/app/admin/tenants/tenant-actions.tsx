@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import type { AdminTenantItemDto } from "@mocter/domain";
 import { ConfirmationModal } from "@/components/confirmation-modal";
+import { PhoneE164Input } from "@/components/phone-e164-input";
 
 export interface TenantActionsProps {
   clientId?: string;
@@ -505,15 +506,12 @@ export function TenantActions({
               {/* Teléfono e Idioma */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
-                    Teléfono De Contacto
-                  </label>
-                  <input
-                    type="text"
+                  <PhoneE164Input
+                    id="admin-edit-tenant-phone"
+                    label="Teléfono de Contacto"
                     value={editForm.phone}
-                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                    placeholder="+573001234567"
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] text-left focus:border-[var(--dsn-accent)] focus:outline-none"
+                    locale={editForm.locale === "en" ? "en" : "es"}
+                    onChange={(nextVal) => setEditForm({ ...editForm, phone: nextVal })}
                   />
                 </div>
                 <div>

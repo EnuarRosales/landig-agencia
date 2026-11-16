@@ -8,7 +8,8 @@
     ".": "./src/index.ts",
     "./schema": "./src/db/schemas/index.ts",
     "./validation": "./src/validation.ts",
-    "./db": "./src/db/index.ts"
+    "./db": "./src/db/index.ts",
+    "./geo": "./src/geo/index.ts"
   },
   "scripts": {
     "build": "tsc",
@@ -28,6 +29,7 @@
     "drizzle-orm": "^0.44.0",
     "exceljs": "^4.4.0",
     "ioredis": "^6.0.0",
+    "libphonenumber-js": "^1.13.16",
     "nodemailer": "^10.2.1",
     "postgres": "^3.4.0",
     "zod": "^4.6.7"

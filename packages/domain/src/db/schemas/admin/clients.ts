@@ -7,6 +7,7 @@ import {
   text,
   uniqueIndex,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { adminSchema } from "./namespace";
@@ -46,9 +47,12 @@ export const clients = adminSchema.table(
     quotaVersion: integer("quota_version").notNull().default(1),
     taxId: text("tax_id"),
     country: text("country"),
+    countryCode: char("country_code", { length: 2 }),
     state: text("state"),
+    subdivisionCode: varchar("subdivision_code", { length: 16 }),
     city: text("city"),
     addressLine: text("address_line"),
+    addressComplement: text("address_complement"),
     postalCode: text("postal_code"),
     industry: text("industry"),
     timezone: text("timezone").notNull().default("America/Bogota"),

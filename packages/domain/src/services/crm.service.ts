@@ -16,12 +16,16 @@ import type {
 } from "../db/schemas/tenant/crm";
 import { appLogger } from "../utils/logger";
 import {
+  getLocalizedCountryName,
+  normalizeAndValidatePhoneE164,
+  resolveCountryAlpha2FromInput,
+  resolveIsoSubdivision,
+} from "../geo/index";
+import {
   computeWhatsappWindow,
   isFutureDateOnly,
-  isValidE164Phone,
   isValidEmailAddress,
   normalizeChatwootChannel,
-  normalizeE164Phone,
   resolveDefaultPreferredChannel,
   CONTACT_SOURCES,
   CONTACT_STAGES,
@@ -43,7 +47,10 @@ export interface ContactDefaultAddressSummary {
   city: string;
   state: string | null;
   country: string;
+  countryCode: string | null;
+  subdivisionCode: string | null;
   addressLine: string;
+  addressComplement: string | null;
 }
 
 /**
@@ -59,6 +66,7 @@ export interface CrmContactListItemDto {
   phoneMobile: string | null;
   phoneSecondary: string | null;
   phoneLandline: string | null;
+  phoneValidationStatus: string;
   birthDate: string | null;
   source: string;
   channel: string | null;
@@ -115,9 +123,12 @@ export interface CrmContactListResultDto {
 export interface CreateContactAddressInput {
   label: string;
   country?: string;
+  countryCode?: string | null;
   state?: string | null;
+  subdivisionCode?: string | null;
   city: string;
   addressLine: string;
+  addressComplement?: string | null;
   neighborhood?: string | null;
   postalCode?: string | null;
   referenceNotes?: string | null;
@@ -138,9 +149,12 @@ export interface CreateProspectInput {
   documentNumber?: string | null;
   birthDate?: string | null;
   country?: string | null;
+  countryCode?: string | null;
   state?: string | null;
+  subdivisionCode?: string | null;
   city?: string | null;
   addressLine?: string | null;
+  addressComplement?: string | null;
   postalCode?: string | null;
   source?: ContactSource;
   channel?: string | null;
@@ -151,6 +165,8 @@ export interface CreateProspectInput {
   tags?: string[];
   notes?: string | null;
   initialAddress?: CreateContactAddressInput | null;
+  /** País ISO alpha-2 del inquilino para normalización contextual opcional en ingesta automática. */
+  defaultCountryCode?: string | null;
   createdBy: string;
 }
 
@@ -168,9 +184,12 @@ export interface UpdateProspectInput {
   documentNumber?: string | null;
   birthDate?: string | null;
   country?: string | null;
+  countryCode?: string | null;
   state?: string | null;
+  subdivisionCode?: string | null;
   city?: string | null;
   addressLine?: string | null;
+  addressComplement?: string | null;
   postalCode?: string | null;
   preferredChannel?: string | null;
   stage?: ContactStage;
@@ -291,7 +310,10 @@ export function mapContactToListItemDto(
         city: defaultAddress.city,
         state: defaultAddress.state,
         country: defaultAddress.country,
+        countryCode: defaultAddress.countryCode ?? null,
+        subdivisionCode: defaultAddress.subdivisionCode ?? null,
         addressLine: defaultAddress.addressLine,
+        addressComplement: defaultAddress.addressComplement ?? null,
       }
     : contact.city && contact.addressLine
       ? {
@@ -300,7 +322,10 @@ export function mapContactToListItemDto(
           city: contact.city,
           state: contact.state,
           country: contact.country || "Colombia",
+          countryCode: resolveCountryAlpha2FromInput(contact.country),
+          subdivisionCode: null,
           addressLine: contact.addressLine,
+          addressComplement: null,
         }
       : null;
 
@@ -314,6 +339,7 @@ export function mapContactToListItemDto(
     phoneMobile: contact.phoneMobile ?? null,
     phoneSecondary: contact.phoneSecondary ?? null,
     phoneLandline: contact.phoneLandline ?? null,
+    phoneValidationStatus: contact.phoneValidationStatus || "unverified",
     birthDate: contact.birthDate ? String(contact.birthDate) : null,
     source: contact.source,
     channel: contact.channel ?? null,
@@ -373,8 +399,33 @@ export class CrmService {
       );
     }
 
-    const normalizedPhone = normalizeE164Phone(input.phoneMobile);
-    const normalizedSecondary = input.phoneSecondary?.trim() || null;
+    let normalizedPhone: string | null = null;
+    let phoneValidationStatus: "verified_e164" | "unverified" = "unverified";
+    if (input.phoneMobile && input.phoneMobile.trim().length > 0) {
+      const phoneRes = normalizeAndValidatePhoneE164({
+        rawPhone: input.phoneMobile,
+        defaultCountryCode: input.defaultCountryCode ?? undefined,
+        allowLocalWithDefaultCountry: Boolean(input.defaultCountryCode && input.source && input.source !== "manual"),
+      });
+      if (!phoneRes.ok) {
+        return err(phoneRes.error, "VALIDATION_ERROR");
+      }
+      normalizedPhone = phoneRes.data.e164;
+      phoneValidationStatus = "verified_e164";
+    }
+
+    let normalizedSecondary: string | null = null;
+    if (input.phoneSecondary && input.phoneSecondary.trim().length > 0) {
+      const secRes = normalizeAndValidatePhoneE164({
+        rawPhone: input.phoneSecondary,
+        allowLocalWithDefaultCountry: false,
+      });
+      if (!secRes.ok) {
+        return err(secRes.error, "VALIDATION_ERROR");
+      }
+      normalizedSecondary = secRes.data.e164;
+    }
+
     const normalizedLandline = input.phoneLandline?.trim() || null;
     const normalizedEmail = input.email?.trim() ? input.email.trim().toLowerCase() : null;
     const normalizedDocNumber = input.documentNumber?.trim() || null;
@@ -385,13 +436,6 @@ export class CrmService {
     if (!hasContactChannel) {
       return err(
         "Se requiere al menos un canal de contacto válido (correo electrónico o teléfono).",
-        "VALIDATION_ERROR",
-      );
-    }
-
-    if (normalizedPhone && !isValidE164Phone(normalizedPhone)) {
-      return err(
-        `El teléfono móvil '${normalizedPhone}' debe cumplir con el formato internacional E.164 (ej: +573001234567).`,
         "VALIDATION_ERROR",
       );
     }
@@ -463,6 +507,28 @@ export class CrmService {
     });
 
     const initialAddress = input.initialAddress;
+    const resolvedCountryCode =
+      resolveCountryAlpha2FromInput(initialAddress?.countryCode ?? initialAddress?.country ?? input.countryCode ?? input.country) ??
+      undefined;
+    const resolvedCountryName =
+      initialAddress?.country?.trim() ||
+      input.country?.trim() ||
+      (resolvedCountryCode ? getLocalizedCountryName(resolvedCountryCode, input.language ?? "es") : undefined);
+    const rawStateInput = initialAddress?.state?.trim() || input.state?.trim() || undefined;
+    const isoSub =
+      resolvedCountryCode && (initialAddress?.subdivisionCode || input.subdivisionCode || rawStateInput)
+        ? resolveIsoSubdivision({
+            countryCode: resolvedCountryCode,
+            input: initialAddress?.subdivisionCode || input.subdivisionCode || rawStateInput || "",
+          })
+        : null;
+    const resolvedSubdivisionCode =
+      initialAddress?.subdivisionCode?.trim() ||
+      input.subdivisionCode?.trim() ||
+      (isoSub?.status === "resolved" ? isoSub.matches[0]?.code : undefined);
+    const resolvedStateName =
+      isoSub?.status === "resolved" ? isoSub.matches[0]?.name ?? rawStateInput : rawStateInput;
+
     const now = new Date();
 
     try {
@@ -473,11 +539,12 @@ export class CrmService {
         phoneMobile: normalizedPhone ?? undefined,
         phoneSecondary: normalizedSecondary,
         phoneLandline: normalizedLandline ?? undefined,
+        phoneValidationStatus,
         documentType: input.documentType ?? undefined,
         documentNumber: normalizedDocNumber ?? undefined,
         birthDate: input.birthDate?.trim() || null,
-        country: initialAddress?.country?.trim() || input.country?.trim() || undefined,
-        state: initialAddress?.state?.trim() || input.state?.trim() || undefined,
+        country: resolvedCountryName,
+        state: resolvedStateName,
         city: initialAddress?.city?.trim() || input.city?.trim() || undefined,
         addressLine: initialAddress?.addressLine?.trim() || input.addressLine?.trim() || undefined,
         postalCode: initialAddress?.postalCode?.trim() || input.postalCode?.trim() || undefined,
@@ -505,10 +572,13 @@ export class CrmService {
       ) {
         await this.repository.createContactAddress(cellId, clientId, created.id, {
           label: initialAddress.label?.trim() || "Principal",
-          country: initialAddress.country?.trim() || "Colombia",
-          state: initialAddress.state?.trim() || null,
+          country: resolvedCountryName || "Colombia",
+          countryCode: resolvedCountryCode ?? null,
+          state: resolvedStateName ?? null,
+          subdivisionCode: resolvedSubdivisionCode ?? null,
           city: initialAddress.city.trim(),
           addressLine: initialAddress.addressLine.trim(),
+          addressComplement: initialAddress.addressComplement?.trim() || null,
           neighborhood: initialAddress.neighborhood?.trim() || null,
           postalCode: initialAddress.postalCode?.trim() || null,
           referenceNotes: initialAddress.referenceNotes?.trim() || null,
@@ -542,13 +612,39 @@ export class CrmService {
       );
     }
 
-    const normalizedPhone =
-      input.phoneMobile !== undefined ? normalizeE164Phone(input.phoneMobile) : undefined;
-    if (normalizedPhone && !isValidE164Phone(normalizedPhone)) {
-      return err(
-        `El teléfono móvil '${normalizedPhone}' debe cumplir con el formato internacional E.164.`,
-        "VALIDATION_ERROR",
-      );
+    let normalizedPhone: string | null | undefined = undefined;
+    let nextPhoneValidationStatus: "verified_e164" | "unverified" | undefined = undefined;
+    if (input.phoneMobile !== undefined) {
+      if (input.phoneMobile && input.phoneMobile.trim().length > 0) {
+        const phoneRes = normalizeAndValidatePhoneE164({
+          rawPhone: input.phoneMobile,
+          allowLocalWithDefaultCountry: false,
+        });
+        if (!phoneRes.ok) {
+          return err(phoneRes.error, "VALIDATION_ERROR");
+        }
+        normalizedPhone = phoneRes.data.e164;
+        nextPhoneValidationStatus = "verified_e164";
+      } else {
+        normalizedPhone = null;
+        nextPhoneValidationStatus = "unverified";
+      }
+    }
+
+    let normalizedSecondary: string | null | undefined = undefined;
+    if (input.phoneSecondary !== undefined) {
+      if (input.phoneSecondary && input.phoneSecondary.trim().length > 0) {
+        const secRes = normalizeAndValidatePhoneE164({
+          rawPhone: input.phoneSecondary,
+          allowLocalWithDefaultCountry: false,
+        });
+        if (!secRes.ok) {
+          return err(secRes.error, "VALIDATION_ERROR");
+        }
+        normalizedSecondary = secRes.data.e164;
+      } else {
+        normalizedSecondary = null;
+      }
     }
 
     const normalizedEmail =
@@ -619,9 +715,13 @@ export class CrmService {
             : existing.companyName,
         email: normalizedEmail !== undefined ? normalizedEmail : existing.email,
         phoneMobile: normalizedPhone !== undefined ? normalizedPhone : existing.phoneMobile,
+        phoneValidationStatus:
+          nextPhoneValidationStatus !== undefined
+            ? nextPhoneValidationStatus
+            : existing.phoneValidationStatus,
         phoneSecondary:
-          input.phoneSecondary !== undefined
-            ? input.phoneSecondary?.trim() || null
+          normalizedSecondary !== undefined
+            ? normalizedSecondary
             : existing.phoneSecondary,
         phoneLandline:
           input.phoneLandline !== undefined
@@ -893,7 +993,32 @@ export class CrmService {
       return err("Repositorio no soporta múltiples direcciones.", "INTERNAL_ERROR");
     }
 
-    const created = await this.repository.createContactAddress(cellId, clientId, contactId, input);
+    const resolvedCountryCode =
+      resolveCountryAlpha2FromInput(input.countryCode ?? input.country) ?? undefined;
+    const resolvedCountryName =
+      input.country?.trim() ||
+      (resolvedCountryCode ? getLocalizedCountryName(resolvedCountryCode, "es") : "Colombia");
+    const isoSub =
+      resolvedCountryCode && (input.subdivisionCode || input.state)
+        ? resolveIsoSubdivision({
+            countryCode: resolvedCountryCode,
+            input: input.subdivisionCode || input.state || "",
+          })
+        : null;
+
+    const created = await this.repository.createContactAddress(cellId, clientId, contactId, {
+      ...input,
+      country: resolvedCountryName,
+      countryCode: input.countryCode ?? resolvedCountryCode ?? null,
+      state:
+        isoSub?.status === "resolved"
+          ? isoSub.matches[0]?.name ?? input.state ?? null
+          : input.state ?? null,
+      subdivisionCode:
+        input.subdivisionCode ??
+        (isoSub?.status === "resolved" ? isoSub.matches[0]?.code ?? null : null),
+      addressComplement: input.addressComplement?.trim() || null,
+    });
     return ok(created);
   }
 
@@ -1055,7 +1180,22 @@ export class CrmService {
     input: ChatwootIngestionInput,
   ): Promise<Result<IngestionResult>> {
     const normalizedChannel = normalizeChatwootChannel(input.channel);
-    const normalizedPhone = normalizeE164Phone(input.phoneMobile);
+    let normalizedPhone: string | null = null;
+    let ingestedPhoneValidationStatus: "verified_e164" | "unverified" = "unverified";
+    if (input.phoneMobile && input.phoneMobile.trim().length > 0) {
+      const e164Res = normalizeAndValidatePhoneE164({
+        rawPhone: input.phoneMobile,
+        allowLocalWithDefaultCountry: false,
+      });
+      if (e164Res.ok) {
+        normalizedPhone = e164Res.data.e164;
+        ingestedPhoneValidationStatus = "verified_e164";
+      } else {
+        const cleaned = input.phoneMobile.replace(/[\s\-()]/g, "").trim();
+        normalizedPhone = cleaned || null;
+        ingestedPhoneValidationStatus = "unverified";
+      }
+    }
     const normalizedEmail = input.email?.trim() ? input.email.trim().toLowerCase() : null;
     const eventTime = input.messageTimestamp ?? new Date();
     const isIncoming = Boolean(input.isIncomingMessage);
@@ -1203,6 +1343,7 @@ export class CrmService {
       const created = await this.repository.createContact(cellId, clientId, {
         fullName: input.name?.trim() || `Contacto #${input.chatwootContactId}`,
         phoneMobile: normalizedPhone ?? undefined,
+        phoneValidationStatus: ingestedPhoneValidationStatus,
         email: normalizedEmail ?? undefined,
         source: normalizedChannel.source,
         channel: normalizedChannel.channel,

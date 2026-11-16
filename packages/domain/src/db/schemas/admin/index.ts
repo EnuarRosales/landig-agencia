@@ -4,6 +4,7 @@
 export * from "./namespace";
 export * from "./plans";
 export * from "./clients";
+export * from "./geo-provider-locations";
 export * from "./client-plans";
 export * from "./users";
 export * from "./cell-hosts";

@@ -22,7 +22,53 @@ import {
 } from "./bot-catalog";
 
 /**
- * Configuración autoritativa del bot de atención por inquilino (`admin.tenant_bots`, BOT-001 §4.2).
+ * Claves canónicas de los 6 mensajes operativos clave asistidos por AI (`SPEC-10 §7.1`).
+ */
+export type BotDefaultMessageKey =
+  | "welcome"
+  | "order_confirmation"
+  | "dispatch_tracking"
+  | "delivery_issue"
+  | "out_of_hours"
+  | "handoff";
+
+/**
+ * Plantilla individual de mensaje automático configurable del asistente.
+ */
+export interface BotDefaultMessageEntry {
+  /** Texto del mensaje con marcadores permitidos (ej. `{{customer_name}}`). */
+  body: string;
+  /** Indica si la plantilla está habilitada para enviarse automáticamente. */
+  enabled: boolean;
+  /** Fecha/hora ISO de la última actualización del mensaje. */
+  updatedAt: string;
+}
+
+/**
+ * Diccionario completo con los 6 mensajes predeterminados del asistente (`admin.tenant_bots.default_messages`).
+ */
+export type TenantBotDefaultMessages = Record<BotDefaultMessageKey, BotDefaultMessageEntry>;
+
+/**
+ * Horario diario de atención comercial para evaluar mensajes fuera de horario.
+ */
+export interface TenantBusinessHoursDay {
+  open: string;
+  close: string;
+  closed: boolean;
+}
+
+/**
+ * Estructura de horario comercial por inquilino (`admin.tenant_bots.business_hours`).
+ */
+export interface TenantBusinessHours {
+  timezone: string;
+  enabled: boolean;
+  schedule: Record<"mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun", TenantBusinessHoursDay>;
+}
+
+/**
+ * Configuración autoritativa del bot de atención por inquilino (`admin.tenant_bots`, BOT-001 §4.2, SPEC-10 §7.1).
  */
 export const tenantBots = adminSchema.table(
   "tenant_bots",
@@ -57,6 +103,9 @@ export const tenantBots = adminSchema.table(
     maxMessagesPerContact: integer("max_messages_per_contact")
       .notNull()
       .default(50),
+    defaultMessages: jsonb("default_messages").$type<TenantBotDefaultMessages | null>(),
+    businessHours: jsonb("business_hours").$type<TenantBusinessHours | null>(),
+    classifierPrompt: text("classifier_prompt"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     deletedBy: text("deleted_by"),
     ...auditColumns(),

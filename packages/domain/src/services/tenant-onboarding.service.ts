@@ -36,7 +36,15 @@ import {
   buildChatwootFeaturesAndLimitsForPlan,
   isChatwootEnabledForPlan,
 } from "./chatwoot-provisioning.service";
-import { ensureDefaultBotCatalogSeeded, BOT_OBJECTIVE_OPTIONS } from "./bot-catalog.seed";
+import {
+  ensureDefaultBotCatalogSeeded,
+  BOT_OBJECTIVE_OPTIONS,
+  BOT_DEFAULT_LABELS_SEED,
+  buildDefaultBusinessHours,
+  buildDefaultTenantBotMessages,
+} from "./bot-catalog.seed";
+import type { TenantShippingPolicy } from "../db/schemas/tenant/tenancy-catalog";
+import { ensureDefaultBotLabelsInCell } from "./bot-config-unified.service";
 import {
   TENANT_PAYMENT_CHANNEL_CODES,
   type TenantPaymentChannelCode,
@@ -45,6 +53,13 @@ import { calculateProductProfitability, type ProductProfitabilitySummary } from 
 import { buildImgproxyUrl } from "./tenant-workspace.service";
 import { S3StorageService } from "./s3-storage.service";
 import { validateMediaMagicBytes } from "../utils/media-magic-bytes";
+import {
+  getCountryAddressProfile,
+  getLocalizedCountryName,
+  normalizeAndValidatePhoneE164,
+  resolveCountryAlpha2FromInput,
+  resolveIsoSubdivision,
+} from "../geo/index";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 import { getBillingService } from "./billing.service";
@@ -185,6 +200,11 @@ export interface TenantOnboardingStateDto {
     locale: "es" | "en";
     currency: string;
     timezone: string;
+    countryCode?: string | null;
+    country?: string | null;
+    subdivisionCode?: string | null;
+    state?: string | null;
+    city?: string | null;
     lifecycleStatus: string;
     planId?: string | null;
     planCode?: string | null;
@@ -247,6 +267,14 @@ export interface SaveStep1BusinessInput {
   commercialEmail?: string | null;
   websiteUrl?: string | null;
   phone?: string | null;
+  countryCode?: string | null;
+  country?: string | null;
+  subdivisionCode?: string | null;
+  state?: string | null;
+  city?: string | null;
+  addressLine?: string | null;
+  addressComplement?: string | null;
+  postalCode?: string | null;
   locale?: "es" | "en";
   currency?: string;
   timezone?: string;
@@ -398,15 +426,22 @@ function normalizeOptionalUrl(value: string | null | undefined): Result<string |
   }
 }
 
-function normalizeOptionalPhone(value: string | null | undefined): Result<string | null> {
+function normalizeOptionalPhone(
+  value: string | null | undefined,
+  defaultCountryCode?: string | null,
+): Result<string | null> {
   if (value === undefined || value === null || value.trim() === "") {
     return ok(null);
   }
-  const trimmed = value.trim();
-  if (trimmed.length < 7 || trimmed.length > 30) {
-    return err("El teléfono debe tener entre 7 y 30 caracteres.", "INVALID_PHONE");
+  const validated = normalizeAndValidatePhoneE164({
+    rawPhone: value,
+    defaultCountryCode: defaultCountryCode ?? undefined,
+    allowLocalWithDefaultCountry: false,
+  });
+  if (!validated.ok) {
+    return err(validated.error, validated.code ?? "INVALID_PHONE");
   }
-  return ok(trimmed);
+  return ok(validated.data.e164);
 }
 
 function defaultCatalogLimits(): OnboardingCatalogLimitsSummary {
@@ -441,24 +476,7 @@ export async function ensureDefaultChatwootLabels(
   clientId: string,
   actorEmail: string,
 ): Promise<boolean> {
-  await withTenantCellTransaction(clientId, async (tx) => {
-    for (const label of RESERVED_MOCTER_LEAD_LABELS) {
-      await tx
-        .insert(cellTenantLabels)
-        .values({
-          clientId,
-          title: label.title,
-          description: label.description,
-          color: label.color,
-          showOnSidebar: label.showOnSidebar,
-          origin: label.origin,
-          state: "active",
-          createdBy: actorEmail,
-          updatedBy: actorEmail,
-        })
-        .onConflictDoNothing();
-    }
-  });
+  await ensureDefaultBotLabelsInCell(clientId, actorEmail);
   return true;
 }
 
@@ -868,6 +886,11 @@ export class TenantOnboardingService {
             locale: (client.locale as "es" | "en") || "es",
             currency: client.currency || "COP",
             timezone: client.timezone || "America/Bogota",
+            countryCode: client.countryCode ?? null,
+            country: client.country ?? null,
+            subdivisionCode: client.subdivisionCode ?? null,
+            state: client.state ?? null,
+            city: client.city ?? null,
             lifecycleStatus: client.lifecycleStatus,
             planId: client.planId,
             planCode: currentPlanCode,
@@ -925,7 +948,9 @@ export class TenantOnboardingService {
     if (!emailRes.ok) return err(emailRes.error, emailRes.code);
     const websiteRes = normalizeOptionalUrl(input.websiteUrl);
     if (!websiteRes.ok) return err(websiteRes.error, websiteRes.code);
-    const phoneRes = normalizeOptionalPhone(input.phone);
+    const resolvedCountryCode =
+      resolveCountryAlpha2FromInput(input.countryCode ?? input.country) ?? "CO";
+    const phoneRes = normalizeOptionalPhone(input.phone, resolvedCountryCode);
     if (!phoneRes.ok) return err(phoneRes.error, phoneRes.code);
 
     const commercialEmail = emailRes.data;
@@ -953,8 +978,26 @@ export class TenantOnboardingService {
       }
 
       const locale: "es" | "en" = input.locale === "en" ? "en" : "es";
-      const currency = (input.currency || "COP").slice(0, 3).toUpperCase();
-      const timezone = input.timezone || "America/Bogota";
+      const countryProfile = getCountryAddressProfile(resolvedCountryCode);
+      const currency = (input.currency || countryProfile.defaultCurrency || "COP")
+        .slice(0, 3)
+        .toUpperCase();
+      const timezone = input.timezone?.trim() || countryProfile.defaultTimezone || "UTC";
+      const resolvedCountryName =
+        input.country?.trim() || getLocalizedCountryName(resolvedCountryCode, locale);
+      const subdivisionMatch =
+        input.subdivisionCode || input.state
+          ? resolveIsoSubdivision({
+              countryCode: resolvedCountryCode,
+              input: input.subdivisionCode ?? input.state ?? "",
+            })
+          : null;
+      const resolvedSubdivisionCode =
+        input.subdivisionCode?.trim().toUpperCase() ||
+        subdivisionMatch?.matches[0]?.code ||
+        null;
+      const resolvedStateName =
+        input.state?.trim() || subdivisionMatch?.matches[0]?.name || null;
       const planCode = input.planCode || "free";
 
       let clientId = existingClient?.id;
@@ -971,6 +1014,15 @@ export class TenantOnboardingService {
             commercialEmail,
             websiteUrl,
             phone,
+            country: resolvedCountryName,
+            countryCode: resolvedCountryCode,
+            state: resolvedStateName,
+            subdivisionCode: resolvedSubdivisionCode,
+            city: input.city?.trim() ?? existingClient.city,
+            addressLine: input.addressLine?.trim() ?? existingClient.addressLine,
+            addressComplement:
+              input.addressComplement?.trim() ?? existingClient.addressComplement,
+            postalCode: input.postalCode?.trim() ?? existingClient.postalCode,
             locale,
             currency,
             timezone,
@@ -1018,6 +1070,14 @@ export class TenantOnboardingService {
           commercialEmail,
           phone,
           websiteUrl,
+          country: resolvedCountryName,
+          countryCode: resolvedCountryCode,
+          state: resolvedStateName,
+          subdivisionCode: resolvedSubdivisionCode,
+          city: input.city?.trim() || null,
+          addressLine: input.addressLine?.trim() || null,
+          addressComplement: input.addressComplement?.trim() || null,
+          postalCode: input.postalCode?.trim() || null,
           locale,
           currency,
           timezone,
@@ -1707,9 +1767,12 @@ export class TenantOnboardingService {
         input.orderMessage?.trim() ||
         "¡Gracias por tu pedido! Nuestro equipo lo está preparando y nos pondremos en contacto contigo de inmediato.";
 
-      const shippingPolicy = input.shippingPolicy || {
+      const shippingPolicy: TenantShippingPolicy = {
+        freeShipping: false,
+        defaultCostCents: 0,
         domestic: true,
         deliveryTime: "2-4 días hábiles",
+        ...(input.shippingPolicy ?? {}),
       };
       const returnsPolicy = input.returnsPolicy || "Garantía legal de 30 días.";
       const warrantyPolicy = input.warrantyPolicy || "Garantía por defectos de fábrica.";
@@ -1752,10 +1815,23 @@ export class TenantOnboardingService {
       if (resolvedToneId && resolvedPresetId) {
         try {
           const [existingBot] = await db
-            .select({ id: tenantBots.id })
+            .select({
+              id: tenantBots.id,
+              defaultMessages: tenantBots.defaultMessages,
+              businessHours: tenantBots.businessHours,
+            })
             .from(tenantBots)
             .where(and(eq(tenantBots.clientId, client.id), isNull(tenantBots.deletedAt)))
             .limit(1);
+
+          const seededMessages = buildDefaultTenantBotMessages(
+            client.locale === "en" ? "en" : "es",
+            orderConfirmationMessage,
+          );
+          const seededBusinessHours = buildDefaultBusinessHours({
+            countryCode: client.countryCode,
+            timezone: client.timezone,
+          });
 
           if (existingBot) {
             await db
@@ -1768,6 +1844,8 @@ export class TenantOnboardingService {
                 providerId: null,
                 modelId: null,
                 responseLanguage: client.locale === "en" ? "en" : "es",
+                defaultMessages: existingBot.defaultMessages ?? seededMessages,
+                businessHours: existingBot.businessHours ?? seededBusinessHours,
                 updatedAt: new Date(),
                 updatedBy: user.email,
               })
@@ -1784,6 +1862,8 @@ export class TenantOnboardingService {
                 presetId: resolvedPresetId,
                 status: "draft",
                 responseLanguage: client.locale === "en" ? "en" : "es",
+                defaultMessages: seededMessages,
+                businessHours: seededBusinessHours,
                 createdBy: user.email,
                 updatedBy: user.email,
               })
@@ -1866,8 +1946,8 @@ export class TenantOnboardingService {
             },
           });
 
-        // Siembra idempotente de etiquetas reservadas de clasificación
-        for (const label of RESERVED_MOCTER_LEAD_LABELS) {
+        // Siembra idempotente de etiquetas canónicas (SPEC-10 operacionales + SPEC-19 funcionales)
+        for (const label of BOT_DEFAULT_LABELS_SEED) {
           await tx
             .insert(cellTenantLabels)
             .values({
@@ -1878,6 +1958,9 @@ export class TenantOnboardingService {
               showOnSidebar: label.showOnSidebar,
               origin: label.origin,
               state: "active",
+              category: label.category,
+              activationRule: label.activationRule,
+              sideEffects: label.sideEffects,
               createdBy: user.email,
               updatedBy: user.email,
             })

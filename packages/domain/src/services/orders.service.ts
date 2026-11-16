@@ -13,6 +13,11 @@ import type {
   NewCellShippingCarrier,
 } from "../db/schemas/tenant/orders";
 import type { ICrmRepository } from "../repositories/crm.repository.interface";
+import {
+  normalizeAndValidatePhoneE164,
+  resolveCountryAlpha2FromInput,
+  resolveIsoSubdivision,
+} from "../geo/index";
 
 /**
  * Ítem de entrada para el registro de pedidos.
@@ -40,10 +45,18 @@ export interface OrderCustomerInput {
  */
 export interface OrderShippingInput {
   method: "home" | "office";
+  countryCode?: string;
+  subdivisionCode?: string;
   addressLine?: string;
+  addressComplement?: string;
+  neighborhood?: string;
   city?: string;
   state?: string;
   postalCode?: string;
+  referenceNotes?: string;
+  geoResolutionStatus?: "iso_resolved" | "provider_resolved" | "unresolved" | "ambiguous";
+  rawLocationInput?: string;
+  providerGeoRefs?: Record<string, string | null>;
   carrierId?: string;
   carrierName?: string;
   shippingCents?: number;
@@ -215,6 +228,31 @@ export class OrdersService {
       return err("El teléfono del cliente es obligatorio.", "ORDER_CUSTOMER_PHONE_REQUIRED");
     }
 
+    const resolvedCountryCode = resolveCountryAlpha2FromInput(shipping.countryCode) ?? "CO";
+    const phoneRes = normalizeAndValidatePhoneE164({
+      rawPhone: customer.phone,
+      defaultCountryCode: resolvedCountryCode,
+      allowLocalWithDefaultCountry: source === "bot",
+    });
+    if (!phoneRes.ok) {
+      return err(phoneRes.error, "ORDER_CUSTOMER_PHONE_INVALID");
+    }
+    const normalizedCustomerPhone = phoneRes.data.e164;
+
+    const rawSubInput = shipping.subdivisionCode?.trim() || shipping.state?.trim() || "";
+    const isoSub = rawSubInput
+      ? resolveIsoSubdivision({ countryCode: resolvedCountryCode, input: rawSubInput })
+      : null;
+    const resolvedSubdivisionCode =
+      shipping.subdivisionCode?.trim() ||
+      (isoSub?.status === "resolved" ? isoSub.matches[0]?.code ?? undefined : undefined);
+    const resolvedStateName =
+      shipping.state?.trim() ||
+      (isoSub?.status === "resolved" ? isoSub.matches[0]?.name ?? undefined : undefined);
+    const resolvedGeoStatus =
+      shipping.geoResolutionStatus ??
+      (resolvedSubdivisionCode && shipping.city?.trim() ? "iso_resolved" : "unresolved");
+
     // 4. Cálculo de totales inmutables en centavos (T-05)
     let subtotalCents = 0;
     const orderItemsToCreate = items.map((item) => {
@@ -267,12 +305,23 @@ export class OrdersService {
         carrierId: shipping.carrierId,
         carrierName: shipping.carrierName,
         customerName: customer.name.trim(),
-        customerPhone: customer.phone.trim(),
+        customerPhone: normalizedCustomerPhone,
         customerDocument: customer.document?.trim(),
+        countryCode: resolvedCountryCode,
+        subdivisionCode: resolvedSubdivisionCode,
         addressLine: shipping.addressLine?.trim(),
+        addressComplement: shipping.addressComplement?.trim(),
+        neighborhood: shipping.neighborhood?.trim(),
         city: shipping.city?.trim(),
-        state: shipping.state?.trim(),
+        state: resolvedStateName,
         postalCode: shipping.postalCode?.trim(),
+        referenceNotes: shipping.referenceNotes?.trim(),
+        geoResolutionStatus: resolvedGeoStatus,
+        rawLocationInput:
+          shipping.rawLocationInput?.trim() ||
+          [shipping.countryCode, shipping.state, shipping.city].filter(Boolean).join(" / ") ||
+          undefined,
+        providerGeoRefs: shipping.providerGeoRefs ?? {},
         subtotalCents,
         shippingCents,
         discountCents,

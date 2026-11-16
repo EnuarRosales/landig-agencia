@@ -4,6 +4,7 @@ import {
   resolveAuthenticatedPortalContext,
   tenantOnboardingService,
   TENANT_PAYMENT_CHANNEL_CODES,
+  normalizeAndValidatePhoneE164,
 } from "@mocter/domain";
 import { handle } from "@/lib/errors/route";
 import { readSessionToken } from "@/lib/billing-route-auth";
@@ -21,7 +22,30 @@ const step1Schema = z.object({
     ),
   commercialEmail: z.string().email("Correo comercial inválido.").nullable().optional().or(z.literal("")),
   websiteUrl: z.string().max(300).nullable().optional().or(z.literal("")),
-  phone: z.string().max(30).nullable().optional().or(z.literal("")),
+  phone: z
+    .string()
+    .max(30)
+    .nullable()
+    .optional()
+    .or(z.literal(""))
+    .superRefine((val, ctx) => {
+      if (!val || val.trim() === "") return;
+      const res = normalizeAndValidatePhoneE164({
+        rawPhone: val,
+        allowLocalWithDefaultCountry: false,
+      });
+      if (!res.ok) {
+        ctx.addIssue({ code: "custom", message: res.error });
+      }
+    }),
+  countryCode: z.string().trim().max(8).nullable().optional(),
+  country: z.string().trim().max(120).nullable().optional(),
+  subdivisionCode: z.string().trim().max(16).nullable().optional(),
+  state: z.string().trim().max(120).nullable().optional(),
+  city: z.string().trim().max(120).nullable().optional(),
+  addressLine: z.string().trim().max(255).nullable().optional(),
+  addressComplement: z.string().trim().max(255).nullable().optional(),
+  postalCode: z.string().trim().max(32).nullable().optional(),
   locale: z.enum(["es", "en"]).optional(),
   currency: z.string().min(3).max(3).optional(),
   timezone: z.string().optional(),
@@ -222,6 +246,14 @@ export const POST = handle(async (req: NextRequest): Promise<NextResponse> => {
       commercialEmail: actionData.commercialEmail || null,
       websiteUrl: actionData.websiteUrl || null,
       phone: actionData.phone || null,
+      countryCode: actionData.countryCode || null,
+      country: actionData.country || null,
+      subdivisionCode: actionData.subdivisionCode || null,
+      state: actionData.state || null,
+      city: actionData.city || null,
+      addressLine: actionData.addressLine || null,
+      addressComplement: actionData.addressComplement || null,
+      postalCode: actionData.postalCode || null,
       locale: actionData.locale,
       currency: actionData.currency,
       timezone: actionData.timezone,

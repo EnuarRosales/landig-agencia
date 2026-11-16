@@ -35,6 +35,7 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
       phoneMobile: "+573001234567",
       phoneLandline: null,
       phoneSecondary: null,
+      phoneValidationStatus: "verified_e164",
       companyName: null,
       birthDate: null,
       country: null,
@@ -137,7 +138,7 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error).toContain("formato internacional E.164");
+        expect(result.error).toContain("formato E.164");
       }
     });
 
@@ -917,9 +918,12 @@ describe("CRM-001 · Servicio de Prospectos, Ingesta Chatwoot y Habeas Data", ()
         contactId: "c-1",
         label: "Oficina",
         country: "Colombia",
+        countryCode: "CO",
         state: "Antioquia",
+        subdivisionCode: "CO-ANT",
         city: "Medellín",
         addressLine: "Cra 43A # 1-50",
+        addressComplement: null,
         neighborhood: "El Poblado",
         postalCode: null,
         referenceNotes: "Recepción piso 4",

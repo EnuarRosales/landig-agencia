@@ -266,6 +266,78 @@ export const INITIAL_AI_ASSIST_FIELDS: Array<
     createdBy: "system.seed",
     updatedBy: "system.seed",
   },
+  {
+    fieldKey: "bot.msg_welcome",
+    entity: "tenant_bots",
+    columnName: "default_messages",
+    labels: {
+      es: "Mensaje de Bienvenida",
+      en: "Welcome Message",
+    },
+    isActive: true,
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "bot.msg_order_confirmation",
+    entity: "tenant_bots",
+    columnName: "default_messages",
+    labels: {
+      es: "Mensaje de Confirmación de Pedido y Pago",
+      en: "Order and Payment Confirmation Message",
+    },
+    isActive: true,
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "bot.msg_dispatch_tracking",
+    entity: "tenant_bots",
+    columnName: "default_messages",
+    labels: {
+      es: "Mensaje de Despacho y Guía",
+      en: "Dispatch and Tracking Message",
+    },
+    isActive: true,
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "bot.msg_delivery_issue",
+    entity: "tenant_bots",
+    columnName: "default_messages",
+    labels: {
+      es: "Mensaje de Novedad en Entrega",
+      en: "Delivery Issue Message",
+    },
+    isActive: true,
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "bot.msg_out_of_hours",
+    entity: "tenant_bots",
+    columnName: "default_messages",
+    labels: {
+      es: "Mensaje Fuera de Horario",
+      en: "Out of Hours Message",
+    },
+    isActive: true,
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "bot.msg_handoff",
+    entity: "tenant_bots",
+    columnName: "default_messages",
+    labels: {
+      es: "Mensaje de Transferencia a Asesor Humano",
+      en: "Human Handoff Message",
+    },
+    isActive: true,
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
 ];
 
 /**
@@ -873,6 +945,108 @@ Burbuja de beneficios lista para enviar:
       format: "plain",
       tone: "claro, determinista y operativo",
     },
+    examples: [],
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "bot.msg_welcome",
+    version: 1,
+    status: "active",
+    inputHint: "Describe cómo quieres saludar al cliente al abrir conversación.",
+    masterPrompt: `${IDEAL_METHODOLOGY_PREAMBLE}
+
+[I] INTENCIÓN: Redactar el mensaje de bienvenida inicial del comercio para WhatsApp y canales digitales.
+[D] DELIMITACIÓN: Conserva marcadores válidos si el usuario los usa ({{customer_name}}, {{business_name}}) sin inventar precios ni promesas falsas.
+[E] EJEMPLO: "¡Hola {{customer_name}}! Qué gusto saludarte en {{business_name}}. Cuéntame qué producto buscas hoy para asesorarte."
+[A] ACCIÓN: Devuelve un mensaje breve, cálido y orientado a abrir la conversación.
+[L] LÍMITE: Máximo 600 caracteres en texto plano apto para WhatsApp.`,
+    outputRules: { maxLength: 600, minLength: 15, format: "plain", tone: "cálido y profesional" },
+    examples: [],
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "bot.msg_order_confirmation",
+    version: 1,
+    status: "active",
+    inputHint: "Personaliza el mensaje al confirmar pedido e instrucciones de pago.",
+    masterPrompt: `${IDEAL_METHODOLOGY_PREAMBLE}
+
+[I] INTENCIÓN: Confirmar al comprador su pedido registrado con claridad sobre pago y envío.
+[D] DELIMITACIÓN: Preserva los marcadores ({{customer_name}}, {{customer_phone}}, {{order_number}}, {{payment_instructions}}, {{shipping_summary}}) sin añadir enlaces falsos.
+[E] EJEMPLO: "¡Pedido {{order_number}} confirmado, {{customer_name}}! Validamos tu contacto {{customer_phone}}. {{payment_instructions}} {{shipping_summary}}"
+[A] ACCIÓN: Redacta una confirmación tranquilizadora y estructurada en texto plano.
+[L] LÍMITE: Máximo 900 caracteres.`,
+    outputRules: { maxLength: 900, minLength: 20, format: "plain", tone: "claro y confiable" },
+    examples: [],
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "bot.msg_dispatch_tracking",
+    version: 1,
+    status: "active",
+    inputHint: "Personaliza la notificación de despacho con transportadora y guía.",
+    masterPrompt: `${IDEAL_METHODOLOGY_PREAMBLE}
+
+[I] INTENCIÓN: Informar al cliente que su compra ya fue despachada junto con transportadora y número de guía.
+[D] DELIMITACIÓN: Conserva {{customer_name}}, {{order_number}}, {{carrier_name}} y {{tracking_code}}.
+[E] EJEMPLO: "¡Tu pedido {{order_number}} ya va en camino, {{customer_name}}! Transportadora: {{carrier_name}}. Guía: {{tracking_code}}."
+[A] ACCIÓN: Redacta un aviso entusiasta y útil en texto plano.
+[L] LÍMITE: Máximo 700 caracteres.`,
+    outputRules: { maxLength: 700, minLength: 20, format: "plain", tone: "positivo y claro" },
+    examples: [],
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "bot.msg_delivery_issue",
+    version: 1,
+    status: "active",
+    inputHint: "Personaliza el mensaje empático ante una novedad o devolución de entrega.",
+    masterPrompt: `${IDEAL_METHODOLOGY_PREAMBLE}
+
+[I] INTENCIÓN: Contactar al comprador ante una novedad logística sin culparlo, pidiendo referencias o confirmación para reprogramar.
+[D] DELIMITACIÓN: Conserva {{customer_name}}, {{order_number}} y {{carrier_name}}.
+[E] EJEMPLO: "Hola {{customer_name}}, vimos una novedad en la entrega de tu pedido {{order_number}} con {{carrier_name}}. ¿Nos confirmas una referencia o horario para coordinarlo hoy?"
+[A] ACCIÓN: Redacta un mensaje empático y resolutivo en texto plano.
+[L] LÍMITE: Máximo 700 caracteres.`,
+    outputRules: { maxLength: 700, minLength: 20, format: "plain", tone: "empático y resolutivo" },
+    examples: [],
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "bot.msg_out_of_hours",
+    version: 1,
+    status: "active",
+    inputHint: "Personaliza el aviso automático fuera del horario de atención.",
+    masterPrompt: `${IDEAL_METHODOLOGY_PREAMBLE}
+
+[I] INTENCIÓN: Informar amablemente al cliente que escribió fuera del horario comercial e invitarlo a dejar su consulta.
+[D] DELIMITACIÓN: Conserva {{customer_name}} y {{business_name}} sin prometer horarios falsos.
+[E] EJEMPLO: "¡Hola {{customer_name}}! Gracias por escribir a {{business_name}}. En este momento nuestro equipo no está conectado, pero atenderemos tu mensaje a primera hora."
+[A] ACCIÓN: Redacta una respuesta cordial y concisa en texto plano.
+[L] LÍMITE: Máximo 500 caracteres.`,
+    outputRules: { maxLength: 500, minLength: 15, format: "plain", tone: "cordial y claro" },
+    examples: [],
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "bot.msg_handoff",
+    version: 1,
+    status: "active",
+    inputHint: "Personaliza el mensaje cuando el bot transfiere a un asesor humano.",
+    masterPrompt: `${IDEAL_METHODOLOGY_PREAMBLE}
+
+[I] INTENCIÓN: Comunicar con transparencia que un asesor humano continuará atendiendo el caso.
+[D] DELIMITACIÓN: Conserva {{customer_name}} y {{business_name}} sin prometer tiempos exactos de espera no garantizados.
+[E] EJEMPLO: "Con gusto, {{customer_name}}. Estoy conectando tu conversación con un asesor de {{business_name}} para ayudarte de forma personalizada."
+[A] ACCIÓN: Redacta un traspaso sereno y profesional en texto plano.
+[L] LÍMITE: Máximo 500 caracteres.`,
+    outputRules: { maxLength: 500, minLength: 15, format: "plain", tone: "cercano y profesional" },
     examples: [],
     createdBy: "system.seed",
     updatedBy: "system.seed",

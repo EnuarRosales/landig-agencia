@@ -6,6 +6,13 @@ import type { IAuthRepository } from "../repositories/auth.repository.interface"
 import type { IClientsRepository } from "../repositories/clients.repository.interface";
 import type { IPlansRepository } from "../repositories/plans.repository.interface";
 import { err, ok, type Result } from "../types/result";
+import {
+  getCountryAddressProfile,
+  getLocalizedCountryName,
+  normalizeAndValidatePhoneE164,
+  resolveCountryAlpha2FromInput,
+  resolveIsoSubdivision,
+} from "../geo/index";
 
 /**
  * Códigos de error esperados de negocio para la gestión de tenencia y aprovisionamiento de inquilinos (ADM-001 T-05, T-06).
@@ -19,6 +26,7 @@ export type TenancyErrorCode =
   | "SLUG_ALREADY_TAKEN"
   | "INVALID_SLUG"
   | "INVALID_CONTACT_EMAIL"
+  | "INVALID_PHONE"
   | "PLAN_NOT_FOUND"
   | "PLAN_RETIRED"
   | "NO_AVAILABLE_CELL";
@@ -45,14 +53,20 @@ export interface TenantCommercialProfileInput {
   websiteUrl?: string | null;
   /** Identificación tributaria / NIT (opcional). */
   taxId?: string | null;
+  /** Código de país ISO 3166-1 alpha-2 (opcional). */
+  countryCode?: string | null;
   /** País de la dirección física (opcional). */
   country?: string | null;
+  /** Código de subdivisión ISO 3166-2 (opcional). */
+  subdivisionCode?: string | null;
   /** Departamento o estado de la dirección física (opcional). */
   state?: string | null;
   /** Ciudad o municipio de la dirección física (opcional). */
   city?: string | null;
   /** Línea de dirección física (opcional). */
   addressLine?: string | null;
+  /** Complemento de dirección física (opcional). */
+  addressComplement?: string | null;
   /** Código postal (opcional). */
   postalCode?: string | null;
   /** Sector o industria del comercio (opcional). */
@@ -147,11 +161,11 @@ export class TenancyService {
    * @param authRepo - Repositorio de identidad en el Router Global.
    * @param plansRepo - Repositorio del catálogo canónico de planes.
    */
-  constructor(
+  constructor (
     private readonly clientsRepo: IClientsRepository,
     private readonly authRepo: IAuthRepository,
     private readonly plansRepo: IPlansRepository,
-  ) {}
+  ) { }
 
   /**
    * Crea un inquilino en modo autoservicio para un usuario dueño existente y verificado (ADM-001 T-05, T-06).
@@ -367,6 +381,37 @@ export class TenancyService {
       );
     }
 
+    let normalizedPhone: string | null = null;
+    if (params.profile.phone && params.profile.phone.trim().length > 0) {
+      const phoneRes = normalizeAndValidatePhoneE164({
+        rawPhone: params.profile.phone,
+        allowLocalWithDefaultCountry: false,
+      });
+      if (!phoneRes.ok) {
+        return err(phoneRes.error, "INVALID_PHONE");
+      }
+      normalizedPhone = phoneRes.data.e164;
+    }
+
+    const resolvedCountryCode = resolveCountryAlpha2FromInput(
+      params.profile.countryCode ?? params.profile.country,
+    );
+    const countryProfile = getCountryAddressProfile(resolvedCountryCode ?? "CO");
+    const resolvedCountryName =
+      params.profile.country?.trim() ||
+      (resolvedCountryCode ? getLocalizedCountryName(resolvedCountryCode, params.locale) : null);
+    const rawSubInput = params.profile.subdivisionCode?.trim() || params.profile.state?.trim() || "";
+    const isoSub =
+      resolvedCountryCode && rawSubInput
+        ? resolveIsoSubdivision({ countryCode: resolvedCountryCode, input: rawSubInput })
+        : null;
+    const resolvedSubdivisionCode =
+      params.profile.subdivisionCode?.trim() ||
+      (isoSub?.status === "resolved" ? isoSub.matches[0]?.code ?? null : null);
+    const resolvedStateName =
+      params.profile.state?.trim() ||
+      (isoSub?.status === "resolved" ? isoSub.matches[0]?.name ?? null : null);
+
     // 6. Persistir transaccionalmente en el Router Global
     const provisioned = await this.clientsRepo.provisionTenantInRouter({
       client: {
@@ -374,21 +419,24 @@ export class TenancyService {
         slug: normalizedSlug,
         displayName: params.displayName.trim(),
         contactEmail: normalizedContactEmail,
-        phone: params.profile.phone ?? null,
+        phone: normalizedPhone,
         websiteUrl: params.profile.websiteUrl ?? null,
         lifecycleStatus: "alta",
         locale: params.locale,
-        currency: params.currency.toUpperCase(),
+        currency: (params.currency || countryProfile.defaultCurrency).toUpperCase(),
         planId: plan.id,
         quotaVersion: 1,
         taxId: params.profile.taxId ?? null,
-        country: params.profile.country ?? null,
-        state: params.profile.state ?? null,
+        countryCode: resolvedCountryCode ?? null,
+        country: resolvedCountryName,
+        subdivisionCode: resolvedSubdivisionCode,
+        state: resolvedStateName,
         city: params.profile.city ?? null,
         addressLine: params.profile.addressLine ?? null,
+        addressComplement: params.profile.addressComplement ?? null,
         postalCode: params.profile.postalCode ?? null,
         industry: params.profile.industry ?? null,
-        timezone: params.profile.timezone ?? "America/Bogota",
+        timezone: params.profile.timezone ?? countryProfile.defaultTimezone,
         logoMediaId: params.profile.logoMediaId ?? null,
         socialLinks: params.profile.socialLinks ?? {},
         createdBy: params.actor,

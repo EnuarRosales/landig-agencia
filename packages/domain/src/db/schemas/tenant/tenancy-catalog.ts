@@ -89,6 +89,12 @@ export const cellTenantLabels = cellAdminSchema.table(
     showOnSidebar: boolean("show_on_sidebar").notNull().default(true),
     origin: text("origin").notNull().default("mocter_custom"),
     state: text("state").notNull().default("active"),
+    /** Categoría de clasificación automática (`operational` o `functional` según SPEC-10 / SPEC-19). */
+    category: text("category").notNull().default("operational"),
+    /** Regla declarativa para activar la etiqueta durante clasificación de conversaciones (SPEC-19). */
+    activationRule: text("activation_rule"),
+    /** Efectos colaterales esperados al asignar la etiqueta (SPEC-19). */
+    sideEffects: text("side_effects"),
     syncedAt: timestamp("synced_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     deletedBy: text("deleted_by"),
@@ -107,6 +113,10 @@ export const cellTenantLabels = cellAdminSchema.table(
       ),
     ),
     check("tenant_labels_state_check", sql.raw("state IN ('active', 'archived')")),
+    check(
+      "tenant_labels_category_check",
+      sql.raw("category IN ('operational', 'functional')"),
+    ),
   ],
 );
 
@@ -382,6 +392,22 @@ export const cellProductMedia = cellAdminSchema.table(
 /**
  * Contexto de atención comercial del negocio en su celda (`admin.client_business_info`, ADM-001 §5.2, RF-03.8).
  */
+/**
+ * Contrato estructurado de política de envíos (`cell_client_business_info.shipping_policy`).
+ * Mantiene retrocompatibilidad con Onboarding Paso 4 (`freeShipping`, `defaultCostCents`) y añade
+ * `policyText` asistido por AI (`SPEC-10`) junto con reglas regionales (`SPEC-20`).
+ */
+export type TenantShippingPolicy = Record<string, unknown> & {
+  freeShipping?: boolean;
+  defaultCostCents?: number;
+  policyText?: string;
+  deliveryRules?: Array<{
+    regionCode: string | null;
+    city: string | null;
+    days: string;
+  }>;
+};
+
 export const cellClientBusinessInfo = cellAdminSchema.table(
   "client_business_info",
   {
@@ -393,7 +419,7 @@ export const cellClientBusinessInfo = cellAdminSchema.table(
     returnsPolicy: text("returns_policy"),
     warrantyPolicy: text("warranty_policy"),
     shippingPolicy: jsonb("shipping_policy")
-      .$type<Record<string, unknown>>()
+      .$type<TenantShippingPolicy>()
       .notNull()
       .default(sql`'{"freeShipping":false,"defaultCostCents":0}'::jsonb`),
     orderMessage: text("order_message"),

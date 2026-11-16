@@ -210,6 +210,11 @@ export class InMemoryTenantContactsAndUsersRepository
       phoneMobile: input.phoneMobile ? input.phoneMobile.trim() : null,
       phoneLandline: input.phoneLandline ?? null,
       phoneSecondary: null,
+      phoneValidationStatus: input.phoneMobile?.trim().startsWith("+")
+        ? "verified_e164"
+        : input.phoneMobile?.trim()
+          ? "legacy_unformatted"
+          : "unverified",
       companyName: null,
       birthDate: null,
       country: input.country ?? null,

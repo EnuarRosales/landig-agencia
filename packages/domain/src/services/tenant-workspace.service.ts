@@ -22,6 +22,7 @@ import {
 import { mediaCatalog } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { tenantInvitations } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { users } from "../db/schemas/admin/users";
+import { normalizeAndValidatePhoneE164, resolveCountryAlpha2FromInput, resolveIsoSubdivision } from "../geo/index";
 import {
   cellProducts,
   cellClientUsage,
@@ -157,6 +158,15 @@ export interface CreateWorkspaceOrderInput {
   subtotalCents?: number;
   shippingCents?: number;
   discountCents?: number;
+  countryCode?: string | null;
+  subdivisionCode?: string | null;
+  state?: string | null;
+  city?: string | null;
+  addressLine?: string | null;
+  addressComplement?: string | null;
+  neighborhood?: string | null;
+  postalCode?: string | null;
+  referenceNotes?: string | null;
   notes?: string | null;
 }
 
@@ -309,7 +319,7 @@ export interface MediaUploadResult {
  * Error de dominio tipado para el flujo de carga multimedia (`SPEC-00 §9.1`).
  */
 export class MediaUploadError extends Error {
-  constructor(
+  constructor (
     message: string,
     public readonly code: "VALIDATION" | "QUOTA_EXCEEDED" | "NOT_FOUND" | "STORAGE_UNAVAILABLE",
     public readonly httpStatus: 400 | 404 | 422 | 503,
@@ -329,7 +339,7 @@ export class MediaUploadError extends Error {
 export class TenantWorkspaceService {
   private readonly productsService: TenantProductsAndMediaService;
 
-  constructor(
+  constructor (
     private readonly s3Service: S3StorageService = new S3StorageService(),
     productsService?: TenantProductsAndMediaService,
   ) {
@@ -779,6 +789,24 @@ export class TenantWorkspaceService {
     input: CreateWorkspaceOrderInput,
     actor: string,
   ): Promise<WorkspaceOrderDto> {
+    const phoneRes = normalizeAndValidatePhoneE164({
+      rawPhone: input.customerPhone,
+      allowLocalWithDefaultCountry: false,
+    });
+    if (!phoneRes.ok) {
+      throw new Error(phoneRes.error);
+    }
+
+    const countryCode = resolveCountryAlpha2FromInput(input.countryCode) ?? "CO";
+    const subInput = input.subdivisionCode?.trim() || input.state?.trim() || "";
+    const isoSub = subInput ? resolveIsoSubdivision({ countryCode, input: subInput }) : null;
+    const subdivisionCode =
+      input.subdivisionCode?.trim() ||
+      (isoSub?.status === "resolved" ? isoSub.matches[0]?.code ?? null : null);
+    const resolvedState =
+      input.state?.trim() ||
+      (isoSub?.status === "resolved" ? isoSub.matches[0]?.name ?? null : null);
+
     return await withTenantCellTransaction(clientId, async (tx) => {
       const orderCount = await tx
         .select({ count: sql<number>`count(*)::int` })
@@ -794,8 +822,20 @@ export class TenantWorkspaceService {
         .values({
           clientId,
           number: orderNumber,
+          source: "manual",
           customerName: input.customerName,
-          customerPhone: input.customerPhone,
+          customerPhone: phoneRes.data.e164,
+          countryCode,
+          subdivisionCode,
+          state: resolvedState,
+          city: input.city?.trim() || null,
+          addressLine: input.addressLine?.trim() || null,
+          addressComplement: input.addressComplement?.trim() || null,
+          neighborhood: input.neighborhood?.trim() || null,
+          postalCode: input.postalCode?.trim() || null,
+          referenceNotes: input.referenceNotes?.trim() || null,
+          geoResolutionStatus:
+            subdivisionCode && input.city?.trim() ? "iso_resolved" : "unresolved",
           paymentMethod: input.paymentMethod || "transferencia",
           paymentStatus: "pending",
           status: "registered",

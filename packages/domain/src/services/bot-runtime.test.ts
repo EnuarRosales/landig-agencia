@@ -19,7 +19,18 @@ function makeState(over: Partial<CellConversationState> = {}): CellConversationS
     prospectId: null,
     productId: "prod-a",
     quantity: 2,
+    countryCode: "CO",
+    subdivisionCode: "CO-DC",
+    stateName: "Bogotá D.C.",
     city: "Bogotá",
+    neighborhood: null,
+    addressLine: null,
+    addressComplement: null,
+    postalCode: null,
+    referenceNotes: null,
+    geoResolutionStatus: "unresolved",
+    rawLocationInput: null,
+    providerGeoRefs: {},
     customerName: "Ana",
     shippingMethod: null,
     stage: "offer",
@@ -193,6 +204,38 @@ describe("BOT-002 T-08 · Captura de pedido y cierre", () => {
     const orders = { registerOrderDetailed: vi.fn() } as unknown as OrdersService;
     const res = await new BotOrderCaptureService(orders).capture({ ...input, chatwootConversationId: 0 });
     expect(res.ok).toBe(false);
+    expect(orders.registerOrderDetailed).not.toHaveBeenCalled();
+  });
+
+  it("normaliza teléfono local del comprador en chat usando el país ISO del comercio (Q4 híbrido)", async () => {
+    const orders = { registerOrderDetailed: vi.fn().mockResolvedValue(ok({ details, created: true })) } as unknown as OrdersService;
+    const res = await new BotOrderCaptureService(orders, undefined, async () => "CO").capture({
+      ...input,
+      customer: { name: "Ana", phone: "3001112233" },
+      shipping: {
+        method: "home",
+        addressLine: "Calle 10 # 20-30",
+        addressComplement: "Apto 402 Torre B",
+        neighborhood: "El Poblado",
+        city: "Medellín",
+      },
+    });
+    expect(res.ok).toBe(true);
+    expect(orders.registerOrderDetailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customer: expect.objectContaining({ phone: "+573001112233" }),
+      }),
+    );
+  });
+
+  it("rechaza con CAPTURE_INVALID_PHONE si el teléfono conversacional sigue siendo inválido tras normalización contextual", async () => {
+    const orders = { registerOrderDetailed: vi.fn() } as unknown as OrdersService;
+    const res = await new BotOrderCaptureService(orders).capture({
+      ...input,
+      customer: { name: "Ana", phone: "12" },
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.code).toBe("CAPTURE_INVALID_PHONE");
     expect(orders.registerOrderDetailed).not.toHaveBeenCalled();
   });
 });

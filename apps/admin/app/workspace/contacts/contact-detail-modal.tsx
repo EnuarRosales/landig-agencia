@@ -18,6 +18,8 @@ import {
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
 import { ConfirmationModal } from "@/components/confirmation-modal";
+import { GeoAddressFields } from "@/components/geo-address-fields";
+import { PhoneE164Input } from "@/components/phone-e164-input";
 import {
   CRM_CHANNELS,
   CRM_CONSENT_CHANNELS,
@@ -83,11 +85,14 @@ export function ContactDetailModal({
   // Tab 2 · Direcciones
   const [showAddAddress, setShowAddAddress] = useState(false);
   const [addrLabel, setAddrLabel] = useState("Casa");
+  const [addrCountryCode, setAddrCountryCode] = useState("CO");
   const [addrCountry, setAddrCountry] = useState("Colombia");
+  const [addrSubdivisionCode, setAddrSubdivisionCode] = useState("");
   const [addrState, setAddrState] = useState("");
   const [addrCity, setAddrCity] = useState("");
   const [addrLine, setAddrLine] = useState("");
   const [addrNeighborhood, setAddrNeighborhood] = useState("");
+  const [addrComplement, setAddrComplement] = useState("");
   const [addrPostalCode, setAddrPostalCode] = useState("");
   const [addrNotes, setAddrNotes] = useState("");
   const [addrIsDefault, setAddrIsDefault] = useState(false);
@@ -232,11 +237,14 @@ export function ContactDetailModal({
         method: "POST",
         body: JSON.stringify({
           label: addrLabel.trim(),
+          countryCode: addrCountryCode.trim() || "CO",
           country: addrCountry.trim() || "Colombia",
+          subdivisionCode: addrSubdivisionCode.trim() || null,
           state: addrState.trim() || null,
           city: addrCity.trim(),
           addressLine: addrLine.trim(),
           neighborhood: addrNeighborhood.trim() || null,
+          addressComplement: addrComplement.trim() || null,
           postalCode: addrPostalCode.trim() || null,
           referenceNotes: addrNotes.trim() || null,
           isDefault: addrIsDefault,
@@ -253,7 +261,10 @@ export function ContactDetailModal({
     setShowAddAddress(false);
     setAddrCity("");
     setAddrLine("");
+    setAddrSubdivisionCode("");
+    setAddrState("");
     setAddrNeighborhood("");
+    setAddrComplement("");
     setAddrPostalCode("");
     setAddrNotes("");
     setAddrIsDefault(false);
@@ -554,28 +565,24 @@ export function ContactDetailModal({
                           className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 py-2 text-xs text-[var(--dsn-text)]"
                         />
                       </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                          {w.crmFieldPhoneMobile}
-                        </label>
-                        <input
-                          type="tel"
+                      <div className="md:col-span-2">
+                        <PhoneE164Input
+                          id="detail-contact-phone-mobile"
+                          label={w.crmFieldPhoneMobile}
                           value={phoneMobile}
-                          onChange={(e) => setPhoneMobile(e.target.value)}
-                          placeholder="+573001234567"
-                          className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 py-2 font-mono text-xs text-[var(--dsn-text)]"
+                          defaultCountryCode={addrCountryCode}
+                          locale={locale}
+                          onChange={(next) => setPhoneMobile(next)}
                         />
                       </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                          {w.crmFieldPhoneSecondary}
-                        </label>
-                        <input
-                          type="tel"
+                      <div className="md:col-span-2">
+                        <PhoneE164Input
+                          id="detail-contact-phone-secondary"
+                          label={w.crmFieldPhoneSecondary}
                           value={phoneSecondary}
-                          onChange={(e) => setPhoneSecondary(e.target.value)}
-                          placeholder="+573007654321"
-                          className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 py-2 font-mono text-xs text-[var(--dsn-text)]"
+                          defaultCountryCode={addrCountryCode}
+                          locale={locale}
+                          onChange={(next) => setPhoneSecondary(next)}
                         />
                       </div>
                       <div>
@@ -736,7 +743,7 @@ export function ContactDetailModal({
                         onSubmit={handleCreateAddress}
                         className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-4 space-y-3"
                       >
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div className="space-y-3">
                           <div>
                             <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
                               {w.crmAddressLabel} *
@@ -749,86 +756,46 @@ export function ContactDetailModal({
                               className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
                             />
                           </div>
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                              {w.crmAddressCountry} *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={addrCountry}
-                              onChange={(e) => setAddrCountry(e.target.value)}
-                              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                              {w.crmAddressState}
-                            </label>
-                            <input
-                              type="text"
-                              value={addrState}
-                              onChange={(e) => setAddrState(e.target.value)}
-                              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                              {w.crmAddressCity} *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={addrCity}
-                              onChange={(e) => setAddrCity(e.target.value)}
-                              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                            />
-                          </div>
-                          <div className="md:col-span-2">
-                            <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                              {w.crmAddressLine} *
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              value={addrLine}
-                              onChange={(e) => setAddrLine(e.target.value)}
-                              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                              {w.crmAddressNeighborhood}
-                            </label>
-                            <input
-                              type="text"
-                              value={addrNeighborhood}
-                              onChange={(e) => setAddrNeighborhood(e.target.value)}
-                              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                              {w.crmAddressPostalCode}
-                            </label>
-                            <input
-                              type="text"
-                              value={addrPostalCode}
-                              onChange={(e) => setAddrPostalCode(e.target.value)}
-                              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                            />
-                          </div>
-                          <div className="md:col-span-2">
-                            <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                              {w.crmAddressNotes}
-                            </label>
-                            <input
-                              type="text"
-                              value={addrNotes}
-                              onChange={(e) => setAddrNotes(e.target.value)}
-                              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                            />
-                          </div>
+                          <GeoAddressFields
+                            idPrefix="detail-contact-addr"
+                            locale={locale}
+                            showReferenceNotes
+                            requiredFields={{
+                              country: true,
+                              city: true,
+                              addressLine: true,
+                            }}
+                            values={{
+                              countryCode: addrCountryCode,
+                              country: addrCountry,
+                              subdivisionCode: addrSubdivisionCode,
+                              state: addrState,
+                              city: addrCity,
+                              neighborhood: addrNeighborhood,
+                              addressLine: addrLine,
+                              addressComplement: addrComplement,
+                              postalCode: addrPostalCode,
+                              referenceNotes: addrNotes,
+                            }}
+                            onChange={(patch) => {
+                              if (patch.countryCode !== undefined)
+                                setAddrCountryCode(patch.countryCode);
+                              if (patch.country !== undefined) setAddrCountry(patch.country);
+                              if (patch.subdivisionCode !== undefined)
+                                setAddrSubdivisionCode(patch.subdivisionCode);
+                              if (patch.state !== undefined) setAddrState(patch.state);
+                              if (patch.city !== undefined) setAddrCity(patch.city);
+                              if (patch.neighborhood !== undefined)
+                                setAddrNeighborhood(patch.neighborhood);
+                              if (patch.addressLine !== undefined) setAddrLine(patch.addressLine);
+                              if (patch.addressComplement !== undefined)
+                                setAddrComplement(patch.addressComplement);
+                              if (patch.postalCode !== undefined)
+                                setAddrPostalCode(patch.postalCode);
+                              if (patch.referenceNotes !== undefined)
+                                setAddrNotes(patch.referenceNotes);
+                            }}
+                          />
                         </div>
                         <label className="inline-flex items-center gap-2 text-xs text-[var(--dsn-text)]">
                           <input

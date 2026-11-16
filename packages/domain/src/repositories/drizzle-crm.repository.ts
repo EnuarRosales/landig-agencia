@@ -22,6 +22,7 @@ import {
   type NewCellContactMemory,
 } from "../db/schemas/tenant/crm";
 import { cellOrders } from "../db/schemas/tenant/orders";
+import { getLocalizedCountryName, resolveCountryAlpha2FromInput, resolveIsoSubdivision } from "../geo/index";
 import type {
   ICrmRepository,
   ListContactsFilter,
@@ -608,16 +609,36 @@ export class DrizzleCrmRepository implements ICrmRepository {
           );
       }
 
+      const resolvedCountryCode =
+        resolveCountryAlpha2FromInput(input.countryCode ?? input.country) ?? "CO";
+      const resolvedCountryName =
+        input.country?.trim() || getLocalizedCountryName(resolvedCountryCode, "es");
+      const subMatch =
+        input.subdivisionCode || input.state
+          ? resolveIsoSubdivision({
+              countryCode: resolvedCountryCode,
+              input: input.subdivisionCode ?? input.state ?? "",
+            })
+          : null;
+      const resolvedSubdivisionCode =
+        input.subdivisionCode?.trim().toUpperCase() ||
+        subMatch?.matches[0]?.code ||
+        null;
+      const resolvedState = input.state?.trim() || subMatch?.matches[0]?.name || null;
+
       const [inserted] = await tx
         .insert(cellContactAddresses)
         .values({
           clientId,
           contactId,
           label: input.label.trim(),
-          country: input.country?.trim() || "Colombia",
-          state: input.state?.trim() || null,
+          country: resolvedCountryName,
+          countryCode: resolvedCountryCode,
+          state: resolvedState,
+          subdivisionCode: resolvedSubdivisionCode,
           city: input.city.trim(),
           addressLine: input.addressLine.trim(),
+          addressComplement: input.addressComplement?.trim() || null,
           neighborhood: input.neighborhood?.trim() || null,
           postalCode: input.postalCode?.trim() || null,
           referenceNotes: input.referenceNotes?.trim() || null,
@@ -668,14 +689,51 @@ export class DrizzleCrmRepository implements ICrmRepository {
           );
       }
 
+      const nextCountryCode =
+        input.countryCode !== undefined || input.country !== undefined
+          ? (resolveCountryAlpha2FromInput(input.countryCode ?? input.country) ??
+            existing.countryCode)
+          : existing.countryCode;
+      const nextCountryName =
+        input.country !== undefined
+          ? input.country.trim() || getLocalizedCountryName(nextCountryCode, "es")
+          : input.countryCode !== undefined
+            ? getLocalizedCountryName(nextCountryCode, "es")
+            : existing.country;
+      const subMatch =
+        input.subdivisionCode !== undefined || input.state !== undefined
+          ? resolveIsoSubdivision({
+              countryCode: nextCountryCode,
+              input: (input.subdivisionCode ?? input.state ?? "") || "",
+            })
+          : null;
+      const nextSubdivisionCode =
+        input.subdivisionCode !== undefined
+          ? input.subdivisionCode?.trim().toUpperCase() || subMatch?.matches[0]?.code || null
+          : input.state !== undefined
+            ? subMatch?.matches[0]?.code ?? null
+            : existing.subdivisionCode;
+      const nextState =
+        input.state !== undefined
+          ? input.state?.trim() || subMatch?.matches[0]?.name || null
+          : input.subdivisionCode !== undefined
+            ? subMatch?.matches[0]?.name ?? existing.state
+            : existing.state;
+
       const [updated] = await tx
         .update(cellContactAddresses)
         .set({
           label: input.label !== undefined ? input.label.trim() : existing.label,
-          country: input.country !== undefined ? input.country.trim() || "Colombia" : existing.country,
-          state: input.state !== undefined ? (input.state?.trim() || null) : existing.state,
+          country: nextCountryName,
+          countryCode: nextCountryCode,
+          state: nextState,
+          subdivisionCode: nextSubdivisionCode,
           city: input.city !== undefined ? input.city.trim() : existing.city,
           addressLine: input.addressLine !== undefined ? input.addressLine.trim() : existing.addressLine,
+          addressComplement:
+            input.addressComplement !== undefined
+              ? input.addressComplement?.trim() || null
+              : existing.addressComplement,
           neighborhood:
             input.neighborhood !== undefined
               ? input.neighborhood?.trim() || null

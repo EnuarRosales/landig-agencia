@@ -265,6 +265,8 @@ export interface ResolveLocationOutput {
    - Si `status === "ambiguous"`: el bot devuelve **una única pregunta puntual** presentando únicamente los `candidates` devueltos por la tool (*"¿Tu envío es a Rionegro (Antioquia) o Rionegro (Santander)?"*).
    - Si `status === "resolved"` o `status === "soft_normalized"`: actualiza `ConversationStateService.applyTurn(...)` con los campos normalizados y permite continuar hacia `BotOrderCaptureService.capture(...)`.
    - Si `status === "unresolved"` con conector obligatorio activo: pide aclaración de subdivisión o municipio cercano; si no se resuelve tras el intento o no hay conector activo, registra el contacto/pedido con `geoResolutionStatus: "unresolved"` y preserva `rawLocationInput` sin perder la venta.
+3. En captura de teléfono dentro del chat (`BotOrderCaptureService` / `ConversationStateService`), si el comprador entrega un número local sin `+`, se invoca `normalizeAndValidatePhoneE164({ raw, defaultCountryCode: client.countryCode, allowLocalWithDefaultCountry: true })`; si falla, el bot pide confirmar el código de país.
+4. En sincronía con `SPEC-10`, `clients.country_code` / `clients.timezone` alimentan el timezone por defecto de `admin.tenant_bots.business_hours`, `ClientGeneralPromptContext` (`bot-ui-helpers.ts`) y los marcadores internacionales (`{{customer_phone}}`, `{{shipping_summary}}`) de los 6 mensajes clave.
 
 ---
 

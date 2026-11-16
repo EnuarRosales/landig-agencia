@@ -1,5 +1,6 @@
 import {
   boolean,
+  char,
   check,
   customType,
   date,
@@ -13,6 +14,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { cellAdminSchema } from "./namespace";
@@ -69,6 +71,8 @@ export const cellContacts = cellAdminSchema.table(
     phoneLandline: text("phone_landline"),
     /** Teléfono secundario o alterno comercial (SPEC-09). */
     phoneSecondary: text("phone_secondary"),
+    /** Estado de verificación E.164 del teléfono móvil principal (SPEC-20). */
+    phoneValidationStatus: text("phone_validation_status").notNull().default("unverified"),
     /** Nombre de empresa o razón social asociada al contacto (SPEC-09). */
     companyName: text("company_name"),
     /** Fecha de nacimiento o cumpleaños del contacto (SPEC-09). */
@@ -171,6 +175,12 @@ export const cellContacts = cellAdminSchema.table(
       "contacts_current_rating_stars_check",
       sql.raw(
         "current_rating_stars IS NULL OR (current_rating_stars >= 1 AND current_rating_stars <= 5)",
+      ),
+    ),
+    check(
+      "contacts_phone_validation_status_check",
+      sql.raw(
+        "phone_validation_status IN ('verified_e164', 'legacy_unformatted', 'unverified')",
       ),
     ),
   ],
@@ -402,15 +412,21 @@ export const cellContactAddresses = cellAdminSchema.table(
     contactId: uuid("contact_id").notNull(),
     /** Etiqueta descriptiva de la dirección (p. ej. Casa, Oficina, Bodega). */
     label: text("label").notNull(),
-    /** País de la dirección. */
+    /** País legible de la dirección. */
     country: text("country").notNull().default("Colombia"),
-    /** Departamento, estado o región. */
+    /** Código ISO 3166-1 alpha-2 canónico del país (SPEC-20). */
+    countryCode: char("country_code", { length: 2 }).notNull().default("CO"),
+    /** Departamento, estado o región legible. */
     state: text("state"),
+    /** Código ISO 3166-2 de la subdivisión administrativa (SPEC-20). */
+    subdivisionCode: varchar("subdivision_code", { length: 16 }),
     /** Ciudad o municipio. */
     city: text("city").notNull(),
     /** Dirección física completa de entrega o correspondencia. */
     addressLine: text("address_line").notNull(),
-    /** Barrio, sector o localidad opcional. */
+    /** Complemento estructural del inmueble (apartamento, torre, bloque, conjunto, SPEC-20). */
+    addressComplement: text("address_complement"),
+    /** Barrio, colonia, sector o localidad opcional. */
     neighborhood: text("neighborhood"),
     /** Código postal opcional. */
     postalCode: text("postal_code"),

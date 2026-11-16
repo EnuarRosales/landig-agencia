@@ -8,7 +8,18 @@ export interface ConversationStatePatch {
   prospectId?: string | null;
   productId?: string | null;
   quantity?: number | null;
+  countryCode?: string | null;
+  subdivisionCode?: string | null;
+  stateName?: string | null;
   city?: string | null;
+  neighborhood?: string | null;
+  addressLine?: string | null;
+  addressComplement?: string | null;
+  postalCode?: string | null;
+  referenceNotes?: string | null;
+  geoResolutionStatus?: CellConversationState["geoResolutionStatus"];
+  rawLocationInput?: string | null;
+  providerGeoRefs?: Record<string, string | null>;
   customerName?: string | null;
   shippingMethod?: "home" | "office" | null;
   stage?: CellConversationState["stage"];
@@ -47,7 +58,38 @@ export class ConversationStateService {
       prospectId: patch.prospectId !== undefined ? patch.prospectId : (current?.prospectId ?? null),
       productId: patch.productId !== undefined ? patch.productId : (current?.productId ?? null),
       quantity: patch.quantity !== undefined ? patch.quantity : (current?.quantity ?? null),
+      countryCode:
+        patch.countryCode !== undefined ? patch.countryCode : (current?.countryCode ?? null),
+      subdivisionCode:
+        patch.subdivisionCode !== undefined
+          ? patch.subdivisionCode
+          : (current?.subdivisionCode ?? null),
+      stateName: patch.stateName !== undefined ? patch.stateName : (current?.stateName ?? null),
       city: patch.city !== undefined ? patch.city : (current?.city ?? null),
+      neighborhood:
+        patch.neighborhood !== undefined ? patch.neighborhood : (current?.neighborhood ?? null),
+      addressLine:
+        patch.addressLine !== undefined ? patch.addressLine : (current?.addressLine ?? null),
+      addressComplement:
+        patch.addressComplement !== undefined
+          ? patch.addressComplement
+          : (current?.addressComplement ?? null),
+      postalCode:
+        patch.postalCode !== undefined ? patch.postalCode : (current?.postalCode ?? null),
+      referenceNotes:
+        patch.referenceNotes !== undefined
+          ? patch.referenceNotes
+          : (current?.referenceNotes ?? null),
+      geoResolutionStatus:
+        patch.geoResolutionStatus ?? current?.geoResolutionStatus ?? "unresolved",
+      rawLocationInput:
+        patch.rawLocationInput !== undefined
+          ? patch.rawLocationInput
+          : (current?.rawLocationInput ?? null),
+      providerGeoRefs:
+        patch.providerGeoRefs !== undefined
+          ? patch.providerGeoRefs
+          : (current?.providerGeoRefs ?? {}),
       customerName:
         patch.customerName !== undefined ? patch.customerName : (current?.customerName ?? null),
       shippingMethod:
