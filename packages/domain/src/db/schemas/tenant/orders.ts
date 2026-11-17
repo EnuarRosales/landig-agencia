@@ -18,12 +18,35 @@ import { cellAdminSchema } from "./namespace";
 import { auditColumns } from "../shared/audit-columns";
 
 /**
- * Maestro de pedidos comerciales del inquilino en la celda (`admin.orders`, ORD-001 §3.1, DAT-001 §6.3).
+ * Los 12 estados homologados del ciclo de vida de pedidos en Mocter, compatibles con Dropi y Effi ERP (`SPEC-11`).
+ */
+export const ORDER_STATUS_LIST = [
+  "pending_confirmation",
+  "confirmed",
+  "preparing",
+  "guide_generated",
+  "dispatched",
+  "in_transit",
+  "out_for_delivery",
+  "delivery_issue",
+  "delivered",
+  "return_in_progress",
+  "returned",
+  "cancelled",
+] as const;
+
+/**
+ * Tipo estricto de los 12 estados homologados de pedido (`SPEC-11`).
+ */
+export type OrderStatus = (typeof ORDER_STATUS_LIST)[number];
+
+/**
+ * Maestro de pedidos comerciales del inquilino en la celda (`admin.orders`, ORD-001 §3.1, DAT-001 §6.3, SPEC-11).
  *
  * Características:
  * - El pedido es un snapshot inmutable de precios, datos de cliente y dirección.
- * - Idempotencia estricta por conversación en estados activos ('registered', 'confirmed').
- * - Número legible consecutivo único por inquilino (`ORD-AAAAAM-####`).
+ * - Idempotencia estricta por conversación en estados activos pre-despacho.
+ * - Número legible consecutivo único por inquilino (`ORD-YYYYMM-####`).
  * - Separación de estados de ciclo de vida del pedido frente a estados de pago y despacho.
  */
 export const cellOrders = cellAdminSchema.table(
@@ -35,14 +58,16 @@ export const cellOrders = cellAdminSchema.table(
     clientId: uuid("client_id").notNull(),
     /** Número consecutivo legible único por inquilino (p. ej. ORD-202610-0001). */
     number: text("number").notNull(),
-    /** Identificador del prospecto o cliente en CRM (opcional para pedidos manuales sin prospecto previo). */
+    /** Identificador del contacto en CRM (`admin.contacts.id`, expuesto también como alias `contactId` en API). */
     prospectId: uuid("prospect_id"),
+    /** Identificador opcional de la dirección guardada del contacto utilizada al crear/editar el pedido (`SPEC-09`, `SPEC-11`). */
+    contactAddressId: uuid("contact_address_id"),
     /** Identificador de la conversación de Chatwoot correlacionada para garantizar idempotencia. */
     chatwootConversationId: integer("chatwoot_conversation_id"),
     /** Origen de creación del pedido ('bot' mediante tool o 'manual' desde panel). */
     source: text("source").notNull().default("manual"),
-    /** Estado determinista del pedido en la máquina de estados. */
-    status: text("status").notNull().default("registered"),
+    /** Estado determinista del pedido en la máquina de 12 estados homologados (`SPEC-11`). */
+    status: text("status").notNull().default("pending_confirmation"),
     /** Método de pago acordado (snapshot del contexto comercial). */
     paymentMethod: text("payment_method").notNull(),
     /** Identificador opcional del canal de pago estructurado utilizado (`admin.tenant_payment_channels`). */
@@ -102,6 +127,20 @@ export const cellOrders = cellAdminSchema.table(
     currency: char("currency", { length: 3 }).notNull().default("COP"),
     /** Notas u observaciones comerciales del pedido. */
     notes: text("notes"),
+    /** Bandera idempotente que indica si el inventario físico del pedido ya fue descontado (`SPEC-11`). */
+    stockDeducted: boolean("stock_deducted").notNull().default(false),
+    /** Marca de tiempo de la primera o última generación de guía imprimible (`SPEC-11`). */
+    guideGeneratedAt: timestamp("guide_generated_at", { withTimezone: true }),
+    /** Motivo estructurado o textual de cancelación del pedido (`SPEC-11`). */
+    cancellationReason: text("cancellation_reason"),
+    /** Observaciones logísticas de novedad en entrega (`delivery_issue`, `SPEC-11`). */
+    issueNotes: text("issue_notes"),
+    /** Identificador del pedido original cuando este pedido se originó mediante «Repetir Pedido» (`SPEC-11`). */
+    repeatedFromOrderId: uuid("repeated_from_order_id"),
+    /** Nombre del sistema ERP/logístico externo asociado (p. ej. 'dropi', 'effi') para conector futuro (`SPEC-11`). */
+    externalErpSystem: text("external_erp_system"),
+    /** Identificador externo del pedido en Dropi, Effi u otro ERP logístico (`SPEC-11`). */
+    externalErpReference: text("external_erp_reference"),
     ...auditColumns(),
   },
   (table) => [
@@ -109,9 +148,12 @@ export const cellOrders = cellAdminSchema.table(
     uniqueIndex("orders_number_client_unique").on(table.clientId, table.number),
     uniqueIndex("orders_cw_conversation_active_unique")
       .on(table.clientId, table.chatwootConversationId)
-      .where(sql`chatwoot_conversation_id IS NOT NULL AND status IN ('registered', 'confirmed')`),
+      .where(
+        sql`chatwoot_conversation_id IS NOT NULL AND status IN ('pending_confirmation', 'confirmed', 'preparing', 'guide_generated')`,
+      ),
     index("orders_client_prospect_idx").on(table.clientId, table.prospectId),
     index("orders_client_status_idx").on(table.clientId, table.status),
+    index("orders_client_created_idx").on(table.clientId, table.createdAt),
     check(
       "orders_source_check",
       sql.raw("source IN ('bot', 'manual')"),
@@ -119,7 +161,7 @@ export const cellOrders = cellAdminSchema.table(
     check(
       "orders_status_check",
       sql.raw(
-        "status IN ('registered', 'confirmed', 'preparing', 'shipped', 'delivered', 'cancelled', 'returned')",
+        "status IN ('pending_confirmation', 'confirmed', 'preparing', 'guide_generated', 'dispatched', 'in_transit', 'out_for_delivery', 'delivery_issue', 'delivered', 'return_in_progress', 'returned', 'cancelled')",
       ),
     ),
     check(
@@ -165,6 +207,10 @@ export const cellOrderItems = cellAdminSchema.table(
     quantity: integer("quantity").notNull(),
     /** Precio unitario final congelado en centavos. */
     unitPriceCents: bigint("unit_price_cents", { mode: "number" }).notNull(),
+    /** Costo unitario de referencia congelado en centavos para cálculo de rentabilidad (`SPEC-11`). */
+    unitCostCents: bigint("unit_cost_cents", { mode: "number" }).notNull().default(0),
+    /** Mapa JSONB de atributos dinámicos seleccionados (p. ej. `{ "Color": "Negro", "Talla": "M" }`, `SPEC-08`, `SPEC-11`). */
+    selectedAttributes: jsonb("selected_attributes").$type<Record<string, string> | null>(),
     /** Escalón de precio por cantidad aplicado (si aplica). */
     tierMinQty: integer("tier_min_qty"),
     /** Total de la línea en centavos (quantity * unitPriceCents). */
@@ -176,6 +222,7 @@ export const cellOrderItems = cellAdminSchema.table(
     index("order_items_client_order_idx").on(table.clientId, table.orderId),
     check("order_items_quantity_check", sql.raw("quantity > 0")),
     check("order_items_unit_price_cents_check", sql.raw("unit_price_cents >= 0")),
+    check("order_items_unit_cost_cents_check", sql.raw("unit_cost_cents >= 0")),
     check("order_items_line_total_cents_check", sql.raw("line_total_cents >= 0")),
   ],
 );

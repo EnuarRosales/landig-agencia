@@ -1,18 +1,19 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { OrdersService, type RegisterOrderInput } from "./orders.service";
-import type {
-  IOrdersRepository,
-  OrderWithDetails,
+import { OrderGuideRendererService } from "./order-guide-renderer.service";
+import {
+  OrderRepositoryDomainError,
+  type IOrdersRepository,
+  type OrderWithDetails,
 } from "../repositories/orders.repository.interface";
 import type { ICrmRepository } from "../repositories/crm.repository.interface";
 import type {
   CellOrder,
   CellOrderItem,
   CellOrderEvent,
-  CellOrderReturn,
 } from "../db/schemas/tenant/orders";
 
-describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulfillment)", () => {
+describe("ORD-001 & SPEC-11 · OrdersService (12 estados Dropi/Effi, inventario, repetir pedido y guías)", () => {
   let mockOrdersRepo: IOrdersRepository;
   let mockCrmRepo: ICrmRepository;
   let ordersService: OrdersService;
@@ -22,9 +23,10 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
     clientId: "0192e100-0000-7000-8000-000000000001",
     number: "ORD-202610-0001",
     prospectId: "0192e300-0000-7000-8000-000000000001",
+    contactAddressId: null,
     chatwootConversationId: 101,
     source: "bot",
-    status: "registered",
+    status: "pending_confirmation",
     paymentMethod: "contraentrega",
     paymentChannelId: null,
     paymentStatus: "pending",
@@ -53,6 +55,13 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
     totalCents: 105000,
     currency: "COP",
     notes: "Entregar en portería",
+    stockDeducted: false,
+    guideGeneratedAt: null,
+    cancellationReason: null,
+    issueNotes: null,
+    repeatedFromOrderId: null,
+    externalErpSystem: null,
+    externalErpReference: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     createdBy: "bot",
@@ -68,6 +77,8 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
     productSku: "SKU-SERUM-01",
     quantity: 2,
     unitPriceCents: 50000,
+    unitCostCents: 20000,
+    selectedAttributes: { Presentación: "30ml" },
     tierMinQty: 2,
     lineTotalCents: 100000,
     createdAt: new Date(),
@@ -81,7 +92,7 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
     clientId: "0192e100-0000-7000-8000-000000000001",
     orderId: sampleOrder.id,
     fromStatus: null,
-    toStatus: "registered",
+    toStatus: "pending_confirmation",
     actor: "bot",
     reason: "Registro inicial de pedido",
     createdAt: new Date(),
@@ -301,10 +312,10 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
     });
   });
 
-  describe("T-03 · Máquina de estados (Transiciones, cancelaciones y eventos inmutables)", () => {
-    it("permite transiciones válidas del ciclo de vida (registered -> confirmed -> preparing)", async () => {
+  describe("T-03 · Máquina de 12 estados (Transiciones, cancelaciones, inventario y eventos inmutables)", () => {
+    it("permite transiciones válidas del ciclo de vida (pending_confirmation -> confirmed) solicitando descuento de stock", async () => {
       const activeDetails: OrderWithDetails = {
-        order: { ...sampleOrder, status: "registered" },
+        order: { ...sampleOrder, status: "pending_confirmation", stockDeducted: false },
         items: [sampleItem],
         events: [sampleEvent],
         returns: [],
@@ -327,17 +338,19 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
         sampleOrder.id,
         "confirmed",
         expect.objectContaining({
-          fromStatus: "registered",
+          fromStatus: "pending_confirmation",
           toStatus: "confirmed",
           actor: "tenant_owner",
         }),
-        undefined,
+        expect.objectContaining({
+          stockAction: "deduct",
+        }),
       );
     });
 
-    it("rechaza transiciones inválidas sin dejar eventos (p. ej. registered -> delivered)", async () => {
+    it("rechaza transiciones inválidas sin dejar eventos (p. ej. pending_confirmation -> delivered)", async () => {
       const activeDetails: OrderWithDetails = {
-        order: { ...sampleOrder, status: "registered" },
+        order: { ...sampleOrder, status: "pending_confirmation" },
         items: [sampleItem],
         events: [sampleEvent],
         returns: [],
@@ -374,7 +387,7 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
         orderId: sampleOrder.id,
         toStatus: "cancelled",
         actor: "tenant_agent",
-        reason: "", // Motivo vacío
+        reason: "",
       });
 
       expect(res.ok).toBe(false);
@@ -384,12 +397,12 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
       expect(mockOrdersRepo.updateOrderStatus).not.toHaveBeenCalled();
     });
 
-    it("exige confirmación o devolución reembolsada para cancelar un pedido con payment_status = 'paid'", async () => {
+    it("bloquea a tenant_agent cancelar un pedido pagado (RN-SPEC-11-07)", async () => {
       const paidOrderDetails: OrderWithDetails = {
         order: { ...sampleOrder, status: "confirmed", paymentStatus: "paid" },
         items: [sampleItem],
         events: [sampleEvent],
-        returns: [], // Sin devoluciones reembolsadas
+        returns: [],
       };
       vi.mocked(mockOrdersRepo.findOrderById).mockResolvedValueOnce(paidOrderDetails);
 
@@ -398,7 +411,35 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
         clientId: sampleOrder.clientId,
         orderId: sampleOrder.id,
         toStatus: "cancelled",
-        actor: "tenant_owner",
+        actor: "agent@tienda.co",
+        actorRole: "tenant_agent",
+        reason: "Cliente solicita cancelación",
+        confirmRefundIfPaid: true,
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("FORBIDDEN_PAID_CANCELLATION");
+      }
+      expect(mockOrdersRepo.updateOrderStatus).not.toHaveBeenCalled();
+    });
+
+    it("exige confirmación o devolución reembolsada para cancelar un pedido con payment_status = 'paid'", async () => {
+      const paidOrderDetails: OrderWithDetails = {
+        order: { ...sampleOrder, status: "confirmed", paymentStatus: "paid" },
+        items: [sampleItem],
+        events: [sampleEvent],
+        returns: [],
+      };
+      vi.mocked(mockOrdersRepo.findOrderById).mockResolvedValueOnce(paidOrderDetails);
+
+      const res = await ordersService.transitionStatus({
+        cellId: "cell-1",
+        clientId: sampleOrder.clientId,
+        orderId: sampleOrder.id,
+        toStatus: "cancelled",
+        actor: "owner@tienda.co",
+        actorRole: "tenant_owner",
         reason: "Cliente solicita cancelación",
         confirmRefundIfPaid: false,
       });
@@ -410,9 +451,9 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
       expect(mockOrdersRepo.updateOrderStatus).not.toHaveBeenCalled();
     });
 
-    it("permite cancelar un pedido pagado si se confirma el reembolso explícitamente", async () => {
+    it("permite cancelar un pedido pagado si es propietario y restituye stock cuando stockDeducted=true", async () => {
       const paidOrderDetails: OrderWithDetails = {
-        order: { ...sampleOrder, status: "confirmed", paymentStatus: "paid" },
+        order: { ...sampleOrder, status: "confirmed", paymentStatus: "paid", stockDeducted: true },
         items: [sampleItem],
         events: [sampleEvent],
         returns: [],
@@ -424,18 +465,29 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
         clientId: sampleOrder.clientId,
         orderId: sampleOrder.id,
         toStatus: "cancelled",
-        actor: "tenant_owner",
+        actor: "owner@tienda.co",
+        actorRole: "tenant_owner",
         reason: "Reembolso procesado en pasarela",
         confirmRefundIfPaid: true,
       });
 
       expect(res.ok).toBe(true);
-      expect(mockOrdersRepo.updateOrderStatus).toHaveBeenCalled();
+      expect(mockOrdersRepo.updateOrderStatus).toHaveBeenCalledWith(
+        "cell-1",
+        sampleOrder.clientId,
+        sampleOrder.id,
+        "cancelled",
+        expect.objectContaining({ toStatus: "cancelled" }),
+        expect.objectContaining({
+          stockAction: "restore",
+          cancellationReason: "Reembolso procesado en pasarela",
+        }),
+      );
     });
 
-    it("exige transportadora para pasar a estado 'shipped'", async () => {
+    it("exige transportadora y número de guía para pasar a estado 'dispatched'", async () => {
       const preparingOrderDetails: OrderWithDetails = {
-        order: { ...sampleOrder, status: "preparing", carrierName: null, carrierId: null },
+        order: { ...sampleOrder, status: "guide_generated", carrierName: null, carrierId: null, trackingCode: null },
         items: [sampleItem],
         events: [sampleEvent],
         returns: [],
@@ -446,15 +498,208 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
         cellId: "cell-1",
         clientId: sampleOrder.clientId,
         orderId: sampleOrder.id,
-        toStatus: "shipped",
+        toStatus: "dispatched",
         actor: "tenant_agent",
+        carrierName: "Servientrega",
+        trackingCode: "",
       });
 
       expect(res.ok).toBe(false);
       if (!res.ok) {
-        expect(res.code).toBe("CARRIER_REQUIRED_FOR_SHIPPED");
+        expect(res.code).toBe("CARRIER_AND_TRACKING_REQUIRED_FOR_DISPATCH");
       }
       expect(mockOrdersRepo.updateOrderStatus).not.toHaveBeenCalled();
+    });
+
+    it("no vuelve a descontar inventario si stockDeducted ya es true al avanzar hacia preparing/guide_generated", async () => {
+      const confirmedDeducted: OrderWithDetails = {
+        order: { ...sampleOrder, status: "confirmed", stockDeducted: true },
+        items: [sampleItem],
+        events: [sampleEvent],
+        returns: [],
+      };
+      vi.mocked(mockOrdersRepo.findOrderById).mockResolvedValueOnce(confirmedDeducted);
+
+      const res = await ordersService.transitionStatus({
+        cellId: "cell-1",
+        clientId: sampleOrder.clientId,
+        orderId: sampleOrder.id,
+        toStatus: "preparing",
+        actor: "tenant_agent",
+      });
+
+      expect(res.ok).toBe(true);
+      expect(mockOrdersRepo.updateOrderStatus).toHaveBeenCalledWith(
+        "cell-1",
+        sampleOrder.clientId,
+        sampleOrder.id,
+        "preparing",
+        expect.any(Object),
+        undefined,
+      );
+    });
+
+    it("propaga INSUFFICIENT_STOCK cuando el repositorio revierte por falta de inventario", async () => {
+      const pendingOrder: OrderWithDetails = {
+        order: { ...sampleOrder, status: "pending_confirmation", stockDeducted: false },
+        items: [sampleItem],
+        events: [sampleEvent],
+        returns: [],
+      };
+      vi.mocked(mockOrdersRepo.findOrderById).mockResolvedValueOnce(pendingOrder);
+      vi.mocked(mockOrdersRepo.updateOrderStatus).mockRejectedValueOnce(
+        new OrderRepositoryDomainError("Stock insuficiente para Serum Facial Antiedad.", "INSUFFICIENT_STOCK"),
+      );
+
+      const res = await ordersService.transitionStatus({
+        cellId: "cell-1",
+        clientId: sampleOrder.clientId,
+        orderId: sampleOrder.id,
+        toStatus: "confirmed",
+        actor: "tenant_owner",
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("INSUFFICIENT_STOCK");
+      }
+    });
+  });
+
+  describe("SPEC-11 · Edición pre-despacho, Repetir Pedido y Renderizador de Guías", () => {
+    it("bloquea la edición integral mediante updateOrderDetails cuando el pedido ya está en tránsito", async () => {
+      mockOrdersRepo.updateOrderDetails = vi.fn();
+      vi.mocked(mockOrdersRepo.findOrderById).mockResolvedValueOnce({
+        order: { ...sampleOrder, status: "in_transit" },
+        items: [sampleItem],
+        events: [sampleEvent],
+        returns: [],
+      });
+
+      const res = await ordersService.updateOrderDetails({
+        cellId: "cell-1",
+        clientId: sampleOrder.clientId,
+        orderId: sampleOrder.id,
+        actor: "tenant_owner",
+        notes: "Intento tardío",
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.code).toBe("ORDER_LOCKED_AFTER_DISPATCH");
+      }
+      expect(mockOrdersRepo.updateOrderDetails).not.toHaveBeenCalled();
+    });
+
+    it("repeatOrder clona ítems activos con precios vigentes y reporta inactivos en skippedItems", async () => {
+      const inactiveItem: CellOrderItem = {
+        ...sampleItem,
+        id: "0192e400-0000-7000-8000-000000000002",
+        productId: "0192e500-0000-7000-8000-000000000002",
+        productName: "Producto Descontinuado",
+        productSku: "SKU-OLD-02",
+        quantity: 1,
+        unitPriceCents: 30000,
+        lineTotalCents: 30000,
+      };
+      vi.mocked(mockOrdersRepo.findOrderById).mockResolvedValueOnce({
+        order: sampleOrder,
+        items: [sampleItem, inactiveItem],
+        events: [sampleEvent],
+        returns: [],
+      });
+      mockOrdersRepo.getRepeatOrderCatalogContext = vi.fn().mockResolvedValueOnce({
+        productsById: {
+          [sampleItem.productId!]: {
+            id: sampleItem.productId!,
+            name: "Serum Facial Antiedad",
+            sku: "SKU-SERUM-01",
+            kind: "physical",
+            compositionType: "simple",
+            availability: "in_stock",
+            status: "active",
+            priceCents: 55000,
+            salePriceCents: null,
+            costPriceCents: 21000,
+            stockQuantity: 10,
+            attributes: [],
+            comboEffectiveStock: null,
+            hasInactiveComboComponent: false,
+          },
+          [inactiveItem.productId!]: {
+            id: inactiveItem.productId!,
+            name: "Producto Descontinuado",
+            sku: "SKU-OLD-02",
+            kind: "physical",
+            compositionType: "simple",
+            availability: "in_stock",
+            status: "inactive",
+            priceCents: 30000,
+            salePriceCents: null,
+            costPriceCents: 10000,
+            stockQuantity: 0,
+            attributes: [],
+            comboEffectiveStock: null,
+            hasInactiveComboComponent: false,
+          },
+        },
+        defaultContactAddress: null,
+        activePaymentChannel: null,
+      });
+
+      const res = await ordersService.repeatOrder({
+        cellId: "cell-1",
+        clientId: sampleOrder.clientId,
+        orderId: sampleOrder.id,
+        actor: "tenant_owner",
+        confirmImmediately: false,
+      });
+
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.mode).toBe("draft");
+        expect(res.data.draft.items).toHaveLength(1);
+        expect(res.data.draft.items[0]?.unitPriceCents).toBe(55000);
+        expect(res.data.skippedItems).toHaveLength(1);
+        expect(res.data.skippedItems[0]?.reason).toBe("PRODUCT_INACTIVE");
+        expect(res.data.warnings.length).toBeGreaterThanOrEqual(2);
+      }
+    });
+
+    it("OrderGuideRendererService genera HTML print-ready con QR SVG y PDF binario válido (%PDF-1.4)", () => {
+      const renderer = new OrderGuideRendererService();
+      const orderDetails: OrderWithDetails = {
+        order: {
+          ...sampleOrder,
+          status: "dispatched",
+          carrierName: "Servientrega",
+          trackingCode: "SRV-998811",
+        },
+        items: [sampleItem],
+        events: [sampleEvent],
+        returns: [],
+      };
+      const merchant = {
+        businessName: "Tienda Aurora",
+        city: "Bogotá",
+        phone: "+573001112233",
+        locale: "es" as const,
+      };
+
+      const htmlGuide = renderer.render({ orderDetails, merchant, size: "10x15", format: "html" });
+      expect(htmlGuide.contentType).toContain("text/html");
+      expect(typeof htmlGuide.body).toBe("string");
+      expect(String(htmlGuide.body)).toContain("SRV-998811");
+      expect(String(htmlGuide.body)).toContain("VALOR A RECAUDAR");
+      expect(String(htmlGuide.body)).toContain("<svg");
+
+      const pdfGuide = renderer.render({ orderDetails, merchant, size: "letter", format: "pdf" });
+      expect(pdfGuide.contentType).toBe("application/pdf");
+      expect(Buffer.isBuffer(pdfGuide.body)).toBe(true);
+      const pdfStr = (pdfGuide.body as Buffer).toString("latin1");
+      expect(pdfStr.startsWith("%PDF-1.4")).toBe(true);
+      expect(pdfStr).toContain("%%EOF");
+      expect(pdfStr).toContain("SRV-998811");
     });
   });
 
@@ -513,6 +758,7 @@ describe("ORD-001 · OrdersService (Máquina de estados, registrar_pedido y fulf
           fromStatus: "delivered",
           toStatus: "returned",
         }),
+        undefined,
       );
     });
   });

@@ -7,6 +7,7 @@ import { BillingView } from "./billing/billing-view";
 import { ProfileView } from "./profile/profile-view";
 import { BotView } from "./bot/bot-view";
 import { ContactsView } from "./contacts/contacts-view";
+import { OrdersView } from "./orders/orders-view";
 import { TenantWorkspaceShell } from "@/components/tenant-workspace-shell";
 import type { CatalogListResultDto, ProductDetailDto } from "@mocter/domain";
 
@@ -1524,6 +1525,200 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
           expect(screen.getByText("Direcciones de Envío")).toBeTruthy();
           expect(screen.getByText("Calificación e Historial")).toBeTruthy();
           expect(screen.getByText("Atención y Consentimiento")).toBeTruthy();
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
+  describe("OrdersView", () => {
+    it("renders empty state and all 12 homologated statuses in English and Spanish", () => {
+      render(
+        <OrdersView
+          locale="en"
+          initialOrderList={{
+            items: [],
+            pagination: { page: 1, limit: 20, total: 0, totalPages: 1 },
+            summary: {
+              total: 0,
+              pending: 0,
+              preparingAndGuide: 0,
+              inTransitAndIssue: 0,
+              delivered: 0,
+              cancelledAndReturned: 0,
+              byStatus: {},
+            },
+          }}
+        />,
+      );
+
+      expect(screen.getByText("No Orders Recorded")).toBeDefined();
+      expect(screen.getByText("Pending Confirmation")).toBeDefined();
+      expect(screen.getByText("Guide Generated")).toBeDefined();
+      expect(screen.getByText("Delivery Issue")).toBeDefined();
+      expect(screen.getByText("Return In Progress")).toBeDefined();
+    });
+
+    it("opens order detail modal and transition modal with carrier/tracking fields", async () => {
+      const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+        if (url.includes("/api/tenant/orders/carriers")) {
+          return { ok: true, json: async () => ({ ok: true, data: [{ id: "car-1", name: "Servientrega" }] }) };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            data: {
+              id: "ord-1",
+              orderNumber: "ORD-202611-0001",
+              number: "ORD-202611-0001",
+              contactId: null,
+              prospectId: null,
+              contactAddressId: null,
+              source: "manual",
+              status: "guide_generated",
+              paymentMethod: "Contraentrega",
+              paymentChannelId: null,
+              paymentStatus: "pending",
+              shippingMethod: "home",
+              carrierId: null,
+              carrierName: null,
+              trackingCode: null,
+              customerName: "Carlos Ruiz",
+              customerPhone: "+573001234567",
+              customerDocument: null,
+              countryCode: "CO",
+              subdivisionCode: "CO-DC",
+              city: "Bogotá",
+              state: "Cundinamarca",
+              addressLine: "Calle 100 # 15-20",
+              addressComplement: null,
+              neighborhood: null,
+              postalCode: null,
+              referenceNotes: null,
+              notes: null,
+              cancellationReason: null,
+              issueNotes: null,
+              externalErpSystem: null,
+              externalErpReference: null,
+              subtotalCents: 13500000,
+              shippingCents: 1200000,
+              discountCents: 0,
+              totalCents: 14700000,
+              currency: "COP",
+              stockDeducted: true,
+              guideGeneratedAt: null,
+              repeatedFromOrderId: null,
+              canEditDetails: true,
+              allowedNextStatuses: ["dispatched", "cancelled"],
+              createdAt: "2026-11-16T12:00:00.000Z",
+              updatedAt: "2026-11-16T12:00:00.000Z",
+              items: [
+                {
+                  id: "it-1",
+                  productId: "p-1",
+                  productName: "Termo 1L",
+                  productSku: "TERMO-1L",
+                  quantity: 3,
+                  unitPriceCents: 4500000,
+                  unitCostCents: 2000000,
+                  selectedAttributes: { Color: "Negro" },
+                  tierMinQty: null,
+                  lineTotalCents: 13500000,
+                },
+              ],
+              events: [
+                {
+                  id: "ev-1",
+                  fromStatus: null,
+                  toStatus: "pending_confirmation",
+                  actor: "owner@shop.co",
+                  reason: "Registro inicial",
+                  createdAt: "2026-11-16T12:00:00.000Z",
+                },
+              ],
+              returns: [],
+            },
+          }),
+        };
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      try {
+        render(
+          <OrdersView
+            locale="es"
+            isOwner={true}
+            initialOrderList={{
+              items: [
+                {
+                  id: "ord-1",
+                  orderNumber: "ORD-202611-0001",
+                  number: "ORD-202611-0001",
+                  contactId: null,
+                  prospectId: null,
+                  contactAddressId: null,
+                  source: "manual",
+                  status: "guide_generated",
+                  paymentMethod: "Contraentrega",
+                  paymentChannelId: null,
+                  paymentStatus: "pending",
+                  shippingMethod: "home",
+                  carrierId: null,
+                  carrierName: null,
+                  trackingCode: null,
+                  customerName: "Carlos Ruiz",
+                  customerPhone: "+573001234567",
+                  customerDocument: null,
+                  countryCode: "CO",
+                  subdivisionCode: "CO-DC",
+                  city: "Bogotá",
+                  state: "Cundinamarca",
+                  addressLine: "Calle 100 # 15-20",
+                  subtotalCents: 13500000,
+                  shippingCents: 1200000,
+                  discountCents: 0,
+                  totalCents: 14700000,
+                  currency: "COP",
+                  stockDeducted: true,
+                  guideGeneratedAt: null,
+                  repeatedFromOrderId: null,
+                  canEditDetails: true,
+                  allowedNextStatuses: ["dispatched", "cancelled"],
+                  createdAt: "2026-11-16T12:00:00.000Z",
+                  updatedAt: "2026-11-16T12:00:00.000Z",
+                },
+              ],
+              pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+              summary: {
+                total: 1,
+                pending: 0,
+                preparingAndGuide: 1,
+                inTransitAndIssue: 0,
+                delivered: 0,
+                cancelledAndReturned: 0,
+                byStatus: { guide_generated: 1 },
+              },
+            }}
+          />,
+        );
+
+        const viewButtons = screen.getAllByRole("button", { name: /Ver Pedido/i });
+        fireEvent.click(viewButtons[0]!);
+
+        await waitFor(() => {
+          expect(screen.getByText("Termo 1L")).toBeTruthy();
+          expect(screen.getByText("Color: Negro")).toBeTruthy();
+          expect(screen.getByText("Historial De Eventos")).toBeTruthy();
+        });
+
+        const transitionBtns = screen.getAllByRole("button", { name: /Cambiar Estado/i });
+        fireEvent.click(transitionBtns[transitionBtns.length - 1]!);
+
+        await waitFor(() => {
+          expect(screen.getByRole("dialog")).toBeTruthy();
+          expect(screen.getByLabelText("Número De Guía")).toBeTruthy();
         });
       } finally {
         vi.unstubAllGlobals();

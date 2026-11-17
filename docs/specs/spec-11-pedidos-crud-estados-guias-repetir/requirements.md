@@ -99,12 +99,15 @@ Dotar al comercio de un **módulo de gestión de Pedidos de nivel ERP/Dropi-read
 
 ### 7.2 Extensión de `cell_orders` y `cell_order_items` (`packages/domain/src/db/schemas/tenant/orders.ts`)
 - En `cell_orders`:
-  - `contact_id`: `UUID` FK → `cell_contacts.id`.
+  - `prospect_id`: `UUID` FK nullable → `cell_contacts.id` (`ON DELETE SET NULL`), conservando el nombre físico existente en celda y exponiendo `contactId` como alias en DTOs y contratos API para retrocompatibilidad con `BotOrderCaptureService` y CRM (`SPEC-09`).
   - `contact_address_id`: `UUID` FK nullable → `cell_contact_addresses.id` (sin perder snapshot textual `address_line`, `city`, `state`, `postal_code` si luego editan el contacto).
   - `payment_channel_id`: `UUID` FK nullable → `tenant_payment_channels.id` (+ snapshot `payment_method`).
   - `stock_deducted`: `BOOLEAN` `NOT NULL`, default `false` (bandera idempotente para nunca descontar doble el inventario).
   - `guide_generated_at`: `TIMESTAMPTZ` nullable.
   - `cancellation_reason` / `issue_notes`: `TEXT` nullable.
+  - `repeated_from_order_id`: `UUID` nullable (referencia al pedido origen en «Repetir Pedido»).
+  - `external_erp_system` / `external_erp_reference`: `TEXT` nullable (campos ACL preparados para sincronización futura con Dropi / Effi ERP).
+  - Índice parcial `orders_cw_conversation_active_unique` actualizado a estados activos pre-despacho (`status IN ('pending_confirmation', 'confirmed', 'preparing', 'guide_generated')`).
 - En `cell_order_items`:
   - `selected_attributes`: `JSONB` nullable (ej. `{ "Color": "Negro", "Talla": "M" }`).
   - `unit_cost_cents`: `BIGINT` `NOT NULL`, default `0` (snapshot de rentabilidad al momento de vender).
@@ -116,19 +119,22 @@ Dotar al comercio de un **módulo de gestión de Pedidos de nivel ERP/Dropi-read
 ## 8. Reglas de negocio
 
 - **RN-SPEC-11-01 (Snapshot inmutable de precios, dirección y canal de pago al vender):** Al crear un pedido, los precios unitarios, costos unitarios, atributos seleccionados, dirección del destinatario y método de pago se copian como snapshot en el pedido e ítems, de modo que cambios futuros en el catálogo o CRM no alteren pedidos históricos.
-- **RN-SPEC-11-02 (Grafo estricto de transiciones de los 12 estados):**
+- **RN-SPEC-11-02 (Grafo flexible operativo de transiciones de los 12 estados):**
   - Todo pedido nace en `pending_confirmation` (o `confirmed` si el comercio lo confirma explícitamente al crearlo manualmente).
-  - Para transicionar a `guide_generated` o `dispatched`, debe existir al menos dirección de entrega (o método retiro/oficina) y, para `dispatched`, transportadora (`carrierName`) y código de guía (`trackingCode`) obligatorios.
-  - Desde `delivery_issue` se puede retomar `out_for_delivery`, `delivered`, o pasar a `return_in_progress`.
-  - Solo pedidos en `pending_confirmation`, `confirmed`, `preparing` o `guide_generated` pueden pasar directamente a `cancelled` sin proceso logístico de retorno; pedidos ya `dispatched`/`in_transit`/`out_for_delivery` pasan por `return_in_progress` → `returned` o cancelación justificada con retorno de mercancía.
-- **RN-SPEC-11-03 (Edición limitada previa al despacho `PED-02`):** Se permite editar ítems, dirección, flete y método de pago únicamente mientras el pedido no haya alcanzado `dispatched` ni estados posteriores (`in_transit`, `out_for_delivery`, `delivered`, `returned`, `cancelled`). Luego del despacho solo se admiten cambios de estado logístico, número de guía/novedades y notas internas.
+  - Se permiten atajos operativos pre-despacho (`pending_confirmation` → `confirmed` | `cancelled`; `confirmed` → `preparing` | `guide_generated` | `dispatched` | `cancelled`; `preparing` → `guide_generated` | `dispatched` | `cancelled`; `guide_generated` → `dispatched` | `cancelled`) asegurando siempre que cualquier paso hacia `preparing`/`guide_generated`/`dispatched` ejecute el descuento idempotente de stock si `stock_deducted = false`.
+  - Para transicionar a `guide_generated` o `dispatched`, debe existir al menos dirección de entrega (o método retiro/oficina) y, para `dispatched`, transportadora (`carrierName` o `carrierId`) y código de guía (`trackingCode`) obligatorios.
+  - Post-despacho: `dispatched` → `in_transit` | `out_for_delivery` | `delivery_issue` | `delivered` | `return_in_progress`; `in_transit` → `out_for_delivery` | `delivery_issue` | `delivered` | `return_in_progress`; `out_for_delivery` → `delivered` | `delivery_issue` | `return_in_progress`.
+  - Desde `delivery_issue` se puede retomar `out_for_delivery`, pasar a `delivered`, o iniciar `return_in_progress`.
+  - Desde `delivered` se puede pasar a `return_in_progress` o `returned` (cuando se registra recepción de devolución). Desde `return_in_progress` se puede completar `returned` o `cancelled` (cancelación justificada con retorno de mercancía). `returned` y `cancelled` son estados terminales.
+- **RN-SPEC-11-03 (Edición limitada previa al despacho `PED-02`):** Se permite editar ítems, dirección, flete y método de pago únicamente mientras el pedido no haya alcanzado `dispatched` ni estados posteriores (`in_transit`, `out_for_delivery`, `delivered`, `return_in_progress`, `returned`, `cancelled`). Luego del despacho solo se admiten cambios de estado logístico, número de guía/novedades y notas internas.
 - **RN-SPEC-11-04 (Sincronización transaccional e idempotente de inventario físico `SPEC-08`):**
-  - Cuando un pedido entra por primera vez a `confirmed` (si `stock_deducted = false`), se descuenta `quantity` de `cell_products.stock_quantity` para cada ítem físico (y sus componentes si es `combo`) dentro de `db.transaction` con `SELECT ... FOR UPDATE`, validando que haya existencia suficiente (o configurando error `422 INSUFFICIENT_STOCK`). Acto seguido se evalúa `low_stock_alert` (`SPEC-08`).
+  - Cuando un pedido entra por primera vez a `confirmed` (o avanza directo a `preparing`/`guide_generated`/`dispatched` con `stock_deducted = false`), se descuenta `quantity` de `cell_products.stock_quantity` para cada ítem físico (`kind === 'physical'`) —y sus componentes físicos si es `combo`— dentro de `db.transaction` con `SELECT ... FOR UPDATE`. Si el producto tiene `availability === 'in_stock'`, se exige existencia suficiente (error `422 INSUFFICIENT_STOCK`). Si el ítem es digital/servicio, texto libre sin `productId`, o tiene `availability` `preorder`/`backorder`, no bloquea por stock insuficiente (`preorder`/`backorder` descuenta hasta un piso de `0` evitando negativos). Si `stock_deducted = true` y se editan ítems vía `PUT` pre-despacho, se ajusta el delta neto de inventario de forma atómica. Acto seguido se dispara `evaluateLowStockAfterStockMutation` (`PRD-08`) vía `after()`.
   - Si un pedido con `stock_deducted = true` pasa a `cancelled` o `returned`, se restituye el stock y se marca `stock_deducted = false`.
 - **RN-SPEC-11-05 (Reglas de «Repetir Pedido» `PED-05`):** Al invocar repetir sobre una orden existente $O$, el sistema lee el catálogo actual:
-  - Verifica cuáles productos/variantes de $O$ siguen existiendo y en estado `active`; si alguno fue eliminado o inactivado, los excluye advirtiendo explícitamente al usuario en el detalle (`warnings[]`).
+  - Verifica cuáles productos/variantes de $O$ siguen existiendo y en estado `active`; si alguno fue eliminado o inactivado, los excluye advirtiendo explícitamente al usuario en el detalle (`warnings[]` / `skippedItems[]`).
   - Recalcula precios unitarios usando los **precios vigentes actuales** (no copia precios viejos obsoletos) y prellena cliente, dirección predeterminada actual (o la de $O$) y canal de pago vigente para que el operador confirme y cree el nuevo pedido con nuevo consecutivo (`repeated_from_order_id = O.id`).
-- **RN-SPEC-11-06 (Generación de Guía / Remisión imprimible `PED-06`):** Todo pedido con dirección válida puede generar su guía en formato imprimible estándar (`10x15cm` térmico o `Carta A4` PDF/HTML print-ready) incluyendo: logo y datos del comercio remitente (`SPEC-05`), código consecutivo del pedido + código QR de tracking/verificación, destinatario, teléfono, ciudad/dirección completa, listado resumido de ítems, valor a recaudar si es contraentrega o «PAGADO» si es prepago, transportadora y número de guía. Al generar por primera vez desde `preparing` puede opcionalmente avanzar a `guide_generated`.
+- **RN-SPEC-11-06 (Generación de Guía / Remisión imprimible `PED-06`):** Todo pedido con dirección válida (o retiro en oficina) puede generar su guía en formato HTML print-ready (`@page` `100mm 150mm` o `letter`) y PDF binario liviano (`application/pdf`) generado en TypeScript puro sin dependencias externas, incluyendo: logo y datos del comercio remitente (`SPEC-05`), código consecutivo del pedido + código QR de tracking/verificación (reutilizando el codificador ISO 18004 de `BreBQrService`), destinatario, teléfono, ciudad/dirección completa, listado resumido de ítems, valor a recaudar si es contraentrega o «PAGADO» si es prepago, transportadora y número de guía. Al generar por primera vez desde `preparing` puede opcionalmente avanzar a `guide_generated`.
+- **RN-SPEC-11-07 (RBAC de cancelación pagada y hook desacoplado de mensajes `SPEC-10`):** Únicamente `tenant_owner` puede cancelar un pedido con `paymentStatus === 'paid'` (exigiendo confirmación de reembolso) o registrar devoluciones monetarias (`403 Forbidden` para `tenant_agent`). Al transicionar a `confirmed`, `dispatched` o `delivery_issue`, un hook desacoplado (`OrderNotificationHook`) renderiza la plantilla correspondiente de `SPEC-10` (`default_messages` en `admin.tenant_bots`) y registra auditoría estructurada sin bloquear la transacción.
 
 ---
 
@@ -246,15 +252,21 @@ Característica: Gestión completa de pedidos, 12 estados Dropi/Effi, guías y r
 
 ## 14. Definition of Done
 
-- [ ] Esquema `cell_orders` y `cell_order_items` actualizado con los 12 estados homologados, snapshots, `stock_deducted` y migración de datos previos.
-- [ ] `OrdersService` actualizado con máquina de 12 estados, descuento/reversión idempotente de stock, `repeatOrder` y generación de guía imprimible.
-- [ ] Endpoints `/api/tenant/orders`, `/[id]` (`GET`/`PUT`/`PATCH`), `/repeat` y `/guide` con Zod, `handle()` RFC 9457 y RBAC.
-- [ ] UI `/workspace/orders` completa Mobile First (`es`/`en`, Title Case, tabla estándar + modales Ver, Crear/Editar, Cambio de Estado `--dsn-*`, Repetir Pedido e Impresión de Guía).
-- [ ] `pnpm lint`, `pnpm test`, `drizzle-kit check` en verde + protocolo §4.18 ejecutado.
+- [x] Esquema `cell_orders` y `cell_order_items` actualizado con los 12 estados homologados, snapshots, `stock_deducted` y migración de datos previos.
+- [x] `OrdersService` actualizado con máquina de 12 estados, descuento/reversión idempotente de stock, `repeatOrder` y generación de guía imprimible.
+- [x] Endpoints `/api/tenant/orders`, `/[id]` (`GET`/`PUT`/`PATCH`), `/repeat` y `/guide` con Zod, `handle()` RFC 9457 y RBAC.
+- [x] UI `/workspace/orders` completa Mobile First (`es`/`en`, Title Case, tabla estándar + modales Ver, Crear/Editar, Cambio de Estado `--dsn-*`, Repetir Pedido e Impresión de Guía).
+- [x] `lint`/typecheck de los paquetes afectados, `pnpm test`, `drizzle-kit check` en verde + protocolo §4.18 ejecutado.
 
 ---
 
-## 15. Propuestas a Validar (PV-xx)
+## 15. Decisiones Aprobadas (PV-xx)
 
-Todas las decisiones (`PV-04`: 12 estados homologados con Dropi y Effi ERP) fueron aprobadas expresamente por el usuario. Sin preguntas pendientes.
+Todas las decisiones técnicas y de negocio quedaron validadas por el usuario:
+- **`PV-04`:** Adopción de los 12 estados homologados con Dropi y Effi ERP.
+- **`PV-11-01` (Grafo flexible operativo):** Cancelación directa permitida desde `pending_confirmation`, `confirmed`, `preparing`, `guide_generated` y `return_in_progress`; `delivery_issue` puede transicionar a `out_for_delivery`, `delivered` o `return_in_progress`; atajos pre-despacho permitidos garantizando descuento de stock y exigiendo `carrierName` + `trackingCode` al pasar a `dispatched`.
+- **`PV-11-02` (Esquema y unificación):** Se conserva la columna física `prospect_id` en `cell_orders` (con FK opcional a `admin.contacts` y alias `contactId` en API/DTOs), se añaden `external_erp_system` / `external_erp_reference`, y `TenantWorkspaceService` delega el módulo de pedidos en `OrdersService`.
+- **`PV-11-03` (Reglas de stock):** Validación estricta `INSUFFICIENT_STOCK` solo para productos `kind === 'physical'` con `availability === 'in_stock'` (y componentes físicos de `combo`); `preorder`/`backorder` no bloquean y se acotan a piso `0`; digitales/servicios e ítems libres sin `productId` no descuentan inventario; edición `PUT` pre-despacho ajusta deltas si `stock_deducted = true`.
+- **`PV-11-04` (Guías HTML + PDF puro):** `format=html` print-ready (`@page`) + `format=pdf` mediante generador PDF 1.4 puro en TypeScript sin dependencias externas, reutilizando el codificador QR ISO/IEC 18004 de `BreBQrService`.
+- **`PV-11-05` (RBAC y hook `SPEC-10`):** Cancelar pedido pagado o registrar devolución monetaria restringido a `tenant_owner`; hook desacoplado `OrderNotificationHook` renderiza plantillas de `SPEC-10` y audita sin bloquear la transición.
 

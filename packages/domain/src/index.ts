@@ -61,6 +61,8 @@ export * from "./services/tenant-crm.service";
 export * from "./repositories/orders.repository.interface";
 export * from "./repositories/drizzle-orders.repository";
 export * from "./services/orders.service";
+export * from "./services/order-guide-renderer.service";
+export * from "./services/tenant-orders.service";
 export * from "./repositories/bot.repository.interface";
 export * from "./repositories/drizzle-bot.repository";
 export * from "./services/bot.service";

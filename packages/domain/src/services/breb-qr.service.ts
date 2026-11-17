@@ -266,7 +266,10 @@ function computeVersionBits(version: number): number {
   return (version << 12) | rem;
 }
 
-function buildQrMatrix(text: string): boolean[][] {
+/**
+ * Genera una matriz booleana QR ISO/IEC 18004 (Byte Mode, nivel M) para un texto dado.
+ */
+export function buildQrMatrix(text: string): boolean[][] {
   const bytes = Buffer.from(text, "utf8");
   const spec = QR_VERSION_SPECS_M.find((s) => {
     const countBits = s.version >= 10 ? 16 : 8;
@@ -493,7 +496,12 @@ function evaluateQrPenalty(matrix: boolean[][], size: number): number {
 /**
  * Renderiza una matriz booleana QR en un documento SVG de alto contraste con zona tranquila (quiet zone) blanca.
  */
-function renderQrMatrixToSvg(matrix: boolean[][], quietZone: number = 4, modulePx: number = 6): string {
+export function renderQrMatrixToSvg(
+  matrix: boolean[][],
+  quietZone: number = 4,
+  modulePx: number = 6,
+  ariaLabel: string = "Código QR Dinámico Bre-B",
+): string {
   const size = matrix.length;
   const totalModules = size + quietZone * 2;
   const dimension = totalModules * modulePx;
@@ -510,7 +518,7 @@ function renderQrMatrixToSvg(matrix: boolean[][], quietZone: number = 4, moduleP
   }
 
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${dimension} ${dimension}" width="${dimension}" height="${dimension}" role="img" aria-label="Código QR Dinámico Bre-B">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${dimension} ${dimension}" width="${dimension}" height="${dimension}" role="img" aria-label="${ariaLabel}">`,
     `<rect width="100%" height="100%" fill="#FFFFFF"/>`,
     `<path d="${pathParts.join("")}" fill="#0F172A"/>`,
     `</svg>`,

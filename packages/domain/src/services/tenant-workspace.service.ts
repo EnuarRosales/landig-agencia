@@ -22,7 +22,6 @@ import {
 import { mediaCatalog } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { tenantInvitations } from "../db/schemas/admin/chatwoot-media-onboarding";
 import { users } from "../db/schemas/admin/users";
-import { normalizeAndValidatePhoneE164, resolveCountryAlpha2FromInput, resolveIsoSubdivision } from "../geo/index";
 import {
   cellProducts,
   cellClientUsage,
@@ -30,11 +29,8 @@ import {
   cellTenantUsers,
 } from "../db/schemas/tenant/tenancy-catalog";
 import { cellContacts } from "../db/schemas/tenant/crm";
-import {
-  cellOrders,
-  cellOrderItems,
-  cellOrderEvents,
-} from "../db/schemas/tenant/orders";
+import { cellOrders, type OrderStatus } from "../db/schemas/tenant/orders";
+import { tenantOrdersService } from "./tenant-orders.service";
 import { appLogger } from "../utils/logger";
 import {
   IMGPROXY_DEFAULTS,
@@ -757,115 +753,88 @@ export class TenantWorkspaceService {
   }
 
   /**
-   * Lista los pedidos comerciales del inquilino.
+   * Lista los pedidos comerciales del inquilino delegando en `TenantOrdersService` (`SPEC-11`).
    */
   async getOrders(clientId: string): Promise<WorkspaceOrderDto[]> {
-    return await withTenantCellTransaction(clientId, async (tx) => {
-      const rows = await tx
-        .select()
-        .from(cellOrders)
-        .where(eq(cellOrders.clientId, clientId))
-        .orderBy(desc(cellOrders.createdAt));
-
-      return rows.map((o) => ({
-        id: o.id,
-        orderNumber: o.number,
-        customerName: o.customerName,
-        customerPhone: o.customerPhone,
-        totalCents: o.totalCents,
-        currency: o.currency,
-        status: o.status,
-        paymentStatus: o.paymentStatus,
-        createdAt: o.createdAt ? new Date(o.createdAt).toISOString() : new Date().toISOString(),
-      }));
-    });
+    const res = await tenantOrdersService.listOrders(clientId, { page: 1, limit: 50 });
+    if (!res.ok) {
+      throw new Error(res.error);
+    }
+    return res.data.items.map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      customerName: o.customerName,
+      customerPhone: o.customerPhone,
+      totalCents: o.totalCents,
+      currency: o.currency,
+      status: o.status,
+      paymentStatus: o.paymentStatus,
+      createdAt: o.createdAt,
+    }));
   }
 
   /**
-   * Crea un nuevo pedido comercial en la celda.
+   * Crea un nuevo pedido comercial en la celda delegando en `TenantOrdersService` (`SPEC-11`).
    */
   async createOrder(
     clientId: string,
     input: CreateWorkspaceOrderInput,
     actor: string,
   ): Promise<WorkspaceOrderDto> {
-    const phoneRes = normalizeAndValidatePhoneE164({
-      rawPhone: input.customerPhone,
-      allowLocalWithDefaultCountry: false,
+    const subtotalCents = input.subtotalCents ?? input.totalCents;
+    const res = await tenantOrdersService.createOrder(clientId, {
+      source: "manual",
+      paymentMethod: input.paymentMethod || "transferencia",
+      customer: {
+        name: input.customerName,
+        phone: input.customerPhone,
+      },
+      shipping: {
+        method: "home",
+        countryCode: input.countryCode ?? undefined,
+        subdivisionCode: input.subdivisionCode ?? undefined,
+        state: input.state ?? undefined,
+        city: input.city ?? undefined,
+        addressLine: input.addressLine ?? undefined,
+        addressComplement: input.addressComplement ?? undefined,
+        neighborhood: input.neighborhood ?? undefined,
+        postalCode: input.postalCode ?? undefined,
+        referenceNotes: input.referenceNotes ?? undefined,
+        shippingCents: input.shippingCents ?? 0,
+      },
+      items: [
+        {
+          productName: "Pedido Manual",
+          quantity: 1,
+          unitPriceCents: subtotalCents,
+        },
+      ],
+      discountCents: input.discountCents ?? 0,
+      currency: input.currency || "COP",
+      notes: input.notes ?? undefined,
+      actor,
     });
-    if (!phoneRes.ok) {
-      throw new Error(phoneRes.error);
+
+    if (!res.ok) {
+      throw new Error(res.error);
     }
 
-    const countryCode = resolveCountryAlpha2FromInput(input.countryCode) ?? "CO";
-    const subInput = input.subdivisionCode?.trim() || input.state?.trim() || "";
-    const isoSub = subInput ? resolveIsoSubdivision({ countryCode, input: subInput }) : null;
-    const subdivisionCode =
-      input.subdivisionCode?.trim() ||
-      (isoSub?.status === "resolved" ? isoSub.matches[0]?.code ?? null : null);
-    const resolvedState =
-      input.state?.trim() ||
-      (isoSub?.status === "resolved" ? isoSub.matches[0]?.name ?? null : null);
-
-    return await withTenantCellTransaction(clientId, async (tx) => {
-      const orderCount = await tx
-        .select({ count: sql<number>`count(*)::int` })
-        .from(cellOrders)
-        .where(eq(cellOrders.clientId, clientId));
-
-      const seq = (orderCount[0]?.count ?? 0) + 1;
-      const datePart = new Date().toISOString().slice(0, 7).replace("-", "");
-      const orderNumber = `ORD-${datePart}-${String(seq).padStart(4, "0")}`;
-
-      const [created] = await tx
-        .insert(cellOrders)
-        .values({
-          clientId,
-          number: orderNumber,
-          source: "manual",
-          customerName: input.customerName,
-          customerPhone: phoneRes.data.e164,
-          countryCode,
-          subdivisionCode,
-          state: resolvedState,
-          city: input.city?.trim() || null,
-          addressLine: input.addressLine?.trim() || null,
-          addressComplement: input.addressComplement?.trim() || null,
-          neighborhood: input.neighborhood?.trim() || null,
-          postalCode: input.postalCode?.trim() || null,
-          referenceNotes: input.referenceNotes?.trim() || null,
-          geoResolutionStatus:
-            subdivisionCode && input.city?.trim() ? "iso_resolved" : "unresolved",
-          paymentMethod: input.paymentMethod || "transferencia",
-          paymentStatus: "pending",
-          status: "registered",
-          subtotalCents: input.subtotalCents ?? input.totalCents,
-          shippingCents: input.shippingCents ?? 0,
-          discountCents: input.discountCents ?? 0,
-          totalCents: input.totalCents,
-          currency: input.currency || "COP",
-          notes: input.notes || null,
-          createdBy: actor,
-          updatedBy: actor,
-        })
-        .returning();
-
-      return {
-        id: created.id,
-        orderNumber: created.number,
-        customerName: created.customerName,
-        customerPhone: created.customerPhone,
-        totalCents: created.totalCents,
-        currency: created.currency,
-        status: created.status,
-        paymentStatus: created.paymentStatus,
-        createdAt: created.createdAt ? new Date(created.createdAt).toISOString() : new Date().toISOString(),
-      };
-    });
+    const created = res.data;
+    return {
+      id: created.id,
+      orderNumber: created.orderNumber,
+      customerName: created.customerName,
+      customerPhone: created.customerPhone,
+      totalCents: created.totalCents,
+      currency: created.currency,
+      status: created.status,
+      paymentStatus: created.paymentStatus,
+      createdAt: created.createdAt,
+    };
   }
 
   /**
-   * Actualiza el estado de un pedido y registra el evento de trazabilidad.
+   * Actualiza el estado de un pedido delegando en `TenantOrdersService` (`SPEC-11`).
    */
   async updateOrderStatus(
     clientId: string,
@@ -873,32 +842,18 @@ export class TenantWorkspaceService {
     status: string,
     actor: string,
   ): Promise<boolean> {
-    return await withTenantCellTransaction(clientId, async (tx) => {
-      const rows = await tx
-        .update(cellOrders)
-        .set({
-          status,
-          updatedAt: new Date(),
-          updatedBy: actor,
-        })
-        .where(and(eq(cellOrders.id, orderId), eq(cellOrders.clientId, clientId)))
-        .returning({ id: cellOrders.id, status: cellOrders.status });
-
-      if (rows.length === 0) return false;
-
-      // Registrar evento
-      await tx
-        .insert(cellOrderEvents)
-        .values({
-          clientId,
-          orderId,
-          toStatus: status,
-          actor,
-          reason: "Actualización desde backoffice",
-        });
-
-      return true;
+    const res = await tenantOrdersService.transitionOrderStatus(clientId, orderId, {
+      toStatus: status as OrderStatus,
+      actor,
+      reason: "Actualización desde backoffice",
     });
+    if (!res.ok) {
+      if (res.code === "ORDER_NOT_FOUND") {
+        return false;
+      }
+      throw new Error(res.error);
+    }
+    return true;
   }
 
   /**

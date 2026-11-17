@@ -54,10 +54,12 @@ describe("ORD-001 T-02 · Persistencia de Pedidos en celdas (Cell Data Plane)", 
     const cols = columnNames(cellOrders);
     expect(cols).toContain("number");
     expect(cols).toContain("prospect_id");
+    expect(cols).toContain("contact_address_id");
     expect(cols).toContain("chatwoot_conversation_id");
     expect(cols).toContain("source");
     expect(cols).toContain("status");
     expect(cols).toContain("payment_method");
+    expect(cols).toContain("payment_channel_id");
     expect(cols).toContain("payment_status");
     expect(cols).toContain("shipping_method");
     expect(cols).toContain("carrier_id");
@@ -68,17 +70,25 @@ describe("ORD-001 T-02 · Persistencia de Pedidos en celdas (Cell Data Plane)", 
     expect(cols).toContain("discount_cents");
     expect(cols).toContain("total_cents");
     expect(cols).toContain("currency");
+    expect(cols).toContain("stock_deducted");
+    expect(cols).toContain("guide_generated_at");
+    expect(cols).toContain("cancellation_reason");
+    expect(cols).toContain("issue_notes");
+    expect(cols).toContain("repeated_from_order_id");
+    expect(cols).toContain("external_erp_system");
+    expect(cols).toContain("external_erp_reference");
 
     const indexNames = config.indexes.map((idx) => idx.config.name);
     expect(indexNames).toContain("orders_number_client_unique");
     expect(indexNames).toContain("orders_cw_conversation_active_unique");
     expect(indexNames).toContain("orders_client_prospect_idx");
     expect(indexNames).toContain("orders_client_status_idx");
+    expect(indexNames).toContain("orders_client_created_idx");
 
     const checks = checkSql(cellOrders);
     expect(checks["orders_source_check"]).toContain("source IN ('bot', 'manual')");
     expect(checks["orders_status_check"]).toContain(
-      "status IN ('registered', 'confirmed', 'preparing', 'shipped', 'delivered', 'cancelled', 'returned')",
+      "status IN ('pending_confirmation', 'confirmed', 'preparing', 'guide_generated', 'dispatched', 'in_transit', 'out_for_delivery', 'delivery_issue', 'delivered', 'return_in_progress', 'returned', 'cancelled')",
     );
     expect(checks["orders_payment_status_check"]).toContain(
       "payment_status IN ('pending', 'paid', 'refunded', 'failed')",
@@ -107,11 +117,14 @@ describe("ORD-001 T-02 · Persistencia de Pedidos en celdas (Cell Data Plane)", 
     expect(cols).toContain("product_sku");
     expect(cols).toContain("quantity");
     expect(cols).toContain("unit_price_cents");
+    expect(cols).toContain("unit_cost_cents");
+    expect(cols).toContain("selected_attributes");
     expect(cols).toContain("line_total_cents");
 
     const checks = checkSql(cellOrderItems);
     expect(checks["order_items_quantity_check"]).toContain("quantity > 0");
     expect(checks["order_items_unit_price_cents_check"]).toContain("unit_price_cents >= 0");
+    expect(checks["order_items_unit_cost_cents_check"]).toContain("unit_cost_cents >= 0");
     expect(checks["order_items_line_total_cents_check"]).toContain("line_total_cents >= 0");
   });
 
