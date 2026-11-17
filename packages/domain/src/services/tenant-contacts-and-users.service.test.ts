@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { hashPassword } from "../auth/password-hasher";
 import {
   TenantContactsAndUsersService,
   InMemoryTenantContactsAndUsersRepository,
@@ -353,6 +354,325 @@ describe("TenantContactsAndUsersService", () => {
 
       expect(successCount).toBe(1);
       expect(failedCount).toBe(1);
+    });
+  });
+
+  describe("SPEC-12 · Ciclo completo de invitaciones, cuotas Chatwoot, suspensión y aceptación", () => {
+    it("rechaza invitación duplicada vigente (INVITATION_ALREADY_PENDING) y expira automáticamente las vencidas", async () => {
+      repo.quotas.set(`${clientId}:tenant_users`, { mode: "LIMITED", value: 5 });
+
+      const first = await service.issueInvitation(
+        clientId,
+        { email: "andrea@tienda.co", displayName: "Andrea", invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(first.ok).toBe(true);
+
+      const dup = await service.issueInvitation(
+        clientId,
+        { email: "ANDREA@tienda.co", invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(dup.ok).toBe(false);
+      if (!dup.ok) {
+        expect(dup.code).toBe("INVITATION_ALREADY_PENDING");
+      }
+
+      // Simular expiración de la invitación previa
+      if (first.ok) {
+        const stored = repo.invitations.get(first.data.invitation.id)!;
+        stored.expiresAt = new Date(Date.now() - 10_000);
+      }
+
+      const reissued = await service.issueInvitation(
+        clientId,
+        { email: "andrea@tienda.co", displayName: "Andrea Nueva", invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(reissued.ok).toBe(true);
+      if (first.ok) {
+        expect(repo.invitations.get(first.data.invitation.id)?.status).toBe("expired");
+      }
+    });
+
+    it("rechaza invitación si el correo ya pertenece a otro comercio o tiene invitación vigente en otro comercio", async () => {
+      repo.quotas.set(`${clientId}:tenant_users`, { mode: "LIMITED", value: 5 });
+      repo.globalUsers.set("ocupado@otro.co", {
+        id: "u-busy",
+        email: "ocupado@otro.co",
+        displayName: "Ocupado",
+        passwordHash: null,
+        identityLocation: "cell-01",
+        activeClientId: "other-tenant-99",
+        emailVerifiedAt: new Date(),
+        status: "active",
+        hasPlatformRole: false,
+      });
+
+      const crossUser = await service.issueInvitation(
+        clientId,
+        { email: "ocupado@otro.co", invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(crossUser.ok).toBe(false);
+      if (!crossUser.ok) {
+        expect(crossUser.code).toBe("EMAIL_BELONGS_TO_ANOTHER_TENANT");
+      }
+
+      // Invitación vigente en otro comercio
+      await service.issueInvitation(
+        "other-tenant-99",
+        { email: "pendiente@otro.co", invitedByUserId: "owner-other" },
+        actor,
+      );
+      const crossInv = await service.issueInvitation(
+        clientId,
+        { email: "pendiente@otro.co", invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(crossInv.ok).toBe(false);
+      if (!crossInv.ok) {
+        expect(crossInv.code).toBe("EMAIL_BELONGS_TO_ANOTHER_TENANT");
+      }
+    });
+
+    it("valida cuota chatwoot_agents cuando grantChatwootAccess=true y permite invitar sin Chatwoot si se desmarca", async () => {
+      repo.quotas.set(`${clientId}:tenant_users`, { mode: "LIMITED", value: 5 });
+      repo.quotas.set(`${clientId}:chatwoot_agents`, { mode: "LIMITED", value: 1 });
+
+      await repo.createTenantMembership({
+        clientId,
+        userId: "owner-1",
+        role: "tenant_owner",
+        grantChatwootAccess: true,
+      });
+
+      const blockedCw = await service.issueInvitation(
+        clientId,
+        { email: "cw@tienda.co", grantChatwootAccess: true, invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(blockedCw.ok).toBe(false);
+      if (!blockedCw.ok) {
+        expect(blockedCw.code).toBe("CHATWOOT_AGENTS_QUOTA_EXCEEDED");
+      }
+
+      const allowedNoCw = await service.issueInvitation(
+        clientId,
+        { email: "nocw@tienda.co", grantChatwootAccess: false, invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(allowedNoCw.ok).toBe(true);
+    });
+
+    it("reenvío regenera token dejando obsoleto el anterior y revalida cuota si estaba expirada", async () => {
+      repo.quotas.set(`${clientId}:tenant_users`, { mode: "LIMITED", value: 1 });
+
+      const invRes = await service.issueInvitation(
+        clientId,
+        { email: "luis@tienda.co", invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(invRes.ok).toBe(true);
+      if (!invRes.ok) return;
+
+      const oldToken = invRes.data.rawToken;
+      const resendRes = await service.resendInvitation(clientId, invRes.data.invitation.id, actor);
+      expect(resendRes.ok).toBe(true);
+      if (!resendRes.ok) return;
+
+      const newToken = resendRes.data.rawToken;
+      expect(newToken).not.toBe(oldToken);
+
+      // Token anterior T1 falla
+      const oldAccept = await service.acceptTeamInvitation({
+        rawToken: oldToken,
+        displayName: "Luis",
+        password: "Password123!",
+      });
+      expect(oldAccept.ok).toBe(false);
+      if (!oldAccept.ok) {
+        expect(oldAccept.code).toBe("INVITATION_TOKEN_INVALID_OR_EXPIRED");
+      }
+
+      // Token nuevo T2 funciona
+      const newAccept = await service.acceptTeamInvitation({
+        rawToken: newToken,
+        displayName: "Luis Pérez",
+        password: "Password123!",
+      });
+      expect(newAccept.ok).toBe(true);
+      if (newAccept.ok) {
+        expect(newAccept.data.email).toBe("luis@tienda.co");
+        expect(newAccept.data.member.status).toBe("active");
+      }
+    });
+
+    it("acepta invitación para cuenta existente validando contraseña actual sin sobrescribirla", async () => {
+      repo.quotas.set(`${clientId}:tenant_users`, { mode: "LIMITED", value: 5 });
+      const existingHash = await hashPassword("ExistingPass1!");
+      repo.globalUsers.set("prospecto@tienda.co", {
+        id: "u-prospect-1",
+        email: "prospecto@tienda.co",
+        displayName: "Prospecto Prev",
+        passwordHash: existingHash,
+        identityLocation: "router",
+        activeClientId: null,
+        emailVerifiedAt: new Date(),
+        status: "active",
+        hasPlatformRole: false,
+      });
+
+      const inv = await service.issueInvitation(
+        clientId,
+        { email: "prospecto@tienda.co", invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(inv.ok).toBe(true);
+      if (!inv.ok) return;
+
+      const missingPwd = await service.acceptTeamInvitation({
+        rawToken: inv.data.rawToken,
+      });
+      expect(missingPwd.ok).toBe(false);
+      if (!missingPwd.ok) {
+        expect(missingPwd.code).toBe("EXISTING_ACCOUNT_PASSWORD_REQUIRED");
+      }
+
+      const wrongPwd = await service.acceptTeamInvitation({
+        rawToken: inv.data.rawToken,
+        currentPassword: "WrongPassword1!",
+      });
+      expect(wrongPwd.ok).toBe(false);
+      if (!wrongPwd.ok) {
+        expect(wrongPwd.code).toBe("INVALID_CURRENT_PASSWORD");
+      }
+
+      const validAccept = await service.acceptTeamInvitation({
+        rawToken: inv.data.rawToken,
+        currentPassword: "ExistingPass1!",
+      });
+      expect(validAccept.ok).toBe(true);
+      if (validAccept.ok) {
+        expect(validAccept.data.userId).toBe("u-prospect-1");
+        expect(repo.globalUsers.get("prospecto@tienda.co")?.activeClientId).toBe(clientId);
+      }
+    });
+
+    it("suspende revocando sesiones, protege cuota al reactivar, retira (left) y permite re-invitar después", async () => {
+      repo.quotas.set(`${clientId}:tenant_users`, { mode: "LIMITED", value: 2 });
+
+      const owner = await repo.createTenantMembership({
+        clientId,
+        userId: "owner-1",
+        role: "tenant_owner",
+      });
+
+      // Protege al owner contra degradación, suspensión o edición aquí
+      const suspendOwner = await service.updateMemberStatus(clientId, owner.id, "suspended", actor);
+      expect(suspendOwner.ok).toBe(false);
+      if (!suspendOwner.ok) {
+        expect(suspendOwner.code).toBe("LAST_OWNER_CANNOT_BE_REMOVED");
+      }
+
+      const inv = await service.issueInvitation(
+        clientId,
+        { email: "andrea@tienda.co", invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(inv.ok).toBe(true);
+      if (!inv.ok) return;
+
+      const accepted = await service.acceptTeamInvitation({
+        rawToken: inv.data.rawToken,
+        displayName: "Andrea",
+        password: "Password123!",
+      });
+      expect(accepted.ok).toBe(true);
+      if (!accepted.ok) return;
+
+      const memberId = accepted.data.member.id;
+      const userId = accepted.data.userId;
+
+      // Suspender revoca sesiones
+      const suspended = await service.updateMemberStatus(clientId, memberId, "suspended", actor);
+      expect(suspended.ok).toBe(true);
+      if (suspended.ok) {
+        expect(suspended.data.member.status).toBe("suspended");
+        expect(suspended.data.chatwootAction).toBe("remove");
+      }
+      expect(repo.revokedSessionsForUsers.some((r) => r.userId === userId)).toBe(true);
+
+      // Ocupar el cupo libre con otro invitado
+      const inv2 = await service.issueInvitation(
+        clientId,
+        { email: "camila@tienda.co", invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(inv2.ok).toBe(true);
+
+      // Reactivar a Andrea ahora debe fallar por cuota llena
+      const reactivateBlocked = await service.updateMemberStatus(clientId, memberId, "active", actor);
+      expect(reactivateBlocked.ok).toBe(false);
+      if (!reactivateBlocked.ok) {
+        expect(reactivateBlocked.code).toBe("QUOTA_EXCEEDED");
+      }
+
+      // Revocar invitación de camila y reactivar a Andrea
+      if (inv2.ok) {
+        await service.revokeInvitation(clientId, inv2.data.invitation.id, actor);
+      }
+      const reactivated = await service.updateMemberStatus(clientId, memberId, "active", actor);
+      expect(reactivated.ok).toBe(true);
+      if (reactivated.ok) {
+        expect(reactivated.data.member.status).toBe("active");
+        expect(reactivated.data.chatwootAction).toBe("sync");
+      }
+
+      // Retirar definitivamente (left)
+      const retired = await service.retireMember(clientId, memberId, actor);
+      expect(retired.ok).toBe(true);
+      expect(repo.globalUsers.get("andrea@tienda.co")?.activeClientId).toBeNull();
+
+      // Re-invitar al usuario retirado funciona
+      const reinv = await service.issueInvitation(
+        clientId,
+        { email: "andrea@tienda.co", invitedByUserId: "owner-1" },
+        actor,
+      );
+      expect(reinv.ok).toBe(true);
+    });
+
+    it("listTeamAndInvitations oculta invitaciones y suspendidos para tenant_agent", async () => {
+      repo.quotas.set(`${clientId}:tenant_users`, { mode: "LIMITED", value: 5 });
+      await repo.createTenantMembership({
+        clientId,
+        userId: "owner-1",
+        role: "tenant_owner",
+      });
+      const agent = await repo.createTenantMembership({
+        clientId,
+        userId: "agent-1",
+        role: "tenant_agent",
+      });
+      await service.updateMemberStatus(clientId, agent.id, "suspended", actor);
+      await service.issueInvitation(
+        clientId,
+        { email: "pend@tienda.co", invitedByUserId: "owner-1" },
+        actor,
+      );
+
+      const ownerView = await service.listTeamAndInvitations(clientId, {
+        viewerRole: "tenant_owner",
+      });
+      expect(ownerView.members.length).toBe(2);
+      expect(ownerView.invitations.length).toBe(1);
+
+      const agentView = await service.listTeamAndInvitations(clientId, {
+        viewerRole: "tenant_agent",
+      });
+      expect(agentView.members.length).toBe(1);
+      expect(agentView.invitations.length).toBe(0);
     });
   });
 });

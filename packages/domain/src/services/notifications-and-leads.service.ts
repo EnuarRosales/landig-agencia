@@ -204,6 +204,22 @@ export const CANONICAL_EMAIL_EVENTS = [
     isEnabled: true,
     isSystem: false,
   },
+  {
+    key: "team.member_invited",
+    category: "tenant" as const,
+    description:
+      "Invitación enviada por el propietario de un comercio a un colaborador para unirse a su equipo de trabajo.",
+    variablesSchema: [
+      "tenant_name",
+      "inviter_name",
+      "invitee_name",
+      "invite_url",
+      "expires_hours",
+    ],
+    defaultSenderKey: "no-reply",
+    isEnabled: true,
+    isSystem: false,
+  },
 ] as const;
 
 export type EmailEventKey = (typeof CANONICAL_EMAIL_EVENTS)[number]["key"];
@@ -511,6 +527,20 @@ export class TransactionalNotificationsAndLeadsService {
         subject: "Low stock alert: {{product_name}} ({{sku}}) · {{business_name}}",
         bodyHtml:
           "<p>Hi {{business_name}}, <strong>{{product_name}}</strong> (SKU: <code>{{sku}}</code>) has reached or dropped below its configured minimum threshold.</p><p>Current stock: <strong>{{current_stock}}</strong> units · Minimum threshold: <strong>{{min_threshold}}</strong> units.</p><p>Review or restock this item in <a href=\"{{product_admin_url}}\">Product Catalog</a>.</p>",
+      },
+      {
+        eventKey: "team.member_invited",
+        locale: "es",
+        subject: "Invitación para unirte al equipo de {{tenant_name}}",
+        bodyHtml:
+          "<p>Hola {{invitee_name}}, <strong>{{inviter_name}}</strong> te invitó a colaborar en el equipo de <strong>{{tenant_name}}</strong> en Mocter.</p><p>Acepta tu invitación en <a href=\"{{invite_url}}\">Aceptar Invitación</a>. Este enlace vence en {{expires_hours}} horas.</p>",
+      },
+      {
+        eventKey: "team.member_invited",
+        locale: "en",
+        subject: "Invitation to join {{tenant_name}}'s team",
+        bodyHtml:
+          "<p>Hi {{invitee_name}}, <strong>{{inviter_name}}</strong> invited you to collaborate with <strong>{{tenant_name}}</strong> on Mocter.</p><p>Accept your invitation at <a href=\"{{invite_url}}\">Accept Invitation</a>. This link expires in {{expires_hours}} hours.</p>",
       },
     ];
 

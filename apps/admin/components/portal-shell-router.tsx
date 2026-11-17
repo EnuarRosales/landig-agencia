@@ -66,6 +66,15 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
   const host = headerList.get("x-forwarded-host") || headerList.get("host") || "localhost:3003";
   const proto = headerList.get("x-forwarded-proto") || (isProduction ? "https" : "http");
 
+  // 0. Rutas públicas de aceptación de invitación de equipo (`SPEC-12`)
+  if (pathname === "/invite" || pathname.startsWith("/invite/")) {
+    return (
+      <main className="min-h-dvh w-full bg-[var(--dsn-background)] text-[var(--dsn-text)]">
+        {children}
+      </main>
+    );
+  }
+
   // 1. Redirección inmediata si no hay cookie de sesión activa o es solo espacios
   if (!sid) {
     redirect(getLoginRedirectUrl(pathname, host, proto));

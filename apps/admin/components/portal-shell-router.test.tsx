@@ -207,4 +207,21 @@ describe("apps/admin · PortalShellRouter Component (TNT-001 R2, ADM-D-35)", () 
     expect(screen.getByTestId("admin-shell")).toBeDefined();
     expect(screen.getByText("Control Plane")).toBeDefined();
   });
+
+  it("8. Permite renderizar /invite/[token] sin sesión ni barras laterales (SPEC-12)", async () => {
+    vi.mocked(nextHeaders.cookies).mockResolvedValue({
+      get: vi.fn().mockReturnValue(undefined),
+    } as unknown as Awaited<ReturnType<typeof nextHeaders.cookies>>);
+
+    vi.mocked(nextHeaders.headers).mockResolvedValue({
+      get: vi.fn().mockImplementation((k: string) => (k === "x-pathname" ? "/invite/tok-xyz" : null)),
+    } as unknown as Awaited<ReturnType<typeof nextHeaders.headers>>);
+
+    const element = await PortalShellRouter({ children: <div>Aceptar Invitación</div> });
+    render(element as React.ReactElement);
+
+    expect(screen.getByText("Aceptar Invitación")).toBeDefined();
+    expect(screen.queryByTestId("admin-shell")).toBeNull();
+    expect(screen.queryByTestId("tenant-workspace-shell")).toBeNull();
+  });
 });

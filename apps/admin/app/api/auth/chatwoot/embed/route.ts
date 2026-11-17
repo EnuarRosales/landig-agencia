@@ -5,8 +5,12 @@ import {
   resolveAuthenticatedPortalContext,
   getDb,
   chatwootAccounts,
+  cellTenantUsers,
+  withTenantCellTransaction,
   ChatwootHttpPlatformGateway,
   appLogger,
+  and,
+  desc,
   eq,
 } from "@mocter/domain";
 
@@ -125,6 +129,28 @@ export const GET = handle(async (req: NextRequest): Promise<Response> => {
   const userRoles: string[] = Array.isArray(context.effectiveRoles) ? context.effectiveRoles : [];
   const isOwner = userRoles.includes("tenant_owner") || context.role === "tenant_owner";
   const mappedRole: "administrator" | "agent" = isOwner ? "administrator" : "agent";
+
+  if (!isOwner) {
+    const membership = await withTenantCellTransaction(clientId, async (tx) => {
+      const [row] = await tx
+        .select({
+          status: cellTenantUsers.status,
+          grantChatwootAccess: cellTenantUsers.grantChatwootAccess,
+        })
+        .from(cellTenantUsers)
+        .where(and(eq(cellTenantUsers.clientId, clientId), eq(cellTenantUsers.userId, context.user.id)))
+        .orderBy(desc(cellTenantUsers.joinedAt))
+        .limit(1);
+      return row ?? null;
+    });
+
+    if (membership && (membership.status !== "active" || !membership.grantChatwootAccess)) {
+      throw new HttpError(
+        403,
+        "Tu usuario no tiene habilitado el acceso a la bandeja de atención omnicanal.",
+      );
+    }
+  }
 
   const gateway = new ChatwootHttpPlatformGateway();
 

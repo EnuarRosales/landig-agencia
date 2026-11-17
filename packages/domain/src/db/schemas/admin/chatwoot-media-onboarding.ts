@@ -66,7 +66,9 @@ export const tenantInvitations = adminSchema.table(
       .notNull()
       .references(() => clients.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
+    displayName: text("display_name"),
     role: text("role").notNull().default("tenant_agent"),
+    grantChatwootAccess: boolean("grant_chatwoot_access").notNull().default(true),
     invitedByUserId: uuid("invited_by_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -81,6 +83,9 @@ export const tenantInvitations = adminSchema.table(
   },
   (table) => [
     uniqueIndex("tenant_invitations_token_hash_unique").on(table.tokenHash),
+    uniqueIndex("tenant_invitations_client_email_pending_unique")
+      .on(table.clientId, table.email)
+      .where(sql`status = 'pending'`),
     check("tenant_invitations_email_lowercase_check", sql.raw("email = lower(email)")),
     check("tenant_invitations_role_check", sql.raw("role = 'tenant_agent'")),
     check(

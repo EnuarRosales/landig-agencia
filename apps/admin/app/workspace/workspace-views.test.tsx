@@ -8,6 +8,8 @@ import { ProfileView } from "./profile/profile-view";
 import { BotView } from "./bot/bot-view";
 import { ContactsView } from "./contacts/contacts-view";
 import { OrdersView } from "./orders/orders-view";
+import { TeamView } from "./team/team-view";
+import { InviteAcceptView } from "../invite/[token]/invite-accept-view";
 import { TenantWorkspaceShell } from "@/components/tenant-workspace-shell";
 import type { CatalogListResultDto, ProductDetailDto } from "@mocter/domain";
 
@@ -1723,6 +1725,188 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       } finally {
         vi.unstubAllGlobals();
       }
+    });
+  });
+
+  describe("TeamView & InviteAcceptView (SPEC-12)", () => {
+    it("renders quota banner, tabs, invite modal and accessible confirmation modal for owner", async () => {
+      render(
+        <TeamView
+          locale="es"
+          isOwner={true}
+          initialData={{
+            members: [
+              {
+                id: "m-owner",
+                userId: "u-owner",
+                email: "carlos@tiendasol.co",
+                displayName: "Carlos Propietario",
+                role: "tenant_owner",
+                status: "active",
+                grantChatwootAccess: true,
+                chatwootAgentId: 11,
+                joinedAt: "2026-11-01T10:00:00.000Z",
+                lastAccessAt: "2026-11-16T08:00:00.000Z",
+              },
+              {
+                id: "m-agent",
+                userId: "u-agent",
+                email: "andrea@tiendasol.co",
+                displayName: "Andrea Gómez",
+                role: "tenant_agent",
+                status: "active",
+                grantChatwootAccess: true,
+                chatwootAgentId: 12,
+                joinedAt: "2026-11-10T10:00:00.000Z",
+                lastAccessAt: null,
+              },
+            ],
+            pagination: { page: 1, limit: 20, total: 2, totalPages: 1 },
+            invitations: [
+              {
+                id: "inv-1",
+                email: "luis@tiendasol.co",
+                displayName: "Luis Pérez",
+                role: "tenant_agent",
+                grantChatwootAccess: true,
+                status: "pending",
+                expiresAt: "2026-11-19T10:00:00.000Z",
+                createdAt: "2026-11-16T10:00:00.000Z",
+              },
+            ],
+            quota: {
+              tenantUsers: {
+                usedActive: 2,
+                pendingInvitations: 1,
+                totalConsumed: 3,
+                limit: 5,
+                mode: "LIMITED",
+              },
+              chatwootAgents: {
+                usedActive: 2,
+                pendingInvitations: 0,
+                totalConsumed: 2,
+                limit: 4,
+                mode: "LIMITED",
+              },
+            },
+          }}
+        />,
+      );
+
+      expect(screen.getByText("Equipo de Trabajo")).toBeTruthy();
+      expect(screen.getByText("3 de 5 ocupados")).toBeTruthy();
+      expect(screen.getByText("2 de 4 ocupados")).toBeTruthy();
+      expect(screen.getAllByText("Andrea Gómez").length).toBeGreaterThan(0);
+
+      // Abre modal de invitación
+      fireEvent.click(screen.getByRole("button", { name: /Invitar Colaborador/i }));
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      expect(screen.getByLabelText("Correo Electrónico")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+      // Abre modal de confirmación --dsn-* al pulsar Suspender
+      const suspendBtns = screen.getAllByRole("button", { name: /Suspender/i });
+      fireEvent.click(suspendBtns[0]!);
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      expect(screen.getByText("Revocación Inmediata de Sesión")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+      // Cambia a pestaña Invitaciones Pendientes
+      fireEvent.click(screen.getByRole("button", { name: /Invitaciones Pendientes/i }));
+      expect(screen.getAllByText("Luis Pérez").length).toBeGreaterThan(0);
+    });
+
+    it("hides management controls and invitations tab for tenant_agent", () => {
+      render(
+        <TeamView
+          locale="en"
+          isOwner={false}
+          initialData={{
+            members: [
+              {
+                id: "m-owner",
+                userId: "u-owner",
+                email: "carlos@tiendasol.co",
+                displayName: "Carlos Owner",
+                role: "tenant_owner",
+                status: "active",
+                grantChatwootAccess: true,
+                chatwootAgentId: null,
+                joinedAt: "2026-11-01T10:00:00.000Z",
+                lastAccessAt: null,
+              },
+            ],
+            pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+            invitations: [],
+            quota: {
+              tenantUsers: { usedActive: 1, pendingInvitations: 0, totalConsumed: 1, limit: 5, mode: "LIMITED" },
+              chatwootAgents: { usedActive: 1, pendingInvitations: 0, totalConsumed: 1, limit: 5, mode: "LIMITED" },
+            },
+          }}
+        />,
+      );
+
+      expect(screen.getByText("Team Members")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /Invite Collaborator/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Pending Invitations/i })).toBeNull();
+    });
+
+    it("renders InviteAcceptView for new vs existing account and expired states", () => {
+      const { rerender } = render(
+        <InviteAcceptView
+          token="tok-new-123"
+          locale="es"
+          preview={{
+            valid: true,
+            tenantName: "Tienda Sol",
+            emailHint: "an***@tiendasol.co",
+            displayName: "Andrea",
+            role: "tenant_agent",
+            grantChatwootAccess: true,
+            existingAccount: false,
+            hasActiveMembershipConflict: false,
+          }}
+        />,
+      );
+
+      expect(screen.getByText(/Únete al Equipo de Tienda Sol/i)).toBeTruthy();
+      expect(screen.getByLabelText("Nueva Contraseña")).toBeTruthy();
+
+      rerender(
+        <InviteAcceptView
+          token="tok-existing-123"
+          locale="es"
+          preview={{
+            valid: true,
+            tenantName: "Tienda Sol",
+            emailHint: "pr***@tiendasol.co",
+            displayName: "Prospecto",
+            role: "tenant_agent",
+            grantChatwootAccess: true,
+            existingAccount: true,
+            hasActiveMembershipConflict: false,
+          }}
+        />,
+      );
+
+      expect(screen.getByLabelText("Contraseña Actual de Tu Cuenta")).toBeTruthy();
+      expect(screen.queryByLabelText("Nueva Contraseña")).toBeNull();
+
+      rerender(
+        <InviteAcceptView
+          token="tok-exp-123"
+          locale="es"
+          preview={{
+            valid: false,
+            reason: "expired",
+            tenantName: "Tienda Sol",
+            emailHint: "an***@tiendasol.co",
+          }}
+        />,
+      );
+
+      expect(screen.getByText("Invitación Expirada")).toBeTruthy();
     });
   });
 });

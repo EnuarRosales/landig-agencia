@@ -31,7 +31,7 @@ Aunque existen las tablas `admin.tenant_invitations`, `pg-cell-XX.cell_tenant_us
 
 1. No existe endpoint ni UI para **invitar nuevos colaboradores** por correo electrónico (`POST /api/tenant/team/invite`) con token seguro y expiración.
 2. No existe mecanismo para **reenviar o revocar** una invitación pendiente.
-3. No existe flujo para **editar rol/nombre** (`tenant_owner` vs `tenant_agent` con permisos granulares) ni **suspender / reactivar / retirar (`left`)** un miembro existente del equipo.
+3. No existe flujo para **editar perfil/acceso Chatwoot** (`displayName`, `grantChatwootAccess` en `tenant_agent`) ni **suspender / reactivar / retirar (`left`)** un miembro existente del equipo.
 4. No se valida el límite real de usuarios del plan (`tenant_users` ni `chatwoot_agents` definidos en `SPEC-03`) al enviar invitaciones o reactivar miembros suspendidos, ni se sincroniza su estado con el acceso en Chatwoot (`SPEC-13`).
 
 ---
@@ -47,23 +47,23 @@ Entregar al `tenancy_owner` el **control completo del ciclo de vida de sus colab
 ### Dentro del alcance
 - Refactorización y ampliación de `TenantContactsAndUsersService` (`packages/domain/src/services/tenant-contacts-and-users.service.ts`) para cubrir ciclo completo:
   - Listado unificado de **miembros activos/suspendidos** (`cell_tenant_users` + `cell_users`) e **invitaciones pendientes/expiradas** (`admin.tenant_invitations`), con consumo `used / limit` real (`SPEC-03`).
-  - Creación de invitación con token criptográfico (`SHA-256` almacenado en `admin.tenant_invitations`), caducidad a `72 horas`, validación de membresía `1:0..1` (`ADM-001 D-15`) y envío de email vía `SPEC-14`.
-  - Aceptación de invitación (`/invite/[token]` o flujo de alta/contraseña para usuario nuevo en celda + usuario portal).
-  - Reenvío y revocación de invitaciones pendientes.
-  - Edición de perfil operativo / rol y permisos del miembro (`PATCH /api/tenant/team/[id]`).
+  - Creación de invitación con token criptográfico (`SHA-256` almacenado en `admin.tenant_invitations`), caducidad a `72 horas`, validación de membresía `1:0..1` (`ADM-001 D-15`), flag `grantChatwootAccess` y envío de email vía `SPEC-14`.
+  - Aceptación de invitación (`/invite/[token]` en `apps/admin`, exento en `proxy.ts`) con flujo diferenciado: usuario nuevo define nombre y contraseña creando identidad en Router + Celda + sesión; usuario ya existente en `admin.users` sin comercio activo confirma su contraseña actual (o sesión activa coincidente) sin sobrescribir su credencial previa.
+  - Reenvío (soportando invitaciones vigentes o expiradas) y revocación de invitaciones pendientes.
+  - Edición de perfil operativo y acceso Chatwoot del miembro (`PATCH /api/tenant/team/[id]`).
   - Suspensión / Reactivación (`suspended` ↔ `active`) y Retiro definitivo (`left`) con modal `--dsn-*` y revocación inmediata de sesiones activas en el portal.
-  - Desacople/sincronización no bloqueante (`after()`) con agente correspondiente en la cuenta Chatwoot del comercio si el plan habilita `chatwoot_agents`.
+  - Desacople/sincronización no bloqueante (`after()`) con agente correspondiente en la cuenta Chatwoot del comercio si el plan habilita `chatwoot_agents` y el colaborador tiene `grantChatwootAccess = true`.
 - Nuevos endpoints REST en `apps/admin/app/api/tenant/team/`:
   - `GET /api/tenant/team`
   - `POST /api/tenant/team/invite`
   - `POST /api/tenant/team/invitations/[id]/resend` y `DELETE /api/tenant/team/invitations/[id]`
   - `PATCH /api/tenant/team/[id]` y `PATCH /api/tenant/team/[id]/status` y `DELETE /api/tenant/team/[id]`
-  - `POST /api/tenant/team/accept-invite`
+  - `GET /api/tenant/team/accept-invite` y `POST /api/tenant/team/accept-invite`
 - Rediseño Mobile First de `apps/admin/app/workspace/team/team-view.tsx`.
 
 ### Fuera de alcance
 - Modificación de roles administrativos internos de la SaaS (`/admin/users` RBAC).
-- Creación de múltiples roles jerárquicos personalizados con matriz de permisos por campo granular en esta fase (se mantiene el modelo de `tenant_owner` y `tenant_agent` con flags operativos claros).
+- Múltiples co-propietarios (`tenant_owner` sigue siendo único por comercio según `ADM-001 D-31`, `admin.clients.owner_user_id` y `tenant_users_one_owner`) o creación de múltiples roles jerárquicos personalizados con matriz de permisos por campo granular en esta fase.
 
 ---
 
@@ -82,43 +82,46 @@ Entregar al `tenancy_owner` el **control completo del ciclo de vida de sus colab
 ### 7.1 `admin.tenant_invitations` (existente en `chatwoot-media-onboarding.ts`)
 - `id`: `UUID` PK.
 - `client_id`: `UUID` FK → `admin.clients.id`, `NOT NULL`, indexado.
-- `email`: `VARCHAR(255)` `NOT NULL` (normalizado `trim().toLowerCase()`).
-- `display_name`: `VARCHAR(160)` nullable **[Nuevo si no existe en tabla actual para personalizar saludo de invitación]**.
-- `role`: `VARCHAR(32)` (`'tenant_agent' | 'tenant_owner'`), `NOT NULL`, default `'tenant_agent'`.
-- `token_hash`: `VARCHAR(128)` `NOT NULL` (hash SHA-256 del token enviado por correo — nunca se guarda el token plano).
-- `status`: `VARCHAR(24)` (`'pending' | 'accepted' | 'revoked' | 'expired'`), `NOT NULL`, default `'pending'`.
+- `email`: `TEXT` `NOT NULL` (normalizado `trim().toLowerCase()`).
+- `display_name`: `TEXT` nullable **[Nuevo: para personalizar saludo de invitación y nombre inicial sugerido]**.
+- `role`: `TEXT` (`'tenant_agent'`), `NOT NULL`, default `'tenant_agent'` (mantiene invariante `tenant_invitations_role_check` de `ADM-001 D-31`).
+- `grant_chatwoot_access`: `BOOLEAN` `NOT NULL`, default `true` **[Nuevo: define si el colaborador consumirá cupo `chatwoot_agents` y accederá a `/workspace/conversations`]**.
+- `token_hash`: `BYTEA` `NOT NULL` (hash SHA-256 del token enviado por correo — nunca se guarda el token plano).
+- `status`: `TEXT` (`'pending' | 'accepted' | 'revoked' | 'expired'`), `NOT NULL`, default `'pending'`.
 - `invited_by_user_id`: `UUID` `NOT NULL`.
 - `expires_at`: `TIMESTAMPTZ` `NOT NULL` (`NOW() + 72h`).
 - `accepted_at`: `TIMESTAMPTZ` nullable.
-- Índice único parcial: máximo 1 invitación `pending` para un mismo `(client_id, email)`.
+- Índice único parcial: máximo 1 invitación `pending` para un mismo `(client_id, email)` (`tenant_invitations_client_email_pending_unique`).
 
 ### 7.2 `cell_tenant_users` y `cell_users` (existentes en `pg-cell-XX`)
-- `role`: `'tenant_owner' | 'tenant_agent'`.
+- `role`: `'tenant_owner' | 'tenant_agent'` (invariante `tenant_users_one_owner` único propietario activo por comercio).
 - `status`: `'active' | 'suspended' | 'left'`.
-- `chatwoot_agent_id`: `INTEGER` nullable **[Nuevo si no existe en `cell_tenant_users`, para correlacionar el usuario de celda con su agente en Chatwoot del comercio sin perder trazabilidad]**.
-- **Estrategia de eliminación:** El retiro de un colaborador marca `cell_tenant_users.status = 'left'` y desactiva su acceso (`cell_users.status = 'disabled'`), conservando trazabilidad de pedidos creados, calificaciones CRM (`cell_contact_ratings`) y auditoría histórica.
+- `grant_chatwoot_access`: `BOOLEAN` `NOT NULL`, default `true` **[Nuevo: habilita o revoca el acceso a la bandeja Chatwoot del comercio]**.
+- `chatwoot_agent_id`: `INTEGER` nullable **[Nuevo: para correlacionar el usuario de celda con su agente en Chatwoot del comercio sin perder trazabilidad]**.
+- **Estrategia de eliminación y re-invitación:** El retiro de un colaborador marca `cell_tenant_users.status = 'left'`, desactiva su acceso (`cell_users.status = 'disabled'`) y limpia `admin.users.active_client_id`, conservando trazabilidad de pedidos creados, calificaciones CRM (`cell_contact_ratings`) y auditoría histórica. Si el mismo correo vuelve a ser invitado al mismo comercio, se reactiva su fila en `cell_users` (`status = 'active'`) y se crea su nueva membresía activa.
 
 ---
 
 ## 8. Reglas de negocio
 
-- **RN-SPEC-12-01 (Cuota unificada `active + pending_invitations`):** Al crear una invitación o reactivar un miembro `suspended`, el sistema verifica que `(miembros active + invitaciones pending no expiradas) < limite(tenant_users)` del plan vigente (`SPEC-03`). Si alcanza el tope y el límite no es `UNLIMITED`, rechaza con `422 TEAM_QUOTA_EXCEEDED` sugiriendo ampliar el plan en `/workspace/billing`.
-- **RN-SPEC-12-02 (Invariante de al menos un propietario activo):** El sistema impide que el último `tenant_owner` en estado `active` de un comercio sea degradado a `tenant_agent`, suspendido o marcado como `left` (`422 LAST_OWNER_CANNOT_BE_REMOVED`).
-- **RN-SPEC-12-03 (Membresía exclusiva `ADM-001 D-15`):** Si un correo ya pertenece como miembro activo o pendiente a **otro comercio** de Mocter, se rechaza la invitación (`409 EMAIL_BELONGS_TO_ANOTHER_TENANT`) respetando el modelo de membresía 1:0..1 vigente, o si ya es miembro activo del mismo comercio (`409 ALREADY_TEAM_MEMBER`).
-- **RN-SPEC-12-04 (Seguridad de token de invitación):** El enlace enviado por email contiene token aleatorio de 32 bytes CSPRNG; en base de datos solo se almacena su `SHA-256`. Al reenviar invitación, se invalida el token previo generando uno nuevo y reiniciando `expires_at = NOW() + 72h`.
-- **RN-SPEC-12-05 (Suspensión inmediata con revocación de sesión):** Al suspender o retirar un colaborador, además de actualizar su estado en celda, se invalidan de inmediato sus sesiones activas del portal (`session_tokens`) para cortar acceso en la siguiente petición y se programa deshabilitación/desvinculación de agente en Chatwoot (`after()`).
+- **RN-SPEC-12-01 (Cuota unificada `tenant_users` y `chatwoot_agents`):** Al crear una invitación, reenviar una invitación expirada o reactivar un miembro `suspended`, el sistema verifica que `(miembros active + invitaciones pending vigentes) < limite(tenant_users)` del plan vigente (`SPEC-03`). Si además tiene `grantChatwootAccess = true`, verifica que `(miembros active con grantChatwootAccess + invitaciones pending vigentes con grantChatwootAccess) < limite(chatwoot_agents)` (rechazando con `422 TEAM_QUOTA_EXCEEDED` o `422 CHATWOOT_AGENTS_QUOTA_EXCEEDED`).
+- **RN-SPEC-12-02 (Invariante de propietario único `ADM-001 D-31`):** El sistema mantiene un único `tenant_owner` titular (`admin.clients.owner_user_id` e índice `tenant_users_one_owner`). No se permite invitar nuevos `tenant_owner`, ni degradar, suspender o retirar al `tenant_owner` (`422 LAST_OWNER_CANNOT_BE_REMOVED`).
+- **RN-SPEC-12-03 (Membresía exclusiva `ADM-001 D-15` e invitaciones duplicadas/expiradas):** Si un correo ya pertenece como miembro activo o pendiente a **otro comercio** (o tiene rol de plataforma), se rechaza la invitación (`409 EMAIL_BELONGS_TO_ANOTHER_TENANT`); si ya es miembro `active` o `suspended` del mismo comercio, se rechaza (`409 ALREADY_TEAM_MEMBER`); si ya existe una invitación `pending` vigente para el mismo correo en el mismo comercio, se rechaza (`409 INVITATION_ALREADY_PENDING`, sugiriendo reenvío). Si la invitación previa ya superó `expires_at`, se marca automáticamente como `expired` para permitir emitir una nueva sin colisionar con el índice único parcial.
+- **RN-SPEC-12-04 (Seguridad de token, reenvío y aceptación diferenciada):** El enlace enviado por email (`/invite/{token}`) contiene token aleatorio de 32 bytes CSPRNG; en base de datos solo se almacena su `SHA-256`. Al reenviar una invitación (vigente o expirada, validando cuota en este último caso), se invalida el token previo generando uno nuevo, se restaura `status = 'pending'` y se reinicia `expires_at = NOW() + 72h`. En la aceptación: si el correo es nuevo, se crea `admin.users` (con `emailVerifiedAt` confirmado por posesión del correo invitado), `cell_users` y `cell_tenant_users`; si el correo ya existe en `admin.users` con `active_client_id IS NULL`, debe validar su contraseña actual (o sesión activa coincidente) para vincularse sin sobrescribir su contraseña previa.
+- **RN-SPEC-12-05 (Suspensión inmediata con revocación de sesión y desacople Chatwoot):** Al suspender, retirar o desactivar `grantChatwootAccess` de un colaborador, se actualiza su estado en celda, se invalidan de inmediato sus sesiones activas del portal (`authService.revokeUserSessions`, cortando el acceso en `resolveAuthenticatedPortalContext`) cuando corresponda (`suspended`/`left`), y se programa la remoción del agente en la cuenta Chatwoot del comercio (`after()`) más bloqueo en `/api/auth/chatwoot/embed`.
 
 ---
 
 ## 9. Contratos de interfaz
 
-- `GET /api/tenant/team`: Lista paginada/filtrable de miembros + pestaña/sección de invitaciones pendientes + objeto `quota: { usedActive, pendingInvitations, limit, mode }`.
-- `POST /api/tenant/team/invite`: `{ email, displayName, role, grantChatwootAccess?: boolean }`.
+- `GET /api/tenant/team`: Lista paginada/filtrable de miembros (`active`/`suspended`) + invitaciones (solo para `tenancy_owner`) + objeto `quota: { usedActive, pendingInvitations, limit, mode, chatwootUsed, chatwootPending, chatwootLimit, chatwootMode }`.
+- `POST /api/tenant/team/invite`: `{ email, displayName?, role?: 'tenant_agent', grantChatwootAccess?: boolean }`.
 - `POST /api/tenant/team/invitations/[id]/resend` y `DELETE /api/tenant/team/invitations/[id]`.
-- `PATCH /api/tenant/team/[id]`: `{ displayName?, role?, grantChatwootAccess? }`.
+- `PATCH /api/tenant/team/[id]`: `{ displayName?, grantChatwootAccess? }`.
 - `PATCH /api/tenant/team/[id]/status`: `{ status: 'active' | 'suspended' }`.
 - `DELETE /api/tenant/team/[id]`: Retiro lógico definitivo (`status = 'left'`).
-- `POST /api/tenant/team/accept-invite`: `{ token, displayName, password }` (para pantalla pública `/invite/[token]`).
+- `GET /api/tenant/team/accept-invite?token=...`: Consulta metadatos no sensibles de la invitación (`valid`, `expired`, `tenantName`, `emailHint`, `displayName`, `existingAccount`, `matchesActiveSession`).
+- `POST /api/tenant/team/accept-invite`: `{ token, displayName?, password?, currentPassword? }` (para pantalla pública `/invite/[token]`, creando cookie de sesión en el portal al completar).
 - Todos protegidos con `handle()` RFC 9457 (eliminando `detail: msg` del archivo actual).
 
 ---
@@ -214,14 +217,17 @@ Característica: Gestión completa del equipo e invitaciones del comercio
 
 ## 14. Definition of Done
 
-- [ ] Servicio `TenantContactsAndUsersService` extendido con invitaciones seguras, aceptación, reenvío, revocación, edición y suspensión/reactivación/retiro.
-- [ ] Rutas `/api/tenant/team*` completas + página `/invite/[token]` + tests de integración y aislamiento.
-- [ ] UI `/workspace/team` rediseñada (`es`/`en`, Title Case, tabla estándar, modales `--dsn-*`, sin jerga interna).
-- [ ] `pnpm lint`, `pnpm test`, `drizzle-kit check` en verde + protocolo §4.18 ejecutado.
+- [x] Servicio `TenantContactsAndUsersService` extendido con invitaciones seguras, aceptación, reenvío, revocación, edición y suspensión/reactivación/retiro.
+- [x] Rutas `/api/tenant/team*` completas + página `/invite/[token]` + tests de integración y aislamiento.
+- [x] UI `/workspace/team` rediseñada (`es`/`en`, Title Case, tabla estándar, modales `--dsn-*`, sin jerga interna).
+- [x] `pnpm lint`, `pnpm test`, `drizzle-kit check` en verde + protocolo §4.18 ejecutado.
 
 ---
 
-## 15. Propuestas a Validar (PV-xx)
+## 15. Propuestas a Validar (PV-xx) — Decisiones Resueltas
 
-Sin preguntas abiertas para esta especificación.
+- **PV-01 (Invariante de propietario único):** Se mantiene `tenant_owner` único por comercio (`admin.clients.owner_user_id` + `tenant_users_one_owner`). Las invitaciones y ediciones aplican sobre `tenant_agent`.
+- **PV-02 (Ruta pública `/invite/[token]` y cuentas existentes):** `/invite/[token]` y `/api/tenant/team/accept-invite` se hospedan en `apps/admin` (exentos en `apps/admin/proxy.ts`). Usuarios nuevos definen contraseña y obtienen sesión directa; usuarios existentes en `admin.users` sin comercio activo confirman su contraseña actual (o sesión activa coincidente) sin sobrescribir credenciales.
+- **PV-03 (Acceso y cuota Chatwoot por colaborador):** Se persiste `grant_chatwoot_access` (default `true`) junto con `chatwoot_agent_id`; se valida `chatwoot_agents` (`SPEC-03`), se sincroniza/remueve el agente vía Platform API en `after()` y se valida el flag en `/api/auth/chatwoot/embed`.
+- **PV-04 (Invitaciones duplicadas/expiradas y re-invitación tras retiro):** `POST /invite` responde `409 INVITATION_ALREADY_PENDING` ante invitación vigente, expira automáticamente filas vencidas antes de crear una nueva, `resend` soporta vigentes y expiradas validando cuota, y aceptar tras un retiro previo (`left`) reactiva `cell_users` y crea nueva membresía activa.
 

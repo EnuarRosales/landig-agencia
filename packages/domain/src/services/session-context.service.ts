@@ -1,4 +1,4 @@
-import { eq, and, ne } from "drizzle-orm";
+import { eq, and, ne, desc } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { users, clients, clientRouting, cells, plans } from "../db/schemas/admin";
 import { subscriptions, billingManualPaymentReports } from "../db/schemas/admin/billing";
@@ -315,6 +315,7 @@ export async function resolveAuthenticatedPortalContext(
             .select({ role: cellTenantUsers.role, status: cellTenantUsers.status })
             .from(cellTenantUsers)
             .where(and(eq(cellTenantUsers.clientId, clientRecord.id), eq(cellTenantUsers.userId, user.id)))
+            .orderBy(desc(cellTenantUsers.joinedAt))
             .limit(1);
           return m;
         });

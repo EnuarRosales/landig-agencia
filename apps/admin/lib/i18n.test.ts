@@ -46,6 +46,15 @@ describe("mocter-admin Phase 2 · i18n, DSN-001 & ADM-001 T-27, T-29, T-37", () 
     expect(en.leads.exportCsv).toBe("Export CSV");
     expect(es.notifications.maskedSecretLabel).toContain("AES-256-GCM");
     expect(en.notifications.maskedSecretLabel).toContain("AES-256-GCM");
+
+    // Paridad 100% de claves de Equipo e Invitaciones (SPEC-12 + SPEC-17)
+    const esTeamKeys = Object.keys(es.workspace).filter(
+      (k) => k.startsWith("team") || k.startsWith("invite"),
+    );
+    const enTeamKeys = Object.keys(en.workspace).filter(
+      (k) => k.startsWith("team") || k.startsWith("invite"),
+    );
+    expect(enTeamKeys).toEqual(esTeamKeys);
   });
 });
 

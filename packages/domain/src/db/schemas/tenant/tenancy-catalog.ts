@@ -49,6 +49,8 @@ export const cellTenantUsers = cellAdminSchema.table(
     userId: uuid("user_id").notNull(),
     role: text("role").notNull().default("tenant_agent"),
     status: text("status").notNull().default("active"),
+    grantChatwootAccess: boolean("grant_chatwoot_access").notNull().default(true),
+    chatwootAgentId: integer("chatwoot_agent_id"),
     invitedBy: uuid("invited_by"),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
     leftAt: timestamp("left_at", { withTimezone: true }),

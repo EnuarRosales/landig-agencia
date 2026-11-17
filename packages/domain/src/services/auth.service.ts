@@ -4802,6 +4802,33 @@ export class AuthService {
       return err("Error interno al procesar el cambio de autorización.", "DB_ERROR");
     }
   }
+
+  /**
+   * Emite una sesión HTTP estándar para un usuario ya validado por flujos de aceptación de invitación (`SPEC-12`).
+   */
+  async issueSessionForUserById(
+    userId: string,
+    options?: LoginContextOptions,
+  ): Promise<Result<LoginSuccessData>> {
+    try {
+      const user = await this.authRepo.findUserById(userId);
+      if (!user) {
+        return err("Usuario no encontrado.", "USER_NOT_FOUND");
+      }
+      if (user.status === "disabled") {
+        return err("La cuenta de usuario se encuentra deshabilitada.", "USER_DISABLED");
+      }
+      let routingVersion: number | null = null;
+      if (user.activeClientId) {
+        routingVersion = await this.authRepo.getClientRoutingVersion(user.activeClientId);
+      }
+      return await this.createSessionForUser(user, "password", routingVersion, options);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[AuthService.issueSessionForUserById Failed] ${msg}`, error, { userId });
+      return err("Error interno al iniciar sesión del colaborador.", "DB_ERROR");
+    }
+  }
 }
 
 /** Instancia singleton por defecto de {@link AuthService}. */

@@ -4,13 +4,24 @@ import { GET } from "./route";
 
 const mockResolveAuthenticatedPortalContext = vi.fn();
 const mockGetDb = vi.fn();
+const mockWithTenantCellTransaction = vi.fn();
 const mockEnsureMemberUserInAccount = vi.fn();
 const mockGetUserSsoLoginUrl = vi.fn();
 
 vi.mock("@mocter/domain", () => ({
   resolveAuthenticatedPortalContext: (...args: unknown[]) => mockResolveAuthenticatedPortalContext(...args),
   getDb: () => mockGetDb(),
+  withTenantCellTransaction: (...args: unknown[]) => mockWithTenantCellTransaction(...args),
   chatwootAccounts: { clientId: "client_id", state: "state", chatwootAccountId: "chatwoot_account_id" },
+  cellTenantUsers: {
+    clientId: "client_id",
+    userId: "user_id",
+    status: "status",
+    grantChatwootAccess: "grant_chatwoot_access",
+    joinedAt: "joined_at",
+  },
+  and: vi.fn(),
+  desc: vi.fn(),
   eq: vi.fn(),
   ChatwootHttpPlatformGateway: vi.fn().mockImplementation(() => ({
     ensureMemberUserInAccount: mockEnsureMemberUserInAccount,
@@ -189,5 +200,48 @@ describe("apps/admin · GET /api/auth/chatwoot/embed (CHW-002 T-06)", () => {
     expect(location).toBeDefined();
     expect(location).toContain("/super_admin");
     expect(location).not.toContain("attacker.com");
+  });
+
+  it("modo workspace: bloquea con HTTP 403 a un tenant_agent con grantChatwootAccess=false (SPEC-12)", async () => {
+    mockResolveAuthenticatedPortalContext.mockResolvedValueOnce({
+      user: { id: "u-agent-1", email: "agent@store.com", displayName: "Agente" },
+      activeClient: { id: "c-1", ownerUserId: "u-owner" },
+      capabilities: { chatwoot_inboxes: true },
+      role: "tenant_agent",
+      effectiveRoles: ["tenant_agent"],
+    });
+
+    mockGetDb.mockReturnValueOnce({
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([{ state: "active", chatwootAccountId: 88 }]),
+          }),
+        }),
+      }),
+    });
+
+    mockWithTenantCellTransaction.mockImplementationOnce(async (_clientId: string, fn: any) => {
+      const fakeTx = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              orderBy: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([{ status: "active", grantChatwootAccess: false }]),
+              }),
+            }),
+          }),
+        }),
+      };
+      return await fn(fakeTx);
+    });
+
+    const req = new NextRequest("http://localhost:3003/api/auth/chatwoot/embed?scope=workspace", {
+      headers: { cookie: "mocter_sid=sid-test" },
+    });
+    const res = await GET(req);
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.detail).toContain("bandeja de atención");
   });
 });

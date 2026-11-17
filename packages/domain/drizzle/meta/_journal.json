@@ -274,6 +274,20 @@
       "when": 1794782965090,
       "tag": "0038_spec10_spec20_backfill_and_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1794881588938,
+      "tag": "0039_spec12_team_invitations",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794881608769,
+      "tag": "0040_spec12_team_comments",
+      "breakpoints": true
     }
   ]
 }

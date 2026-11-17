@@ -13,14 +13,30 @@ import { NextResponse, type NextRequest } from "next/server";
 export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  // Rutas exentas de autenticación de usuario (diagnósticos y webhooks)
+  // Rutas exentas de autenticación de usuario (diagnósticos, webhooks y aceptación pública de invitaciones SPEC-12)
   if (
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/webhooks") ||
+    pathname.startsWith("/api/tenant/team/accept-invite") ||
     pathname.startsWith("/_next") ||
     pathname.includes(".")
   ) {
     return NextResponse.next();
+  }
+
+  if (pathname === "/invite" || pathname.startsWith("/invite/")) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-pathname", pathname);
+    requestHeaders.set("x-mocter-pathname", pathname);
+    requestHeaders.set("x-mocter-search", request.nextUrl.search);
+    if (!requestHeaders.has("x-request-id")) {
+      requestHeaders.set("x-request-id", crypto.randomUUID());
+    }
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
   }
 
   const isProduction = process.env.NODE_ENV === "production";

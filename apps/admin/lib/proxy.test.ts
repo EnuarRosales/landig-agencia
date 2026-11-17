@@ -39,5 +39,19 @@ describe("apps/admin · Proxy Auth Guard", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("location")).toBeNull();
   });
+
+  it("permite el acceso público a /invite/[token] y /api/tenant/team/accept-invite sin cookie de sesión (SPEC-12)", () => {
+    const pageReq = new NextRequest("http://localhost:3003/invite/tok-123");
+    const pageRes = proxy(pageReq);
+    expect(pageRes.status).toBe(200);
+    expect(pageRes.headers.get("location")).toBeNull();
+
+    const apiReq = new NextRequest("http://localhost:3003/api/tenant/team/accept-invite", {
+      method: "POST",
+    });
+    const apiRes = proxy(apiReq);
+    expect(apiRes.status).toBe(200);
+    expect(apiRes.headers.get("location")).toBeNull();
+  });
 });
 

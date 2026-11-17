@@ -8,7 +8,7 @@ import { clients } from "../db/schemas/admin/clients";
 import { plans } from "../db/schemas/admin/plans";
 import { planLimits } from "../db/schemas/admin/plan-catalogs";
 import { chatwootCapabilityDefinitions, planCapabilityValues } from "../db/schemas/admin/chatwoot-capabilities";
-import { cellTenantLabels } from "../db/schemas/tenant";
+import { cellTenantLabels, cellTenantUsers } from "../db/schemas/tenant";
 import { RESERVED_MOCTER_LEAD_LABELS } from "./onboarding-and-limits.service";
 import { appLogger } from "../utils/logger";
 import { env } from "../utils/env";
@@ -167,6 +167,11 @@ export interface IChatwootPlatformGateway {
     name: string;
     role: "administrator" | "agent";
   }): Promise<{ userId: number }>;
+
+  removeMemberUserFromAccount?(params: {
+    accountId: number;
+    userId: number;
+  }): Promise<{ removed: boolean }>;
 
   getUserSsoLoginUrl?(params: {
     userId: number;
@@ -622,6 +627,40 @@ export class ChatwootHttpPlatformGateway implements IChatwootPlatformGateway {
     }
 
     return { userId };
+  }
+
+  /**
+   * Remueve la membresía de un usuario agente de una cuenta Chatwoot específica vía Platform API.
+   */
+  async removeMemberUserFromAccount(params: {
+    accountId: number;
+    userId: number;
+  }): Promise<{ removed: boolean }> {
+    const res = await fetch(
+      `${this.baseUrl}/platform/api/v1/accounts/${params.accountId}/account_users`,
+      {
+        method: "DELETE",
+        headers: {
+          api_access_token: this.platformToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: params.userId,
+        }),
+      },
+    );
+
+    if (res.status === 404) {
+      return { removed: true };
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(
+        `Chatwoot Platform API account_users delete error (${res.status}): ${text}`,
+      );
+    }
+
+    return { removed: true };
   }
 
   async getUserSsoLoginUrl(params: {
@@ -1574,6 +1613,145 @@ export async function getTenantChatwootAccount(params: {
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Sincroniza de forma no bloqueante el alta o reactivación de un colaborador como agente en Chatwoot (`SPEC-12`).
+ * Persiste `chatwoot_agent_id` en `cell_tenant_users` si la vinculación resulta exitosa.
+ */
+export async function syncTenantMemberChatwootAccess(params: {
+  clientId: string;
+  memberId: string;
+  email: string;
+  displayName: string;
+  role: "tenant_owner" | "tenant_agent";
+  gateway?: IChatwootPlatformGateway;
+  db?: any;
+}): Promise<{ synced: boolean; chatwootUserId?: number }> {
+  try {
+    const account = await getTenantChatwootAccount({
+      clientId: params.clientId,
+      db: params.db,
+    });
+    if (!account || account.state !== "active" || account.chatwootAccountId === null) {
+      return { synced: false };
+    }
+
+    const gateway = params.gateway ?? new ChatwootHttpPlatformGateway();
+    if (!gateway.ensureMemberUserInAccount) {
+      return { synced: false };
+    }
+
+    const mappedRole: "administrator" | "agent" =
+      params.role === "tenant_owner" ? "administrator" : "agent";
+    const ensured = await gateway.ensureMemberUserInAccount({
+      accountId: account.chatwootAccountId,
+      email: params.email,
+      name: params.displayName || "Operador",
+      role: mappedRole,
+    });
+
+    await withTenantCellTransaction(params.clientId, async (tx) => {
+      await tx
+        .update(cellTenantUsers)
+        .set({
+          chatwootAgentId: ensured.userId,
+          updatedAt: new Date(),
+          updatedBy: "spec12_chatwoot_sync",
+        })
+        .where(
+          and(
+            eq(cellTenantUsers.clientId, params.clientId),
+            eq(cellTenantUsers.id, params.memberId),
+          ),
+        );
+    });
+
+    appLogger.info("[ChatwootMemberSync] Agente sincronizado en cuenta Chatwoot", {
+      clientId: params.clientId,
+      memberId: params.memberId,
+      chatwootAccountId: account.chatwootAccountId,
+      chatwootUserId: ensured.userId,
+    });
+
+    return { synced: true, chatwootUserId: ensured.userId };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.warn("[ChatwootMemberSync] No se pudo sincronizar agente en Chatwoot", {
+      clientId: params.clientId,
+      memberId: params.memberId,
+      error: msg,
+    });
+    return { synced: false };
+  }
+}
+
+/**
+ * Remueve de forma no bloqueante la membresía del colaborador en la cuenta Chatwoot del comercio (`SPEC-12`).
+ */
+export async function removeTenantMemberChatwootAccess(params: {
+  clientId: string;
+  memberId: string;
+  chatwootAgentId: number | null;
+  gateway?: IChatwootPlatformGateway;
+  db?: any;
+}): Promise<{ removed: boolean }> {
+  if (!params.chatwootAgentId) {
+    return { removed: false };
+  }
+
+  try {
+    const account = await getTenantChatwootAccount({
+      clientId: params.clientId,
+      db: params.db,
+    });
+    if (!account || account.chatwootAccountId === null) {
+      return { removed: false };
+    }
+
+    const gateway = params.gateway ?? new ChatwootHttpPlatformGateway();
+    if (!gateway.removeMemberUserFromAccount) {
+      return { removed: false };
+    }
+
+    await gateway.removeMemberUserFromAccount({
+      accountId: account.chatwootAccountId,
+      userId: params.chatwootAgentId,
+    });
+
+    await withTenantCellTransaction(params.clientId, async (tx) => {
+      await tx
+        .update(cellTenantUsers)
+        .set({
+          chatwootAgentId: null,
+          updatedAt: new Date(),
+          updatedBy: "spec12_chatwoot_unsync",
+        })
+        .where(
+          and(
+            eq(cellTenantUsers.clientId, params.clientId),
+            eq(cellTenantUsers.id, params.memberId),
+          ),
+        );
+    });
+
+    appLogger.info("[ChatwootMemberSync] Agente removido de cuenta Chatwoot", {
+      clientId: params.clientId,
+      memberId: params.memberId,
+      chatwootAccountId: account.chatwootAccountId,
+      chatwootAgentId: params.chatwootAgentId,
+    });
+
+    return { removed: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.warn("[ChatwootMemberSync] No se pudo remover agente de Chatwoot", {
+      clientId: params.clientId,
+      memberId: params.memberId,
+      error: msg,
+    });
+    return { removed: false };
   }
 }
 
