@@ -2416,6 +2416,8 @@ export class TenantProductsAndMediaService {
         mediaCounts,
         attributesCount: attributes.length,
         comboComponentsCount: comboComponents.length,
+        sourceShareId: p.sourceShareId ?? null,
+        sourceVersion: p.sourceVersion ?? null,
         createdAt: p.createdAt ? new Date(p.createdAt).toISOString() : new Date().toISOString(),
         updatedAt: p.updatedAt ? new Date(p.updatedAt).toISOString() : new Date().toISOString(),
       };

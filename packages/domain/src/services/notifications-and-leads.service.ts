@@ -143,6 +143,36 @@ export const CANONICAL_EMAIL_EVENTS = [
     tenantConfigurable: true,
   },
   {
+    key: "community.leader_status",
+    category: "community" as const,
+    description: "Notificación de aprobación, rechazo o revocación de solicitud de líder de comunidad.",
+    variablesSchema: ["tenant_name", "status_label", "max_communities", "review_notes", "community_url"],
+    defaultSenderKey: "comunidad",
+    isEnabled: true,
+    isSystem: false,
+    tenantConfigurable: false,
+  },
+  {
+    key: "community.invited",
+    category: "community" as const,
+    description: "Invitación directa a un comercio para unirse a una comunidad.",
+    variablesSchema: ["tenant_name", "community_name", "inviter_name", "role_label", "invite_url"],
+    defaultSenderKey: "comunidad",
+    isEnabled: true,
+    isSystem: false,
+    tenantConfigurable: true,
+  },
+  {
+    key: "community.product_version_published",
+    category: "community" as const,
+    description: "Aviso de nueva versión disponible para un producto clonado desde una comunidad.",
+    variablesSchema: ["tenant_name", "community_name", "product_name", "version", "changelog", "community_url"],
+    defaultSenderKey: "comunidad",
+    isEnabled: true,
+    isSystem: false,
+    tenantConfigurable: true,
+  },
+  {
     key: "referral.registered",
     category: "referral" as const,
     description: "Confirmación de referido registrado y resumen de recompensa.",
@@ -453,6 +483,48 @@ export class TransactionalNotificationsAndLeadsService {
         subject: "Solicitud aceptada en {{community_name}}",
         bodyHtml:
           "<p>Hola {{user_name}}, tu ingreso a <strong>{{community_name}}</strong> fue aprobado (<a href=\"{{community_url}}\">entrar</a>).</p>",
+      },
+      {
+        eventKey: "community.leader_status",
+        locale: "es",
+        subject: "Estado de solicitud de líder de comunidad: {{status_label}}",
+        bodyHtml:
+          "<p>Hola {{tenant_name}}, el estado de tu autorización para crear comunidades cambió a <strong>{{status_label}}</strong> (cupo: {{max_communities}}). {{review_notes}} <a href=\"{{community_url}}\">Ir a Comunidad</a></p>",
+      },
+      {
+        eventKey: "community.leader_status",
+        locale: "en",
+        subject: "Community leader authorization update: {{status_label}}",
+        bodyHtml:
+          "<p>Hi {{tenant_name}}, your community leader authorization status is now <strong>{{status_label}}</strong> (quota: {{max_communities}}). {{review_notes}} <a href=\"{{community_url}}\">Open Community</a></p>",
+      },
+      {
+        eventKey: "community.invited",
+        locale: "es",
+        subject: "Invitación a la comunidad {{community_name}}",
+        bodyHtml:
+          "<p>Hola {{tenant_name}}, <strong>{{inviter_name}}</strong> te invitó con rol <strong>{{role_label}}</strong> a <strong>{{community_name}}</strong>. <a href=\"{{invite_url}}\">Ver Invitación</a></p>",
+      },
+      {
+        eventKey: "community.invited",
+        locale: "en",
+        subject: "Invitation to join {{community_name}}",
+        bodyHtml:
+          "<p>Hi {{tenant_name}}, <strong>{{inviter_name}}</strong> invited you as <strong>{{role_label}}</strong> to <strong>{{community_name}}</strong>. <a href=\"{{invite_url}}\">View Invitation</a></p>",
+      },
+      {
+        eventKey: "community.product_version_published",
+        locale: "es",
+        subject: "Nueva versión {{version}} de {{product_name}} en {{community_name}}",
+        bodyHtml:
+          "<p>Hola {{tenant_name}}, {{community_name}} publicó la versión <strong>{{version}}</strong> de <strong>{{product_name}}</strong>. Novedades: {{changelog}}. <a href=\"{{community_url}}\">Revisar Cambios</a></p>",
+      },
+      {
+        eventKey: "community.product_version_published",
+        locale: "en",
+        subject: "New version {{version}} of {{product_name}} in {{community_name}}",
+        bodyHtml:
+          "<p>Hi {{tenant_name}}, {{community_name}} published version <strong>{{version}}</strong> of <strong>{{product_name}}</strong>. Changelog: {{changelog}}. <a href=\"{{community_url}}\">Review Changes</a></p>",
       },
       {
         eventKey: "billing.payment_succeeded",

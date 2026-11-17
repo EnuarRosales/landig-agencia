@@ -28,7 +28,9 @@ import {
  */
 export const TENANT_COMPETENCE_EVENT_KEYS = new Set<string>([
   "community.digest",
+  "community.invited",
   "community.join_accepted",
+  "community.product_version_published",
   "referral.registered",
   "tenant.inventory.low_stock",
 ]);

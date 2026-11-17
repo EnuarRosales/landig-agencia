@@ -9,6 +9,7 @@ import {
   MessageSquare,
   CreditCard,
   Store,
+  Globe,
   Bot,
   Gift,
   BarChart3,
@@ -153,6 +154,11 @@ export function AdminShell({ children, currentUser, tenantCapabilities }: AdminS
       href: "/admin/tenants",
       label: dict.navTenants || "Inquilinos y Comercios",
       icon: Store,
+    },
+    {
+      href: "/admin/communities",
+      label: dict.navCommunities || "Comunidades y Líderes",
+      icon: Globe,
     },
     {
       href: "/admin/users",

@@ -71,6 +71,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         body.whiteLabelMode === "paleta" || body.whiteLabelMode === "completa"
           ? body.whiteLabelMode
           : "none",
+      communityFeedEnabled:
+        body.communityFeedEnabled !== undefined ? Boolean(body.communityFeedEnabled) : true,
     });
 
     if (!result.ok) {
@@ -122,6 +124,8 @@ export async function PUT(req: NextRequest): Promise<NextResponse> {
         body.whiteLabelMode === "paleta" || body.whiteLabelMode === "completa"
           ? body.whiteLabelMode
           : "none",
+      communityFeedEnabled:
+        body.communityFeedEnabled !== undefined ? Boolean(body.communityFeedEnabled) : undefined,
     });
 
     if (!result.ok) {

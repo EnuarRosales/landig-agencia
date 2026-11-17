@@ -203,5 +203,49 @@ describe("CEL-RF-016 · S3StorageService (SeaweedFS S3 Gateway Adapter)", () => 
       expect(notFoundRes.status).toBe(404);
     }
   });
+
+  it("copia un objeto S3 server-side con x-amz-copy-source y realiza fallback a GET+PUT si no está soportado", async () => {
+    const sampleBytes = Uint8Array.from([1, 2, 3, 4]).buffer;
+    const mockFetch = vi
+      .fn()
+      // 1. copyObject server-side: HEAD bucket + PUT copy
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      // 2. copyObject fallback: PUT copy 501 -> GET -> PUT
+      .mockResolvedValueOnce({ ok: false, status: 501, statusText: "Not Implemented" })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "image/webp" }),
+        arrayBuffer: async () => sampleBytes,
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200 });
+
+    const s3 = new S3StorageService(dummyConfig, mockFetch as any);
+    const fastCopy = await s3.copyObject(
+      "tenants/leader/products/p1/a.webp",
+      "tenants/member/products/p2/a.webp",
+      "image/webp",
+    );
+    expect(fastCopy.ok).toBe(true);
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      "http://seaweedfs:8333/media/tenants/member/products/p2/a.webp",
+      expect.objectContaining({
+        method: "PUT",
+        headers: expect.objectContaining({
+          "x-amz-copy-source": "/media/tenants/leader/products/p1/a.webp",
+        }),
+      }),
+    );
+
+    const fallbackCopy = await s3.copyObject(
+      "tenants/leader/products/p1/b.webp",
+      "tenants/member/products/p2/b.webp",
+      "image/webp",
+    );
+    expect(fallbackCopy.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(5);
+  });
 });
 

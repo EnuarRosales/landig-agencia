@@ -862,6 +862,13 @@ export function ProductsView({
                           {dict.productsFilterCompositionCombo}
                         </span>
                       )}
+                      {item.sourceShareId && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                          {locale === "en"
+                            ? `Imported from Community (v${item.sourceVersion ?? 1})`
+                            : `Importado de Comunidad (v${item.sourceVersion ?? 1})`}
+                        </span>
+                      )}
                     </div>
                     {item.sku && (
                       <p className="mt-0.5 text-xs text-[var(--dsn-text-secondary)]">SKU: {item.sku}</p>
@@ -1032,6 +1039,13 @@ export function ProductsView({
                         ) : (
                           <span className="text-xs text-[var(--dsn-text-secondary)]">
                             {dict.productsFilterCompositionSimple}
+                          </span>
+                        )}
+                        {item.sourceShareId && (
+                          <span className="inline-flex w-fit items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                            {locale === "en"
+                              ? `Community v${item.sourceVersion ?? 1}`
+                              : `Importado de Comunidad v${item.sourceVersion ?? 1}`}
                           </span>
                         )}
                       </div>

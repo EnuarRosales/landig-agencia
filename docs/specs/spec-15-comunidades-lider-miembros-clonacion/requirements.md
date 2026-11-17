@@ -1,15 +1,15 @@
-# SPEC-15 · Comunidades de Comercios: Gestión de Líder y Miembros (Inquilinos) y Clonación de Catálogo
+# SPEC-15 · Comunidades de Comercios: Red Colaborativa Multi-Comunidad, Líder/Miembros y Clonación Inteligente de Catálogo
 
 ## 1. Identificación
 
 | Campo | Valor |
 | --- | --- |
 | **ID** | `SPEC-15` |
-| **Nombre** | Comunidades de Comercios: Gestión de Líder y Miembros (Ambos Inquilinos) y Clonación de Catálogo |
-| **Tipo de intervención** | Habilitación operativa completa de UI/API sobre servicios de dominio existentes |
-| **Prioridad** | P2 — Media / Alta (red colaborativa B2B y aceleración de catálogo entre comercios) |
-| **Versión** | 1.0.0 |
-| **Estado** | Aprobada para implementación |
+| **Nombre** | Comunidades de Comercios: Red Colaborativa Multi-Comunidad, Líder/Miembros y Clonación Inteligente de Catálogo |
+| **Tipo de intervención** | Evolución de esquema + Habilitación integral de dominio, APIs REST y UI (`/workspace/community`, `/admin/communities`, `/admin/plans`) |
+| **Prioridad** | P1 — Crítica / Diferencial competitivo central del sistema |
+| **Versión** | 2.0.0 |
+| **Estado** | Aprobada para implementación (alineada mediante entrevista `/grill-me`) |
 | **Paquetes / Apps afectadas** | `packages/domain`, `apps/admin` |
 
 ---
@@ -18,209 +18,176 @@
 
 | Elemento | Referencia |
 | --- | --- |
-| **IDs de observaciones cubiertos** | `GEN-03` (y resolución aprobada de `PV-05`: líder y miembros son inquilinos SaaS) |
-| **Specs previas relacionadas** | `ADM-001`, `TNT-001`, `ORD-001` |
-| **Specs integradas / dependientes** | `SPEC-00` (clonación segura de referencias multimedia SeaweedFS / imgproxy), `SPEC-03` (capacidad `community_feed` y cuotas `products` + multimedia del comercio adoptante), `SPEC-08` (estructura completa de producto incluyendo `bot_master_prompt`, atributos dinámicos y foto principal), `SPEC-14` (notificaciones de invitación / solicitud / nueva versión de producto), `SPEC-17` (i18n y tablas estándar) |
-| **Wave de ejecución sugerida** | Wave 4 — Expansión de Valor y Reglas Transversales UI |
+| **IDs de observaciones cubiertos** | `GEN-03`, `PV-05` (líder y miembros son inquilinos SaaS activos) |
+| **Specs previas relacionadas** | `ADM-001` (`RF-06`, `RF-08`, `D-13`..`D-23`, `D-30`..`D-31`), `TNT-001`, `ORD-001` |
+| **Specs integradas / dependientes** | `SPEC-00` (copia segura e independiente en SeaweedFS + URLs firmadas `imgproxy`), `SPEC-03` (capacidad `community_feed` en planes y cuotas `products` + multimedia + `storage_bytes`), `SPEC-08` (estructura completa de producto simple y combo, `bot_master_prompt`, atributos dinámicos y `is_cover`), `SPEC-11` (atribución de ventas por producto clonado), `SPEC-14` (notificaciones in-app y correo transaccional), `SPEC-17` (i18n `es`/`en` y tablas estándar), `SPEC-19` (kit conversacional AI por producto) |
+| **Wave de ejecución** | Wave 4 — Expansión de Valor Diferencial |
 
 ---
 
 ## 3. Problema / Situación actual
 
-El dominio ya cuenta con la infraestructura base de comunidades y clonación en `packages/domain`:
-- Esquema `packages/domain/src/db/schemas/admin/communities-and-cloning.ts` (`organizations`, `organizationMembers`, `organizationInvitations`, `organizationJoinRequests`, `organizationPromotions`, `clientSharingProfiles`, `productShares`, `productShareVersions`, `productAdoptions`, `cloneSyncPolicies`).
-- Servicios `communities-governance.service.ts`, `community-feed.service.ts`, `community-leadership-metrics.service.ts` y `product-cloning.service.ts`.
+Aunque `packages/domain` contiene tablas iniciales de `ADM-001` (`organizations`, `organization_members`, `organization_invitations`, `organization_join_requests`, `organization_promotions`, `client_sharing_profiles`, `product_shares`, `product_share_versions`, `product_adoptions`, `clone_sync_policies`, `sync_runs`, `feed_posts`, `feed_moderation_events`) y servicios base aislados sin repositorio Drizzle completo:
 
-Sin embargo, en el Backoffice del Inquilino:
-1. `apps/admin/app/workspace/community/page.tsx` únicamente muestra un **placeholder estático** (*«Catálogo mayorista y red colaborativa de comercios habilitada»*) cuando el plan incluye `community_feed`, sin ninguna operación real de comunidad ni clonación.
-2. No existe ninguna ruta API bajo `apps/admin/app/api/tenant/` para gestionar comunidades, invitaciones/solicitudes entre comercios, compartir productos desde el catálogo del **inquilino líder** ni explorar el feed y clonar productos hacia el catálogo del **inquilino miembro**.
-3. Es necesario asegurar compatibilidad con los atributos de producto extendidos en `SPEC-08` (`bot_master_prompt`, `attributes`, `composition_type`, multimedia + `is_cover`) al publicar un `product_share` y al adoptar/sincronizar en la celda destino del inquilino miembro.
-
----
-
-## 4. Objetivo y valor de negocio
-
-Materializar en el Backoffice del Inquilino (`/workspace/community`) la **red colaborativa entre comercios inquilinos de Mocter (`PV-05`)**:
-- Permitir que un **inquilino líder** cree o administre una comunidad de distribuidores/aliados, invite o apruebe **otros inquilinos miembros**, publique productos de su catálogo con versión y precio sugerido, y consulte métricas agregadas de adopción.
-- Permitir que un **inquilino miembro** explore el feed de productos compartidos de las comunidades a las que pertenece, revise el detalle y clone productos seleccionados directamente a su propio catálogo en `pg-cell-XX` respetando sus cuotas de plan (`SPEC-03`), eligiendo si mantiene vínculo de sincronización o copia independiente.
+1. **Restricciones obsoletas en el modelo de datos:**
+   - `organizations` posee `organizations_originator_unique` (impide que un comercio lidere más de una comunidad o marca/línea) y carece de `slug`, `description`, `category`, `visibility`, `share_policy`, `require_share_approval`, `invite_code` y `status`.
+   - `organization_members` posee `organization_members_one_active_per_client` (impide que un comercio pertenezca simultáneamente a múltiples comunidades de distintos proveedores).
+   - `media_catalog` y el flujo de borrado multimedia (`deleteProductMediaAndPromote`) eliminan el archivo físico en SeaweedFS cuando el propietario original lo desvincula si no existe copia independiente en el prefijo del adoptante.
+2. **Brechas en gobierno por plataforma y planes:**
+   - La capacidad `community_feed` no está sembrada en `admin.plan_features` ni es configurable en `/admin/plans` (`PlanModalDialog`).
+   - No existe mecanismo para que un comercio solicite habilitación como Líder ni consola en `/admin/communities` para que `platform_admin` apruebe solicitudes, otorgue cupo de comunidades o supervise redes.
+3. **Ausencia operativa en Backoffice y APIs:**
+   - `apps/admin/app/workspace/community/page.tsx` muestra un placeholder estático.
+   - No existen Route Handlers bajo `/api/tenant/community/*` ni `/api/admin/communities/*`.
+   - Los servicios actuales no soportan **combos (`SPEC-08`)**, detección de cambios pendientes entre el producto vivo y la última versión compartida, diff visual `vN → vN+1`, atribución estricta de métricas por comunidad ni integración con `NotificationDispatcherService` (`SPEC-14`).
 
 ---
 
-## 5. Alcance y Fuera de alcance
+## 4. Objetivo y valor de negocio ("La Joya del Sistema")
+
+Convertir `/workspace/community` en el **ecosistema B2B diferencial de Mocter** frente a competidores de comercio conversacional y dropshipping:
+
+1. **Comunidades Multi-Red Sin Fricción (Red Mayorista + Modo Colaborativo Opcional):**
+   - Un comercio puede liderar múltiples comunidades (sujeto a habilitación aprobada por `platform_admin`) y simultáneamente ser miembro de múltiples comunidades de distintos proveedores o marcas para construir un catálogo multimarca.
+2. **Clonación de "Kits Comerciales AI" en 1 Clic (Simples y Combos):**
+   - No se clona solo una foto y un texto: se clona el **kit de ventas completo** (`name`, `description`, `bot_master_prompt` optimizado de hasta 32k caracteres para el agente AI, atributos dinámicos para variantes, galería multimodal compatible con el plan del miembro mediante copia independiente en SeaweedFS, y componentes atómicos si el producto es un **Combo**).
+   - Incluye calculadora instantánea de margen comercial al adoptar (`costo mayorista` vs `precio sugerido` vs `precio de venta propio`), referencia de precio mínimo sugerido y stock referencial del proveedor.
+3. **Versionamiento Controlado con Detector de Cambios y Diff Visual (`v1` → `v2`):**
+   - El líder edita libremente sus productos en `/workspace/products` sin spamear a su red; `/workspace/community` detecta diferencias pendientes por publicar y permite liberar `v2` con `changelog` opcional.
+   - Cada miembro recibe notificación (`SPEC-14`), inspecciona el **diff visual campo a campo** y decide libremente qué actualizar (manualmente o activando políticas `auto_sync` en atributos seguros), con protección inviolable sobre su precio de venta y stock locales.
+4. **Muro de Novedades Moderado + Directorio + Invitaciones por WhatsApp:**
+   - Muro comunitario (`feed_posts`) para lanzamientos, reposiciones y tips comerciales con moderación `pre` / `post` / `none`, respetando el **Perfil de Privacidad** (`client_sharing_profiles`).
+   - Directorio descubrible (`request_to_join`) y enlaces/códigos de invitación compartibles por WhatsApp además de invitación directa por correo o slug.
+5. **Radar de Impacto con Atribución Estricta por Comunidad:**
+   - Métricas reales para el Líder (adopciones activas, unidades vendidas, revenue generado, top productos y top adoptantes) calculadas **exclusivamente** sobre los productos clonados de esa comunidad — garantizando privacidad comercial frente a otras comunidades del mismo miembro y cero acceso a chats o clientes finales.
+
+---
+
+## 5. Decisiones Cerradas (Alineación `/grill-me`)
+
+| Código | Decisión Aprobada |
+| --- | --- |
+| **SPEC-15-D01** | **Multi-comunidad total:** Un comercio puede crear y liderar múltiples comunidades (según cupo otorgado por plataforma) y pertenecer simultáneamente como miembro activo a múltiples comunidades distintas. |
+| **SPEC-15-D02** | **Acceso por plan + Liderazgo aprobado por Plataforma:** Todos los planes activos arrancan con `community_feed = true` por defecto (configurable luego por plan en `/admin/plans` y por comercio vía `client_feature_overrides`). Cualquier comercio con acceso puede unirse a comunidades y clonar; crear comunidades como Líder requiere solicitud o habilitación explícita por `platform_admin` / `platform_owner`. |
+| **SPEC-15-D03** | **Flujo completo Solicitud ↔ Consola `/admin/communities`:** El comercio solicita habilitación de Líder desde `/workspace/community` (con propuesta de marca/nicho); `platform_admin` aprueba, rechaza, revoca o habilita directamente definiendo `max_owned_communities` (`null` = ilimitado) y supervisa las comunidades desde `/admin/communities`. |
+| **SPEC-15-D04** | **Política de compartición configurable por comunidad:** Por defecto toda comunidad nace en modo **Red Mayorista** (`leaders_only`: solo `originator` y `co_leader` comparten productos); el `originator` puede habilitar el modo **Colaborativo** (`collaborative`, con moderación previa opcional `require_share_approval`) para que miembros activos también propongan productos. |
+| **SPEC-15-D05** | **Experiencia integral unificada:** `/workspace/community` integra Catálogo Compartido + Clonación, Mis Clones y Versiones, Muro de Novedades (`feed_posts`), Directorio e Invitaciones (código/enlace + correo/slug), Co-líderes (`organization_promotions`), Perfil de Privacidad (`client_sharing_profiles`) y Radar de Liderazgo. |
+| **SPEC-15-D06** | **Soporte completo para Productos Simples y Combos (`SPEC-08`):** Si se comparte un Combo, el snapshot empaqueta sus componentes simples completos; al clonarlo en la celda del miembro, se valida la cuota total de `products` (combo + componentes nuevos requeridos) y se crean o reutilizan atómicamente los componentes simples junto con `product_bundle_items`. |
+| **SPEC-15-D07** | **Publicación explícita de versiones con detector de cambios:** Editar un producto en `/workspace/products` no crea versiones ni dispara alertas automáticamente; el sistema detecta cambios frente al último snapshot publicado y permite al líder revisarlos y publicar `vN+1` con `changelog` opcional. |
+| **SPEC-15-D08** | **Diff visual + política mixta por atributo con protección de precio/stock:** Al clonar, todos los atributos nacen con `auto_sync = false` (decisión voluntaria del miembro tras revisar el diff `v1 → v2`); el miembro puede habilitar `auto_sync` en atributos no destructivos (`description`, `botMasterPrompt`, `attributes`, `category`, `brand`, `media`), pero su `price_cents` de venta y `stock_quantity` local nunca se sobreescriben automáticamente. |
+| **SPEC-15-D09** | **Atribución estricta en métricas de liderazgo:** `CommunityLeadershipMetricsService` consulta únicamente clones vinculados a `shares` de esa comunidad (`source_share_id`), sin sumar productos propios ni clones de otras comunidades del miembro, y sin exponer chats ni clientes finales. |
+| **SPEC-15-D10** | **Copia independiente de medios en SeaweedFS (`SPEC-00`):** Al clonar medios compatibles con las cuotas del adoptante (`SPEC-03`), los binarios se copian en S3 bajo el prefijo `tenants/{adopterClientId}/products/{cloneProductId}/...` con registro en `media_catalog` bajo `storage_pool_id = "tenant:{adopterClientId}"`, garantizando que ni líder ni miembro puedan borrar archivos ajenos. |
+
+---
+
+## 6. Alcance y Fuera de alcance
 
 ### Dentro del alcance
-- Verificación y ajuste de `ProductCloningService`, `CommunitiesGovernanceService`, `CommunityFeedService` y `CommunityLeadershipMetricsService` para garantizar:
-  - Compatibilidad con el rol dual entre **dos inquilinos de la SaaS**: inquilino líder (`originator` / `co_leader`) e inquilino miembro (`member`) operando siempre sobre sus respectivas celdas `pg-cell-XX`.
-  - Soporte completo en `product_share_versions` y clonación hacia el miembro de: nombre, descripción, `bot_master_prompt`, atributos dinámicos (`PRD-05`), precio sugerido / costo base para el miembro (`wholesalePriceCents` o `suggestedRetailPriceCents`) y referencias multimedia con `is_cover` (`SPEC-00`, `SPEC-08`), validando previamente que el comercio miembro tenga cupo en `products` y multimedia según su plan (`SPEC-03`).
-  - Políticas de sincronización explícitas (`clone_sync_policies`): clonación única desconectada vs. sincronización manual/automática de metadatos ante nuevas versiones publicadas por el líder (`syncMode`).
-- Creación de la familia completa de endpoints `/api/tenant/community*`:
-  - `GET / POST /api/tenant/community/organizations` (mis comunidades como líder o miembro, creación de comunidad si su perfil/plan lo habilita, unirse/solicitar ingreso).
-  - `POST /api/tenant/community/organizations/[orgId]/invite` y `POST .../requests/[reqId]/review` (aprobar/rechazar inquilinos solicitantes).
-  - `GET / POST /api/tenant/community/shares` (listar y publicar producto propio del líder hacia una comunidad creando versión `v1`, `v2`...).
-  - `GET /api/tenant/community/feed` (catálogo compartido visible para miembros activos de la organización, con búsqueda/filtros/paginación).
-  - `POST /api/tenant/community/shares/[shareId]/adopt` (clonar producto del líder hacia la celda del inquilino miembro).
-  - `POST /api/tenant/community/adoptions/[adoptionId]/sync` y `DELETE .../link` (sincronizar manualmente nueva versión o desvincular clon para convertirlo en producto autónomo).
-  - `GET /api/tenant/community/leadership-metrics` (métricas para líder: comercios adoptantes activos, top productos clonados).
-- Construcción completa de UI Mobile First en `apps/admin/app/workspace/community/` (manteniendo el bloqueo informativo elegante cuando `community_feed = false`).
+- **Migración Drizzle versionada en Router Global (`packages/domain/drizzle/`):**
+  - Eliminación de índices únicos restrictivos `organizations_originator_unique` y `organization_members_one_active_per_client`, creando índice único compuesto `(organization_id, client_id) WHERE status = 'active'`.
+  - Extensión de `admin.organizations` (`slug`, `description`, `category`, `visibility`, `share_policy`, `require_share_approval`, `invite_code`, `status`).
+  - Extensión de `admin.product_shares` (`moderation_status`, `moderated_by_user_id`, `moderated_at`, `rejection_reason`) y `admin.product_share_versions` (`changelog`).
+  - Nueva tabla `admin.community_leader_authorizations` (estado de solicitud/aprobación de líder por `client_id`, cuota `max_owned_communities`, propuesta comercial, auditoría).
+  - Siembra de capacidad `community_feed` en `admin.plan_features` + habilitación inicial por defecto (`enabled = true`) en todos los planes activos existentes, más nuevos eventos de notificación en `admin.email_events` (`community.leader_status`, `community.invited`, `community.product_version_published`).
+- **Actualización de servicios e implementaciones Drizzle reales (`packages/domain`):**
+  - `CommunitiesGovernanceService` + `DrizzleCommunitiesGovernanceRepository` (solicitudes/aprobaciones de líder, CRUD comunidades multi-comunidad, directorio público, invitaciones por email/slug y por código compartible, solicitudes de ingreso, promociones a co-líder, salida segura).
+  - `ProductCloningAndCommunitiesService` + `DrizzleProductCloningRepository` (publicación de simples y combos, detección de cambios pendientes, moderación en modo colaborativo, adopción atómica con cuotas `SPEC-03` y copia S3 independiente `SPEC-00`, diff visual `vA → vB`, sync selectivo manual/auto, políticas por atributo, desvinculación segura).
+  - `CommunityFeedService` + `DrizzleCommunityFeedRepository` (muro de novedades con moderación `pre`/`post`/`none` y `client_sharing_profiles`).
+  - `CommunityLeadershipMetricsService` + `DrizzleLeadershipMetricsRepository` (atribución estricta por comunidad a través de `CellDatabasePoolManager`).
+  - Integración de `community_feed` en `PlanModalDialog` (`/admin/plans`) y `admin-dashboard.service.ts`.
+  - Integración de `NotificationDispatcherService` (`SPEC-14`) mediante tareas no bloqueantes.
+- **Endpoints REST (`apps/admin/app/api/tenant/community/**` y `apps/admin/app/api/admin/communities/**`)** con Zod, RBAC y `handle()` RFC 9457.
+- **Interfaces completas Mobile First (`es`/`en`, Title Case, `--dsn-*`, `<WorkspaceDataTable />`, `ConfirmationModal`):**
+  - `/workspace/community` (con pestañas de Explorar Catálogo, Mis Clones y Versiones, Muro de Novedades, Mis Comunidades y Directorio, Gestión de Líder y Radar de Impacto, más modal de Solicitud de Líder).
+  - Indicador discreto de origen comunitario / actualización disponible en `/workspace/products` (bloqueando re-compartición en cadena).
+  - `/admin/communities` en el Backoffice SaaS (`AdminShell.tsx`) y toggle `community_feed` en `/admin/plans`.
 
 ### Fuera de alcance
-- Liquidación automática de comisiones o pagos mayoristas entre inquilino líder e inquilino miembro dentro de Mocter (cada comercio maneja su facturación externa o registra sus condiciones comerciales).
-- Clonación directa de productos sin pertenecer a una comunidad con membresía `active`.
+- Liquidación financiera o cobro automático de pedidos mayoristas entre inquilino líder e inquilino miembro dentro de Mocter.
+- Descuento o reserva automática de inventario físico en la celda del líder al momento de una venta en la celda del miembro (el stock del líder se consulta de manera informativa al compartir/actualizar versión; cada comercio gestiona su inventario local).
+- Clonación directa sin membresía activa en la comunidad que aloja el producto compartido.
 
 ---
 
-## 6. Actores y permisos
+## 7. Actores y permisos
 
 | Actor / Rol | Operación | Permitido | Condición |
 | --- | --- | --- | --- |
-| `tenancy_owner` (Inquilino Líder / `originator` o `co_leader`) | Crear comunidad, invitar otros comercios por slug/código, aprobar solicitudes, publicar/actualizar versiones de productos propios, ver métricas de liderazgo | Sí | Plan con `community_feed = true` y rol `originator`/`co_leader` en la organización |
-| `tenancy_owner` (Inquilino Miembro / `member`) | Aceptar invitaciones o solicitar unirse a una comunidad, explorar feed compartido, clonar productos a su catálogo, sincronizar versiones o desvincular clones | Sí | Membresía `active` en la organización y cupo de catálogo disponible (`SPEC-03`) |
-| `tenancy_users` (`tenant_agent`) | Explorar feed compartido de comunidades a las que ya pertenece su comercio | Sí | Solo lectura; clonar o gestionar membresías/publicaciones requiere `tenancy_owner` |
-| Inquilino ajeno (no miembro de la organización) | Ver feed, listar miembros o clonar `product_share` de esa comunidad | No | `403 FORBIDDEN` |
-
----
-
-## 7. Modelo de datos
-
-Se aprovechan y extienden si corresponde las entidades existentes en `packages/domain/src/db/schemas/admin/communities-and-cloning.ts`:
-- **`admin.organizations`**: `id`, `name`, `slug`, `description`, `originator_client_id` (inquilino líder fundador), `visibility` (`'private_invite' | 'request_to_join'`), `status` (`'active' | 'suspended'`).
-- **`admin.organization_members`**: `organization_id`, `client_id` (inquilino participante), `role` (`'originator' | 'co_leader' | 'member'`), `status` (`'active' | 'suspended' | 'left'`).
-- **`admin.product_shares` y `admin.product_share_versions`**:
-  - `sharer_client_id`: `UUID` FK → `admin.clients.id` (siempre un inquilino líder/co-líder).
-  - `source_product_id`, `source_cell_id`, `current_version`.
-  - Snapshot en `product_share_versions.payload` (`JSONB`): incluye `name`, `description`, `kind`, `compositionType`, `suggestedPriceCents`, `wholesaleCostCents`, `botMasterPrompt`, `attributes`, `mediaSnapshot[]` (con `isCover` y referencia segura para duplicar metadato en destino sin mutar el original del líder).
-- **`admin.product_adoptions` y `admin.clone_sync_policies`**:
-  - `share_id`, `adopter_client_id` (inquilino miembro), `clone_product_id`, `clone_cell_id`, `adopted_version`, `link_active` (`BOOLEAN`), `sync_policy` (`'manual' | 'notify_only' | 'auto_metadata'`).
-- **Aislamiento de celdas al clonar:** El servicio de clonación lee el snapshot aprobado de `admin.product_share_versions` (nunca expone credenciales ni datos privados de la celda del líder directamente al navegador del miembro) e inserta el nuevo producto exclusivamente dentro de `pg-cell-XX` del `adopter_client_id` bajo su `app.current_client_id`.
-- **Estrategia de eliminación:** Si el líder retira un `product_share` de la comunidad o un miembro sale de la comunidad, los productos ya clonados en el catálogo del miembro **NO se borran**; `product_adoptions.link_active` pasa a `false` preservando la operación y los pedidos históricos del miembro.
+| `platform_owner` / `platform_admin` | Aprobar/rechazar solicitudes de Líder, habilitar/revocar cupo de comunidades por inquilino, suspender/reactivar comunidades, activar `community_feed` por plan | Sí | Sesión `scope = 'platform'` |
+| `tenant_owner` (Habilitado como Líder / `originator`) | Crear comunidad (dentro de su cuota), configurar visibilidad/política/moderación, invitar comercios, generar código de invitación, aprobar solicitudes de ingreso, promover a `co_leader`, publicar/versionar productos, moderar productos propuestos y feed, ver Radar de Liderazgo | Sí | `community_feed = true`, autorización `approved` vigente y rol `originator` en esa comunidad |
+| `tenant_owner` (`co_leader`) | Compartir y versionar productos propios en la comunidad, moderar publicaciones del muro (y productos propuestos si está habilitado), ver Radar de Liderazgo | Sí | Aceptación expresa previa de promoción a `co_leader`; no admite miembros ni promueve otros co-líderes ni cambia modo de moderación |
+| `tenant_owner` (`member`) | Explorar directorio y solicitar ingreso, aceptar invitaciones o unirse por código, clonar productos simples/combos a su catálogo, configurar políticas de sync, aplicar diffs o desvincular clones, publicar en el muro, proponer productos (si modo colaborativo), configurar privacidad | Sí | `community_feed = true`, membresía `active`, cuota de catálogo disponible (`SPEC-03`) |
+| `tenant_agent` | Ver catálogo compartido, muro de novedades y clones de comunidades a las que pertenece su comercio; publicar en el muro | Sí | Solo lectura en catálogo/clonación; prohibido clonar, desvincular, gestionar membresías, cambiar privacidad o ver métricas agregadas de liderazgo (`403 FORBIDDEN`) |
+| Inquilino ajeno (no miembro) | Ver feed/catálogo privado, ver miembros, clonar o sincronizar productos de una comunidad ajena | No | `403 FORBIDDEN` (en directorio solo ve metadatos públicos de comunidades con `visibility = 'request_to_join'`) |
 
 ---
 
 ## 8. Reglas de negocio
 
-- **RN-SPEC-15-01 (Relación Inquilino Líder → Inquilino Miembro `PV-05`):** Toda comunidad vincula cuentas inquilinas reales (`admin.clients`). Tanto el distribuidor/marca líder que comparte productos como los comercios miembros que los clonan operan cada uno desde su propio workspace Mocter bajo su propio `client_id` y celda asignada.
-- **RN-SPEC-15-02 (Prevención de auto-adopción y re-compartición en cadena):** Un inquilino líder no puede clonar sobre sí mismo un `product_share` que él mismo publicó (`422 CANNOT_ADOPT_OWN_SHARE`), y por defecto un producto ya clonado (`source_share_id IS NOT NULL` en `cell_products`) no puede republicarse como producto maestro original a otra comunidad para evitar pirámide de copias inconsistentes (`422 CANNOT_RESHARE_CLONED_PRODUCT`).
-- **RN-SPEC-15-03 (Respeto estricto a cuotas del comercio miembro `SPEC-03`):** Antes de materializar la clonación (`POST /adopt`), el sistema valida en `TenantCapabilityGateService` que el inquilino miembro disponga de cupo en `products` y ajuste la copia de medios según sus topes (`images_per_product`, `videos_per_product`, `audios_per_product`, `pdfs_per_product`, `storage_bytes`). Si supera el cupo de productos, rechaza con `422 PRODUCT_QUOTA_EXCEEDED`. Si tiene menos cupo de un medio (ej. plan del miembro permite 0 videos), informa o omite los medios excedentes con aviso explícito según configuración elegida sin violar su plan.
-- **RN-SPEC-15-04 (Independencia operativa y opcionalidad de precios del clon):** Al clonarse en `cell_products` del miembro, el producto hereda el nombre, descripción, atributos, `bot_master_prompt` y foto principal, registrando `source_share_id` y poniendo su `cost_price_cents` inicial igual al `wholesaleCostCents` (o sugerido) para que el miembro ajuste su precio de venta (`price_cents`) y su stock físico local (`stock_quantity` inicia en `0` o configurable, nunca comparte inventario del líder salvo consulta informativa).
-- **RN-SPEC-15-05 (Versionamiento y desvinculación segura):** Cuando el líder publica una nueva versión (`v2`) de un producto compartido, los clones vinculados (`link_active = true`) reciben indicador «Nueva Versión Disponible» (con política `manual` o notificación según `SPEC-14`) permitiendo al miembro revisar qué cambió antes de aplicar sincronización sobre descripción/atributos/prompt sin sobreescribir su precio de venta ni stock propios. El miembro o el líder pueden desvincular (`link_active = false`) en cualquier momento tras confirmación modal `--dsn-*`.
+- **RN-SPEC-15-01 (Multi-comunidad Líder → Miembro `PV-05`):** Toda comunidad vincula cuentas inquilinas reales (`admin.clients`). Un mismo inquilino puede liderar múltiples comunidades (si cuenta con aprobación de plataforma y cupo disponible) y ser miembro activo de múltiples comunidades distintas simultáneamente, manteniendo estrictamente una sola fila `active` por `(organization_id, client_id)`.
+- **RN-SPEC-15-02 (Gobierno de plataforma y habilitación de Líder):** Ningún inquilino puede crear una comunidad sin contar con una autorización activa en `admin.community_leader_authorizations` (`status = 'approved'`) otorgada por `platform_admin` / `platform_owner` y sin superar su `max_owned_communities` (`403 LEADER_APPROVAL_REQUIRED` / `422 LEADER_QUOTA_EXCEEDED`). La revocación impide crear nuevas comunidades pero preserva intactas las ya creadas y los clones existentes.
+- **RN-SPEC-15-03 (Prevención de auto-adopción y re-compartición en cadena):** Un comercio no puede clonar un `product_share` que él mismo originó (`422 CANNOT_ADOPT_OWN_SHARE`), aunque pertenezca a la misma comunidad. Asimismo, ningún producto clonado (`cell_products.source_share_id IS NOT NULL`) puede compartirse nuevamente hacia otra comunidad (`422 CANNOT_RESHARE_CLONED_PRODUCT`).
+- **RN-SPEC-15-04 (Cuotas y combos atómicos del comercio adoptante `SPEC-03`, `SPEC-08`):** Antes de clonar (`POST /shares/[shareId]/adopt`), el servicio calcula cuántos productos nuevos requiere insertar en la celda destino (`1` para simple; `1 + componentes simples aún no clonados de ese share` para combo) y valida `products` contra `TenantCapabilityGateService`. Si excede el cupo, rechaza con `422 PRODUCT_QUOTA_EXCEEDED` sin crear registros parciales. Para multimedia (`images_per_product`, `videos_per_product`, `audios_per_product`, `pdfs_per_product`, `storage_bytes`), copia en SeaweedFS bajo `tenants/{adopterClientId}/products/{cloneProductId}/...` hasta el límite permitido por el plan del adoptante y devuelve el detalle explícito de medios copiados vs omitidos (`skippedMedia[]`).
+- **RN-SPEC-15-05 (Independencia operativa, precios y stock del clon):** El clon en `cell_products` hereda ficha comercial, `bot_master_prompt`, atributos dinámicos y medios copiados, registrando `source_share_id` y `source_version`. Inicia con `cost_price_cents = wholesaleCostCents` (o `0` si no aplica), `price_cents = customSalePriceCents ?? suggestedPriceCents`, `stock_quantity = initialStock ?? 0` (solo físicos simples) y `status` elegido (`active` o `draft`). El stock del líder es meramente informativo y jamás descuenta inventario cruzado.
+- **RN-SPEC-15-06 (Publicación explícita de versiones, Diff y protección de datos locales):** Editar un producto en `/workspace/products` no genera nueva versión automática. El líder visualiza el indicador de cambios pendientes en `/workspace/community` y publica explícitamente `vN+1` con `changelog` opcional. Al sincronizar un clon (manual con selección de campos tras ver el diff, o `auto_sync` en atributos configurados por el miembro), **nunca** se sobreescriben `price_cents`, `sale_price_cents` ni `stock_quantity` locales del miembro de forma automática.
+- **RN-SPEC-15-07 (Supervivencia ante baja o desvinculación):** Si un producto compartido se archiva, una comunidad se suspende o un miembro sale de la comunidad, los productos ya clonados en `pg-cell-XX` permanecen 100% operativos y preservan pedidos históricos (`product_adoptions.link_active = false`).
+- **RN-SPEC-15-08 (Atribución estricta y privacidad en métricas de liderazgo):** Las métricas del liderazgo agregan exclusivamente clones originados en esa comunidad (`source_share_id` de `product_shares` de esa `organization_id`) y nunca incluyen productos propios del miembro, clones de otras comunidades, conversaciones de Chatwoot ni datos personales de clientes finales (`ADM-001 RF-08.9`).
 
 ---
 
-## 9. Contratos de interfaz
-
-- `GET /api/tenant/community/overview`: Estado de capacidad `community_feed`, comunidades donde participa el comercio, invitaciones/solicitudes pendientes y métricas si es líder.
-- `POST /api/tenant/community/organizations`: Crear comunidad (nombre, descripción, visibilidad).
-- `POST /api/tenant/community/organizations/[orgId]/invite`: `{ targetClientSlugOrEmail, role: 'member' | 'co_leader' }` (permite invitar comercios existentes en Mocter sin exponer datos privados ajenos).
-- `POST /api/tenant/community/invitations/[id]/respond` y `POST .../requests/[id]/review`: Aceptar/rechazar invitaciones o solicitudes.
-- `GET / POST /api/tenant/community/shares` & `POST /api/tenant/community/shares/[shareId]/version`: Líder publica o actualiza versión de producto propio hacia una comunidad.
-- `GET /api/tenant/community/feed`: Listado paginado, filtrable y ordenable de productos compartidos en comunidades activas del inquilino.
-- `POST /api/tenant/community/shares/[shareId]/adopt`: `{ syncPolicy: 'manual' | 'notify_only', customSalePriceCents?, initialStock? }` → ejecuta clonación en celda destino y retorna ID del nuevo producto en `/workspace/products`.
-- `POST /api/tenant/community/adoptions/[adoptionId]/sync` y `DELETE /api/tenant/community/adoptions/[adoptionId]/link`.
-
----
-
-## 10. Especificación de UI/UX
-
-- **Vista `/workspace/community`:**
-  - Si `community_feed === false`: mantiene tarjeta elegante con acceso directo a `/workspace/billing`.
-  - Si `community_feed === true`: diseño Mobile First por pestañas claras:
-    1. **Catálogo De Comunidad (Para Miembros):** Grid / Tabla con filtros por comunidad/categoría, miniatura (`cover`), precio sugerido, nombre del comercio líder, indicador «Ya Clonado» si ya fue adoptado, botón «Ver Ficha» y botón «Clonar A Mi Catálogo» (abre modal rápido donde el miembro confirma o ajusta su precio de venta al público y stock inicial).
-    2. **Mis Productos Clonados:** Lista paginada con badge de estado (`Sincronizado v2` / `Actualización Disponible v3` / `Desvinculado`), botón «Actualizar Desde Líder» y «Desvincular» (modal `--dsn-*`, cero `window.confirm`).
-    3. **Gestión De Mi Comunidad (Para Líderes):** Botón «Crear Comunidad», tabla de comercios miembros e invitaciones/solicitudes, selector de productos propios para «Compartir En Comunidad» / «Publicar Nueva Versión» y métricas agregadas (clones activos y top productos adoptados).
-- Todos los labels en **Title Case**, `es`/`en` i18n, cero códigos internos en vistas.
-
----
-
-## 11. Criterios de aceptación (Gherkin)
-
-### (a) Escenarios satisfactorios
+## 9. Criterios de aceptación (Gherkin)
 
 ```gherkin
-Característica: Comunidades Líder-Miembros (Inquilinos) y Clonación de Productos
+Característica: Comunidades Multi-Red, Gobierno de Líderes y Clonación Inteligente (SPEC-15)
 
-  Escenario: Inquilino líder comparte producto y un inquilino miembro lo clona a su propio catálogo
-    Dado que el comercio inquilino "Marca Central" es líder ("originator") de la comunidad "Distribuidores Café"
-    Y el comercio inquilino "Tienda Local" es miembro activo de la misma comunidad con cupo de productos disponible
-    Cuando "Marca Central" publica su producto "Café Molido 500g" (con bot_master_prompt, atributos y foto principal) en la comunidad
-    Y "Tienda Local" abre "/workspace/community", consulta el feed y ejecuta "Clonar A Mi Catálogo" definiendo su precio de venta "$52.000"
-    Entonces el servicio crea una copia independiente en "cell_products" de "Tienda Local" con "source_share_id" registrado
-    Y copia la ficha, prompt maestro, atributos y portada sin alterar el producto original ni el stock de "Marca Central"
+  Escenario: Comercio solicita ser Líder, plataforma lo aprueba y crea comunidad
+    Dado que el comercio "Tostadora Andina" tiene capacidad "community_feed = true" pero aún no está autorizado como líder
+    Cuando envía POST "/api/tenant/community/leader-request" con propuesta de marca
+    Y un operador "platform_admin" aprueba la solicitud en "/admin/communities" con cupo de 3 comunidades
+    Entonces "Tostadora Andina" puede crear hasta 3 comunidades desde "/workspace/community" y recibe notificación de aprobación
 
-  Escenario: Líder publica nueva versión de producto y miembro decide sincronizar metadatos sin perder su precio ni stock
-    Dado que "Tienda Local" tiene clonado "Café Molido 500g" en versión 1 con su propio precio "$52.000" y stock "18"
-    Cuando "Marca Central" publica versión 2 mejorando descripción y prompt maestro
-    Y "Tienda Local" pulsa "Actualizar Desde Líder" mediante POST "/api/tenant/community/adoptions/[id]/sync"
-    Entonces el clon actualiza su descripción y prompt a la versión 2 manteniendo intactos "$52.000" y stock "18"
-```
+  Escenario: Comercio participa simultáneamente en dos comunidades y clona un Combo completo
+    Dado que "Tienda Local" es miembro activo de "Café Premium" y de "Accesorios Hogar"
+    Y "Café Premium" comparte el combo "Kit Barista" compuesto por "Prensa Francesa" y "Café 500g" con bot_master_prompt y portada
+    Cuando "Tienda Local" clona "Kit Barista" definiendo su propio precio de venta y stock inicial 0
+    Entonces el sistema valida el cupo total de productos (combo + 2 componentes), duplica los archivos S3 bajo el prefijo de "Tienda Local"
+    Y crea los 2 componentes simples y el combo con "product_bundle_items" y "bot_master_prompt" en la celda de "Tienda Local"
 
-### (b) Validaciones de entrada
+  Escenario: Líder edita su producto, sistema detecta cambios pendientes y publica v2 con Diff para el miembro
+    Dado que "Tostadora Andina" compartió "Café 500g" en v1 y "Tienda Local" lo clonó con precio "$55.000" y stock "14"
+    Cuando "Tostadora Andina" actualiza el "bot_master_prompt" y descripción en "/workspace/products"
+    Entonces el share v1 no se modifica automáticamente, pero muestra "Cambios Pendientes Por Publicar"
+    Y cuando el líder publica la versión v2 con changelog "Mejorado script de objeciones"
+    Y "Tienda Local" revisa el diff v1->v2 y aplica descripción y "bot_master_prompt" mediante POST "/api/tenant/community/adoptions/[id]/sync"
+    Entonces el clon pasa a v2 manteniendo intactos "$55.000" y stock "14"
 
-```gherkin
-  Escenario: Rechazo al intentar crear comunidad con nombre vacío o invitar correo mal formado
-    Dado que un usuario envía POST "/api/tenant/community/organizations" con "name = ''"
-    Cuando el servidor valida con Zod
-    Entonces responde HTTP 400 Problem Details
-```
+  Escenario: Protección contra re-compartición en cadena, auto-adopción y exceso de cuotas
+    Dado que "Tienda Local" posee un producto clonado con "source_share_id" no nulo
+    Cuando intenta republicarlo en otra comunidad o cuando un líder intenta clonar su propio share o un miembro excede su cuota de productos
+    Entonces el servidor responde HTTP 422 ("CANNOT_RESHARE_CLONED_PRODUCT", "CANNOT_ADOPT_OWN_SHARE" o "PRODUCT_QUOTA_EXCEEDED")
 
-### (c) Errores de regla de negocio
-
-```gherkin
-  Escenario: Bloqueo cuando un inquilino miembro excede su cuota de productos al intentar clonar
-    Dado que el comercio miembro tiene 50/50 productos creados en su plan
-    Cuando intenta clonar un producto compartido desde el feed
-    Entonces el backend rechaza la clonación con HTTP 422 "PRODUCT_QUOTA_EXCEEDED" sin crear registro parcial
-
-  Escenario: Prevención de clonación del propio producto compartido o re-compartición en cadena
-    Dado que "Marca Central" publicó el share S1
-    Cuando intenta clonarse a sí misma el share S1 o un miembro intenta republicar su clon hacia otra comunidad
-    Entonces el servidor retorna HTTP 422 ("CANNOT_ADOPT_OWN_SHARE" o "CANNOT_RESHARE_CLONED_PRODUCT")
-```
-
-### (d) Seguridad y autorización
-
-```gherkin
-  Escenario: Inquilino no miembro de comunidad privada no puede ver el feed ni clonar sus productos
-    Dado que el comercio "Externo SAS" no pertenece a la comunidad privada "Distribuidores Café"
-    Cuando consulta el feed o invoca POST "/api/tenant/community/shares/[shareId]/adopt"
-    Entonces el backend responde HTTP 403 Forbidden
-```
-
-### (e) Escenarios de borde
-
-```gherkin
-  Escenario: Desvinculación o salida de comunidad conserva los productos clonados como catálogo propio del miembro
-    Dado que "Tienda Local" clonó 5 productos de una comunidad y decide desvincular o salir de ella
-    Cuando confirma la operación en modal "--dsn-*"
-    Entonces "product_adoptions.link_active" pasa a false pero los 5 productos permanecen operativos en el catálogo y pedidos históricos de "Tienda Local"
+  Escenario: Métricas de liderazgo con atribución estricta entre múltiples comunidades
+    Dado que "Tienda Local" vendió 10 unidades de "Café 500g" (Comunidad A) y 25 unidades de "Lámpara LED" (Comunidad B)
+    Cuando el líder de Comunidad A consulta GET "/api/tenant/community/leadership-metrics?organizationId=A"
+    Entonces el resumen reporta únicamente las 10 unidades y el revenue de Comunidad A sin incluir ventas de Comunidad B ni chats o clientes finales
 ```
 
 ---
 
-## 12. Requisitos no funcionales
+## 10. Requisitos no funcionales y observabilidad
 
-- **Aislamiento multi-celda:** `ProductCloningService` resuelve conexiones independientes para `sourceCellId` y `cloneCellId` vía `CellDatabasePoolManager` sin mezclar nunca contextos `app.current_client_id`.
-- **Observabilidad (`AGENTS.md §4.13`):** Eventos Pino `tenant.community.share_published`, `tenant.community.product_adopted`, `tenant.community.adoption_synced` con `requestId`, `sharerClientId`, `adopterClientId`, `shareId`.
-
----
-
-## 13. Dependencias y riesgos
-
-- **Dependencias:** `SPEC-00` (clonación de referencia/objeto multimedia en SeaweedFS sin que borrar el original rompa el clon), `SPEC-03` (gating `community_feed` y cuotas `products`), `SPEC-08` (campos extendidos de producto), `SPEC-14` (avisos de invitaciones/nuevas versiones).
-- **Riesgos:**
-  - *Eliminación de archivo físico SeaweedFS por el líder dejando enlace roto en el clon:* Mitigado copiando o manteniendo referencia ref-counted / copia independiente de key S3 en la celda del adoptante al clonar.
+- **Aislamiento multi-celda:** `ProductCloningAndCommunitiesService` y `CommunityLeadershipMetricsService` operan siempre vía `CellDatabasePoolManager.withTenantCellTransaction(clientId, ...)` fijando `SET LOCAL app.current_client_id`.
+- **Almacenamiento S3 independiente (`SPEC-00`):** Ningún borrado de producto o media en la celda del líder elimina objetos o filas pertenecientes a la celda del miembro.
+- **Trazabilidad estructurada (`AGENTS.md §4.13`):** Eventos Pino `tenant.community.leader_requested`, `admin.community.leader_decided`, `tenant.community.organization_created`, `tenant.community.share_published`, `tenant.community.share_version_published`, `tenant.community.product_adopted`, `tenant.community.adoption_synced`, `tenant.community.adoption_unlinked` con `requestId`, `clientId`, `organizationId`, `shareId`.
+- **Higiene UI (`SPEC-01`, `SPEC-17`, `AGENTS.md §4.8, §4.15, §4.17`):** Cero términos de infraestructura (`celda`, `SeaweedFS`, `imgproxy`, `pg-cell`), cero códigos de spec visibles, Title Case en formularios, `es`/`en` 100% paritario, `ConfirmationModal` (`--dsn-*`), layout perimetral `w-full space-y-6 p-4 md:px-8 md:py-6`.
 
 ---
 
-## 14. Definition of Done
+## 11. Definition of Done
 
-- [ ] `ProductCloningService`, `CommunitiesGovernanceService` y `CommunityFeedService` actualizados para soportar todos los campos de `SPEC-08` y aislamiento inquilino líder → inquilino miembro.
-- [ ] Endpoints `/api/tenant/community/*` creados, validados con Zod, `handle()` RFC 9457, RBAC y tests entre dos inquilinos distintos.
-- [ ] Vista `/workspace/community` completa reemplazando placeholder (`es`/`en`, Title Case, Mobile First, tablas estándar y modales `--dsn-*`).
-- [ ] `pnpm lint`, `pnpm test`, `drizzle-kit check` en verde + protocolo §4.18 ejecutado.
-
----
-
-## 15. Propuestas a Validar (PV-xx)
-
-Aprobada la aclaración `PV-05`: tanto el líder de comunidad como los miembros son cuentas inquilinas activas de la SaaS y la clonación ocurre desde el catálogo del inquilino líder hacia el catálogo del inquilino miembro. Sin preguntas pendientes.
-
+- [ ] Migración Drizzle en `packages/domain/drizzle/` aplicada y validada con `drizzle-kit check` (`community_leader_authorizations`, multi-comunidad, campos extendidos de `organizations` y `product_shares`, seed de `community_feed` y eventos de notificación).
+- [ ] Servicios y repositorios Drizzle reales en `packages/domain` para gobernanza, clonación (simples, combos, medios S3 independientes, diff, sync selectivo), muro moderado + privacidad y métricas con atribución estricta.
+- [ ] Toggle `community_feed` habilitado en `/admin/plans` (`PlanModalDialog`) y módulo `/admin/communities` operativo en el Backoffice SaaS.
+- [ ] Endpoints `/api/tenant/community/*` y `/api/admin/communities/*` validados con Zod, RBAC, `handle()` RFC 9457 y pruebas unitarias/integración.
+- [ ] Vista `/workspace/community` completa reemplazando placeholder (`es`/`en`, Title Case, Mobile First, `<WorkspaceDataTable />` / patrones estándar, `ConfirmationModal`), más badge/bloqueo en `/workspace/products`.
+- [ ] `pnpm lint`, `pnpm test`, `drizzle-kit check`, build y reinicio de `mocter-core-admin-portal-1` + verificación HTTP 200 (`AGENTS.md §4.18`).

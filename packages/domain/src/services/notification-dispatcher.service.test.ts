@@ -341,7 +341,7 @@ describe("SPEC-14 · NotificationDispatcherService", () => {
     }
   });
 
-  it("oculta preferencias a tenant_agent y muestra al tenant_owner únicamente los 4 eventos de competencia del comercio", async () => {
+  it("oculta preferencias a tenant_agent y muestra al tenant_owner únicamente los 6 eventos de competencia del comercio", async () => {
     const { service } = createInMemoryDispatcherHarness();
 
     const agentView = await service.listTenantInboxAndPreferences("client-1", {
@@ -357,7 +357,9 @@ describe("SPEC-14 · NotificationDispatcherService", () => {
     const keys = ownerView.preferences.map((p) => p.eventKey).sort();
     expect(keys).toEqual([
       "community.digest",
+      "community.invited",
       "community.join_accepted",
+      "community.product_version_published",
       "referral.registered",
       "tenant.inventory.low_stock",
     ]);

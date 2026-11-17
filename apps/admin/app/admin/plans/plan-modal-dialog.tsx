@@ -237,6 +237,7 @@ function PlanModalDialogContent({
 
   // Pestaña 5: Capacidades opcionales
   const [whiteLabelMode, setWhiteLabelMode] = useState<"none" | "paleta" | "completa">("none");
+  const [communityFeedEnabled, setCommunityFeedEnabled] = useState(true);
   const [capabilities, setCapabilities] = useState<Record<string, boolean>>({});
   const [capabilityCatalog, setCapabilityCatalog] = useState<CapabilityItem[]>([]);
   const [capSearchTerm, setCapSearchTerm] = useState("");
@@ -330,6 +331,9 @@ function PlanModalDialogContent({
             }
             if (data.chatwootEnabled !== undefined) {
               setChatwootEnabled(Boolean(data.chatwootEnabled));
+            }
+            if (data.communityFeedEnabled !== undefined) {
+              setCommunityFeedEnabled(Boolean(data.communityFeedEnabled));
             }
             if (data.name) {
               const pName = data.name as { es?: string; en?: string } | null;
@@ -513,6 +517,7 @@ function PlanModalDialogContent({
         capabilities,
         chatwootEnabled,
         whiteLabelMode,
+        communityFeedEnabled,
       };
 
       const method = isEdit ? "PUT" : "POST";
@@ -1733,6 +1738,34 @@ function PlanModalDialogContent({
                   </div>
                 </div>
 
+                <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-3.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <label
+                        htmlFor="plan-community-feed-enabled"
+                        className="text-xs font-semibold text-[var(--dsn-text)] block"
+                      >
+                        Acceso a Comunidades y Catálogo Compartido
+                      </label>
+                      <p className="text-[11px] text-[var(--dsn-text-secondary)]">
+                        Habilita a los comercios de este plan para unirse a comunidades, clonar productos y colaborar en red.
+                      </p>
+                    </div>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        id="plan-community-feed-enabled"
+                        type="checkbox"
+                        checked={communityFeedEnabled}
+                        onChange={(e) => setCommunityFeedEnabled(e.target.checked)}
+                        className="h-4 w-4 rounded border-[var(--dsn-border)] accent-[var(--dsn-accent)]"
+                      />
+                      <span className="text-xs font-medium text-[var(--dsn-text)]">
+                        {communityFeedEnabled ? "Habilitado" : "Deshabilitado"}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-2 border-b border-[var(--dsn-border)]">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--dsn-text-secondary)]" />
@@ -1963,6 +1996,12 @@ function PlanModalDialogContent({
                     <span>Atención Integrada:</span>
                     <span className="font-medium text-[var(--dsn-text)]">
                       {chatwootEnabled ? "Habilitada (Aprovisiona Cuenta)" : "Deshabilitada"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[var(--dsn-text-secondary)]">
+                    <span>Comunidades y Catálogo Compartido:</span>
+                    <span className="font-medium text-[var(--dsn-text)]">
+                      {communityFeedEnabled ? "Habilitado" : "Deshabilitado"}
                     </span>
                   </div>
                   {chatwootEnabled && (

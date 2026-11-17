@@ -163,6 +163,7 @@ export interface AdminPlanDetails extends Plan {
   capabilities: Record<string, boolean>;
   chatwootEnabled: boolean;
   whiteLabelMode: WhiteLabelCapabilityMode;
+  communityFeedEnabled: boolean;
 }
 
 export interface CreateAdminPlanInput {
@@ -189,6 +190,7 @@ export interface CreateAdminPlanInput {
   capabilities?: Record<string, boolean>;
   chatwootEnabled?: boolean;
   whiteLabelMode?: WhiteLabelCapabilityMode;
+  communityFeedEnabled?: boolean;
 }
 
 /**
@@ -871,6 +873,56 @@ export interface UpdateAdminPlanInput {
   capabilities?: Record<string, boolean>;
   chatwootEnabled?: boolean;
   whiteLabelMode?: WhiteLabelCapabilityMode;
+  communityFeedEnabled?: boolean;
+}
+
+/**
+ * Garantiza de forma idempotente la definición del feature `community_feed` y persiste su valor por plan (`SPEC-15`).
+ */
+async function upsertPlanCommunityFeedFeature(
+  tx: any,
+  planId: string,
+  enabled: boolean,
+  operator: string,
+): Promise<void> {
+  await tx
+    .insert(planFeatures)
+    .values({
+      key: "community_feed",
+      label: {
+        es: "Comunidad de Comercios y Catálogo Compartido",
+        en: "Merchant Community & Shared Catalog",
+      },
+      description: {
+        es: "Habilita la participación en redes de comercios, directorio y clonación de catálogo.",
+        en: "Enables participation in merchant networks, community directory and catalog cloning.",
+      },
+      featureType: "boolean",
+      createdBy: operator,
+      updatedBy: operator,
+    })
+    .onConflictDoNothing({ target: planFeatures.key });
+
+  const now = new Date();
+  await tx
+    .insert(planFeatureValues)
+    .values({
+      planId,
+      featureKey: "community_feed",
+      enabled,
+      value: enabled,
+      createdBy: operator,
+      updatedBy: operator,
+    })
+    .onConflictDoUpdate({
+      target: [planFeatureValues.planId, planFeatureValues.featureKey],
+      set: {
+        enabled,
+        value: enabled,
+        updatedAt: now,
+        updatedBy: operator,
+      },
+    });
 }
 
 /**
@@ -1199,6 +1251,14 @@ export async function createAdminPlan(input: CreateAdminPlanInput): Promise<Resu
         operator,
       );
 
+      // Persistir acceso a Comunidad de Comercios (SPEC-15)
+      await upsertPlanCommunityFeedFeature(
+        tx,
+        row.id,
+        input.communityFeedEnabled ?? true,
+        operator,
+      );
+
       return ok(row);
     });
 
@@ -1343,6 +1403,10 @@ export async function updateAdminPlan(input: UpdateAdminPlanInput): Promise<Resu
         await upsertPlanWhiteLabelFeature(tx, row.id, input.whiteLabelMode, operator);
       }
 
+      if (input.communityFeedEnabled !== undefined) {
+        await upsertPlanCommunityFeedFeature(tx, row.id, Boolean(input.communityFeedEnabled), operator);
+      }
+
       return ok(row);
     });
 
@@ -1390,19 +1454,17 @@ export async function fetchAdminPlanDetails(planId: string): Promise<Result<Admi
       .from(planCapabilityValues)
       .where(eq(planCapabilityValues.planId, planId));
 
-    const [wlFeatureRow] = await db
+    const featureRows = await db
       .select({
+        featureKey: planFeatureValues.featureKey,
         enabled: planFeatureValues.enabled,
         value: planFeatureValues.value,
       })
       .from(planFeatureValues)
-      .where(
-        and(
-          eq(planFeatureValues.planId, planId),
-          eq(planFeatureValues.featureKey, "white_label"),
-        ),
-      )
-      .limit(1);
+      .where(eq(planFeatureValues.planId, planId));
+
+    const wlFeatureRow = featureRows.find((f) => f.featureKey === "white_label");
+    const communityFeatureRow = featureRows.find((f) => f.featureKey === "community_feed");
 
     let whiteLabelMode: WhiteLabelCapabilityMode = "none";
     if (wlFeatureRow?.enabled) {
@@ -1410,6 +1472,7 @@ export async function fetchAdminPlanDetails(planId: string): Promise<Result<Admi
         whiteLabelMode = wlFeatureRow.value;
       }
     }
+    const communityFeedEnabled = communityFeatureRow ? Boolean(communityFeatureRow.enabled) : true;
 
     const limitsMap: Record<PlanLimitDimensionKey, PlanLimitConfigItem> = {
       products: { mode: "LIMITED", value: 0 },
@@ -1458,6 +1521,7 @@ export async function fetchAdminPlanDetails(planId: string): Promise<Result<Admi
       capabilities: capabilitiesMap,
       chatwootEnabled,
       whiteLabelMode,
+      communityFeedEnabled,
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -2370,6 +2434,48 @@ export const CANONICAL_TEMPLATES_SEED = [
     senderKey: "comunidad",
     subject: "Weekly digest from {{community_name}}",
     bodyHtml: "<p>Hi {{user_name}},</p><p>Here are the top highlights of the week in {{community_name}}.</p>",
+  },
+  {
+    eventKey: "community.leader_status",
+    locale: "es",
+    senderKey: "comunidad",
+    subject: "Estado de solicitud de líder de comunidad: {{status_label}}",
+    bodyHtml: "<p>Hola {{tenant_name}},</p><p>El estado de tu autorización para crear comunidades cambió a <strong>{{status_label}}</strong> (cupo: {{max_communities}}).</p><p>{{review_notes}}</p><p><a href=\"{{community_url}}\">Ir a Comunidades</a></p>",
+  },
+  {
+    eventKey: "community.leader_status",
+    locale: "en",
+    senderKey: "comunidad",
+    subject: "Community leader authorization update: {{status_label}}",
+    bodyHtml: "<p>Hi {{tenant_name}},</p><p>Your authorization to create communities is now <strong>{{status_label}}</strong> (quota: {{max_communities}}).</p><p>{{review_notes}}</p><p><a href=\"{{community_url}}\">Open Communities</a></p>",
+  },
+  {
+    eventKey: "community.invited",
+    locale: "es",
+    senderKey: "comunidad",
+    subject: "Invitación a la comunidad {{community_name}}",
+    bodyHtml: "<p>Hola {{tenant_name}},</p><p><strong>{{inviter_name}}</strong> te invitó con el rol <strong>{{role_label}}</strong> a unirte a <strong>{{community_name}}</strong>.</p><p><a href=\"{{invite_url}}\">Ver Invitación</a></p>",
+  },
+  {
+    eventKey: "community.invited",
+    locale: "en",
+    senderKey: "comunidad",
+    subject: "Invitation to join {{community_name}}",
+    bodyHtml: "<p>Hi {{tenant_name}},</p><p><strong>{{inviter_name}}</strong> invited you as <strong>{{role_label}}</strong> to join <strong>{{community_name}}</strong>.</p><p><a href=\"{{invite_url}}\">View Invitation</a></p>",
+  },
+  {
+    eventKey: "community.product_version_published",
+    locale: "es",
+    senderKey: "comunidad",
+    subject: "Nueva versión {{version}} de {{product_name}} en {{community_name}}",
+    bodyHtml: "<p>Hola {{tenant_name}},</p><p><strong>{{community_name}}</strong> publicó la versión <strong>{{version}}</strong> de <strong>{{product_name}}</strong>.</p><p>Novedades: {{changelog}}</p><p><a href=\"{{community_url}}\">Revisar Cambios</a></p>",
+  },
+  {
+    eventKey: "community.product_version_published",
+    locale: "en",
+    senderKey: "comunidad",
+    subject: "New version {{version}} of {{product_name}} in {{community_name}}",
+    bodyHtml: "<p>Hi {{tenant_name}},</p><p><strong>{{community_name}}</strong> published version <strong>{{version}}</strong> of <strong>{{product_name}}</strong>.</p><p>Changelog: {{changelog}}</p><p><a href=\"{{community_url}}\">Review Changes</a></p>",
   },
   {
     eventKey: "landing.lead_received",

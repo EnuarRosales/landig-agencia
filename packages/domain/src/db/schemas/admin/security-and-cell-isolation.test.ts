@@ -8,10 +8,10 @@ import { cellOrders } from "../tenant/orders";
 import { cellContacts } from "../tenant/crm";
 
 describe("ADM-001 T-30 · Verificación de Seguridad de Roles, Membresía y Auditoría (D-25, D-31, RF-01.10)", () => {
-  it("RF-08.3 · organization_members impide más de una membresía activa por inquilino mediante índice único parcial", () => {
+  it("SPEC-15-D01 · organization_members permite multi-comunidad e impide duplicar membresía activa por (organization_id, client_id)", () => {
     const config = getTableConfig(organizationMembers);
     const uniqueIndex = config.indexes.find(
-      (idx) => idx.config.name === "organization_members_one_active_per_client",
+      (idx) => idx.config.name === "organization_members_org_client_active_unique",
     );
 
     expect(uniqueIndex).toBeDefined();

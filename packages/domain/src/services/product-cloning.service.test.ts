@@ -34,6 +34,10 @@ describe("ADM-001 T-16, T-17, T-18 · ProductCloningAndCommunitiesService", () =
     sourceCellId: "cell-01",
     currentVersion: 1,
     status: "active",
+    moderationStatus: "approved",
+    moderatedByUserId: null,
+    moderatedAt: null,
+    rejectionReason: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     createdBy: "user-1",
@@ -45,6 +49,7 @@ describe("ADM-001 T-16, T-17, T-18 · ProductCloningAndCommunitiesService", () =
     shareId: "share-uuid-1",
     version: 1,
     changedAttributes: [],
+    changelog: null,
     snapshot: mockSnapshot as any,
     createdAt: new Date(),
   };

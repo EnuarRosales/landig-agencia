@@ -504,6 +504,79 @@ export class S3StorageService {
   }
 
   /**
+   * Copia un objeto dentro del bucket privado de SeaweedFS hacia una nueva clave destino.
+   *
+   * Intenta primero la operación S3 server-side (`PUT` con cabecera `x-amz-copy-source`) y realiza
+   * fallback seguro a descarga + carga (`getObject` + `putObject`) si el gateway no soporta CopyObject.
+   *
+   * @param sourceKey - Clave relativa origen dentro del bucket.
+   * @param destKey - Clave relativa destino dentro del bucket.
+   * @param mimeType - Tipo MIME del objeto destino.
+   * @returns Resultado tipado indicando éxito o detalle técnico del fallo.
+   */
+  async copyObject(
+    sourceKey: string,
+    destKey: string,
+    mimeType: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    if (!this.accessKeyId || !this.secretAccessKey) {
+      return { ok: false, error: "Credenciales S3 (S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY) no configuradas." };
+    }
+
+    const cleanSource = sourceKey.replace(/^\/+/, "");
+    const cleanDest = destKey.replace(/^\/+/, "");
+    if (!cleanSource || !cleanDest) {
+      return { ok: false, error: "Las claves origen y destino son obligatorias para copiar en S3." };
+    }
+
+    const path = `/${this.bucket}/${cleanDest}`;
+    const targetUrl = `${this.endpoint}${path}`;
+    const emptySha256 = createHash("sha256").update("").digest("hex");
+
+    try {
+      await this.ensureBucketExists();
+      const copySourceHeader = `/${this.bucket}/${cleanSource.split("/").map(encodeURIComponent).join("/")}`;
+      const headers = generateSigV4Headers({
+        method: "PUT",
+        endpoint: this.endpoint,
+        path,
+        headers: {
+          "x-amz-copy-source": copySourceHeader,
+          "content-type": mimeType,
+        },
+        payloadSha256: emptySha256,
+        region: this.region,
+        accessKeyId: this.accessKeyId,
+        secretAccessKey: this.secretAccessKey,
+      });
+
+      const res = await this.fetchImpl(targetUrl, {
+        method: "PUT",
+        headers,
+        signal: AbortSignal.timeout(S3_REQUEST_TIMEOUT_MS),
+      });
+
+      if (res.ok) {
+        appLogger.info("[S3StorageService.copyObject] Objeto copiado server-side en S3", {
+          bucket: this.bucket,
+          sourceKey: cleanSource,
+          destKey: cleanDest,
+        });
+        return { ok: true };
+      }
+    } catch {
+      // Continuar con fallback de descarga y carga directa
+    }
+
+    const downloaded = await this.getObject(cleanSource);
+    if (!downloaded.ok) {
+      return { ok: false, error: downloaded.error };
+    }
+
+    return this.putObject(cleanDest, downloaded.buffer, mimeType || downloaded.contentType);
+  }
+
+  /**
    * Descarga de forma autenticada un objeto binario desde el bucket privado de SeaweedFS.
    *
    * @param key - Clave relativa del objeto dentro del bucket.

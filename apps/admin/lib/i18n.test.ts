@@ -65,6 +65,11 @@ describe("mocter-admin Phase 2 · i18n, DSN-001 & ADM-001 T-27, T-29, T-37", () 
     expect(enTeamKeys).toEqual(esTeamKeys);
     expect(es.workspace.navConversations).toBe("Conversaciones");
     expect(en.workspace.navConversations).toBe("Conversations");
+
+    // Paridad 100% de claves de Comunidades (adminCommunities y community)
+    expect(Object.keys(en.adminCommunities)).toEqual(Object.keys(es.adminCommunities));
+    expect(Object.keys(en.community)).toEqual(Object.keys(es.community));
+    expect(Object.keys(en.community.attrLabels)).toEqual(Object.keys(es.community.attrLabels));
   });
 });
 

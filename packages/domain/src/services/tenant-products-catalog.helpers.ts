@@ -94,6 +94,8 @@ export interface ProductListItemDto {
   mediaCounts: ProductMediaCountsDto;
   attributesCount: number;
   comboComponentsCount: number;
+  sourceShareId?: string | null;
+  sourceVersion?: number | null;
   createdAt: string;
   updatedAt: string;
 }
