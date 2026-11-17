@@ -60,6 +60,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "no-reply",
     isEnabled: true,
     isSystem: true,
+    tenantConfigurable: false,
   },
   {
     key: "auth.reset_password",
@@ -69,15 +70,17 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "no-reply",
     isEnabled: true,
     isSystem: true,
+    tenantConfigurable: false,
   },
   {
     key: "tenant.welcome",
     category: "tenant" as const,
-    description: "Correo de bienvenida al completar el onboarding del inquilino.",
+    description: "Correo de bienvenida al completar el alta del comercio.",
     variablesSchema: ["tenant_name", "owner_name", "login_url", "brand_name"],
     defaultSenderKey: "no-reply",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: false,
   },
   {
     key: "billing.payment_succeeded",
@@ -87,6 +90,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "billing",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: false,
   },
   {
     key: "billing.payment_failed",
@@ -96,6 +100,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "billing",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: false,
   },
   {
     key: "billing.renewal",
@@ -105,6 +110,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "billing",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: false,
   },
   {
     key: "community.role_promoted",
@@ -114,15 +120,17 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "comunidad",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: false,
   },
   {
     key: "community.join_accepted",
     category: "community" as const,
-    description: "Confirmación de admisión del inquilino en una comunidad.",
+    description: "Confirmación de admisión del miembro en una comunidad.",
     variablesSchema: ["user_name", "community_name", "community_url"],
     defaultSenderKey: "comunidad",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: true,
   },
   {
     key: "community.digest",
@@ -132,6 +140,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "comunidad",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: true,
   },
   {
     key: "referral.registered",
@@ -141,6 +150,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "referidos",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: true,
   },
   {
     key: "landing.lead_received",
@@ -150,6 +160,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "soporte",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: false,
   },
   {
     key: "billing.trial_d5_reminder",
@@ -159,6 +170,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "billing",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: false,
   },
   {
     key: "billing.trial_d0_expired",
@@ -168,6 +180,17 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "billing",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: false,
+  },
+  {
+    key: "billing.bre_b_report_pending_admin",
+    category: "billing" as const,
+    description: "Aviso al equipo administrativo SaaS cuando un comercio reporta un comprobante Bre-B para validación.",
+    variablesSchema: ["tenant_name", "plan_name", "amount", "payment_reference", "review_url"],
+    defaultSenderKey: "billing",
+    isEnabled: true,
+    isSystem: false,
+    tenantConfigurable: false,
   },
   {
     key: "billing.bre_b_approved",
@@ -177,6 +200,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "billing",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: false,
   },
   {
     key: "billing.bre_b_rejected",
@@ -186,6 +210,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "billing",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: false,
   },
   {
     key: "tenant.inventory.low_stock",
@@ -203,6 +228,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "no-reply",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: true,
   },
   {
     key: "team.member_invited",
@@ -219,6 +245,7 @@ export const CANONICAL_EMAIL_EVENTS = [
     defaultSenderKey: "no-reply",
     isEnabled: true,
     isSystem: false,
+    tenantConfigurable: false,
   },
 ] as const;
 
@@ -298,7 +325,10 @@ export function sanitizeEmailHtml(rawHtml: string): string {
     .replace(/src\s*=\s*["']\s*javascript:[^"']*["']/gi, 'src=""');
 }
 
-function escapeHtmlVariable(value: string | number): string {
+/**
+ * Escapa entidades HTML en valores de variables dinámicas para prevenir inyección XSS en correos (`RN-SPEC-14-04`).
+ */
+export function escapeHtmlVariable(value: string | number): string {
   return String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -336,6 +366,7 @@ export class TransactionalNotificationsAndLeadsService {
       defaultSenderKey: string | null;
       isEnabled: boolean;
       isSystem: boolean;
+      tenantConfigurable: boolean;
     }
   >();
   private readonly templates: EmailTemplateRecord[] = [];
@@ -487,11 +518,39 @@ export class TransactionalNotificationsAndLeadsService {
           "<p>The {{plan_name}} cycle for {{tenant_name}} expired on {{expires_at}}. Complete your payment at <a href=\"{{billing_url}}\">My Plan &amp; Quotas</a> to restore active status immediately.</p>",
       },
       {
+        eventKey: "billing.bre_b_report_pending_admin",
+        locale: "es",
+        subject: "Nuevo comprobante Bre-B por verificar · {{tenant_name}}",
+        bodyHtml:
+          "<p>El comercio <strong>{{tenant_name}}</strong> reportó un pago Bre-B para el plan <strong>{{plan_name}}</strong> por <strong>{{amount}}</strong> (Ref: <code>{{payment_reference}}</code>).</p><p>Revisa y aprueba o rechaza el comprobante en <a href=\"{{review_url}}\">Revisión De Pagos Bre-B</a>.</p>",
+      },
+      {
+        eventKey: "billing.bre_b_report_pending_admin",
+        locale: "en",
+        subject: "New Bre-B voucher pending review · {{tenant_name}}",
+        bodyHtml:
+          "<p>Business <strong>{{tenant_name}}</strong> submitted a Bre-B payment voucher for <strong>{{plan_name}}</strong> (<strong>{{amount}}</strong>, Ref: <code>{{payment_reference}}</code>).</p><p>Review and approve or reject it at <a href=\"{{review_url}}\">Bre-B Payment Review</a>.</p>",
+      },
+      {
         eventKey: "billing.bre_b_approved",
         locale: "es",
         subject: "Pago Bre-B verificado · Plan {{plan_name}} activo",
         bodyHtml:
           "<p>Confirmamos la recepción de tu pago Bre-B por {{amount}} para {{tenant_name}} (Recibo {{receipt_number}}). Tu plan {{plan_name}} ya está activo. Revisa tu detalle en <a href=\"{{billing_url}}\">Mi Plan y Cuotas</a>.</p>",
+      },
+      {
+        eventKey: "billing.bre_b_report_pending_admin",
+        locale: "es",
+        subject: "Nuevo comprobante Bre-B por verificar · {{tenant_name}}",
+        bodyHtml:
+          "<p>El comercio <strong>{{tenant_name}}</strong> reportó un pago Bre-B para el plan <strong>{{plan_name}}</strong> por <strong>{{amount}}</strong> (Ref: <code>{{payment_reference}}</code>).</p><p>Revisa y aprueba o rechaza el comprobante en <a href=\"{{review_url}}\">Revisión De Pagos Bre-B</a>.</p>",
+      },
+      {
+        eventKey: "billing.bre_b_report_pending_admin",
+        locale: "en",
+        subject: "New Bre-B voucher pending review · {{tenant_name}}",
+        bodyHtml:
+          "<p>Business <strong>{{tenant_name}}</strong> submitted a Bre-B payment voucher for <strong>{{plan_name}}</strong> (<strong>{{amount}}</strong>, Ref: <code>{{payment_reference}}</code>).</p><p>Review and approve or reject it at <a href=\"{{review_url}}\">Bre-B Payment Review</a>.</p>",
       },
       {
         eventKey: "billing.bre_b_approved",

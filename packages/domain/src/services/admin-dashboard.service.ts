@@ -26,6 +26,7 @@ import {
   emailEvents,
   emailTemplates,
   emailDeliveries,
+  emailLayoutConfigs,
   aiProviders,
   aiModels,
   aiPlatformKeys,
@@ -71,7 +72,12 @@ import {
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 import { env } from "../utils/env";
-import { CANONICAL_EMAIL_SENDERS, CANONICAL_EMAIL_EVENTS } from "./notifications-and-leads.service";
+import {
+  CANONICAL_EMAIL_SENDERS,
+  CANONICAL_EMAIL_EVENTS,
+  escapeHtmlVariable,
+  sanitizeEmailHtml,
+} from "./notifications-and-leads.service";
 import { WhiteLabelService, type WhiteLabelCapabilityMode } from "./white-label.service";
 import { INITIAL_AI_PROVIDERS, INITIAL_BOT_DEFAULTS } from "./bot-catalog.seed";
 import { INITIAL_PROMPT_BLOCKS } from "./prompt-blocks.seed";
@@ -1756,6 +1762,7 @@ export interface AdminEmailSettingsDto {
     defaultSenderKey: string | null;
     isEnabled: boolean;
     isSystem: boolean;
+    tenantConfigurable: boolean;
   }>;
   templates: Array<{
     id: string;
@@ -1769,6 +1776,13 @@ export interface AdminEmailSettingsDto {
     version: number;
     status: string;
     isLocked: boolean;
+  }>;
+  layoutConfigs: Array<{
+    id: string;
+    locale: "es" | "en";
+    headerHtml: string;
+    footerHtml: string;
+    isEnabled: boolean;
   }>;
 }
 
@@ -1803,8 +1817,110 @@ export interface SaveAdminEmailTemplateInput {
   senderId: string;
   subject: string;
   bodyHtml: string;
-  status?: "draft" | "published" | "archived";
+  status?: "draft" | "published" | "retired";
   createdBy?: string;
+}
+
+/**
+ * Borrador por idioma para la edición bilingüe unificada de una plantilla de correo (`SPEC-14`).
+ */
+export interface EmailTemplateLocaleDraftInput {
+  id?: string;
+  subject: string;
+  bodyHtml: string;
+}
+
+/**
+ * Entrada para guardar de forma atómica y sincronizada las traducciones `es` y/o `en` de un evento (`SPEC-14`).
+ */
+export interface SaveAdminEmailBilingualTemplatesInput {
+  eventKey: string;
+  senderId: string;
+  status?: "draft" | "published" | "retired";
+  createdBy?: string;
+  translations: {
+    es?: EmailTemplateLocaleDraftInput;
+    en?: EmailTemplateLocaleDraftInput;
+  };
+}
+
+export interface ToggleAdminEmailEventInput {
+  eventKey: string;
+  isEnabled: boolean;
+  actorUserId?: string;
+}
+
+export interface SaveAdminEmailLayoutConfigInput {
+  locale: "es" | "en";
+  headerHtml: string;
+  footerHtml: string;
+  isEnabled?: boolean;
+  actorUserId?: string;
+}
+
+export const CANONICAL_EMAIL_LAYOUTS_SEED: Array<{
+  locale: "es" | "en";
+  headerHtml: string;
+  footerHtml: string;
+}> = [
+  {
+    locale: "es",
+    headerHtml:
+      '<div style="background:#0f172a;color:#ffffff;padding:20px 24px;border-bottom:3px solid #6366f1;"><h2 style="margin:0;font-size:18px;font-weight:700;letter-spacing:-0.01em;">{{brand_name}}</h2><p style="margin:4px 0 0;font-size:12px;color:#cbd5e1;">Plataforma de Comercio y Atención Inteligente</p></div>',
+    footerHtml:
+      '<div style="background:#f8fafc;color:#64748b;padding:16px 24px;border-top:1px solid #e2e8f0;font-size:12px;line-height:1.5;"><p style="margin:0;">Este mensaje fue enviado automáticamente por <strong>{{brand_name}}</strong>.</p><p style="margin:4px 0 0;">© {{year}} {{brand_name}} · Todos los derechos reservados.</p></div>',
+  },
+  {
+    locale: "en",
+    headerHtml:
+      '<div style="background:#0f172a;color:#ffffff;padding:20px 24px;border-bottom:3px solid #6366f1;"><h2 style="margin:0;font-size:18px;font-weight:700;letter-spacing:-0.01em;">{{brand_name}}</h2><p style="margin:4px 0 0;font-size:12px;color:#cbd5e1;">Commerce &amp; Intelligent Support Platform</p></div>',
+    footerHtml:
+      '<div style="background:#f8fafc;color:#64748b;padding:16px 24px;border-top:1px solid #e2e8f0;font-size:12px;line-height:1.5;"><p style="margin:0;">This automated message was sent by <strong>{{brand_name}}</strong>.</p><p style="margin:4px 0 0;">© {{year}} {{brand_name}} · All rights reserved.</p></div>',
+  },
+];
+
+/**
+ * Envuelve el cuerpo renderizado de un correo con el encabezado (`body.header`) y pie de página (`body.footer`)
+ * institucional configurados globalmente (`SPEC-14`).
+ */
+export function composeEmailWithGlobalLayout(params: {
+  headerHtml: string;
+  bodyHtml: string;
+  footerHtml: string;
+  isEnabled?: boolean;
+  brandName?: string;
+  year?: number | string;
+}): string {
+  const safeBody = sanitizeEmailHtml(params.bodyHtml);
+  if (params.isEnabled === false) {
+    return safeBody;
+  }
+
+  const brandName = escapeHtmlVariable(params.brandName?.trim() || "Mocter");
+  const year = escapeHtmlVariable(String(params.year ?? new Date().getFullYear()));
+  const interpolateLayoutVars = (raw: string) =>
+    sanitizeEmailHtml(
+      raw
+        .replace(/\{\{\s*brand_name\s*\}\}/g, brandName)
+        .replace(/\{\{\s*year\s*\}\}/g, year),
+    );
+
+  const safeHeader = params.headerHtml.trim() ? interpolateLayoutVars(params.headerHtml) : "";
+  const safeFooter = params.footerHtml.trim() ? interpolateLayoutVars(params.footerHtml) : "";
+
+  if (!safeHeader && !safeFooter) {
+    return safeBody;
+  }
+
+  return [
+    '<div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;color:#0f172a;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">',
+    safeHeader ? `<div data-mocter-email-header="true">${safeHeader}</div>` : "",
+    `<div data-mocter-email-body="true" style="padding:24px;line-height:1.6;">${safeBody}</div>`,
+    safeFooter ? `<div data-mocter-email-footer="true">${safeFooter}</div>` : "",
+    "</div>",
+  ]
+    .filter(Boolean)
+    .join("");
 }
 
 function deriveMasterKey(rawKey: string): Buffer {
@@ -2016,13 +2132,20 @@ export async function getActiveSmtpConfig(preferredProviderId?: string): Promise
   }
 }
 
-const CANONICAL_TEMPLATES_SEED = [
+export const CANONICAL_TEMPLATES_SEED = [
   {
     eventKey: "auth.verify_email",
     locale: "es",
     senderKey: "no-reply",
     subject: "Verifica tu correo electrónico en Mocter",
     bodyHtml: "<p>Hola {{user_name}},</p><p>Gracias por unirte a Mocter. Haz clic en el enlace para verificar tu correo:</p><p><a href=\"{{verify_url}}\">Verificar mi cuenta</a> (expira en {{expires_minutes}} minutos).</p>",
+  },
+  {
+    eventKey: "auth.verify_email",
+    locale: "en",
+    senderKey: "no-reply",
+    subject: "Verify your email address on Mocter",
+    bodyHtml: "<p>Hi {{user_name}},</p><p>Thanks for joining Mocter. Click the link below to verify your email:</p><p><a href=\"{{verify_url}}\">Verify my account</a> (expires in {{expires_minutes}} minutes).</p>",
   },
   {
     eventKey: "auth.reset_password",
@@ -2032,11 +2155,25 @@ const CANONICAL_TEMPLATES_SEED = [
     bodyHtml: "<p>Hola {{user_name}},</p><p>Recibimos una solicitud para restablecer tu contraseña:</p><p><a href=\"{{reset_url}}\">Restablecer contraseña</a> (expira en {{expires_minutes}} minutos).</p>",
   },
   {
+    eventKey: "auth.reset_password",
+    locale: "en",
+    senderKey: "no-reply",
+    subject: "Reset your Mocter password",
+    bodyHtml: "<p>Hi {{user_name}},</p><p>We received a request to reset your password:</p><p><a href=\"{{reset_url}}\">Reset password</a> (expires in {{expires_minutes}} minutes).</p>",
+  },
+  {
     eventKey: "tenant.welcome",
     locale: "es",
     senderKey: "no-reply",
     subject: "¡Bienvenido a Mocter! Tu organización está lista",
-    bodyHtml: "<p>Estimado/a {{owner_name}},</p><p>Felicitaciones. Tu organización <strong>{{tenant_name}}</strong> está lista para operar en Mocter.</p><p>Ingresa a tu consola administrativa aquí: <a href=\"{{login_url}}\">{{login_url}}</a>.</p>",
+    bodyHtml: "<p>Estimado/a {{owner_name}},</p><p>Felicitaciones. Tu organización <strong>{{tenant_name}}</strong> está lista para operar en {{brand_name}}.</p><p>Ingresa a tu consola administrativa aquí: <a href=\"{{login_url}}\">{{login_url}}</a>.</p>",
+  },
+  {
+    eventKey: "tenant.welcome",
+    locale: "en",
+    senderKey: "no-reply",
+    subject: "Welcome to {{brand_name}}! Your workspace is ready",
+    bodyHtml: "<p>Dear {{owner_name}},</p><p>Congratulations. Your organization <strong>{{tenant_name}}</strong> is ready to operate on {{brand_name}}.</p><p>Sign in to your workspace here: <a href=\"{{login_url}}\">{{login_url}}</a>.</p>",
   },
   {
     eventKey: "billing.payment_succeeded",
@@ -2046,11 +2183,25 @@ const CANONICAL_TEMPLATES_SEED = [
     bodyHtml: "<p>Hola {{tenant_name}},</p><p>Tu pago de {{amount}} {{currency}} ha sido confirmado. Tu suscripción está activa hasta el {{period_end}}.</p>",
   },
   {
+    eventKey: "billing.payment_succeeded",
+    locale: "en",
+    senderKey: "billing",
+    subject: "Payment confirmed · {{plan_name}} Plan",
+    bodyHtml: "<p>Hi {{tenant_name}},</p><p>Your payment of {{amount}} {{currency}} has been confirmed. Your subscription is active until {{period_end}}.</p>",
+  },
+  {
     eventKey: "billing.payment_failed",
     locale: "es",
     senderKey: "billing",
     subject: "Problema con tu pago en Mocter",
     bodyHtml: "<p>Hola {{tenant_name}},</p><p>No hemos podido procesar tu pago de {{amount}} para el plan {{plan_name}}.</p><p>Por favor reintenta en: <a href=\"{{retry_url}}\">{{retry_url}}</a>.</p>",
+  },
+  {
+    eventKey: "billing.payment_failed",
+    locale: "en",
+    senderKey: "billing",
+    subject: "Issue with your payment on Mocter",
+    bodyHtml: "<p>Hi {{tenant_name}},</p><p>We could not process your payment of {{amount}} for the {{plan_name}} plan.</p><p>Please retry at: <a href=\"{{retry_url}}\">{{retry_url}}</a>.</p>",
   },
   {
     eventKey: "billing.renewal",
@@ -2060,11 +2211,123 @@ const CANONICAL_TEMPLATES_SEED = [
     bodyHtml: "<p>Hola {{tenant_name}},</p><p>Te informamos que el próximo {{renewal_date}} se renovará tu suscripción por {{amount}} {{currency}}.</p>",
   },
   {
+    eventKey: "billing.renewal",
+    locale: "en",
+    senderKey: "billing",
+    subject: "Upcoming renewal notice · {{plan_name}} Plan",
+    bodyHtml: "<p>Hi {{tenant_name}},</p><p>This is a reminder that on {{renewal_date}} your {{plan_name}} subscription will renew for {{amount}} {{currency}}.</p>",
+  },
+  {
+    eventKey: "billing.trial_d5_reminder",
+    locale: "es",
+    senderKey: "billing",
+    subject: "Tu plan {{plan_name}} vence en {{days_remaining}} días · {{tenant_name}}",
+    bodyHtml: "<p>Hola {{tenant_name}},</p><p>Tu periodo actual de <strong>{{plan_name}}</strong> vence el <strong>{{expires_at}}</strong>. Renueva o actualiza tu plan en <a href=\"{{billing_url}}\">Mi Plan y Cuotas</a> para mantener la continuidad sin interrupciones.</p>",
+  },
+  {
+    eventKey: "billing.trial_d5_reminder",
+    locale: "en",
+    senderKey: "billing",
+    subject: "Your {{plan_name}} plan expires in {{days_remaining}} days · {{tenant_name}}",
+    bodyHtml: "<p>Hi {{tenant_name}},</p><p>Your current <strong>{{plan_name}}</strong> period expires on <strong>{{expires_at}}</strong>. Renew or upgrade at <a href=\"{{billing_url}}\">My Plan &amp; Quotas</a> to keep uninterrupted service.</p>",
+  },
+  {
+    eventKey: "billing.trial_d0_expired",
+    locale: "es",
+    senderKey: "billing",
+    subject: "Tu periodo de prueba de {{plan_name}} venció hoy · {{tenant_name}}",
+    bodyHtml: "<p>Hola {{tenant_name}},</p><p>El ciclo de <strong>{{plan_name}}</strong> venció el <strong>{{expires_at}}</strong>. Completa tu pago en <a href=\"{{billing_url}}\">Mi Plan y Cuotas</a> para reactivar el servicio de inmediato.</p>",
+  },
+  {
+    eventKey: "billing.trial_d0_expired",
+    locale: "en",
+    senderKey: "billing",
+    subject: "Your {{plan_name}} trial expired today · {{tenant_name}}",
+    bodyHtml: "<p>Hi {{tenant_name}},</p><p>The <strong>{{plan_name}}</strong> cycle expired on <strong>{{expires_at}}</strong>. Complete your payment at <a href=\"{{billing_url}}\">My Plan &amp; Quotas</a> to restore active status immediately.</p>",
+  },
+  {
+    eventKey: "billing.bre_b_report_pending_admin",
+    locale: "es",
+    senderKey: "billing",
+    subject: "Nuevo comprobante Bre-B por verificar · {{tenant_name}}",
+    bodyHtml: "<p>El comercio <strong>{{tenant_name}}</strong> reportó un pago Bre-B para el plan <strong>{{plan_name}}</strong> por <strong>{{amount}}</strong> (Ref: <code>{{payment_reference}}</code>).</p><p>Revisa y aprueba o rechaza el comprobante en <a href=\"{{review_url}}\">Revisión De Pagos Bre-B</a>.</p>",
+  },
+  {
+    eventKey: "billing.bre_b_report_pending_admin",
+    locale: "en",
+    senderKey: "billing",
+    subject: "New Bre-B voucher pending review · {{tenant_name}}",
+    bodyHtml: "<p>Business <strong>{{tenant_name}}</strong> submitted a Bre-B payment voucher for <strong>{{plan_name}}</strong> (<strong>{{amount}}</strong>, Ref: <code>{{payment_reference}}</code>).</p><p>Review and approve or reject it at <a href=\"{{review_url}}\">Bre-B Payment Review</a>.</p>",
+  },
+  {
+    eventKey: "billing.bre_b_approved",
+    locale: "es",
+    senderKey: "billing",
+    subject: "Pago Bre-B verificado · Plan {{plan_name}} activo",
+    bodyHtml: "<p>Confirmamos la recepción de tu pago Bre-B por <strong>{{amount}}</strong> para <strong>{{tenant_name}}</strong> (Recibo <code>{{receipt_number}}</code>). Tu plan <strong>{{plan_name}}</strong> ya está activo. Revisa tu detalle en <a href=\"{{billing_url}}\">Mi Plan y Cuotas</a>.</p>",
+  },
+  {
+    eventKey: "billing.bre_b_approved",
+    locale: "en",
+    senderKey: "billing",
+    subject: "Bre-B payment verified · {{plan_name}} active",
+    bodyHtml: "<p>We confirmed your Bre-B payment of <strong>{{amount}}</strong> for <strong>{{tenant_name}}</strong> (Receipt <code>{{receipt_number}}</code>). Your <strong>{{plan_name}}</strong> plan is now active. Check details at <a href=\"{{billing_url}}\">My Plan &amp; Quotas</a>.</p>",
+  },
+  {
+    eventKey: "billing.bre_b_rejected",
+    locale: "es",
+    senderKey: "billing",
+    subject: "No pudimos verificar tu comprobante Bre-B · {{tenant_name}}",
+    bodyHtml: "<p>Tu reporte de pago Bre-B por <strong>{{amount}}</strong> para el plan <strong>{{plan_name}}</strong> no fue aprobado. Motivo: <strong>{{rejection_reason}}</strong>. Tu espacio mantiene su configuración vigente; vuelve a subir el comprobante en <a href=\"{{billing_url}}\">Mi Plan y Cuotas</a>.</p>",
+  },
+  {
+    eventKey: "billing.bre_b_rejected",
+    locale: "en",
+    senderKey: "billing",
+    subject: "Could not verify your Bre-B voucher · {{tenant_name}}",
+    bodyHtml: "<p>Your Bre-B payment report of <strong>{{amount}}</strong> for <strong>{{plan_name}}</strong> could not be approved. Reason: <strong>{{rejection_reason}}</strong>. Your workspace keeps its current configuration; please upload a clear voucher at <a href=\"{{billing_url}}\">My Plan &amp; Quotas</a>.</p>",
+  },
+  {
+    eventKey: "tenant.inventory.low_stock",
+    locale: "es",
+    senderKey: "no-reply",
+    subject: "Alerta de stock bajo: {{product_name}} ({{sku}}) · {{business_name}}",
+    bodyHtml: "<p>Hola {{business_name}},</p><p>El producto <strong>{{product_name}}</strong> (SKU: <code>{{sku}}</code>) alcanzó el nivel mínimo configurado.</p><p>Stock vigente: <strong>{{current_stock}}</strong> unidades · Umbral mínimo: <strong>{{min_threshold}}</strong> unidades.</p><p>Revisa o repón el inventario desde <a href=\"{{product_admin_url}}\">Catálogo De Productos</a>.</p>",
+  },
+  {
+    eventKey: "tenant.inventory.low_stock",
+    locale: "en",
+    senderKey: "no-reply",
+    subject: "Low stock alert: {{product_name}} ({{sku}}) · {{business_name}}",
+    bodyHtml: "<p>Hi {{business_name}},</p><p><strong>{{product_name}}</strong> (SKU: <code>{{sku}}</code>) has reached or dropped below its configured minimum threshold.</p><p>Current stock: <strong>{{current_stock}}</strong> units · Minimum threshold: <strong>{{min_threshold}}</strong> units.</p><p>Review or restock this item in <a href=\"{{product_admin_url}}\">Product Catalog</a>.</p>",
+  },
+  {
+    eventKey: "team.member_invited",
+    locale: "es",
+    senderKey: "no-reply",
+    subject: "Invitación para unirte al equipo de {{tenant_name}}",
+    bodyHtml: "<p>Hola {{invitee_name}},</p><p><strong>{{inviter_name}}</strong> te invitó a colaborar en el equipo de <strong>{{tenant_name}}</strong> en Mocter.</p><p>Acepta tu invitación en <a href=\"{{invite_url}}\">Aceptar Invitación</a>. Este enlace vence en {{expires_hours}} horas.</p>",
+  },
+  {
+    eventKey: "team.member_invited",
+    locale: "en",
+    senderKey: "no-reply",
+    subject: "Invitation to join {{tenant_name}}'s team",
+    bodyHtml: "<p>Hi {{invitee_name}},</p><p><strong>{{inviter_name}}</strong> invited you to collaborate with <strong>{{tenant_name}}</strong> on Mocter.</p><p>Accept your invitation at <a href=\"{{invite_url}}\">Accept Invitation</a>. This link expires in {{expires_hours}} hours.</p>",
+  },
+  {
     eventKey: "referral.registered",
     locale: "es",
     senderKey: "referidos",
     subject: "¡Un nuevo usuario se registró con tu enlace de referidos!",
     bodyHtml: "<p>Hola {{referrer_name}},</p><p><strong>{{referred_name}}</strong> se ha registrado con tu enlace de referidos. Tu beneficio acumulado es: {{reward_summary}}.</p>",
+  },
+  {
+    eventKey: "referral.registered",
+    locale: "en",
+    senderKey: "referidos",
+    subject: "A new user signed up with your referral link!",
+    bodyHtml: "<p>Hi {{referrer_name}},</p><p><strong>{{referred_name}}</strong> has signed up using your referral link. Your accumulated reward is: {{reward_summary}}.</p>",
   },
   {
     eventKey: "community.role_promoted",
@@ -2074,11 +2337,25 @@ const CANONICAL_TEMPLATES_SEED = [
     bodyHtml: "<p>Hola {{user_name}},</p><p>Has sido promovido al rol <strong>{{role}}</strong> en la comunidad <strong>{{community_name}}</strong>.</p><p><a href=\"{{community_url}}\">Ver comunidad</a></p>",
   },
   {
+    eventKey: "community.role_promoted",
+    locale: "en",
+    senderKey: "comunidad",
+    subject: "New role in {{community_name}} community",
+    bodyHtml: "<p>Hi {{user_name}},</p><p>You have been promoted to the <strong>{{role}}</strong> role in the <strong>{{community_name}}</strong> community.</p><p><a href=\"{{community_url}}\">View community</a></p>",
+  },
+  {
     eventKey: "community.join_accepted",
     locale: "es",
     senderKey: "comunidad",
     subject: "Solicitud aceptada en {{community_name}}",
     bodyHtml: "<p>Hola {{user_name}},</p><p>Tu solicitud para unirte a <strong>{{community_name}}</strong> ha sido aceptada.</p><p><a href=\"{{community_url}}\">Ingresar a la comunidad</a></p>",
+  },
+  {
+    eventKey: "community.join_accepted",
+    locale: "en",
+    senderKey: "comunidad",
+    subject: "Membership approved in {{community_name}}",
+    bodyHtml: "<p>Hi {{user_name}},</p><p>Your request to join <strong>{{community_name}}</strong> has been accepted.</p><p><a href=\"{{community_url}}\">Go to community</a></p>",
   },
   {
     eventKey: "community.digest",
@@ -2088,11 +2365,25 @@ const CANONICAL_TEMPLATES_SEED = [
     bodyHtml: "<p>Hola {{user_name}},</p><p>Aquí tienes las novedades más destacadas de la semana en {{community_name}}.</p>",
   },
   {
+    eventKey: "community.digest",
+    locale: "en",
+    senderKey: "comunidad",
+    subject: "Weekly digest from {{community_name}}",
+    bodyHtml: "<p>Hi {{user_name}},</p><p>Here are the top highlights of the week in {{community_name}}.</p>",
+  },
+  {
     eventKey: "landing.lead_received",
     locale: "es",
     senderKey: "soporte",
     subject: "Nuevo prospecto recibido desde la landing: {{lead_name}}",
     bodyHtml: "<p>Nuevo contacto recibido:</p><ul><li>Nombre: {{lead_name}}</li><li>Correo: {{lead_email}}</li><li>Teléfono: {{lead_phone}}</li></ul><p>Mensaje: {{message}}</p>",
+  },
+  {
+    eventKey: "landing.lead_received",
+    locale: "en",
+    senderKey: "soporte",
+    subject: "New prospect captured from landing page: {{lead_name}}",
+    bodyHtml: "<p>New contact received:</p><ul><li>Name: {{lead_name}}</li><li>Email: {{lead_email}}</li><li>Phone: {{lead_phone}}</li></ul><p>Message: {{message}}</p>",
   },
 ];
 
@@ -2154,10 +2445,11 @@ export async function fetchAdminEmailSettings(): Promise<AdminEmailSettingsDto> 
       sendersList = await db.select().from(emailSenders);
     }
 
-    // 3. Inicialización idempotente de Eventos Transaccionales del Sistema
-    const existingEventKeys = new Set(eventsList.map((ev) => ev.key.toLowerCase()));
+    // 3. Inicialización idempotente de Eventos Transaccionales del Sistema y sincronización de tenantConfigurable
+    const existingEventMap = new Map(eventsList.map((ev) => [ev.key.toLowerCase(), ev]));
     for (const ev of CANONICAL_EMAIL_EVENTS) {
-      if (!existingEventKeys.has(ev.key.toLowerCase())) {
+      const existing = existingEventMap.get(ev.key.toLowerCase());
+      if (!existing) {
         try {
           await db.insert(emailEvents).values({
             key: ev.key.toLowerCase(),
@@ -2167,36 +2459,77 @@ export async function fetchAdminEmailSettings(): Promise<AdminEmailSettingsDto> 
             defaultSenderKey: ev.defaultSenderKey,
             isEnabled: ev.isEnabled,
             isSystem: ev.isSystem,
+            tenantConfigurable: ev.tenantConfigurable,
             createdBy: "platform_owner",
             updatedBy: "platform_owner",
           });
-          existingEventKeys.add(ev.key.toLowerCase());
+          existingEventMap.set(ev.key.toLowerCase(), {
+            id: "",
+            key: ev.key.toLowerCase(),
+            category: ev.category,
+            description: ev.description,
+            variablesSchema: [...ev.variablesSchema],
+            defaultSenderKey: ev.defaultSenderKey,
+            isEnabled: ev.isEnabled,
+            isSystem: ev.isSystem,
+            tenantConfigurable: ev.tenantConfigurable,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            createdBy: "platform_owner",
+            updatedBy: "platform_owner",
+          });
         } catch (e) {
           appLogger.warn(`[fetchAdminEmailSettings] No se pudo inicializar evento ${ev.key}`, { error: e instanceof Error ? e.message : String(e) });
+        }
+      } else if (
+        existing.tenantConfigurable !== ev.tenantConfigurable ||
+        existing.description !== ev.description
+      ) {
+        try {
+          await db
+            .update(emailEvents)
+            .set({
+              tenantConfigurable: ev.tenantConfigurable,
+              description: ev.description,
+              updatedAt: new Date(),
+              updatedBy: "platform_owner",
+            })
+            .where(eq(emailEvents.key, existing.key));
+        } catch (e) {
+          appLogger.warn(`[fetchAdminEmailSettings] No se pudo sincronizar evento ${ev.key}`, { error: e instanceof Error ? e.message : String(e) });
         }
       }
     }
     eventsList = await db.select().from(emailEvents);
 
-    // 4. Inicialización idempotente de Plantillas Vinculadas a Remitente y Evento
+    // 4. Inicialización idempotente de Plantillas Vinculadas a Remitente y Evento (`es` y `en`)
     if (sendersList.length > 0) {
       const senderKeyMap = new Map(sendersList.map((s) => [s.key, s.id]));
       const defaultSenderId = sendersList.find((s) => s.isDefault)?.id || sendersList[0].id;
       const validEventKeys = new Set(eventsList.map((e) => e.key));
-      const existingTemplateKeys = new Set(
-        templatesList.map((t) => `${t.eventKey}:${t.locale}:${t.version}`)
+      const existingLocalePairs = new Set(
+        templatesList.map((t) => `${t.eventKey}:${t.locale}`)
       );
+      const existingEventSenderMap = new Map<string, string>();
+      for (const tpl of templatesList) {
+        if (tpl.senderId && !existingEventSenderMap.has(tpl.eventKey)) {
+          existingEventSenderMap.set(tpl.eventKey, tpl.senderId);
+        }
+      }
 
       for (const t of CANONICAL_TEMPLATES_SEED) {
         if (!validEventKeys.has(t.eventKey)) {
           continue;
         }
-        const templateKey = `${t.eventKey}:${t.locale}:1`;
-        if (existingTemplateKeys.has(templateKey)) {
+        const localePairKey = `${t.eventKey}:${t.locale}`;
+        if (existingLocalePairs.has(localePairKey)) {
           continue;
         }
 
-        const targetSenderId = senderKeyMap.get(t.senderKey) || defaultSenderId;
+        const targetSenderId =
+          existingEventSenderMap.get(t.eventKey) ||
+          senderKeyMap.get(t.senderKey) ||
+          defaultSenderId;
         try {
           await db.insert(emailTemplates).values({
             eventKey: t.eventKey,
@@ -2212,7 +2545,7 @@ export async function fetchAdminEmailSettings(): Promise<AdminEmailSettingsDto> 
             createdBy: "platform_owner",
             updatedBy: "platform_owner",
           });
-          existingTemplateKeys.add(templateKey);
+          existingLocalePairs.add(localePairKey);
         } catch (e) {
           appLogger.warn(
             `[fetchAdminEmailSettings] No se pudo inicializar plantilla ${t.eventKey}:${t.locale}`,
@@ -2222,6 +2555,33 @@ export async function fetchAdminEmailSettings(): Promise<AdminEmailSettingsDto> 
       }
       templatesList = await db.select().from(emailTemplates);
     }
+
+    // 5. Inicialización idempotente de Configuración Global de Encabezado y Pie de Correo (`es`/`en`)
+    let layoutsList = await db.select().from(emailLayoutConfigs);
+    const existingLayoutLocales = new Set(layoutsList.map((l) => l.locale));
+    for (const seedLayout of CANONICAL_EMAIL_LAYOUTS_SEED) {
+      if (!existingLayoutLocales.has(seedLayout.locale)) {
+        try {
+          await db
+            .insert(emailLayoutConfigs)
+            .values({
+              locale: seedLayout.locale,
+              headerHtml: seedLayout.headerHtml,
+              footerHtml: seedLayout.footerHtml,
+              isEnabled: true,
+              createdBy: "platform_owner",
+              updatedBy: "platform_owner",
+            })
+            .onConflictDoNothing();
+        } catch (e) {
+          appLogger.warn(
+            `[fetchAdminEmailSettings] No se pudo inicializar layout global ${seedLayout.locale}`,
+            { error: e instanceof Error ? e.message : String(e) },
+          );
+        }
+      }
+    }
+    layoutsList = await db.select().from(emailLayoutConfigs).orderBy(asc(emailLayoutConfigs.locale));
 
     // Re-consultar ordenado para la respuesta
     const refreshedSenders = await db
@@ -2281,6 +2641,7 @@ export async function fetchAdminEmailSettings(): Promise<AdminEmailSettingsDto> 
         defaultSenderKey: ev.defaultSenderKey,
         isEnabled: ev.isEnabled,
         isSystem: ev.isSystem,
+        tenantConfigurable: ev.tenantConfigurable,
       })),
       templates: refreshedTemplates.map((t) => {
         const sInfo = t.senderId ? senderMap.get(t.senderId) : undefined;
@@ -2298,6 +2659,13 @@ export async function fetchAdminEmailSettings(): Promise<AdminEmailSettingsDto> 
           isLocked: t.isLocked,
         };
       }),
+      layoutConfigs: layoutsList.map((l) => ({
+        id: l.id,
+        locale: l.locale === "en" ? "en" : "es",
+        headerHtml: l.headerHtml,
+        footerHtml: l.footerHtml,
+        isEnabled: l.isEnabled,
+      })),
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -2307,6 +2675,7 @@ export async function fetchAdminEmailSettings(): Promise<AdminEmailSettingsDto> 
       senders: [],
       events: [],
       templates: [],
+      layoutConfigs: [],
     };
   }
 }
@@ -2451,6 +2820,236 @@ export async function saveAdminEmailSender(
   }
 }
 
+function isEmailRichTextEmpty(rawHtml: string): boolean {
+  const trimmed = rawHtml.trim();
+  if (!trimmed) {
+    return true;
+  }
+  if (/<(img|a|hr|table|button)\b/i.test(trimmed)) {
+    return false;
+  }
+  const plainText = trimmed
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .trim();
+  return plainText.length === 0;
+}
+
+function validateTemplateVariablesAgainstSchema(
+  eventKey: string,
+  subject: string,
+  bodyHtml: string,
+  allowedVars: Set<string>,
+): Result<true, string> {
+  if (allowedVars.size === 0) {
+    return ok(true);
+  }
+  const combinedText = `${subject} ${bodyHtml}`;
+  for (const match of combinedText.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)) {
+    const varName = match[1];
+    if (varName && !allowedVars.has(varName)) {
+      return err(
+        `La variable '{{${varName}}}' no pertenece al esquema del evento '${eventKey}'. Variables permitidas: ${Array.from(allowedVars).join(", ")}.`,
+      );
+    }
+  }
+  return ok(true);
+}
+
+/**
+ * Normaliza y valida los borradores bilingües de una plantilla de correo (`SPEC-14`).
+ * Tolera que un idioma completo quede vacío siempre que al menos uno (`es` o `en`) tenga asunto y cuerpo.
+ */
+export function prepareBilingualTemplateSaveEntries(params: {
+  eventKey: string;
+  allowedVars: Set<string>;
+  translations: {
+    es?: EmailTemplateLocaleDraftInput;
+    en?: EmailTemplateLocaleDraftInput;
+  };
+}): Result<
+  Array<{
+    locale: "es" | "en";
+    id?: string;
+    subject: string;
+    safeHtml: string;
+  }>,
+  string
+> {
+  const prepared: Array<{
+    locale: "es" | "en";
+    id?: string;
+    subject: string;
+    safeHtml: string;
+  }> = [];
+
+  for (const locale of ["es", "en"] as const) {
+    const draft = params.translations[locale];
+    if (!draft) {
+      continue;
+    }
+
+    const subject = draft.subject.trim();
+    const rawBody = draft.bodyHtml.trim();
+    const hasSubject = subject.length > 0;
+    const hasBody = !isEmailRichTextEmpty(rawBody);
+
+    if (hasSubject !== hasBody) {
+      const label = locale === "es" ? "Español (ES)" : "Inglés (EN)";
+      return err(
+        `En ${label} debes completar tanto el Asunto como el Cuerpo del correo, o dejar ambos campos vacíos.`,
+      );
+    }
+
+    if (!hasSubject && !hasBody) {
+      continue;
+    }
+
+    const varsCheck = validateTemplateVariablesAgainstSchema(
+      params.eventKey,
+      subject,
+      rawBody,
+      params.allowedVars,
+    );
+    if (!varsCheck.ok) {
+      return varsCheck;
+    }
+
+    prepared.push({
+      locale,
+      id: draft.id?.trim() || undefined,
+      subject,
+      safeHtml: sanitizeEmailHtml(rawBody),
+    });
+  }
+
+  if (prepared.length === 0) {
+    return err("Debes completar el Asunto y el Cuerpo del correo en al menos un idioma (ES o EN).");
+  }
+
+  return ok(prepared);
+}
+
+type DbExecutor = Pick<ReturnType<typeof getDb>, "select" | "update" | "insert">;
+
+async function upsertEmailTemplateRow(
+  executor: DbExecutor,
+  params: {
+    id?: string;
+    eventKey: string;
+    locale: string;
+    senderId: string;
+    subject: string;
+    safeHtml: string;
+    status: "draft" | "published" | "retired";
+    actor: string;
+  },
+): Promise<string> {
+  const now = new Date();
+  if (params.status === "published") {
+    const retireConditions = [
+      eq(emailTemplates.eventKey, params.eventKey),
+      eq(emailTemplates.locale, params.locale),
+      eq(emailTemplates.status, "published"),
+    ];
+    if (params.id) {
+      retireConditions.push(ne(emailTemplates.id, params.id));
+    }
+    await executor
+      .update(emailTemplates)
+      .set({ status: "retired", updatedBy: params.actor, updatedAt: now })
+      .where(and(...retireConditions));
+  }
+
+  if (params.id) {
+    const updated = await executor
+      .update(emailTemplates)
+      .set({
+        eventKey: params.eventKey,
+        locale: params.locale,
+        senderId: params.senderId,
+        subject: params.subject,
+        bodyHtml: params.safeHtml,
+        bodyJson: { type: "doc", content: [{ type: "paragraph", text: params.safeHtml }] },
+        status: params.status,
+        publishedAt: params.status === "published" ? now : null,
+        updatedBy: params.actor,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(emailTemplates.id, params.id),
+          eq(emailTemplates.eventKey, params.eventKey),
+          eq(emailTemplates.locale, params.locale),
+        ),
+      )
+      .returning({ id: emailTemplates.id });
+
+    if (updated[0]?.id) {
+      return updated[0].id;
+    }
+  }
+
+  const existing = await executor
+    .select({ version: emailTemplates.version })
+    .from(emailTemplates)
+    .where(and(eq(emailTemplates.eventKey, params.eventKey), eq(emailTemplates.locale, params.locale)))
+    .orderBy(desc(emailTemplates.version))
+    .limit(1);
+
+  const nextVersion = (existing[0]?.version ?? 0) + 1;
+  const [created] = await executor
+    .insert(emailTemplates)
+    .values({
+      eventKey: params.eventKey,
+      locale: params.locale,
+      senderId: params.senderId,
+      subject: params.subject,
+      bodyJson: { type: "doc", content: [{ type: "paragraph", text: params.safeHtml }] },
+      bodyHtml: params.safeHtml,
+      version: nextVersion,
+      status: params.status,
+      isLocked: params.eventKey.startsWith("auth."),
+      publishedAt: params.status === "published" ? now : null,
+      createdBy: params.actor,
+      updatedBy: params.actor,
+    })
+    .returning({ id: emailTemplates.id });
+
+  return created.id;
+}
+
+async function resolveVerifiedSenderAndEvent(
+  db: DbExecutor,
+  eventKey: string,
+  senderId: string,
+): Promise<Result<{ allowedVars: Set<string> }, string>> {
+  const [senderExists] = await db
+    .select({ id: emailSenders.id })
+    .from(emailSenders)
+    .where(eq(emailSenders.id, senderId))
+    .limit(1);
+
+  if (!senderExists) {
+    return err("El remitente seleccionado no existe en el catálogo de direcciones registradas.");
+  }
+
+  const [eventExists] = await db
+    .select({ key: emailEvents.key, variablesSchema: emailEvents.variablesSchema })
+    .from(emailEvents)
+    .where(eq(emailEvents.key, eventKey))
+    .limit(1);
+
+  if (!eventExists) {
+    return err("El evento de funcionalidad seleccionado no existe en el catálogo de eventos.");
+  }
+
+  const allowedVars = new Set(
+    Array.isArray(eventExists.variablesSchema) ? eventExists.variablesSchema : [],
+  );
+  return ok({ allowedVars });
+}
+
 /**
  * Guarda o actualiza una plantilla de correo vinculada a un remitente y a un evento del sistema (`admin.email_templates`).
  * REGLA ESTRICTA: El remitente y el evento funcional son obligatorios.
@@ -2461,97 +3060,236 @@ export async function saveAdminEmailTemplate(
   try {
     const db = getDb();
     const actor = input.createdBy || "platform_owner";
+    const locale = input.locale === "en" ? "en" : "es";
+    const status = input.status || "published";
 
     if (!input.eventKey || !input.senderId || !input.subject || !input.bodyHtml) {
       return err("El Evento de funcionalidad, el Remitente vinculado, el Asunto y el Cuerpo HTML son obligatorios.");
     }
 
-    // Validar que el remitente exista en admin.email_senders
-    const [senderExists] = await db
-      .select({ id: emailSenders.id })
-      .from(emailSenders)
-      .where(eq(emailSenders.id, input.senderId))
-      .limit(1);
-
-    if (!senderExists) {
-      return err("El remitente seleccionado no existe en el catálogo de direcciones registradas.");
+    const resolved = await resolveVerifiedSenderAndEvent(db, input.eventKey, input.senderId);
+    if (!resolved.ok) {
+      return resolved;
     }
 
-    // Validar que el evento exista en admin.email_events
-    const [eventExists] = await db
-      .select({ key: emailEvents.key })
-      .from(emailEvents)
-      .where(eq(emailEvents.key, input.eventKey))
-      .limit(1);
-
-    if (!eventExists) {
-      return err("El evento de funcionalidad seleccionado no existe en el catálogo de eventos.");
-    }
-
-    const locale = input.locale || "es";
-    const status = input.status || "published";
-
-    if (input.id) {
-      await db
-        .update(emailTemplates)
-        .set({
-          eventKey: input.eventKey,
-          locale,
-          senderId: input.senderId,
+    const prepared = prepareBilingualTemplateSaveEntries({
+      eventKey: input.eventKey,
+      allowedVars: resolved.data.allowedVars,
+      translations: {
+        [locale]: {
+          id: input.id,
           subject: input.subject,
           bodyHtml: input.bodyHtml,
-          bodyJson: { type: "doc", content: [{ type: "paragraph", text: input.bodyHtml }] },
-          status,
-          publishedAt: status === "published" ? new Date() : null,
-          updatedBy: actor,
-          updatedAt: new Date(),
-        })
-        .where(eq(emailTemplates.id, input.id));
-
-      return ok({ id: input.id });
-    } else {
-      // Determinar la última versión para la dupla (eventKey, locale)
-      const existing = await db
-        .select({ version: emailTemplates.version })
-        .from(emailTemplates)
-        .where(and(eq(emailTemplates.eventKey, input.eventKey), eq(emailTemplates.locale, locale)))
-        .orderBy(desc(emailTemplates.version))
-        .limit(1);
-
-      const nextVersion = (existing[0]?.version ?? 0) + 1;
-
-      // Si la nueva versión se publica, despublicar las versiones anteriores
-      if (status === "published") {
-        await db
-          .update(emailTemplates)
-          .set({ status: "archived", updatedBy: actor, updatedAt: new Date() })
-          .where(and(eq(emailTemplates.eventKey, input.eventKey), eq(emailTemplates.locale, locale), eq(emailTemplates.status, "published")));
-      }
-
-      const [created] = await db
-        .insert(emailTemplates)
-        .values({
-          eventKey: input.eventKey,
-          locale,
-          senderId: input.senderId,
-          subject: input.subject,
-          bodyJson: { type: "doc", content: [{ type: "paragraph", text: input.bodyHtml }] },
-          bodyHtml: input.bodyHtml,
-          version: nextVersion,
-          status,
-          isLocked: input.eventKey.startsWith("auth."),
-          publishedAt: status === "published" ? new Date() : null,
-          createdBy: actor,
-          updatedBy: actor,
-        })
-        .returning();
-
-      return ok({ id: created.id });
+        },
+      },
+    });
+    if (!prepared.ok) {
+      return prepared;
     }
+
+    const entry = prepared.data[0];
+    const savedId = await db.transaction(async (tx) =>
+      upsertEmailTemplateRow(tx, {
+        id: entry.id,
+        eventKey: input.eventKey,
+        locale: entry.locale,
+        senderId: input.senderId,
+        subject: entry.subject,
+        safeHtml: entry.safeHtml,
+        status,
+        actor,
+      }),
+    );
+
+    return ok({ id: savedId });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     appLogger.error(`[saveAdminEmailTemplate Failed] ${msg}`, error);
     return err(`Error al guardar plantilla de correo: ${msg}`);
+  }
+}
+
+/**
+ * Guarda de forma atómica y unificada las traducciones (`es` y/o `en`) de un evento,
+ * sincronizando el mismo remitente vinculado entre ambos idiomas (`SPEC-14`).
+ */
+export async function saveAdminEmailBilingualTemplates(
+  input: SaveAdminEmailBilingualTemplatesInput,
+): Promise<Result<{ ids: Partial<Record<"es" | "en", string>>; savedLocales: Array<"es" | "en"> }, string>> {
+  try {
+    const db = getDb();
+    const actor = input.createdBy || "platform_owner";
+    const status = input.status || "published";
+
+    if (!input.eventKey?.trim() || !input.senderId?.trim()) {
+      return err("El Evento de funcionalidad y el Remitente vinculado son obligatorios.");
+    }
+
+    const resolved = await resolveVerifiedSenderAndEvent(db, input.eventKey.trim(), input.senderId.trim());
+    if (!resolved.ok) {
+      return resolved;
+    }
+
+    const prepared = prepareBilingualTemplateSaveEntries({
+      eventKey: input.eventKey.trim(),
+      allowedVars: resolved.data.allowedVars,
+      translations: input.translations,
+    });
+    if (!prepared.ok) {
+      return prepared;
+    }
+
+    const ids: Partial<Record<"es" | "en", string>> = {};
+    const savedLocales: Array<"es" | "en"> = [];
+
+    await db.transaction(async (tx) => {
+      for (const entry of prepared.data) {
+        const savedId = await upsertEmailTemplateRow(tx, {
+          id: entry.id,
+          eventKey: input.eventKey.trim(),
+          locale: entry.locale,
+          senderId: input.senderId.trim(),
+          subject: entry.subject,
+          safeHtml: entry.safeHtml,
+          status,
+          actor,
+        });
+        ids[entry.locale] = savedId;
+        savedLocales.push(entry.locale);
+      }
+
+      // Garantiza que todas las versiones del evento compartan el mismo remitente vinculado
+      await tx
+        .update(emailTemplates)
+        .set({
+          senderId: input.senderId.trim(),
+          updatedBy: actor,
+          updatedAt: new Date(),
+        })
+        .where(eq(emailTemplates.eventKey, input.eventKey.trim()));
+    });
+
+    return ok({ ids, savedLocales });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[saveAdminEmailBilingualTemplates Failed] ${msg}`, error);
+    return err(`Error al guardar plantilla bilingüe de correo: ${msg}`);
+  }
+}
+
+/**
+ * Activa o desactiva globalmente un evento de notificación en `admin.email_events` (`SPEC-14`).
+ * Bloquea desactivar eventos críticos de sistema (`is_system = true`, `auth.*`).
+ */
+export async function toggleAdminEmailEvent(
+  input: ToggleAdminEmailEventInput
+): Promise<Result<{ key: string; isEnabled: boolean }, string>> {
+  try {
+    const db = getDb();
+    const actor = input.actorUserId || "platform_owner";
+    const normalizedKey = input.eventKey.trim().toLowerCase();
+
+    const [eventRow] = await db
+      .select({
+        key: emailEvents.key,
+        isSystem: emailEvents.isSystem,
+        isEnabled: emailEvents.isEnabled,
+      })
+      .from(emailEvents)
+      .where(eq(emailEvents.key, normalizedKey))
+      .limit(1);
+
+    if (!eventRow) {
+      return err(`El evento '${normalizedKey}' no existe en el catálogo.`, "EVENT_NOT_FOUND");
+    }
+
+    if (eventRow.isSystem && !input.isEnabled) {
+      return err(
+        "Los eventos críticos de sistema (auth.*) no pueden desactivarse.",
+        "SYSTEM_EVENT_CANNOT_BE_DISABLED"
+      );
+    }
+
+    await db
+      .update(emailEvents)
+      .set({
+        isEnabled: input.isEnabled,
+        updatedBy: actor,
+        updatedAt: new Date(),
+      })
+      .where(eq(emailEvents.key, normalizedKey));
+
+    appLogger.info("admin.notifications.event_toggled", {
+      eventKey: normalizedKey,
+      isEnabled: input.isEnabled,
+      actor,
+    });
+
+    return ok({ key: normalizedKey, isEnabled: input.isEnabled });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[toggleAdminEmailEvent Failed] ${msg}`, error);
+    return err(`Error al actualizar estado del evento: ${msg}`, "EVENT_TOGGLE_FAILED");
+  }
+}
+
+/**
+ * Guarda o actualiza la configuración global de encabezado (`body.header`) y pie de página (`body.footer`)
+ * institucional para un idioma específico (`admin.email_layout_configs`, `SPEC-14`).
+ */
+export async function saveAdminEmailLayoutConfig(
+  input: SaveAdminEmailLayoutConfigInput
+): Promise<Result<{ id: string; locale: "es" | "en"; headerHtml: string; footerHtml: string; isEnabled: boolean }, string>> {
+  try {
+    const db = getDb();
+    const actor = input.actorUserId || "platform_owner";
+    const locale = input.locale === "en" ? "en" : "es";
+    const safeHeader = sanitizeEmailHtml(input.headerHtml);
+    const safeFooter = sanitizeEmailHtml(input.footerHtml);
+    const isEnabled = input.isEnabled ?? true;
+    const now = new Date();
+
+    const [saved] = await db
+      .insert(emailLayoutConfigs)
+      .values({
+        locale,
+        headerHtml: safeHeader,
+        footerHtml: safeFooter,
+        isEnabled,
+        createdBy: actor,
+        updatedBy: actor,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: emailLayoutConfigs.locale,
+        set: {
+          headerHtml: safeHeader,
+          footerHtml: safeFooter,
+          isEnabled,
+          updatedBy: actor,
+          updatedAt: now,
+        },
+      })
+      .returning();
+
+    appLogger.info("admin.notifications.layout_saved", {
+      locale,
+      isEnabled,
+      actor,
+    });
+
+    return ok({
+      id: saved.id,
+      locale,
+      headerHtml: saved.headerHtml,
+      footerHtml: saved.footerHtml,
+      isEnabled: saved.isEnabled,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[saveAdminEmailLayoutConfig Failed] ${msg}`, error);
+    return err(`Error al guardar encabezado y pie global: ${msg}`, "LAYOUT_SAVE_FAILED");
   }
 }
 
@@ -3394,6 +4132,7 @@ export interface SendSystemNotificationEmailInput {
   clientId?: string | null;
   locale?: string;
   actorUserId?: string;
+  idempotencyKey?: string;
 }
 
 export interface SendSystemNotificationEmailResult {
@@ -3403,7 +4142,7 @@ export interface SendSystemNotificationEmailResult {
   recipient: string;
   renderedSubject: string;
   renderedHtml: string;
-  status: "sent" | "queued" | "failed";
+  status: "sent" | "queued" | "failed" | "skipped";
   providerMessageId?: string | null;
   error?: string;
 }
@@ -3411,14 +4150,77 @@ export interface SendSystemNotificationEmailResult {
 /**
  * Despacha un correo transaccional utilizando estrictamente las plantillas publicadas en la base de datos
  * (admin.email_templates), los remitentes institucionales asociados (admin.email_senders) y persistiendo
- * la entrega en el outbox transaccional (admin.email_deliveries) (NTF-001, ADM-001 T-38).
+ * la entrega en el outbox transaccional (admin.email_deliveries) (NTF-001, ADM-001 T-38, SPEC-14).
  */
 export async function sendSystemNotificationEmail(
   input: SendSystemNotificationEmailInput,
 ): Promise<SendSystemNotificationEmailResult> {
   const db = getDb();
   const actor = input.actorUserId || "01a19874-1077-744c-8514-d4c990cd7259";
-  const reqLocale = input.locale || "es";
+  const reqLocale = input.locale === "en" ? "en" : "es";
+
+  // 0. Verificar interruptor maestro del evento en admin.email_events (RN-SPEC-14-01)
+  const [eventMeta] = await db
+    .select({
+      key: emailEvents.key,
+      isEnabled: emailEvents.isEnabled,
+    })
+    .from(emailEvents)
+    .where(eq(emailEvents.key, input.eventKey))
+    .limit(1);
+
+  if (eventMeta && !eventMeta.isEnabled) {
+    appLogger.info("notifications.skipped_disabled", {
+      eventKey: input.eventKey,
+      clientId: input.clientId ?? null,
+      reason: "skipped_disabled_by_admin",
+    });
+    return {
+      success: false,
+      deliveryId: "00000000-0000-0000-0000-000000000000",
+      eventKey: input.eventKey,
+      recipient: input.recipient,
+      renderedSubject: "",
+      renderedHtml: "",
+      status: "skipped",
+      error: "skipped_disabled_by_admin",
+    };
+  }
+
+  // 0b. Control de idempotencia en email_deliveries si se proveyó clave explícita
+  if (input.idempotencyKey) {
+    const [existingDelivery] = await db
+      .select({
+        id: emailDeliveries.id,
+        recipient: emailDeliveries.recipient,
+        renderedSubject: emailDeliveries.renderedSubject,
+        renderedHtml: emailDeliveries.renderedHtml,
+        status: emailDeliveries.status,
+        providerMessageId: emailDeliveries.providerMessageId,
+      })
+      .from(emailDeliveries)
+      .where(eq(emailDeliveries.idempotencyKey, input.idempotencyKey))
+      .limit(1);
+
+    if (existingDelivery) {
+      const normalizedStatus =
+        existingDelivery.status === "sent"
+          ? "sent"
+          : existingDelivery.status === "failed" || existingDelivery.status === "dead"
+            ? "failed"
+            : "queued";
+      return {
+        success: normalizedStatus !== "failed",
+        deliveryId: existingDelivery.id,
+        eventKey: input.eventKey,
+        recipient: existingDelivery.recipient,
+        renderedSubject: existingDelivery.renderedSubject,
+        renderedHtml: existingDelivery.renderedHtml,
+        status: normalizedStatus,
+        providerMessageId: existingDelivery.providerMessageId,
+      };
+    }
+  }
 
   // 1. Consultar plantilla publicada en la BD para (eventKey, locale)
   let tplRows = await db
@@ -3512,17 +4314,57 @@ export async function sendSystemNotificationEmail(
     }
   }
 
-  // 3. Interpolación de variables
+  // 3. Interpolación segura de variables con escape HTML anti-XSS (RN-SPEC-14-04)
+  //    y composición automática del layout institucional global (body.header + body + body.footer)
   const renderedSubject = rawSubject.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => {
     return input.variables[key] !== undefined && input.variables[key] !== null ? String(input.variables[key]) : "";
   });
-  const renderedHtml = rawHtml.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => {
-    return input.variables[key] !== undefined && input.variables[key] !== null ? String(input.variables[key]) : "";
+  const renderedBodyHtml = sanitizeEmailHtml(
+    rawHtml.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => {
+      const rawVal =
+        input.variables[key] !== undefined && input.variables[key] !== null ? input.variables[key] : "";
+      return escapeHtmlVariable(rawVal);
+    }),
+  );
+
+  let layoutRow: { headerHtml: string; footerHtml: string; isEnabled: boolean } | undefined;
+  try {
+    const layoutRows = await db
+      .select({
+        locale: emailLayoutConfigs.locale,
+        headerHtml: emailLayoutConfigs.headerHtml,
+        footerHtml: emailLayoutConfigs.footerHtml,
+        isEnabled: emailLayoutConfigs.isEnabled,
+      })
+      .from(emailLayoutConfigs)
+      .where(inArray(emailLayoutConfigs.locale, reqLocale === "en" ? ["en", "es"] : ["es"]));
+    layoutRow =
+      layoutRows.find((r) => r.locale === reqLocale) ||
+      layoutRows.find((r) => r.locale === "es");
+  } catch {
+    layoutRow = undefined;
+  }
+
+  const fallbackLayout =
+    CANONICAL_EMAIL_LAYOUTS_SEED.find((l) => l.locale === reqLocale) ||
+    CANONICAL_EMAIL_LAYOUTS_SEED[0];
+
+  const renderedHtml = composeEmailWithGlobalLayout({
+    headerHtml: layoutRow ? layoutRow.headerHtml : fallbackLayout.headerHtml,
+    bodyHtml: renderedBodyHtml,
+    footerHtml: layoutRow ? layoutRow.footerHtml : fallbackLayout.footerHtml,
+    isEnabled: layoutRow ? layoutRow.isEnabled : true,
+    brandName:
+      typeof input.variables.brand_name === "string" && input.variables.brand_name.trim()
+        ? input.variables.brand_name.trim()
+        : "Mocter",
   });
 
   // 4. Registro en el outbox transaccional (admin.email_deliveries)
   const deliveryId = randomUUID();
-  const idempotencyKey = `${input.eventKey}:${input.recipient.trim().toLowerCase()}:${Date.now()}:${randomBytes(4).toString("hex")}`;
+  const idempotencyKey =
+    input.idempotencyKey ||
+    `${input.eventKey}:${input.recipient.trim().toLowerCase()}:${Date.now()}:${randomBytes(4).toString("hex")}`;
 
   let deliveryCreated = false;
   if (resolvedSenderId && templateId !== "00000000-0000-0000-0000-000000000000") {

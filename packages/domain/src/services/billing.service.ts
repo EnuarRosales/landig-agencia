@@ -26,7 +26,11 @@ import type { PaymentGatewayConfigRow } from "../db/schemas/admin/payment-gatewa
 import { validateMediaMagicBytes } from "../utils/media-magic-bytes";
 import { S3StorageService } from "./s3-storage.service";
 import { BreBQrService, defaultBreBQrService } from "./breb-qr.service";
-import { getTransactionalNotificationsService } from "./notifications-and-leads.service";
+import {
+  buildAdminBreBReviewUrl,
+  getNotificationDispatcherService,
+} from "./notification-dispatcher.service";
+import { sendSystemNotificationEmail } from "./admin-dashboard.service";
 import { env } from "../utils/env";
 
 export const MAX_VOUCHER_SIZE_BYTES = 10 * 1024 * 1024; // 10 MiB
@@ -146,6 +150,7 @@ export interface ProrationResult {
 
 export interface IBillingNotificationDispatcher {
   dispatchPaymentSucceeded(params: {
+    clientId?: string;
     tenantName: string;
     recipientEmail: string;
     planName: string;
@@ -167,6 +172,14 @@ export interface IBillingNotificationDispatcher {
     rejectionReason?: string;
     reportId: string;
   }): Promise<{ dispatched: boolean; deliveryId?: string }>;
+
+  dispatchBreBPendingAdminNotice?(params: {
+    clientId: string;
+    reportId: string;
+    planName: string;
+    amountFormattedCop: string;
+    paymentReference?: string | null;
+  }): Promise<{ dispatched: boolean; sentCount?: number }>;
 }
 
 /**
@@ -285,6 +298,7 @@ export class BillingService {
           if (recipientEmail) {
             const amountFormatted = (input.amountCents / 100).toFixed(2);
             await this.notificationDispatcher.dispatchPaymentSucceeded({
+              clientId: input.clientId,
               tenantName: profile.companyName,
               recipientEmail,
               planName: "Suscripción Mocter",
@@ -898,6 +912,28 @@ export class BillingService {
         subscriptionStatus: subscription.status,
       });
 
+      if (this.notificationDispatcher?.dispatchBreBPendingAdminNotice) {
+        const planTitle =
+          typeof targetPlan.name === "object" && targetPlan.name !== null
+            ? targetPlan.name.es || targetPlan.name.en || targetPlan.code
+            : targetPlan.code;
+        const amountFormattedCop = `$${Math.round(input.reportedAmountCents / 100).toLocaleString("es-CO")} COP`;
+        void this.notificationDispatcher
+          .dispatchBreBPendingAdminNotice({
+            clientId: input.clientId,
+            reportId: report.id,
+            planName: planTitle,
+            amountFormattedCop,
+            paymentReference: input.paymentReference ?? null,
+          })
+          .catch((notifyErr) => {
+            appLogger.warn("[BillingService.submitManualBreBReport] Aviso admin Bre-B fallido", {
+              reportId: report.id,
+              error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+            });
+          });
+      }
+
       return ok({ report, subscription });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -1085,49 +1121,98 @@ export class BillingService {
 let defaultBillingServiceInstance: BillingService | null = null;
 
 function createDefaultNotificationDispatcher(): IBillingNotificationDispatcher {
-  const ntf = getTransactionalNotificationsService();
+  const dispatcher = getNotificationDispatcherService();
   const baseOrigin = (env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
   const billingUrl = baseOrigin ? `${baseOrigin}/workspace/billing` : "/workspace/billing";
 
   return {
     async dispatchPaymentSucceeded(params) {
-      const res = await ntf.enqueueEmail({
+      const idempotencyKey = `billing:receipt:${params.receiptNumber}`;
+      const variables = {
+        tenant_name: params.tenantName,
+        plan_name: params.planName,
+        amount: params.amountFormatted,
+        currency: params.currency,
+        period_end: "vigente",
+      };
+
+      if (params.clientId) {
+        const res = await dispatcher.dispatchTenantNotification({
+          clientId: params.clientId,
+          eventKey: "billing.payment_succeeded",
+          recipientOverride: params.recipientEmail,
+          variables,
+          idempotencyKey,
+          inAppPayload: {
+            title: `Pago confirmado · ${params.planName}`,
+            body: `Confirmamos tu pago de ${params.amountFormatted} ${params.currency} (Recibo ${params.receiptNumber}).`,
+            severity: "success",
+            actionUrl: "/workspace/billing",
+          },
+        });
+        return {
+          dispatched: res.ok ? res.data.dispatched : false,
+          deliveryId: res.ok ? res.data.emailDeliveryId : undefined,
+        };
+      }
+
+      const emailRes = await sendSystemNotificationEmail({
         eventKey: "billing.payment_succeeded",
         recipient: params.recipientEmail,
         locale: "es",
-        variables: {
-          tenant_name: params.tenantName,
-          plan_name: params.planName,
-          amount: params.amountFormatted,
-          currency: params.currency,
-          period_end: "vigente",
-        },
-        idempotencyKey: `billing:receipt:${params.receiptNumber}`,
+        variables,
+        idempotencyKey,
       });
       return {
-        dispatched: res.ok,
-        deliveryId: res.ok ? res.data.id : undefined,
+        dispatched: emailRes.status === "sent" || emailRes.status === "queued",
+        deliveryId: emailRes.deliveryId,
       };
     },
 
     async dispatchBreBReviewResult(params) {
       const locale = params.locale === "en" ? "en" : "es";
-      const eventKey =
-        params.action === "approve" ? "billing.bre_b_approved" : "billing.bre_b_rejected";
-      const res = await ntf.enqueueEmail({
+      const isApprove = params.action === "approve";
+      const eventKey = isApprove ? "billing.bre_b_approved" : "billing.bre_b_rejected";
+      const inAppPayload = isApprove
+        ? {
+            title:
+              locale === "en"
+                ? `Bre-B payment approved · ${params.planName}`
+                : `Pago Bre-B aprobado · ${params.planName}`,
+            body:
+              locale === "en"
+                ? `Your Bre-B payment of ${params.amountFormattedCop} was verified (Receipt ${params.receiptNumber ?? "-"}).`
+                : `Verificamos tu pago Bre-B por ${params.amountFormattedCop} (Recibo ${params.receiptNumber ?? "-"}).`,
+            severity: "success" as const,
+            actionUrl: "/workspace/billing",
+          }
+        : {
+            title:
+              locale === "en"
+                ? `Bre-B voucher rejected · ${params.planName}`
+                : `Comprobante Bre-B rechazado · ${params.planName}`,
+            body:
+              locale === "en"
+                ? `Your Bre-B voucher of ${params.amountFormattedCop} could not be approved. Reason: ${params.rejectionReason ?? "-"}`
+                : `Tu comprobante Bre-B por ${params.amountFormattedCop} no fue aprobado. Motivo: ${params.rejectionReason ?? "-"}`,
+            severity: "critical" as const,
+            actionUrl: "/workspace/billing",
+          };
+
+      const res = await dispatcher.dispatchTenantNotification({
+        clientId: params.clientId,
         eventKey,
-        recipient: params.recipientEmail,
+        recipientOverride: params.recipientEmail,
         locale,
-        variables:
-          params.action === "approve"
-            ? {
+        variables: isApprove
+          ? {
               tenant_name: params.tenantName,
               plan_name: params.planName,
               amount: params.amountFormattedCop,
               receipt_number: params.receiptNumber ?? "-",
               billing_url: billingUrl,
             }
-            : {
+          : {
               tenant_name: params.tenantName,
               plan_name: params.planName,
               amount: params.amountFormattedCop,
@@ -1135,10 +1220,33 @@ function createDefaultNotificationDispatcher(): IBillingNotificationDispatcher {
               billing_url: billingUrl,
             },
         idempotencyKey: `billing:breb:${params.action}:${params.reportId}`,
+        inAppPayload,
       });
       return {
-        dispatched: res.ok,
-        deliveryId: res.ok ? res.data.id : undefined,
+        dispatched: res.ok ? res.data.dispatched : false,
+        deliveryId: res.ok ? res.data.emailDeliveryId : undefined,
+      };
+    },
+
+    async dispatchBreBPendingAdminNotice(params) {
+      const repo = new DrizzleBillingRepository(getDb());
+      const profile = await repo.getBillingProfile(params.clientId).catch(() => null);
+      const tenantName = profile?.companyName || params.clientId;
+      const res = await dispatcher.dispatchPlatformAdminNotification({
+        eventKey: "billing.bre_b_report_pending_admin",
+        locale: "es",
+        variables: {
+          tenant_name: tenantName,
+          plan_name: params.planName,
+          amount: params.amountFormattedCop,
+          payment_reference: params.paymentReference || "Sin referencia",
+          review_url: buildAdminBreBReviewUrl(),
+        },
+        idempotencyKey: `billing:breb:pending_admin:${params.reportId}`,
+      });
+      return {
+        dispatched: res.ok ? res.data.sentCount > 0 : false,
+        sentCount: res.ok ? res.data.sentCount : 0,
       };
     },
   };

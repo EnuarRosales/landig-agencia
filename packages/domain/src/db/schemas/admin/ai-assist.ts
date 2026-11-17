@@ -67,7 +67,7 @@ export const aiAssistPrompts = adminSchema.table(
       .$type<{
         maxLength?: number;
         minLength?: number;
-        format?: "plain" | "markdown" | "bullet_list";
+        format?: "plain" | "markdown" | "bullet_list" | "html";
         tone?: string;
         disallowedTerms?: string[];
       }>()

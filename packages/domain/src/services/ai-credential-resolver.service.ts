@@ -489,6 +489,8 @@ export interface ResolveAiCredentialInput {
   clientId?: string | null;
   /** Identificador del usuario autenticado para validar sesiones de onboarding inconclusas. */
   userId?: string | null;
+  /** Indica si la solicitud proviene de un operador SaaS autorizado para usar las llaves globales de plataforma. */
+  isPlatformScope?: boolean;
   /** Marca de tiempo de referencia (inyectable para pruebas deterministas). */
   now?: Date;
 }
@@ -582,10 +584,10 @@ export class AiCredentialResolverService {
       }
     }
 
-    // Prioridad 2: Excepción de Onboarding inconcluso o Periodo de Trial vigente
-    let isEligibleForPlatformTrial = false;
+    // Prioridad 2: Operador SaaS de plataforma, Onboarding inconcluso o Periodo de Trial vigente
+    let isEligibleForPlatformTrial = Boolean(input.isPlatformScope);
 
-    if (userId) {
+    if (!isEligibleForPlatformTrial && userId) {
       const onboarding = await this.repository.findOnboardingSession(userId);
       if (onboarding && onboarding.completedAt === null && onboarding.status !== "completed") {
         isEligibleForPlatformTrial = true;

@@ -288,6 +288,20 @@
       "when": 1794881608769,
       "tag": "0040_spec12_team_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794912319626,
+      "tag": "0041_spec14_tenant_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794919136014,
+      "tag": "0042_spec14_email_layout_and_scope",
+      "breakpoints": true
     }
   ]
 }

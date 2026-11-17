@@ -1,6 +1,7 @@
 import {
   boolean,
   check,
+  index,
   integer,
   jsonb,
   text,
@@ -91,6 +92,7 @@ export const emailEvents = adminSchema.table(
     }),
     isEnabled: boolean("is_enabled").notNull().default(true),
     isSystem: boolean("is_system").notNull().default(false),
+    tenantConfigurable: boolean("tenant_configurable").notNull().default(true),
     ...auditColumns(),
   },
   () => [
@@ -208,6 +210,85 @@ export const emailDeliveryEvents = adminSchema.table("email_delivery_events", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Preferencias de notificación por comercio y evento (`admin.tenant_notification_preferences`, SPEC-14).
+ *
+ * Permite activar/desactivar alertas en plataforma o por correo y definir destinatarios específicos
+ * por tipo de evento cuando `email_events.tenant_configurable = true`.
+ */
+export const tenantNotificationPreferences = adminSchema.table(
+  "tenant_notification_preferences",
+  {
+    id: uuid("id").primaryKey().default(sql`uuidv7()`),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    eventKey: text("event_key")
+      .notNull()
+      .references(() => emailEvents.key, { onDelete: "cascade" }),
+    emailEnabled: boolean("email_enabled").notNull().default(true),
+    inAppEnabled: boolean("in_app_enabled").notNull().default(true),
+    customRecipientEmail: text("custom_recipient_email"),
+    ...auditColumns(),
+  },
+  (table) => [
+    uniqueIndex("tenant_notification_preferences_client_event_unique").on(
+      table.clientId,
+      table.eventKey,
+    ),
+    index("tenant_notification_preferences_client_idx").on(table.clientId),
+  ],
+);
+
+/**
+ * Bandeja de notificaciones operativas dentro del espacio de trabajo del comercio
+ * (`admin.tenant_in_app_notifications`, SPEC-14).
+ */
+export const tenantInAppNotifications = adminSchema.table(
+  "tenant_in_app_notifications",
+  {
+    id: uuid("id").primaryKey().default(sql`uuidv7()`),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    eventKey: text("event_key").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    severity: text("severity").notNull().default("info"),
+    actionUrl: text("action_url"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("tenant_in_app_notifications_client_read_created_idx").on(
+      table.clientId,
+      table.readAt,
+      table.createdAt,
+    ),
+    check(
+      "tenant_in_app_notifications_severity_check",
+      sql.raw("severity IN ('info', 'warning', 'success', 'critical')"),
+    ),
+  ],
+);
+
+/**
+ * Configuración global bilingüe de encabezado (`body.header`) y pie de página (`body.footer`)
+ * institucional heredado automáticamente por todas las plantillas de correo (`admin.email_layout_configs`, SPEC-14).
+ */
+export const emailLayoutConfigs = adminSchema.table(
+  "email_layout_configs",
+  {
+    id: uuid("id").primaryKey().default(sql`uuidv7()`),
+    locale: text("locale").notNull().unique(),
+    headerHtml: text("header_html").notNull(),
+    footerHtml: text("footer_html").notNull(),
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    ...auditColumns(),
+  },
+  () => [check("email_layout_configs_locale_check", sql.raw("locale IN ('es', 'en')"))],
+);
+
 export type EmailProviderConfig = typeof emailProviderConfigs.$inferSelect;
 export type NewEmailProviderConfig = typeof emailProviderConfigs.$inferInsert;
 export type EmailSender = typeof emailSenders.$inferSelect;
@@ -220,4 +301,10 @@ export type EmailDelivery = typeof emailDeliveries.$inferSelect;
 export type NewEmailDelivery = typeof emailDeliveries.$inferInsert;
 export type EmailDeliveryEvent = typeof emailDeliveryEvents.$inferSelect;
 export type NewEmailDeliveryEvent = typeof emailDeliveryEvents.$inferInsert;
+export type TenantNotificationPreference = typeof tenantNotificationPreferences.$inferSelect;
+export type NewTenantNotificationPreference = typeof tenantNotificationPreferences.$inferInsert;
+export type TenantInAppNotification = typeof tenantInAppNotifications.$inferSelect;
+export type NewTenantInAppNotification = typeof tenantInAppNotifications.$inferInsert;
+export type EmailLayoutConfig = typeof emailLayoutConfigs.$inferSelect;
+export type NewEmailLayoutConfig = typeof emailLayoutConfigs.$inferInsert;
 

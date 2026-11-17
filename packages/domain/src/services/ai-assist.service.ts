@@ -11,6 +11,7 @@ import type {
   SupportedLlmProviderCode,
 } from "./ai-credential-resolver.service";
 import { LlmHttpCallError, type AiApiDialect } from "./llm-http-provider.client";
+import { seedAiAssistCatalog } from "./ai-assist-catalog.seed";
 
 /**
  * Cliente de inferencia para el asistente AI (AI-001 RF-04, SPEC-02).
@@ -90,6 +91,7 @@ export class DrizzleAiUsageEventRecorder implements IAiUsageEventRecorder {
 export interface EnhanceTextInput {
   clientId?: string | null;
   userId?: string | null;
+  isPlatformScope?: boolean;
   fieldKey: string;
   draft: string;
   locale?: "es" | "en";
@@ -244,11 +246,13 @@ export class AiAssistService {
         ? await this.credentialResolver.resolveCredentialCandidates({
             clientId: input.clientId,
             userId: input.userId,
+            isPlatformScope: input.isPlatformScope,
           })
         : await this.credentialResolver
             .resolveCredential({
               clientId: input.clientId,
               userId: input.userId,
+              isPlatformScope: input.isPlatformScope,
             })
             .then((r) => (r.ok ? ok([r.data]) : r));
 
@@ -276,7 +280,18 @@ export class AiAssistService {
       );
     }
 
-    const field = await this.repository.getFieldByKey(input.fieldKey);
+    let field = await this.repository.getFieldByKey(input.fieldKey);
+    if (!field && input.fieldKey.startsWith("email.")) {
+      try {
+        await seedAiAssistCatalog();
+        field = await this.repository.getFieldByKey(input.fieldKey);
+      } catch (seedErr) {
+        appLogger.warn("[AiAssistService] No se pudo sembrar automáticamente campo email.*", {
+          fieldKey: input.fieldKey,
+          error: seedErr instanceof Error ? seedErr.message : String(seedErr),
+        });
+      }
+    }
     if (!field || !field.isActive) {
       return err(
         `El campo '${input.fieldKey}' no está registrado o está inactivo.`,

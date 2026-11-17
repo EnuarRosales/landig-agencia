@@ -25,7 +25,7 @@ import { hashPassword, verifyPassword } from "../auth/password-hasher";
 import { validatePassword } from "../auth/validation";
 import { defaultCellAuthRepository } from "../repositories/drizzle-cell-auth.repository";
 import { authService } from "./auth.service";
-import { getTransactionalNotificationsService } from "./notifications-and-leads.service";
+import { getNotificationDispatcherService } from "./notification-dispatcher.service";
 import { appLogger } from "../utils/logger";
 
 /** Vigencia canónica por defecto de una invitación de equipo: 72 horas (`SPEC-12`). */
@@ -2401,23 +2401,38 @@ export class TenantContactsAndUsersService {
       const cleanBase = params.baseUrl.replace(/\/+$/, "");
       const inviteUrl = `${cleanBase}/invite/${params.rawToken}`;
 
-      const notifications = getTransactionalNotificationsService();
-      const res = notifications.enqueueEmail({
+      const inviteeLabel =
+        params.inviteeName?.trim() || params.recipientEmail.split("@")[0] || "Colaborador";
+      const dispatcher = getNotificationDispatcherService();
+      const res = await dispatcher.dispatchTenantNotification({
+        clientId: params.clientId,
         eventKey: "team.member_invited",
-        recipient: params.recipientEmail,
+        recipientOverride: params.recipientEmail,
         locale,
         variables: {
           tenant_name: tenantName,
           inviter_name: params.inviterName || tenantName,
-          invitee_name: params.inviteeName?.trim() || params.recipientEmail.split("@")[0] || "Colaborador",
+          invitee_name: inviteeLabel,
           invite_url: inviteUrl,
           expires_hours: 72,
         },
         idempotencyKey: `team-invite:${params.invitationId}:${createHash("sha256").update(params.rawToken).digest("hex").slice(0, 12)}`,
+        inAppPayload: {
+          title:
+            locale === "en"
+              ? `Team invitation sent to ${inviteeLabel}`
+              : `Invitación de equipo enviada a ${inviteeLabel}`,
+          body:
+            locale === "en"
+              ? `${params.inviterName || tenantName} invited ${params.recipientEmail} to join the team.`
+              : `${params.inviterName || tenantName} invitó a ${params.recipientEmail} a unirse al equipo.`,
+          severity: "info",
+          actionUrl: "/workspace/team",
+        },
       });
 
       if (!res.ok) {
-        appLogger.warn("[TeamInviteEmail] No se pudo encolar correo de invitación", {
+        appLogger.warn("[TeamInviteEmail] No se pudo despachar correo de invitación", {
           clientId: params.clientId,
           invitationId: params.invitationId,
           code: res.code,

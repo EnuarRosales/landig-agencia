@@ -7,9 +7,9 @@ import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 import { env } from "../utils/env";
 import {
-  getTransactionalNotificationsService,
   type TransactionalNotificationsAndLeadsService,
 } from "./notifications-and-leads.service";
+import { getNotificationDispatcherService } from "./notification-dispatcher.service";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -129,10 +129,10 @@ export interface BillingRemindersDispatchSummary {
 export class BillingRemindersService {
   constructor(
     private readonly repository: IBillingRemindersRepository = new DrizzleBillingRemindersRepository(),
-    private readonly notifications: Pick<
+    private readonly notifications?: Pick<
       TransactionalNotificationsAndLeadsService,
       "enqueueEmail"
-    > = getTransactionalNotificationsService(),
+    >,
   ) {}
 
   /**
@@ -179,21 +179,53 @@ export class BillingRemindersService {
             continue;
           }
 
-          const sendRes = await this.notifications.enqueueEmail({
-            eventKey: "billing.trial_d0_expired",
-            recipient: candidate.clientEmail,
-            locale: candidate.clientLocale === "en" ? "en" : "es",
-            variables: {
-              tenant_name: candidate.clientName,
-              plan_name: candidate.planName,
-              expires_at: expiresIsoDate,
-              billing_url: billingUrl,
-            },
-            idempotencyKey: `billing:d0:${candidate.subscriptionId}:${expiresIsoDate}`,
-          });
+          const reqLocale = candidate.clientLocale === "en" ? "en" : "es";
+          const d0Vars = {
+            tenant_name: candidate.clientName,
+            plan_name: candidate.planName,
+            expires_at: expiresIsoDate,
+            billing_url: billingUrl,
+          };
+          const d0Idempotency = `billing:d0:${candidate.subscriptionId}:${expiresIsoDate}`;
+          let sendOk = false;
+          let sendErrMsg = "";
 
-          if (!sendRes.ok) {
-            errors.push({ subscriptionId: candidate.subscriptionId, error: sendRes.error });
+          if (this.notifications) {
+            const sendRes = await this.notifications.enqueueEmail({
+              eventKey: "billing.trial_d0_expired",
+              recipient: candidate.clientEmail,
+              locale: reqLocale,
+              variables: d0Vars,
+              idempotencyKey: d0Idempotency,
+            });
+            sendOk = sendRes.ok;
+            sendErrMsg = sendRes.ok ? "" : sendRes.error;
+          } else {
+            const dispatchRes = await getNotificationDispatcherService().dispatchTenantNotification({
+              clientId: candidate.clientId,
+              eventKey: "billing.trial_d0_expired",
+              locale: reqLocale,
+              variables: d0Vars,
+              idempotencyKey: d0Idempotency,
+              inAppPayload: {
+                title:
+                  reqLocale === "en"
+                    ? `Subscription cycle expired · ${candidate.planName}`
+                    : `Ciclo vencido hoy · ${candidate.planName}`,
+                body:
+                  reqLocale === "en"
+                    ? `Your ${candidate.planName} cycle expired on ${expiresIsoDate}. Complete your payment to restore access.`
+                    : `Tu ciclo de ${candidate.planName} venció el ${expiresIsoDate}. Completa tu pago para reactivar el servicio.`,
+                severity: "critical",
+                actionUrl: "/workspace/billing",
+              },
+            });
+            sendOk = dispatchRes.ok;
+            sendErrMsg = dispatchRes.ok ? "" : dispatchRes.error;
+          }
+
+          if (!sendOk) {
+            errors.push({ subscriptionId: candidate.subscriptionId, error: sendErrMsg });
             continue;
           }
 
@@ -222,22 +254,54 @@ export class BillingRemindersService {
             continue;
           }
 
-          const sendRes = await this.notifications.enqueueEmail({
-            eventKey: "billing.trial_d5_reminder",
-            recipient: candidate.clientEmail,
-            locale: candidate.clientLocale === "en" ? "en" : "es",
-            variables: {
-              tenant_name: candidate.clientName,
-              plan_name: candidate.planName,
-              days_remaining: daysRemaining,
-              expires_at: expiresIsoDate,
-              billing_url: billingUrl,
-            },
-            idempotencyKey: `billing:d5:${candidate.subscriptionId}:${expiresIsoDate}`,
-          });
+          const reqLocale = candidate.clientLocale === "en" ? "en" : "es";
+          const d5Vars = {
+            tenant_name: candidate.clientName,
+            plan_name: candidate.planName,
+            days_remaining: daysRemaining,
+            expires_at: expiresIsoDate,
+            billing_url: billingUrl,
+          };
+          const d5Idempotency = `billing:d5:${candidate.subscriptionId}:${expiresIsoDate}`;
+          let d5Ok = false;
+          let d5ErrMsg = "";
 
-          if (!sendRes.ok) {
-            errors.push({ subscriptionId: candidate.subscriptionId, error: sendRes.error });
+          if (this.notifications) {
+            const sendRes = await this.notifications.enqueueEmail({
+              eventKey: "billing.trial_d5_reminder",
+              recipient: candidate.clientEmail,
+              locale: reqLocale,
+              variables: d5Vars,
+              idempotencyKey: d5Idempotency,
+            });
+            d5Ok = sendRes.ok;
+            d5ErrMsg = sendRes.ok ? "" : sendRes.error;
+          } else {
+            const dispatchRes = await getNotificationDispatcherService().dispatchTenantNotification({
+              clientId: candidate.clientId,
+              eventKey: "billing.trial_d5_reminder",
+              locale: reqLocale,
+              variables: d5Vars,
+              idempotencyKey: d5Idempotency,
+              inAppPayload: {
+                title:
+                  reqLocale === "en"
+                    ? `Plan expires in ${daysRemaining} days · ${candidate.planName}`
+                    : `Tu plan vence en ${daysRemaining} días · ${candidate.planName}`,
+                body:
+                  reqLocale === "en"
+                    ? `Your ${candidate.planName} period ends on ${expiresIsoDate}. Renew early to avoid interruptions.`
+                    : `Tu ciclo de ${candidate.planName} finaliza el ${expiresIsoDate}. Renueva con tiempo para evitar interrupciones.`,
+                severity: "warning",
+                actionUrl: "/workspace/billing",
+              },
+            });
+            d5Ok = dispatchRes.ok;
+            d5ErrMsg = dispatchRes.ok ? "" : dispatchRes.error;
+          }
+
+          if (!d5Ok) {
+            errors.push({ subscriptionId: candidate.subscriptionId, error: d5ErrMsg });
             continue;
           }
 

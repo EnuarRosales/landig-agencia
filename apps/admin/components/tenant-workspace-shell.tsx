@@ -28,6 +28,7 @@ import {
   Check,
   KeyRound,
   Building2,
+  Bell,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 import { ConfirmationModal } from "./confirmation-modal";
@@ -59,6 +60,7 @@ export interface TenantWorkspaceShellProps {
   };
   capabilities?: Record<string, boolean>;
   subscriptionAlert?: TenantSubscriptionAlertDto | null;
+  unreadNotificationsCount?: number;
   locale?: AdminLocale;
   brandingTokens?: Record<string, string>;
   branding?: {
@@ -95,12 +97,20 @@ export function TenantWorkspaceShell({
   tenant,
   capabilities,
   subscriptionAlert = null,
+  unreadNotificationsCount = 0,
   locale = "es",
   brandingTokens,
   branding = null,
 }: TenantWorkspaceShellProps) {
   const pathname = usePathname();
   const dict = getAdminDictionary(locale).workspace;
+  const [unreadOverride, setUnreadOverride] = useState<{ base: number; count: number } | null>(
+    null,
+  );
+  const unreadCount =
+    unreadOverride && unreadOverride.base === unreadNotificationsCount
+      ? unreadOverride.count
+      : unreadNotificationsCount;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profilePopoverOpen, setProfilePopoverOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -149,6 +159,21 @@ export function TenantWorkspaceShell({
     setProfilePopoverOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    function handleNotificationsUpdated(event: Event) {
+      const customEvent = event as CustomEvent<{ unreadCount?: number }>;
+      if (typeof customEvent.detail?.unreadCount === "number") {
+        setUnreadOverride({
+          base: unreadNotificationsCount,
+          count: Math.max(0, customEvent.detail.unreadCount),
+        });
+      }
+    }
+    window.addEventListener("mocter:notifications-updated", handleNotificationsUpdated);
+    return () =>
+      window.removeEventListener("mocter:notifications-updated", handleNotificationsUpdated);
+  }, [unreadNotificationsCount]);
+
   // Tecla Escape para accesibilidad
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -174,6 +199,9 @@ export function TenantWorkspaceShell({
       document.body.style.overflow = "";
     };
   }, [mobileMenuOpen]);
+
+  const formattedUnreadBadge =
+    unreadCount > 0 ? (unreadCount > 99 ? "99+" : String(unreadCount)) : undefined;
 
   const navItems: NavItem[] = [
     // ── Módulos Base y Acceso Prioritario ──
@@ -231,6 +259,12 @@ export function TenantWorkspaceShell({
       href: "/workspace/billing",
       label: "Mi Plan y Cuotas",
       icon: CreditCard,
+    },
+    {
+      href: "/workspace/notifications",
+      label: dict.navNotifications || "Notificaciones",
+      badge: formattedUnreadBadge,
+      icon: Bell,
     },
 
     // ── Módulos Dinámicos (Gated por capacidades de plan) ──
@@ -378,6 +412,19 @@ export function TenantWorkspaceShell({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/workspace/notifications"
+            aria-label={dict.navNotifications || "Notificaciones"}
+            data-testid="tenant-notifications-bell-mobile"
+            className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] transition-colors hover:border-[var(--dsn-accent)] hover:text-[var(--dsn-accent)]"
+          >
+            <Bell className="h-4 w-4" />
+            {formattedUnreadBadge && (
+              <span className="absolute -top-1.5 -right-1.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-[var(--dsn-accent)] px-1 py-0.5 text-[9px] font-bold leading-none text-white">
+                {formattedUnreadBadge}
+              </span>
+            )}
+          </Link>
           {renderConnectionBadge(true)}
           <ThemeToggle />
         </div>
@@ -586,7 +633,22 @@ export function TenantWorkspaceShell({
               </div>
             </Link>
 
-            <div>{renderConnectionBadge()}</div>
+            <div className="flex items-center justify-between gap-2">
+              {renderConnectionBadge()}
+              <Link
+                href="/workspace/notifications"
+                aria-label={dict.navNotifications || "Notificaciones"}
+                data-testid="tenant-notifications-bell-desktop"
+                className="relative inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] transition-colors hover:border-[var(--dsn-accent)] hover:text-[var(--dsn-accent)]"
+              >
+                <Bell className="h-4 w-4" />
+                {formattedUnreadBadge && (
+                  <span className="absolute -top-1.5 -right-1.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-[var(--dsn-accent)] px-1 py-0.5 text-[9px] font-bold leading-none text-white">
+                    {formattedUnreadBadge}
+                  </span>
+                )}
+              </Link>
+            </div>
           </div>
 
           {/* Navegación Desktop */}

@@ -29,9 +29,9 @@ import { env } from "../utils/env";
 import { appLogger } from "../utils/logger";
 import { S3StorageService } from "./s3-storage.service";
 import {
-  getTransactionalNotificationsService,
   type TransactionalNotificationsAndLeadsService,
 } from "./notifications-and-leads.service";
+import { getNotificationDispatcherService } from "./notification-dispatcher.service";
 import {
   evaluateProductStockAndMargin,
   MAX_PRODUCT_BOT_MASTER_PROMPT_CHARS,
@@ -2053,7 +2053,7 @@ export class TenantProductsAndMediaService {
   constructor(
     private readonly repo: ITenantProductsRepository = new DrizzleTenantProductsRepository(),
     private readonly s3Service: S3StorageService = new S3StorageService(),
-    private readonly notificationsService: TransactionalNotificationsAndLeadsService = getTransactionalNotificationsService(),
+    private readonly notificationsService?: Pick<TransactionalNotificationsAndLeadsService, "enqueueEmail">,
   ) {}
 
   private async withTenantLock<T>(clientId: string, fn: () => Promise<T>): Promise<T> {
@@ -3067,19 +3067,52 @@ export class TenantProductsAndMediaService {
 
     const dispatch = async (): Promise<void> => {
       try {
-        const res = this.notificationsService.enqueueEmail({
+        const variables = {
+          business_name: recipientInfo.businessName,
+          product_name: product.name,
+          sku: product.sku || "N/A",
+          current_stock: String(stock),
+          min_threshold: String(threshold),
+          product_admin_url: productAdminUrl,
+        };
+
+        if (this.notificationsService) {
+          const res = this.notificationsService.enqueueEmail({
+            eventKey: "tenant.inventory.low_stock",
+            recipient: recipientInfo.recipientEmail,
+            locale: recipientInfo.locale,
+            variables,
+            idempotencyKey,
+          });
+
+          appLogger.info("tenant.product.low_stock_triggered", {
+            clientId,
+            productId,
+            currentStock: stock,
+            minThreshold: threshold,
+            dispatched: res.ok,
+          });
+          return;
+        }
+
+        const isEn = recipientInfo.locale === "en";
+        const dispatchRes = await getNotificationDispatcherService().dispatchTenantNotification({
+          clientId,
           eventKey: "tenant.inventory.low_stock",
-          recipient: recipientInfo.recipientEmail,
           locale: recipientInfo.locale,
-          variables: {
-            business_name: recipientInfo.businessName,
-            product_name: product.name,
-            sku: product.sku || "N/A",
-            current_stock: String(stock),
-            min_threshold: String(threshold),
-            product_admin_url: productAdminUrl,
-          },
+          variables,
           idempotencyKey,
+          actorUserId: actor,
+          inAppPayload: {
+            title: isEn
+              ? `Low stock: ${product.name}`
+              : `Stock mínimo alcanzado: ${product.name}`,
+            body: isEn
+              ? `${product.name} (${product.sku || "N/A"}) reached ${stock} units (minimum: ${threshold}).`
+              : `${product.name} (${product.sku || "N/A"}) quedó en ${stock} unidades (mínimo configurado: ${threshold}).`,
+            severity: "warning",
+            actionUrl: `/workspace/products?highlight=${encodeURIComponent(product.id)}`,
+          },
         });
 
         appLogger.info("tenant.product.low_stock_triggered", {
@@ -3087,7 +3120,7 @@ export class TenantProductsAndMediaService {
           productId,
           currentStock: stock,
           minThreshold: threshold,
-          dispatched: res.ok,
+          dispatched: dispatchRes.ok ? dispatchRes.data.dispatched : false,
         });
       } catch (dispatchError) {
         appLogger.error(

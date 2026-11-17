@@ -1,17 +1,18 @@
-# SPEC-14 · Diseño Técnico: Notificaciones del Inquilino y Plantillas Administrativas
+# SPEC-14 · Diseño Técnico: Notificaciones del Comercio y Plantillas Administrativas
 
-## 1. Arquitectura de Despacho Unificado
+## 1. Arquitectura de Despacho Unificado y Layout Global
 
 ```mermaid
 flowchart LR
-    Triggers["Disparadores:<br/>Stock Mínimo (SPEC-08)<br/>Bre-B & D-5/D-0 (SPEC-04)<br/>Invitación Equipo (SPEC-12)"] -->|after()| Dispatcher["NotificationDispatcherService"]
-    Dispatcher --> EventsDB[("admin.email_events<br/>is_active, tenant_configurable")]
-    EventsDB -->|is_active = false| LogSkip["Log Pino + Omitir SMTP"]
-    EventsDB -->|is_active = true| Prefs[("admin.tenant_notification_preferences")]
+    Triggers["Disparadores:<br/>Stock Mínimo (SPEC-08)<br/>Bre-B & D-5/D-0 (SPEC-04)<br/>Invitación Equipo (SPEC-12)"] -->|after()| Dispatcher["NotificationDispatcherService (PostgreSQL)"]
+    Dispatcher --> EventsDB[("admin.email_events<br/>is_enabled, is_system, tenant_configurable")]
+    EventsDB -->|is_enabled = false| LogSkip["Log Pino notifications.skipped_disabled"]
+    EventsDB -->|is_enabled = true| Prefs[("admin.tenant_notification_preferences")]
     Prefs -->|In-App Enabled| Inbox[("admin.tenant_in_app_notifications")]
-    Prefs -->|Email Enabled| Sanitizer["Escape HTML + Render Plantilla (es/en)"]
-    Sanitizer --> SMTP["Outbox / SMTP admin.email_deliveries"]
-    Inbox --> WorkspaceUI["/workspace/notifications + Badge Header"]
+    Prefs -->|Email Enabled o SaaS| Sanitizer["Escape HTML + Render Cuerpo"]
+    Sanitizer --> LayoutDB[("admin.email_layout_configs<br/>header_html + body + footer_html")]
+    LayoutDB --> SMTP["sendSystemNotificationEmail + admin.email_deliveries"]
+    Inbox --> WorkspaceUI["/workspace/notifications + Badge & Campana Shell"]
 ```
 
 ---
@@ -19,24 +20,32 @@ flowchart LR
 ## 2. Esquema y Semillas (`packages/domain`)
 
 1. **`packages/domain/src/db/schemas/admin/notifications.ts`:**
-   - En `emailEvents`: verificar/agregar `isActive` (`boolean`, default `true`), `tenantConfigurable` (`boolean`, default `true`), `allowedVariables` (`jsonb`).
-   - Nuevas tablas `tenantNotificationPreferences` y `tenantInAppNotifications` con índices compuestos por `(clientId, eventKey)` y `(clientId, readAt, createdAt)` + comentarios `.comment(...)`.
-2. **Semillas idempotentes en `notifications-and-leads.service.ts` o módulo de seed:**
-   - Insertar los 7 eventos nuevos y sus plantillas profesionales iniciales en `es` y `en` sin sobreescribir plantillas ya editadas manualmente por el administrador SaaS (`ON CONFLICT DO NOTHING`).
+   - Nueva tabla `emailLayoutConfigs` (`admin.email_layout_configs`) con `locale` único (`'es' | 'en'`), `headerHtml`, `footerHtml`, `isEnabled`, `auditColumns()`.
+   - Migración `0042_spec14_email_layout_and_scope.sql` + `COMMENT ON TABLE / COLUMN` y actualización idempotente de `tenant_configurable` para limitar las 4 claves del comercio.
+2. **Semillas (`notifications-and-leads.service.ts`, `admin-dashboard.service.ts`, `ai-assist-catalog.seed.ts`):**
+   - Actualizar `CANONICAL_EMAIL_EVENTS`: `tenantConfigurable = true` exclusivamente para `community.digest`, `community.join_accepted`, `referral.registered`, `tenant.inventory.low_stock`; corregir descripciones cambiando «inquilino» por «miembro» / «comercio».
+   - Inicializar `CANONICAL_EMAIL_LAYOUTS_SEED` (`es`/`en`) en `fetchAdminEmailSettings()` (`ON CONFLICT DO NOTHING`) y componer `headerHtml + bodyHtml + footerHtml` en `sendSystemNotificationEmail()`.
+   - Agregar `email.template_body`, `email.layout_header` y `email.layout_footer` en `INITIAL_AI_ASSIST_FIELDS` e `INITIAL_AI_ASSIST_PROMPTS`.
 
 ---
 
 ## 3. Servicios y Endpoints (`packages/domain` & `apps/admin`)
 
-- **`NotificationDispatcherService` [Nuevo / extensión de `notifications-and-leads.service.ts`]:**
-  - Método único `dispatchTenantNotification({ clientId, eventKey, locale, variables, inAppPayload })`.
-  - Verifica `isActive`, aplica preferencias del comercio, escapa variables HTML mediante helper puro `escapeHtml()` antes de interpolar `{{variable}}`, crea registro in-app y encola envío en `email_deliveries`.
-- **Backoffice SaaS (`/admin/settings/notifications`):**
-  - `apps/admin/app/api/admin/notifications/route.ts`: Añadir handler `action === 'toggle_event'`.
-  - `apps/admin/app/admin/settings/notifications/notifications-view.tsx`: En pestaña «Plantillas Y Eventos», mostrar listado completo de eventos agrupados por categoría con toggle «Activa / Inactiva», variables disponibles copiables y modal de edición.
-- **Backoffice Inquilino (`/workspace/notifications`):**
-  - `apps/admin/app/api/tenant/notifications/route.ts` [Nuevo]
-  - `apps/admin/app/api/tenant/notifications/preferences/route.ts` [Nuevo]
-  - `apps/admin/app/api/tenant/notifications/[id]/read/route.ts` [Nuevo] & `read-all/route.ts` [Nuevo]
-  - `apps/admin/app/workspace/notifications/page.tsx` [Nuevo] + `notifications-view.tsx` [Nuevo] + badge contador en `tenant-workspace-shell.tsx`.
-
+- **`AiCredentialResolverService` + `POST /api/ai/enhance`:**
+  - `ResolveAiCredentialInput` y `EnhanceTextInput` agregan `isPlatformScope?: boolean`.
+  - Cuando `isPlatformScope === true`, `resolveCredentialCandidates` resuelve directamente `findActivePlatformTrialKeys()` sin exigir `clientId` ni `onboarding` o `trialing`.
+  - `POST /api/ai/enhance` acepta `scope === "platform"` cuando `role` es `platform_owner` o `platform_admin`.
+  - Si `AiAssistService.enhanceText()` recibe un `fieldKey` semilla aún no insertado en BD, invoca `seedAiAssistCatalog()` de forma idempotente antes de rechazar.
+- **`NotificationDispatcherService`:**
+  - `TENANT_COMPETENCE_EVENT_KEYS = new Set(["community.digest", "community.join_accepted", "referral.registered", "tenant.inventory.low_stock"])`.
+  - `isTenantVisibleNotificationEvent(key)` retorna `true` solo para esas 4 claves, filtrando tanto `listTenantInboxAndPreferences` como `updateTenantPreferences`.
+- **Admin UI & API (`/admin/settings/notifications`):**
+  - `apps/admin/app/api/admin/notifications/route.ts`: agregar `save_layout` (`saveAdminEmailLayoutConfig`) y `save_bilingual_template` (`saveAdminEmailBilingualTemplates` en `@mocter/domain`, transaccional sobre `admin.email_templates` sincronizando `senderId` y `status` entre `es`/`en` y validando variables `variables_schema` por idioma).
+  - `packages/domain/src/services/admin-dashboard.service.ts`: completar `CANONICAL_TEMPLATES_SEED` con las 8 plantillas oficiales `EN` faltantes; exponer `saveAdminEmailBilingualTemplates()` con guardado tolerante si un idioma completo queda vacío (y error si un idioma tiene solo asunto o solo cuerpo, o si ambos están vacíos).
+  - `apps/admin/components/email-rich-text-editor.tsx` [Nuevo]: Editor WYSIWYG React sin dependencias externas (`contentEditable` + toolbar de formato + inserción de `{{variables}}` en cursor + alternador HTML crudo + integración «Mejorar con AI» con revisión humana Aceptar/Descartar).
+  - `apps/admin/app/admin/settings/notifications/notifications-view.tsx`:
+    - Nueva pestaña **«Encabezado y Pie Global»** para editar `body.header` y `body.footer` en `es`/`en` usando `EmailRichTextEditor` + vista previa institucional.
+    - En **«Plantillas y Eventos»**, unificar la vista dentro de las 4 tarjetas agrupadas (eliminando la tabla plana inferior duplicada): cada evento muestra una fila homogénea con Remitente Vinculado, Asunto del Correo, chips `ES`/`EN` (`vN · Publicada/Borrador` o `Pendiente`), switch «Notificación Activa» y botón único «Editar Plantilla».
+    - Modal único bilingüe: atributos compartidos arriba (`eventKey`, `senderId`, `status`) + pestañas `Español (ES)` / `Inglés (EN)` con estado independiente (`subject`, `bodyHtml`, `id`, `version`), `EmailRichTextEditor` (`key={eventKey-modalLocale}`), inserción de variables en cursor y «Vista Previa Completa» por idioma heredando `body.header` + `body` + `body.footer`.
+- **Comercio UI (`/workspace/notifications` y `apps/admin/lib/i18n.ts`):**
+  - Title Case gramatical estricto (`AGENTS.md §4.8`) en todos los títulos, pestañas, botones y etiquetas.

@@ -221,4 +221,51 @@ describe("SPEC-02 T-06 · POST /api/ai/enhance", () => {
     expect(json.data.providerCode).toBe("openai");
     expect(mockRecordUsage).not.toHaveBeenCalled();
   });
+
+  it("permite a operadores de plataforma (platform_owner/platform_admin) usar inferencia SaaS para email.template_body", async () => {
+    currentSession = {
+      userId: "user-platform-admin",
+      clientId: null,
+      scope: "platform",
+      role: "platform_admin",
+    };
+
+    mockAiService.enhanceText.mockResolvedValue(
+      ok({
+        fieldKey: "email.template_body",
+        promptVersion: 1,
+        draft: "<p>Hola {{business_name}}, stock bajo</p>",
+        suggestion: "<p>Hola <strong>{{business_name}}</strong>, tu stock llegó al mínimo.</p>",
+        inputTokens: 90,
+        outputTokens: 42,
+        modelUsed: "gemini-2.0-flash",
+        providerUsed: "google",
+        providerId: "prov-google",
+        modelId: "mod-gemini",
+        credentialSource: "platform_trial",
+        billingMode: "mocter",
+        latencyMs: 190,
+        requestId: "req-test-001",
+        usageRecorded: true,
+      }),
+    );
+
+    const res = await handler(
+      createRequest({
+        fieldKey: "email.template_body",
+        draft: "<p>Hola {{business_name}}, stock bajo</p>",
+        locale: "es",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockAiService.enhanceText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: null,
+        userId: "user-platform-admin",
+        isPlatformScope: true,
+        fieldKey: "email.template_body",
+      }),
+    );
+  });
 });

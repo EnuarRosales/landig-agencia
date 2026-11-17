@@ -33,12 +33,13 @@ export async function readSessionToken(req?: NextRequest): Promise<string | unde
  *
  * @throws {HttpError} 401 si no hay sesión válida; 403 si carece de privilegios de plataforma.
  */
-export async function requirePlatformBillingAdmin(
+export async function requirePlatformAdmin(
   req?: NextRequest,
+  scopeDescription = "administrar recursos de plataforma",
 ): Promise<AuthenticatedPortalContext> {
   const sid = await readSessionToken(req);
   if (!sid) {
-    throw new HttpError(401, "Sesión requerida para administrar facturación de plataforma.");
+    throw new HttpError(401, `Sesión requerida para ${scopeDescription}.`);
   }
 
   const context = await resolveAuthenticatedPortalContext(sid);
@@ -61,6 +62,18 @@ export async function requirePlatformBillingAdmin(
   }
 
   return context;
+}
+
+/**
+ * Verifica que el actor autenticado posea rol de administrador de plataforma (`platform_owner` | `platform_admin`)
+ * para operaciones de facturación.
+ *
+ * @throws {HttpError} 401 si no hay sesión válida; 403 si carece de privilegios de plataforma.
+ */
+export async function requirePlatformBillingAdmin(
+  req?: NextRequest,
+): Promise<AuthenticatedPortalContext> {
+  return requirePlatformAdmin(req, "administrar facturación de plataforma");
 }
 
 /**

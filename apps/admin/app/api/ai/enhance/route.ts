@@ -20,12 +20,12 @@ const enhanceRequestSchema = z.object({
 });
 
 /**
- * Sesión mínima autorizada para invocar la mejora asistida por AI (inquilino u onboarding).
+ * Sesión mínima autorizada para invocar la mejora asistida por AI (comercio, onboarding o administrador SaaS).
  */
 export interface EnhanceAuthSession {
   userId: string;
   clientId: string | null;
-  scope: "tenant" | "onboarding_prospect";
+  scope: "tenant" | "onboarding_prospect" | "platform";
   role: string;
 }
 
@@ -83,6 +83,23 @@ async function defaultResolveSession(req: NextRequest): Promise<EnhanceAuthSessi
     await resolveAuthenticatedPortalContext(sid);
   if (!context || !context.user) {
     return null;
+  }
+
+  if (context.scope === "platform") {
+    const isPlatformAdmin =
+      context.role === "platform_owner" ||
+      context.role === "platform_admin" ||
+      Boolean(context.effectiveRoles?.includes("platform_owner")) ||
+      Boolean(context.effectiveRoles?.includes("platform_admin"));
+    if (!isPlatformAdmin) {
+      return null;
+    }
+    return {
+      userId: context.user.id,
+      clientId: null,
+      scope: "platform",
+      role: context.role,
+    };
   }
 
   if (context.scope !== "tenant" && context.scope !== "onboarding_prospect") {
@@ -214,6 +231,7 @@ export function createEnhanceRouteHandler(deps?: EnhanceRouteDeps) {
     const result = await aiAssistService.enhanceText({
       clientId: session.clientId,
       userId: session.userId,
+      isPlatformScope: session.scope === "platform",
       fieldKey: input.fieldKey,
       draft: input.draft,
       locale: input.locale,

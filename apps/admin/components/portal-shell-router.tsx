@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { resolveAuthenticatedPortalContext } from "@mocter/domain";
+import {
+  getNotificationDispatcherService,
+  resolveAuthenticatedPortalContext,
+} from "@mocter/domain";
 import { AdminShell } from "@/components/admin-shell";
 import { TenantWorkspaceShell } from "@/components/tenant-workspace-shell";
 import type { CurrentUserDto } from "@/components/user-profile-modal";
@@ -158,6 +161,18 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
     ) {
       redirect("/workspace/billing");
     }
+
+    let unreadNotificationsCount = 0;
+    if (activeClient?.id) {
+      try {
+        unreadNotificationsCount = await getNotificationDispatcherService().getTenantUnreadCount(
+          activeClient.id,
+        );
+      } catch {
+        unreadNotificationsCount = 0;
+      }
+    }
+
     return (
       <TenantWorkspaceShell
         currentUser={currentUserDto}
@@ -171,6 +186,7 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
         }}
         capabilities={capabilities}
         subscriptionAlert={portalContext.subscriptionAlert ?? null}
+        unreadNotificationsCount={unreadNotificationsCount}
         locale={activeClient?.locale === "en" ? "en" : "es"}
         brandingTokens={portalContext.brandingTokens ?? undefined}
         branding={

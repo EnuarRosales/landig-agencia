@@ -332,4 +332,41 @@ describe("AiCredentialResolverService", () => {
       expect(result.data[1].baseUrl).toBe("https://api.groq.com/openai/v1");
     }
   });
+
+  it("permite a operadores SaaS (isPlatformScope = true) resolver directamente llaves activas de plataforma sin clientId ni trial", async () => {
+    const p1 = crypto.encrypt("sk-platform-saas-1234");
+    const repo = createBaseRepo({
+      findActivePlatformTrialKeys: vi.fn(async () => [
+        {
+          id: "pk-saas",
+          priorityRole: "primary" as const,
+          providerId: "prov-google",
+          providerCode: "google",
+          apiDialect: "google_gemini" as const,
+          baseUrl: null,
+          verifyPath: null,
+          apiKeyCiphertext: p1.ciphertext,
+          apiKeyLast4: p1.last4,
+          modelId: "mod-gemini",
+          modelCode: "gemini-2.0-flash",
+          temperature: 0.4,
+          maxTokens: 1200,
+          monthlyTokenCap: null,
+        },
+      ]),
+    });
+
+    const service = new AiCredentialResolverService(repo, crypto);
+    const result = await service.resolveCredentialCandidates({
+      clientId: null,
+      userId: "u-platform-admin",
+      isPlatformScope: true,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data[0].source).toBe("platform_trial");
+      expect(result.data[0].apiKey).toBe("sk-platform-saas-1234");
+    }
+  });
 });

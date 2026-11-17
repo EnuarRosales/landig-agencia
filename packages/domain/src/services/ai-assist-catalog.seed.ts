@@ -338,6 +338,42 @@ export const INITIAL_AI_ASSIST_FIELDS: Array<
     createdBy: "system.seed",
     updatedBy: "system.seed",
   },
+  {
+    fieldKey: "email.template_body",
+    entity: "email_templates",
+    columnName: "body_html",
+    labels: {
+      es: "Cuerpo de Plantilla de Correo",
+      en: "Email Template Body",
+    },
+    isActive: true,
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "email.layout_header",
+    entity: "email_layout_configs",
+    columnName: "header_html",
+    labels: {
+      es: "Encabezado Global de Correos",
+      en: "Global Email Header",
+    },
+    isActive: true,
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "email.layout_footer",
+    entity: "email_layout_configs",
+    columnName: "footer_html",
+    labels: {
+      es: "Pie de Página Global de Correos",
+      en: "Global Email Footer",
+    },
+    isActive: true,
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
 ];
 
 /**
@@ -1047,6 +1083,60 @@ Burbuja de beneficios lista para enviar:
 [A] ACCIÓN: Redacta un traspaso sereno y profesional en texto plano.
 [L] LÍMITE: Máximo 500 caracteres.`,
     outputRules: { maxLength: 500, minLength: 15, format: "plain", tone: "cercano y profesional" },
+    examples: [],
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "email.template_body",
+    version: 1,
+    status: "active",
+    inputHint: "Redacta o pega el borrador del contenido HTML específico de la notificación (sin encabezado ni pie de página).",
+    masterPrompt: `${IDEAL_METHODOLOGY_PREAMBLE}
+
+[I] INTENCIÓN: Mejorar la claridad, estructura visual HTML y tono profesional del cuerpo de un correo transaccional de Mocter.
+[D] DELIMITACIÓN:
+- Conserva EXACTAMENTE todas las variables entre llaves dobles (ej. {{product_name}}, {{tenant_name}}, {{billing_url}}) presentes en el borrador o contexto sin renombrarlas ni inventar variables nuevas.
+- Entrega únicamente el fragmento HTML interno (<p>, <strong>, <ul>, <li>, <a href="...">, <h3>) sin incluir etiquetas <html>, <head>, <body>, encabezado institucional ni pie de página (se heredan automáticamente).
+- No uses scripts ni atributos peligrosos.
+[E] EJEMPLO: "<p>Hola <strong>{{business_name}}</strong>,</p><p>El producto <strong>{{product_name}}</strong> alcanzó el stock mínimo configurado (<strong>{{current_stock}}</strong> unidades).</p><p><a href=\"{{product_admin_url}}\">Revisar Inventario</a></p>"
+[A] ACCIÓN: Optimiza la redacción y jerarquía visual manteniendo el idioma objetivo indicado.
+[L] LÍMITE: Máximo 2500 caracteres.`,
+    outputRules: { maxLength: 2500, minLength: 20, format: "html", tone: "profesional, claro y accionable" },
+    examples: [],
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "email.layout_header",
+    version: 1,
+    status: "active",
+    inputHint: "Personaliza el encabezado HTML institucional heredado por todas las notificaciones del sistema.",
+    masterPrompt: `${IDEAL_METHODOLOGY_PREAMBLE}
+
+[I] INTENCIÓN: Diseñar o refinar un encabezado HTML institucional limpio, moderno y compatible con clientes de correo.
+[D] DELIMITACIÓN: Conserva {{brand_name}} si aparece, usa estilos inline compatibles con correo (sin <script> ni clases CSS externas) y mantén altura compacta.
+[E] EJEMPLO: "<div style=\"background:#0f172a;color:#ffffff;padding:20px 24px;border-bottom:3px solid #6366f1;\"><h2 style=\"margin:0;font-size:18px;\">{{brand_name}}</h2></div>"
+[A] ACCIÓN: Mejora el fragmento HTML del encabezado institucional.
+[L] LÍMITE: Máximo 1200 caracteres.`,
+    outputRules: { maxLength: 1200, minLength: 15, format: "html", tone: "institucional y sobrio" },
+    examples: [],
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "email.layout_footer",
+    version: 1,
+    status: "active",
+    inputHint: "Personaliza el pie de página HTML institucional heredado por todas las notificaciones del sistema.",
+    masterPrompt: `${IDEAL_METHODOLOGY_PREAMBLE}
+
+[I] INTENCIÓN: Refinar el pie de página HTML institucional para correos transaccionales con tono confiable y legible.
+[D] DELIMITACIÓN: Conserva {{brand_name}} y {{year}} si están presentes, usa estilos inline compatibles con email y evita scripts o etiquetas prohibidas.
+[E] EJEMPLO: "<div style=\"background:#f8fafc;color:#64748b;padding:16px 24px;font-size:12px;\"><p style=\"margin:0;\">© {{year}} {{brand_name}} · Todos los derechos reservados.</p></div>"
+[A] ACCIÓN: Mejora el fragmento HTML del pie de página institucional.
+[L] LÍMITE: Máximo 1200 caracteres.`,
+    outputRules: { maxLength: 1200, minLength: 15, format: "html", tone: "claro y formal" },
     examples: [],
     createdBy: "system.seed",
     updatedBy: "system.seed",

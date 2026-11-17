@@ -292,4 +292,25 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
     expect(root.getAttribute("style")).toContain("--dsn-accent: #0F766E");
     expect(screen.getAllByText("Marca Blanca Norte").length).toBeGreaterThanOrEqual(1);
   });
+
+  it("11. Muestra campana e ítem Notificaciones con contador hasta 99+ (SPEC-14)", () => {
+    render(
+      <TenantWorkspaceShell
+        currentUser={mockTenantUser}
+        tenant={mockTenantInfo}
+        unreadNotificationsCount={142}
+      >
+        <div>Contenido</div>
+      </TenantWorkspaceShell>,
+    );
+
+    expect(screen.getByTestId("tenant-notifications-bell-mobile").getAttribute("href")).toBe(
+      "/workspace/notifications",
+    );
+    expect(screen.getByTestId("tenant-notifications-bell-desktop").getAttribute("href")).toBe(
+      "/workspace/notifications",
+    );
+    expect(screen.getAllByText("99+").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Notificaciones").length).toBeGreaterThanOrEqual(1);
+  });
 });
