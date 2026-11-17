@@ -176,11 +176,18 @@ export function TenantWorkspaceShell({
   }, [mobileMenuOpen]);
 
   const navItems: NavItem[] = [
-    // ── Módulos Base (7 universales) ──
+    // ── Módulos Base y Acceso Prioritario ──
     {
       href: "/workspace",
       label: "Tablero",
       icon: LayoutDashboard,
+    },
+    {
+      href: "/workspace/conversations",
+      label: dict.navConversations || "Conversaciones",
+      icon: MessageSquare,
+      capabilityCode: "chatwoot_inboxes",
+      capabilityAliases: ["conversations"],
     },
     {
       href: "/workspace/products",
@@ -227,13 +234,6 @@ export function TenantWorkspaceShell({
     },
 
     // ── Módulos Dinámicos (Gated por capacidades de plan) ──
-    {
-      href: "/workspace/conversations",
-      label: "Conversaciones Omnicanal",
-      icon: MessageSquare,
-      capabilityCode: "chatwoot_inboxes",
-      capabilityAliases: ["conversations"],
-    },
     {
       href: "/workspace/branding",
       label: dict.navBranding || "Identidad y Marca Blanca",

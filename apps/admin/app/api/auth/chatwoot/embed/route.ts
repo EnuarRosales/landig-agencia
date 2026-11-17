@@ -3,26 +3,38 @@ import { handle, HttpError } from "@/lib/errors/route";
 import { env } from "@/env";
 import {
   resolveAuthenticatedPortalContext,
-  getDb,
-  chatwootAccounts,
-  cellTenantUsers,
-  withTenantCellTransaction,
   ChatwootHttpPlatformGateway,
+  tenantChatwootEmbedService,
   appLogger,
-  and,
-  desc,
-  eq,
 } from "@mocter/domain";
 
 /**
- * Route Handler para emisión y redirección SSO hacia Chatwoot (CHW-002 T-06, RF-04.1, RF-05.2).
+ * Construye el valor de `Content-Security-Policy` (`frame-ancestors`) para el iframe del workspace
+ * derivando dinámicamente el origen público del portal desde `env.NEXT_PUBLIC_ADMIN_URL` (`AGENTS.md §4.16`).
+ */
+function buildWorkspaceFrameAncestorsCsp(): string {
+  try {
+    const adminOrigin = new URL(env.NEXT_PUBLIC_ADMIN_URL).origin;
+    return `frame-ancestors 'self' ${adminOrigin}`;
+  } catch {
+    return "frame-ancestors 'self'";
+  }
+}
+
+/**
+ * Route Handler para emisión y redirección SSO hacia Chatwoot (CHW-002 T-06, RF-04.1, RF-05.2, SPEC-13).
  *
  * Soporta dos ámbitos de seguridad aislados:
  * - scope=workspace: Para tenant_owner y tenant_agent hacia su bandeja celular /app/accounts/:id/dashboard.
  * - scope=admin: Para platform_owner y platform_admin hacia la consola global /super_admin de Chatwoot.
  */
 export const GET = handle(async (req: NextRequest): Promise<Response> => {
-  const scope = (req.nextUrl.searchParams.get("scope") || "workspace").toLowerCase();
+  const rawScope = req.nextUrl.searchParams.get("scope");
+  const normalizedScope = rawScope === null ? "workspace" : rawScope.trim().toLowerCase();
+  if (normalizedScope !== "workspace" && normalizedScope !== "admin") {
+    throw new HttpError(400, "Parámetro 'scope' inválido. Valores permitidos: 'workspace' o 'admin'.");
+  }
+  const scope = normalizedScope;
   const targetPath = req.nextUrl.searchParams.get("targetPath") || "/super_admin";
 
   // 1. Resolver sesión activa
@@ -39,7 +51,7 @@ export const GET = handle(async (req: NextRequest): Promise<Response> => {
     throw new HttpError(401, "Sesión no válida o expirada.");
   }
 
-  const publicBaseUrl = (env.NEXT_PUBLIC_CHATWOOT_URL || "http://localhost:3001").replace(/\/+$/, "");
+  const publicBaseUrl = env.NEXT_PUBLIC_CHATWOOT_URL.replace(/\/+$/, "");
 
   // -------------------------------------------------------------
   // MODO ADMIN (Backoffice SaaS Super Admin)
@@ -93,93 +105,57 @@ export const GET = handle(async (req: NextRequest): Promise<Response> => {
   }
 
   // -------------------------------------------------------------
-  // MODO WORKSPACE (Operación Celular del Inquilino)
+  // MODO WORKSPACE (Operación Celular del Inquilino · SPEC-13)
   // -------------------------------------------------------------
-  if (!context.activeClient) {
-    throw new HttpError(403, "No hay un comercio activo asignado a la sesión actual.");
-  }
+  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
+  const requestedAccountId = req.nextUrl.searchParams.get("accountId");
 
-  const clientId = context.activeClient.id;
+  const result = await tenantChatwootEmbedService.resolveWorkspaceEmbedRedirect({
+    clientId: context.activeClient?.id,
+    user: {
+      id: context.user.id,
+      email: context.user.email,
+      displayName: context.user.displayName,
+    },
+    role: context.role,
+    effectiveRoles: context.effectiveRoles,
+    hasCapability: Boolean(context.capabilities?.chatwoot_inboxes),
+    publicBaseUrl,
+    requestedAccountId,
+    requestId,
+  });
 
-  // Verificar capacidad chatwoot_inboxes en el plan o overrides
-  const hasInboxesCapability = Boolean(context.capabilities?.chatwoot_inboxes);
-  if (!hasInboxesCapability) {
-    throw new HttpError(403, "Tu plan comercial no incluye buzones de atención omnicanal.");
-  }
+  if (!result.ok) {
+    const title =
+      result.status === 403
+        ? "FORBIDDEN"
+        : result.status === 404
+          ? "NOT_FOUND"
+          : "BAD_GATEWAY";
 
-  // Consultar estado de la cuenta en admin.chatwoot_accounts
-  const db = getDb();
-  const [cwAccount] = await db
-    .select({
-      state: chatwootAccounts.state,
-      chatwootAccountId: chatwootAccounts.chatwootAccountId,
-    })
-    .from(chatwootAccounts)
-    .where(eq(chatwootAccounts.clientId, clientId))
-    .limit(1);
-
-  if (!cwAccount || cwAccount.state !== "active" || cwAccount.chatwootAccountId === null) {
-    throw new HttpError(
-      404,
-      "La bandeja de atención de este comercio no se encuentra activa o está en proceso de aprovisionamiento.",
+    return NextResponse.json(
+      {
+        type: "about:blank",
+        title,
+        status: result.status,
+        code: result.code,
+        detail: result.error,
+        instance: req.nextUrl.pathname,
+        reference: requestId,
+      },
+      {
+        status: result.status,
+        headers: {
+          "content-type": "application/problem+json",
+          "x-request-id": requestId,
+        },
+      },
     );
   }
 
-  // Determinar rol en Chatwoot acorde al rol en Mocter
-  const userRoles: string[] = Array.isArray(context.effectiveRoles) ? context.effectiveRoles : [];
-  const isOwner = userRoles.includes("tenant_owner") || context.role === "tenant_owner";
-  const mappedRole: "administrator" | "agent" = isOwner ? "administrator" : "agent";
-
-  if (!isOwner) {
-    const membership = await withTenantCellTransaction(clientId, async (tx) => {
-      const [row] = await tx
-        .select({
-          status: cellTenantUsers.status,
-          grantChatwootAccess: cellTenantUsers.grantChatwootAccess,
-        })
-        .from(cellTenantUsers)
-        .where(and(eq(cellTenantUsers.clientId, clientId), eq(cellTenantUsers.userId, context.user.id)))
-        .orderBy(desc(cellTenantUsers.joinedAt))
-        .limit(1);
-      return row ?? null;
-    });
-
-    if (membership && (membership.status !== "active" || !membership.grantChatwootAccess)) {
-      throw new HttpError(
-        403,
-        "Tu usuario no tiene habilitado el acceso a la bandeja de atención omnicanal.",
-      );
-    }
-  }
-
-  const gateway = new ChatwootHttpPlatformGateway();
-
-  // Asegurar que el miembro exista y tenga su membresía en Chatwoot
-  const memberUser = await gateway.ensureMemberUserInAccount({
-    accountId: cwAccount.chatwootAccountId,
-    email: context.user.email,
-    name: context.user.displayName || "Operador",
-    role: mappedRole,
-  });
-
-  appLogger.info("[ChatwootEmbed] Generando handoff SSO Workspace", {
-    userId: context.user.id,
-    chatwootUserId: memberUser.userId,
-    accountId: cwAccount.chatwootAccountId,
-    role: mappedRole,
-  });
-
-  const ssoRes = await gateway.getUserSsoLoginUrl({ userId: memberUser.userId });
-  const ssoUrl = new URL(ssoRes.url);
-
-  // Reescribir origen hacia NEXT_PUBLIC_CHATWOOT_URL apuntando a su dashboard celular
-  const destination = `/app/accounts/${cwAccount.chatwootAccountId}/dashboard`;
-  ssoUrl.searchParams.set("redirect_to", destination);
-  ssoUrl.searchParams.set("sso_account_id", String(cwAccount.chatwootAccountId));
-  const rewrittenUrl = `${publicBaseUrl}${ssoUrl.pathname}${ssoUrl.search}`;
-
-  const res = NextResponse.redirect(rewrittenUrl, 307);
+  const res = NextResponse.redirect(result.data.redirectUrl, 307);
   res.headers.set("X-Frame-Options", "SAMEORIGIN");
-  res.headers.set("Content-Security-Policy", "frame-ancestors 'self' http://localhost:3003 https://admin.mocter.co");
+  res.headers.set("Content-Security-Policy", buildWorkspaceFrameAncestorsCsp());
+  res.headers.set("x-request-id", requestId);
   return res;
 });

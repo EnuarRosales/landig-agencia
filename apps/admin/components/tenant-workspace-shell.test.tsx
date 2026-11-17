@@ -146,13 +146,13 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
       </TenantWorkspaceShell>,
     );
 
-    expect(screen.queryByText("Conversaciones Omnicanal")).toBeNull();
+    expect(screen.queryByText("Conversaciones")).toBeNull();
     expect(screen.queryByText("Identidad Y Marca Blanca")).toBeNull();
     expect(screen.queryByText("Comunidad De Comercios")).toBeNull();
     expect(screen.queryByText("Informes Y Analítica")).toBeNull();
   });
 
-  it("6. Muestra los 4 módulos opcionales cuando las capacidades están habilitadas", () => {
+  it("6. Muestra Conversaciones en posición 2 debajo de Tablero y los módulos opcionales cuando están habilitados", () => {
     render(
       <TenantWorkspaceShell
         currentUser={mockTenantUser}
@@ -168,11 +168,36 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
       </TenantWorkspaceShell>,
     );
 
-    expect(screen.getAllByText("Conversaciones Omnicanal").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Conversaciones").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/Chatwoot/i)).toBeNull();
     expect(screen.getAllByText("Identidad y Marca Blanca").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Comunidad de Comercios").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Informes y Analítica").length).toBeGreaterThanOrEqual(1);
+
+    const desktopNav = screen.getByRole("navigation", { name: /Navegación del comercio/i });
+    const navLinks = Array.from(desktopNav.querySelectorAll("a"));
+    expect(navLinks[0]?.getAttribute("href")).toBe("/workspace");
+    expect(navLinks[1]?.getAttribute("href")).toBe("/workspace/conversations");
+    expect(navLinks[1]?.textContent).toContain("Conversaciones");
+  });
+
+  it("6b. Renderiza el ítem Conversaciones traducido al inglés en posición 2 cuando locale='en'", () => {
+    render(
+      <TenantWorkspaceShell
+        currentUser={mockTenantUser}
+        tenant={mockTenantInfo}
+        locale="en"
+        capabilities={{ chatwoot_inboxes: true }}
+      >
+        <div>Content</div>
+      </TenantWorkspaceShell>,
+    );
+
+    const desktopNav = screen.getByRole("navigation", { name: /Navegación del comercio/i });
+    const navLinks = Array.from(desktopNav.querySelectorAll("a"));
+    expect(navLinks[0]?.getAttribute("href")).toBe("/workspace");
+    expect(navLinks[1]?.getAttribute("href")).toBe("/workspace/conversations");
+    expect(navLinks[1]?.textContent).toContain("Conversations");
   });
 
   it("7. Despliega el menú HUD y abre el modal de confirmación de logout accesible (Regla 4.17)", () => {

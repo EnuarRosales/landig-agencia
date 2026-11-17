@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import React from "react";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
 import { WorkspaceDashboardView } from "./workspace-dashboard-view";
 import { ProductsView } from "./products/products-view";
 import { BillingView } from "./billing/billing-view";
@@ -10,6 +10,7 @@ import { ContactsView } from "./contacts/contacts-view";
 import { OrdersView } from "./orders/orders-view";
 import { TeamView } from "./team/team-view";
 import { InviteAcceptView } from "../invite/[token]/invite-accept-view";
+import { WorkspaceConversationsView } from "./conversations/conversations-view";
 import { TenantWorkspaceShell } from "@/components/tenant-workspace-shell";
 import type { CatalogListResultDto, ProductDetailDto } from "@mocter/domain";
 
@@ -1907,6 +1908,126 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       );
 
       expect(screen.getByText("Invitación Expirada")).toBeTruthy();
+    });
+  });
+
+  describe("WorkspaceConversationsView (SPEC-13)", () => {
+    it("renderiza el iframe embebido en estado ready, oculta overlay al cargar y recarga al pulsar Recargar Bandeja", () => {
+      render(
+        <WorkspaceConversationsView
+          initialState={{ status: "ready", accountId: 42, isOwner: true }}
+          locale="es"
+          requestId="req-conv-1"
+        />,
+      );
+
+      expect(screen.getByText("Bandeja de Conversaciones")).toBeTruthy();
+      expect(screen.getByTestId("conversations-loading-overlay")).toBeTruthy();
+
+      const iframe = screen.getByTitle("Bandeja de Atención Omnicanal") as HTMLIFrameElement;
+      expect(iframe.getAttribute("src")).toBe("/api/auth/chatwoot/embed?scope=workspace");
+      expect(iframe.getAttribute("sandbox")).toBeNull();
+
+      fireEvent.load(iframe);
+      expect(screen.queryByTestId("conversations-loading-overlay")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: /Recargar Bandeja/i }));
+      const reloadedIframe = screen.getByTitle("Bandeja de Atención Omnicanal") as HTMLIFrameElement;
+      expect(reloadedIframe.getAttribute("src")).toBe("/api/auth/chatwoot/embed?scope=workspace&r=1");
+    });
+
+    it("muestra aviso de timeout con requestId y botón Reintentar Conexión si el iframe supera 12s sin cargar", () => {
+      vi.useFakeTimers();
+      try {
+        render(
+          <WorkspaceConversationsView
+            initialState={{ status: "ready", accountId: 42, isOwner: true }}
+            locale="es"
+            requestId="req-timeout-42"
+          />,
+        );
+
+        act(() => {
+          vi.advanceTimersByTime(12_100);
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(screen.getByTestId("conversations-timeout-overlay")).toBeTruthy();
+      expect(screen.getByText("La Bandeja Tarda Más de lo Esperado")).toBeTruthy();
+      expect(screen.getByText(/req-timeout-42/)).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: /Reintentar Conexión/i }));
+      expect(screen.queryByTestId("conversations-timeout-overlay")).toBeNull();
+    });
+
+    it("maneja access_denied y suspended sin montar el iframe y soporta reintento idempotente solo para owner", async () => {
+      const { rerender } = render(
+        <WorkspaceConversationsView
+          initialState={{ status: "access_denied", accountId: null, isOwner: false }}
+          locale="es"
+        />,
+      );
+      expect(screen.getByText("Acceso a Bandeja No Habilitado")).toBeTruthy();
+      expect(screen.queryByTitle("Bandeja de Atención Omnicanal")).toBeNull();
+
+      rerender(
+        <WorkspaceConversationsView
+          initialState={{ status: "suspended", accountId: 42, isOwner: true }}
+          locale="es"
+        />,
+      );
+      expect(screen.getByText("Bandeja de Conversaciones Suspendida")).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Revisar Mi Plan" }).getAttribute("href")).toBe(
+        "/workspace/billing",
+      );
+
+      rerender(
+        <WorkspaceConversationsView
+          initialState={{ status: "failed", accountId: null, isOwner: false }}
+          locale="es"
+        />,
+      );
+      expect(screen.queryByRole("button", { name: /Reintentar Vinculación/i })).toBeNull();
+
+      const mockFetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, data: { state: "active", chatwootAccountId: 42 } }),
+      });
+      vi.stubGlobal("fetch", mockFetch);
+
+      rerender(
+        <WorkspaceConversationsView
+          initialState={{ status: "failed", accountId: null, isOwner: true }}
+          locale="es"
+          requestId="req-fail-1"
+        />,
+      );
+      expect(screen.getByText(/req-fail-1/)).toBeTruthy();
+
+      fireEvent.click(screen.getByRole("button", { name: /Reintentar Vinculación/i }));
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/api/tenant/conversations/retry",
+          expect.objectContaining({ method: "POST" }),
+        );
+        expect(screen.getByTitle("Bandeja de Atención Omnicanal")).toBeTruthy();
+      });
+      vi.unstubAllGlobals();
+    });
+
+    it("soporta internacionalización completa al inglés (locale='en')", () => {
+      render(
+        <WorkspaceConversationsView
+          initialState={{ status: "ready", accountId: 42, isOwner: true }}
+          locale="en"
+        />,
+      );
+
+      expect(screen.getByText("Conversations Inbox")).toBeTruthy();
+      expect(screen.getByRole("button", { name: /Reload Inbox/i })).toBeTruthy();
+      expect(screen.getByTitle("Omnichannel Support Inbox")).toBeTruthy();
     });
   });
 });
