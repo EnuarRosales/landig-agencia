@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { resolveAuthenticatedPortalContext } from "./session-context.service";
+import {
+  resolveAuthenticatedPortalContext,
+  resolveLocaleHierarchy,
+  updateTenantUserPreferredLocale,
+} from "./session-context.service";
 import { authService } from "./auth.service";
 import * as cellAuth from "./cell-authorization.service";
 import * as dbClient from "../db/client";
+import * as cellClient from "../db/cell-client";
 import { ok, err } from "../types/result";
 
 describe("TNT-001 / ADM-D-35 · session-context.service", () => {
@@ -373,5 +378,116 @@ describe("TNT-001 / ADM-D-35 · session-context.service", () => {
     expect(res).not.toBeNull();
     expect(res?.scope).toBe("tenant");
     expect(typeof res?.capabilities).toBe("object");
+  });
+
+  it("12. SPEC-17: resuelve cascada oficial user.preferredLocale -> cookie -> client.locale -> Accept-Language -> 'es'", async () => {
+    expect(
+      resolveLocaleHierarchy({
+        userPreferredLocale: "en",
+        cookieLocale: "es",
+        tenantLocale: "es",
+        browserAcceptLanguage: "es-CO",
+      }),
+    ).toBe("en");
+    expect(
+      resolveLocaleHierarchy({
+        userPreferredLocale: null,
+        cookieLocale: null,
+        tenantLocale: "en",
+        browserAcceptLanguage: "es-CO",
+      }),
+    ).toBe("en");
+    expect(
+      resolveLocaleHierarchy({
+        userPreferredLocale: null,
+        cookieLocale: null,
+        tenantLocale: null,
+        browserAcceptLanguage: "en-US,en;q=0.9",
+      }),
+    ).toBe("en");
+    expect(
+      resolveLocaleHierarchy({
+        userPreferredLocale: null,
+        cookieLocale: null,
+        tenantLocale: null,
+        browserAcceptLanguage: "fr-FR",
+      }),
+    ).toBe("es");
+
+    const userId = "00000000-0000-7000-8000-000000000101";
+    const clientId = "00000000-0000-7000-8000-000000000201";
+    vi.spyOn(authService, "validateSession").mockResolvedValue(
+      ok({
+        session: { id: "sess-locale", userId } as any,
+        user: {
+          id: userId,
+          email: "agent@tienda.com",
+          status: "active",
+          displayName: "Agente Bilingüe",
+          activeClientId: clientId,
+        } as any,
+      }),
+    );
+    vi.spyOn(cellAuth, "fetchUserActivePlatformRoles").mockResolvedValue([]);
+
+    const mockDb = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn()
+        .mockResolvedValueOnce([
+          {
+            id: clientId,
+            slug: "tienda-bilingue",
+            displayName: "Tienda Bilingüe",
+            ownerUserId: "00000000-0000-7000-8000-000000000999",
+            lifecycleStatus: "activo",
+            planId: "plan-pro",
+            locale: "es",
+          },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]),
+    };
+    vi.spyOn(dbClient, "getDb").mockReturnValue(mockDb as any);
+
+    const mockCellTx = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      limit: vi.fn()
+        .mockResolvedValueOnce([{ preferredLocale: "en" }])
+        .mockResolvedValueOnce([{ role: "tenant_agent", status: "active" }]),
+    };
+    vi.spyOn(cellClient, "withTenantCellTransaction").mockImplementation(async (_cid, cb) =>
+      cb(mockCellTx as any),
+    );
+
+    const ctx = await resolveAuthenticatedPortalContext("valid_locale_token", {
+      browserAcceptLanguage: "es-CO",
+    });
+    expect(ctx?.preferredLocale).toBe("en");
+    expect(ctx?.activeLocale).toBe("en");
+    expect(ctx?.activeClient?.locale).toBe("es");
+
+    const returningMock = vi.fn().mockResolvedValue([{ id: userId, preferredLocale: "en" }]);
+    const updateTx = {
+      update: vi.fn().mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({ returning: returningMock }),
+        }),
+      }),
+    };
+    vi.spyOn(cellClient, "withTenantCellTransaction").mockImplementationOnce(async (_cid, cb) =>
+      cb(updateTx as any),
+    );
+
+    const saveRes = await updateTenantUserPreferredLocale({
+      clientId,
+      userId,
+      locale: "en",
+    });
+    expect(saveRes).toEqual({ ok: true, data: { locale: "en" } });
   });
 });

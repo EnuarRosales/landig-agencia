@@ -199,7 +199,7 @@ export function CommunityFeedTab({
             : `"${clonedName}" clonado a tu catálogo correctamente.`,
       );
     } catch {
-      onErrorToast("Error de red al clonar el producto.");
+      onErrorToast(dict.networkErrorClone);
     } finally {
       setAdopting(false);
     }
@@ -229,7 +229,7 @@ export function CommunityFeedTab({
             : "Propuesta rechazada.",
       );
     } catch {
-      onErrorToast("Error de red al moderar la propuesta.");
+      onErrorToast(dict.networkErrorModerate);
     }
   }
 

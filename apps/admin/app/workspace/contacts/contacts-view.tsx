@@ -5,13 +5,10 @@ import Link from "next/link";
 import {
   AlertCircle,
   ArrowDownUp,
-  ChevronLeft,
-  ChevronRight,
   ExternalLink,
   Eye,
   MessageSquare,
   Plus,
-  Search,
   Star,
   Trash2,
   Users,
@@ -22,6 +19,10 @@ import { workspaceFetch } from "@/lib/workspace-client";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import { GeoAddressFields } from "@/components/geo-address-fields";
 import { PhoneE164Input } from "@/components/phone-e164-input";
+import {
+  WorkspaceDataTable,
+  type WorkspaceTableColumn,
+} from "@/components/ui/workspace-data-table";
 import { ContactDetailModal } from "./contact-detail-modal";
 import {
   CRM_CHANNELS,
@@ -74,6 +75,7 @@ export function ContactsView({
   const [sortBy, setSortBy] = useState("whatsapp_priority");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<number>(initialList?.pagination?.limit || 20);
 
   // Modal de creación multi-fuente
   const [createOpen, setCreateOpen] = useState(false);
@@ -116,6 +118,7 @@ export function ContactsView({
 
   const fetchContacts = async (overrides?: {
     nextPage?: number;
+    nextLimit?: number;
     nextQuery?: string;
     nextStage?: string;
     nextSource?: string;
@@ -125,9 +128,10 @@ export function ContactsView({
     nextSortDir?: "asc" | "desc";
   }) => {
     const targetPage = overrides?.nextPage ?? page;
+    const targetLimit = overrides?.nextLimit ?? limit;
     const params = new URLSearchParams();
     params.set("page", String(targetPage));
-    params.set("limit", String(listData.pagination.limit || 20));
+    params.set("limit", String(targetLimit));
     params.set("sortBy", overrides?.nextSortBy ?? sortBy);
     params.set("sortDir", overrides?.nextSortDir ?? sortDir);
 
@@ -355,107 +359,144 @@ export function ContactsView({
         </div>
       </header>
 
-      {/* Filtros y Prioridad WhatsApp */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-xs space-y-3">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
-          <div className="relative md:col-span-2">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--dsn-text-secondary)]" />
-            <input
-              type="search"
-              value={query}
+      {/* Listado Estandarizado CRM Omnicanal */}
+      <WorkspaceDataTable<CrmContactListItemView>
+        testId="contacts-desktop-table"
+        locale={locale}
+        data={listData.items}
+        getRowKey={(c) => c.id}
+        page={listData.pagination.page}
+        pageSize={limit}
+        totalItems={listData.pagination.total}
+        onPageChange={(next) => {
+          setPage(next);
+          void fetchContacts({ nextPage: next });
+        }}
+        onPageSizeChange={(nextLimit) => {
+          setLimit(nextLimit);
+          setPage(1);
+          void fetchContacts({ nextLimit, nextPage: 1 });
+        }}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={(nextCol, nextDir) => {
+          setSortBy(nextCol);
+          setSortDir(nextDir);
+          setPage(1);
+          void fetchContacts({ nextSortBy: nextCol, nextSortDir: nextDir, nextPage: 1 });
+        }}
+        searchQuery={query}
+        onSearchChange={(next) => {
+          setQuery(next);
+          setPage(1);
+          void fetchContacts({ nextPage: 1, nextQuery: next });
+        }}
+        searchPlaceholder={w.crmSearchPlaceholder}
+        activeFiltersCount={
+          (stageFilter !== "all" ? 1 : 0) +
+          (sourceFilter !== "all" ? 1 : 0) +
+          (windowFilter !== "all" ? 1 : 0) +
+          (minRatingFilter ? 1 : 0)
+        }
+        onResetFilters={() => {
+          setQuery("");
+          setStageFilter("all");
+          setSourceFilter("all");
+          setWindowFilter("all");
+          setMinRatingFilter("");
+          setSortBy("whatsapp_priority");
+          setSortDir("desc");
+          setPage(1);
+          void fetchContacts({
+            nextQuery: "",
+            nextStage: "all",
+            nextSource: "all",
+            nextWindow: "all",
+            nextMinRating: "",
+            nextSortBy: "whatsapp_priority",
+            nextSortDir: "desc",
+            nextPage: 1,
+          });
+        }}
+        loading={loadingList}
+        error={listError}
+        onRetry={() => void fetchContacts()}
+        filterSlot={
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label={w.crmFilterAllStages}
+              value={stageFilter}
               onChange={(e) => {
                 const next = e.target.value;
-                setQuery(next);
+                setStageFilter(next);
                 setPage(1);
-                void fetchContacts({ nextPage: 1, nextQuery: next });
+                void fetchContacts({ nextPage: 1, nextStage: next });
               }}
-              placeholder={w.crmSearchPlaceholder}
-              className="min-h-[40px] w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 pl-9 pr-3 text-xs text-[var(--dsn-text)]"
-            />
-          </div>
+              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
+            >
+              <option value="all">{w.crmFilterAllStages}</option>
+              {CRM_STAGES.map((st) => (
+                <option key={st} value={st}>
+                  {formatStageLabel(st, locale)}
+                </option>
+              ))}
+            </select>
 
-          <select
-            aria-label={w.crmFilterAllStages}
-            value={stageFilter}
-            onChange={(e) => {
-              const next = e.target.value;
-              setStageFilter(next);
-              setPage(1);
-              void fetchContacts({ nextPage: 1, nextStage: next });
-            }}
-            className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
-          >
-            <option value="all">{w.crmFilterAllStages}</option>
-            {CRM_STAGES.map((st) => (
-              <option key={st} value={st}>
-                {formatStageLabel(st, locale)}
-              </option>
-            ))}
-          </select>
+            <select
+              aria-label={w.crmFilterAllSources}
+              value={sourceFilter}
+              onChange={(e) => {
+                const next = e.target.value;
+                setSourceFilter(next);
+                setPage(1);
+                void fetchContacts({ nextPage: 1, nextSource: next });
+              }}
+              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
+            >
+              <option value="all">{w.crmFilterAllSources}</option>
+              {CRM_SOURCES.map((src) => (
+                <option key={src} value={src}>
+                  {formatSourceLabel(src, locale)}
+                </option>
+              ))}
+            </select>
 
-          <select
-            aria-label={w.crmFilterAllSources}
-            value={sourceFilter}
-            onChange={(e) => {
-              const next = e.target.value;
-              setSourceFilter(next);
-              setPage(1);
-              void fetchContacts({ nextPage: 1, nextSource: next });
-            }}
-            className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
-          >
-            <option value="all">{w.crmFilterAllSources}</option>
-            {CRM_SOURCES.map((src) => (
-              <option key={src} value={src}>
-                {formatSourceLabel(src, locale)}
-              </option>
-            ))}
-          </select>
+            <select
+              aria-label={w.crmFilterAllWindows}
+              value={windowFilter}
+              onChange={(e) => {
+                const next = e.target.value;
+                setWindowFilter(next);
+                setPage(1);
+                void fetchContacts({ nextPage: 1, nextWindow: next });
+              }}
+              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
+            >
+              <option value="all">{w.crmFilterAllWindows}</option>
+              <option value="active">{w.crmFilterWindowActive}</option>
+              <option value="expired">{w.crmFilterWindowExpired}</option>
+              <option value="none">{w.crmFilterWindowNone}</option>
+            </select>
 
-          <select
-            aria-label={w.crmFilterAllWindows}
-            value={windowFilter}
-            onChange={(e) => {
-              const next = e.target.value;
-              setWindowFilter(next);
-              setPage(1);
-              void fetchContacts({ nextPage: 1, nextWindow: next });
-            }}
-            className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
-          >
-            <option value="all">{w.crmFilterAllWindows}</option>
-            <option value="active">{w.crmFilterWindowActive}</option>
-            <option value="expired">{w.crmFilterWindowExpired}</option>
-            <option value="none">{w.crmFilterWindowNone}</option>
-          </select>
+            <select
+              aria-label={w.crmFilterAllRatings}
+              value={minRatingFilter}
+              onChange={(e) => {
+                const next = e.target.value;
+                setMinRatingFilter(next);
+                setPage(1);
+                void fetchContacts({ nextPage: 1, nextMinRating: next });
+              }}
+              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
+            >
+              <option value="">{w.crmFilterAllRatings}</option>
+              {[5, 4, 3, 2, 1].map((stars) => (
+                <option key={stars} value={String(stars)}>
+                  {w.crmFilterRatingMinPrefix} {stars} {w.crmFilterRatingStarsUnit}
+                </option>
+              ))}
+            </select>
 
-          <select
-            aria-label={w.crmFilterAllRatings}
-            value={minRatingFilter}
-            onChange={(e) => {
-              const next = e.target.value;
-              setMinRatingFilter(next);
-              setPage(1);
-              void fetchContacts({ nextPage: 1, nextMinRating: next });
-            }}
-            className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
-          >
-            <option value="">{w.crmFilterAllRatings}</option>
-            {[5, 4, 3, 2, 1].map((stars) => (
-              <option key={stars} value={String(stars)}>
-                {w.crmFilterRatingMinPrefix} {stars} {w.crmFilterRatingStarsUnit}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
-          <span className="font-mono text-[var(--dsn-text-secondary)]">
-            {listData.pagination.total}{" "}
-            {listData.pagination.total === 1 ? "contacto" : "contactos"}
-          </span>
-
-          <div className="flex items-center gap-2">
             <select
               aria-label={w.crmSortWhatsappPriority}
               value={sortBy}
@@ -464,7 +505,7 @@ export function ContactsView({
                 setSortBy(next);
                 void fetchContacts({ nextSortBy: next });
               }}
-              className="min-h-[34px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 text-xs text-[var(--dsn-text)]"
+              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 text-xs text-[var(--dsn-text)]"
             >
               <option value="whatsapp_priority">{w.crmSortWhatsappPriority}</option>
               <option value="last_inbound">{w.crmSortLastSeen}</option>
@@ -472,6 +513,7 @@ export function ContactsView({
               <option value="created_at">{w.crmSortCreatedAt}</option>
               <option value="full_name">{w.crmSortFullName}</option>
             </select>
+
             <button
               type="button"
               onClick={() => {
@@ -479,234 +521,194 @@ export function ContactsView({
                 setSortDir(nextDir);
                 void fetchContacts({ nextSortDir: nextDir });
               }}
-              className="inline-flex min-h-[34px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              className="inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
             >
               <ArrowDownUp className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
               <span>{sortDir === "desc" ? "DESC" : "ASC"}</span>
             </button>
           </div>
-        </div>
-      </section>
+        }
+        emptyState={{
+          icon: <Users className="mx-auto h-10 w-10 text-[var(--dsn-text-secondary)]/50" />,
+          title: w.crmEmptyTitle,
+          description: w.crmEmptyDesc,
+        }}
+        renderMobileCard={(c) => (
+          <article
+            key={c.id}
+            className="space-y-2.5 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/20 p-4"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--dsn-text)]">{c.fullName}</h3>
+                {c.companyName && (
+                  <p className="text-xs text-[var(--dsn-text-secondary)]">{c.companyName}</p>
+                )}
+              </div>
+              <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-400">
+                {formatStageLabel(c.stage, locale)}
+              </span>
+            </div>
 
-      {listError && (
-        <div className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>{listError}</span>
-        </div>
-      )}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {renderWindowBadge(c)}
+              <span className="rounded-full border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-0.5 text-[11px] text-[var(--dsn-text-secondary)]">
+                {formatSourceLabel(c.source, locale)}
+              </span>
+            </div>
 
-      {/* Listado Mobile First + Tabla Escritorio */}
-      <section className="overflow-hidden rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-xs">
-        {loadingList ? (
-          <div className="p-10 text-center text-xs text-[var(--dsn-text-secondary)]">
-            {locale === "en" ? "Loading contacts..." : "Actualizando directorio de contactos..."}
-          </div>
-        ) : listData.items.length === 0 ? (
-          <div className="p-12 text-center">
-            <Users className="mx-auto mb-3 h-10 w-10 text-[var(--dsn-text-secondary)]/50" />
-            <h3 className="text-sm font-semibold text-[var(--dsn-text)]">{w.crmEmptyTitle}</h3>
-            <p className="mx-auto mt-1 max-w-sm text-xs text-[var(--dsn-text-secondary)]">
-              {w.crmEmptyDesc}
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Tarjetas Mobile First (< md) */}
-            <div className="grid grid-cols-1 gap-3 p-4 md:hidden" data-testid="contacts-mobile-cards">
-              {listData.items.map((c) => (
-                <article
-                  key={c.id}
-                  className="space-y-2.5 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/20 p-4"
+            <div className="space-y-1 text-xs text-[var(--dsn-text-secondary)]">
+              <p className="font-mono">{c.phoneMobile || "—"}</p>
+              <p>{c.email || "—"}</p>
+              {c.defaultAddressSummary && (
+                <p>
+                  {c.defaultAddressSummary.city}, {c.defaultAddressSummary.country}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-[var(--dsn-border)]/70 pt-2.5">
+              <span className="font-mono text-xs text-amber-400">
+                {c.currentRatingStars ? `★ ${c.currentRatingStars}/5` : "—"}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedContactId(c.id)}
+                  className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1 text-xs font-semibold text-[var(--dsn-text)]"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3 className="text-sm font-semibold text-[var(--dsn-text)]">{c.fullName}</h3>
-                      {c.companyName && (
-                        <p className="text-xs text-[var(--dsn-text-secondary)]">{c.companyName}</p>
-                      )}
-                    </div>
-                    <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-400">
-                      {formatStageLabel(c.stage, locale)}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {renderWindowBadge(c)}
-                    <span className="rounded-full border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-0.5 text-[11px] text-[var(--dsn-text-secondary)]">
-                      {formatSourceLabel(c.source, locale)}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1 text-xs text-[var(--dsn-text-secondary)]">
-                    <p className="font-mono">{c.phoneMobile || "—"}</p>
-                    <p>{c.email || "—"}</p>
-                    {c.defaultAddressSummary && (
-                      <p>
-                        {c.defaultAddressSummary.city}, {c.defaultAddressSummary.country}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between border-t border-[var(--dsn-border)]/70 pt-2.5">
-                    <span className="font-mono text-xs text-amber-400">
-                      {c.currentRatingStars ? `★ ${c.currentRatingStars}/5` : "—"}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedContactId(c.id)}
-                        className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1 text-xs font-semibold text-[var(--dsn-text)]"
-                      >
-                        <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                        <span>{w.crmViewDetailCta}</span>
-                      </button>
-                      {canDelete && (
-                        <button
-                          type="button"
-                          onClick={() => setDeleteTarget(c)}
-                          className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-semibold text-rose-400"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              ))}
+                  <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                  <span>{w.crmViewDetailCta}</span>
+                </button>
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(c)}
+                    className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-semibold text-rose-400"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
-
-            {/* Tabla Escritorio (>= md) */}
-            <div className="hidden overflow-x-auto md:block" data-testid="contacts-desktop-table">
-              <table className="w-full text-left text-xs">
-                <thead className="border-b border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 text-[var(--dsn-text-secondary)]">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold">{w.crmColContact}</th>
-                    <th className="px-4 py-3 font-semibold">{w.crmColChannelSource}</th>
-                    <th className="px-4 py-3 font-semibold">{w.crmColWhatsappWindow}</th>
-                    <th className="px-4 py-3 font-semibold">{w.crmColStage}</th>
-                    <th className="px-4 py-3 font-semibold">{w.crmColRating}</th>
-                    <th className="px-4 py-3 font-semibold">{w.crmColCity}</th>
-                    <th className="px-4 py-3 font-semibold">{w.crmColLastSeen}</th>
-                    <th className="px-4 py-3 text-right font-semibold">{w.crmColActions}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--dsn-border)] text-[var(--dsn-text)]">
-                  {listData.items.map((c) => (
-                    <tr key={c.id} className="transition-colors hover:bg-[var(--dsn-surface-secondary)]/20">
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-[var(--dsn-text)]">{c.fullName}</p>
-                        {c.companyName && (
-                          <p className="text-[11px] text-[var(--dsn-text-secondary)]">
-                            {c.companyName}
-                          </p>
-                        )}
-                        <p className="font-mono text-[11px] text-[var(--dsn-text-secondary)]">
-                          {c.phoneMobile || c.email || "—"}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-block rounded-full border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-2 py-0.5 text-[11px] font-medium text-[var(--dsn-text)]">
-                          {formatSourceLabel(c.source, locale)}
-                        </span>
-                        {c.preferredChannel && (
-                          <p className="mt-1 text-[11px] text-[var(--dsn-text-secondary)]">
-                            {w.crmPreferredLabel}: {formatChannelLabel(c.preferredChannel, locale)}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">{renderWindowBadge(c)}</td>
-                      <td className="px-4 py-3">
-                        <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-400">
-                          {formatStageLabel(c.stage, locale)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-mono">
-                        {c.currentRatingStars ? (
-                          <span className="inline-flex items-center gap-1 text-amber-400">
-                            <Star className="h-3.5 w-3.5 fill-amber-400" />
-                            <span>{c.currentRatingStars}/5</span>
-                          </span>
-                        ) : (
-                          <span className="text-[var(--dsn-text-secondary)]">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-[var(--dsn-text-secondary)]">
-                        {c.defaultAddressSummary ? c.defaultAddressSummary.city : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-[var(--dsn-text-secondary)]">
-                        {formatShortDateTime(c.lastSeenAt, locale)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="inline-flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedContactId(c.id)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                          >
-                            <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                            <span>{w.crmViewDetailCta}</span>
-                          </button>
-                          {canDelete && (
-                            <button
-                              type="button"
-                              aria-label={`${w.crmDeleteContactCta} ${c.fullName}`}
-                              onClick={() => {
-                                setDeleteError(null);
-                                setDeleteTarget(c);
-                              }}
-                              className="inline-flex items-center rounded-lg border border-rose-500/30 bg-rose-500/10 p-1.5 text-rose-400 hover:bg-rose-500/20"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
+          </article>
         )}
-
-        {/* Paginación */}
-        {listData.pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-[var(--dsn-border)] px-4 py-3 text-xs text-[var(--dsn-text-secondary)]">
-            <span className="font-mono tabular-nums">
-              {w.crmPaginationPage} {listData.pagination.page} {w.crmPaginationOf}{" "}
-              {listData.pagination.totalPages}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={listData.pagination.page <= 1}
-                onClick={() => {
-                  const next = Math.max(1, listData.pagination.page - 1);
-                  setPage(next);
-                  void fetchContacts({ nextPage: next });
-                }}
-                className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-3 py-1 disabled:opacity-40"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-                <span>{w.crmPaginationPrev}</span>
-              </button>
-              <button
-                type="button"
-                disabled={listData.pagination.page >= listData.pagination.totalPages}
-                onClick={() => {
-                  const next = Math.min(listData.pagination.totalPages, listData.pagination.page + 1);
-                  setPage(next);
-                  void fetchContacts({ nextPage: next });
-                }}
-                className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-3 py-1 disabled:opacity-40"
-              >
-                <span>{w.crmPaginationNext}</span>
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
+        columns={
+          [
+            {
+              key: "full_name",
+              header: w.crmColContact,
+              sortable: true,
+              renderCell: (c) => (
+                <div>
+                  <p className="font-semibold text-[var(--dsn-text)]">{c.fullName}</p>
+                  {c.companyName && (
+                    <p className="text-[11px] text-[var(--dsn-text-secondary)]">{c.companyName}</p>
+                  )}
+                  <p className="font-mono text-[11px] text-[var(--dsn-text-secondary)]">
+                    {c.phoneMobile || c.email || "—"}
+                  </p>
+                </div>
+              ),
+            },
+            {
+              key: "source",
+              header: w.crmColChannelSource,
+              renderCell: (c) => (
+                <div>
+                  <span className="inline-block rounded-full border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-2 py-0.5 text-[11px] font-medium text-[var(--dsn-text)]">
+                    {formatSourceLabel(c.source, locale)}
+                  </span>
+                  {c.preferredChannel && (
+                    <p className="mt-1 text-[11px] text-[var(--dsn-text-secondary)]">
+                      {w.crmPreferredLabel}: {formatChannelLabel(c.preferredChannel, locale)}
+                    </p>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: "whatsapp_priority",
+              header: w.crmColWhatsappWindow,
+              sortable: true,
+              renderCell: (c) => renderWindowBadge(c),
+            },
+            {
+              key: "stage",
+              header: w.crmColStage,
+              renderCell: (c) => (
+                <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-400">
+                  {formatStageLabel(c.stage, locale)}
+                </span>
+              ),
+            },
+            {
+              key: "rating",
+              header: w.crmColRating,
+              sortable: true,
+              isNumeric: true,
+              renderCell: (c) =>
+                c.currentRatingStars ? (
+                  <span className="inline-flex items-center gap-1 font-mono text-amber-400">
+                    <Star className="h-3.5 w-3.5 fill-amber-400" />
+                    <span>{c.currentRatingStars}/5</span>
+                  </span>
+                ) : (
+                  <span className="text-[var(--dsn-text-secondary)]">—</span>
+                ),
+            },
+            {
+              key: "city",
+              header: w.crmColCity,
+              renderCell: (c) => (
+                <span className="text-[var(--dsn-text-secondary)]">
+                  {c.defaultAddressSummary ? c.defaultAddressSummary.city : "—"}
+                </span>
+              ),
+            },
+            {
+              key: "last_inbound",
+              header: w.crmColLastSeen,
+              sortable: true,
+              renderCell: (c) => (
+                <span className="text-[var(--dsn-text-secondary)]">
+                  {formatShortDateTime(c.lastSeenAt, locale)}
+                </span>
+              ),
+            },
+            {
+              key: "actions",
+              header: w.crmColActions,
+              align: "right",
+              renderCell: (c) => (
+                <div className="inline-flex items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedContactId(c.id)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                  >
+                    <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                    <span>{w.crmViewDetailCta}</span>
+                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      aria-label={`${w.crmDeleteContactCta} ${c.fullName}`}
+                      onClick={() => {
+                        setDeleteError(null);
+                        setDeleteTarget(c);
+                      }}
+                      className="inline-flex items-center rounded-lg border border-rose-500/30 bg-rose-500/10 p-1.5 text-rose-400 hover:bg-rose-500/20"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              ),
+            },
+          ] satisfies WorkspaceTableColumn<CrmContactListItemView>[]
+        }
+      />
 
       {/* Modal de Creación Multi-Fuente */}
       {createOpen && (

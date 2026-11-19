@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -25,6 +25,7 @@ import type {
   TenantProfileDto,
 } from "@mocter/domain";
 import { ConfirmationModal } from "@/components/confirmation-modal";
+import { FormSaveBar } from "@/components/ui/form-save-bar";
 import { GeoAddressFields } from "@/components/geo-address-fields";
 import { PhoneE164Input } from "@/components/phone-e164-input";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
@@ -34,6 +35,66 @@ export interface ProfileViewProps {
   initialChannels: TenantPaymentChannelDto[];
   readOnly?: boolean;
   locale?: AdminLocale;
+}
+
+interface ProfileFormSnapshot {
+  displayName: string;
+  commercialEmail: string;
+  contactEmail: string;
+  phone: string;
+  websiteUrl: string;
+  taxId: string;
+  industry: string;
+  localeValue: "es" | "en";
+  currency: string;
+  timezone: string;
+  countryCode: string;
+  country: string;
+  subdivisionCode: string;
+  stateRegion: string;
+  city: string;
+  addressLine: string;
+  addressComplement: string;
+  postalCode: string;
+  instagram: string;
+  facebook: string;
+  tiktok: string;
+  whatsapp: string;
+  youtube: string;
+}
+
+function serializeProfileSections(s: ProfileFormSnapshot) {
+  return {
+    business: JSON.stringify({
+      displayName: s.displayName,
+      commercialEmail: s.commercialEmail,
+      contactEmail: s.contactEmail,
+      phone: s.phone,
+      websiteUrl: s.websiteUrl,
+      taxId: s.taxId,
+      industry: s.industry,
+    }),
+    location: JSON.stringify({
+      localeValue: s.localeValue,
+      currency: s.currency,
+      timezone: s.timezone,
+      countryCode: s.countryCode,
+      country: s.country,
+      subdivisionCode: s.subdivisionCode,
+      stateRegion: s.stateRegion,
+      city: s.city,
+      addressLine: s.addressLine,
+      addressComplement: s.addressComplement,
+      postalCode: s.postalCode,
+    }),
+    social: JSON.stringify({
+      instagram: s.instagram,
+      facebook: s.facebook,
+      tiktok: s.tiktok,
+      whatsapp: s.whatsapp,
+      youtube: s.youtube,
+    }),
+  };
 }
 
 interface ChannelFormState {
@@ -167,6 +228,104 @@ export function ProfileView({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [conflictUsedChannel, setConflictUsedChannel] = useState<TenantPaymentChannelDto | null>(null);
 
+  const currentSnapshot = useMemo<ProfileFormSnapshot>(
+    () => ({
+      displayName,
+      commercialEmail,
+      contactEmail,
+      phone,
+      websiteUrl,
+      taxId,
+      industry,
+      localeValue,
+      currency,
+      timezone,
+      countryCode,
+      country,
+      subdivisionCode,
+      stateRegion,
+      city,
+      addressLine,
+      addressComplement,
+      postalCode,
+      instagram,
+      facebook,
+      tiktok,
+      whatsapp,
+      youtube,
+    }),
+    [
+      displayName,
+      commercialEmail,
+      contactEmail,
+      phone,
+      websiteUrl,
+      taxId,
+      industry,
+      localeValue,
+      currency,
+      timezone,
+      countryCode,
+      country,
+      subdivisionCode,
+      stateRegion,
+      city,
+      addressLine,
+      addressComplement,
+      postalCode,
+      instagram,
+      facebook,
+      tiktok,
+      whatsapp,
+      youtube,
+    ],
+  );
+
+  const [savedSnapshot, setSavedSnapshot] = useState<ProfileFormSnapshot>(() => currentSnapshot);
+
+  const currentSections = useMemo(
+    () => serializeProfileSections(currentSnapshot),
+    [currentSnapshot],
+  );
+  const savedSections = useMemo(
+    () => serializeProfileSections(savedSnapshot),
+    [savedSnapshot],
+  );
+
+  const dirtySectionsCount =
+    (currentSections.business !== savedSections.business ? 1 : 0) +
+    (currentSections.location !== savedSections.location ? 1 : 0) +
+    (currentSections.social !== savedSections.social ? 1 : 0);
+  const isDirty = !readOnly && Boolean(profile) && dirtySectionsCount > 0;
+
+  function handleDiscardProfileChanges() {
+    setDisplayName(savedSnapshot.displayName);
+    setCommercialEmail(savedSnapshot.commercialEmail);
+    setContactEmail(savedSnapshot.contactEmail);
+    setPhone(savedSnapshot.phone);
+    setWebsiteUrl(savedSnapshot.websiteUrl);
+    setTaxId(savedSnapshot.taxId);
+    setIndustry(savedSnapshot.industry);
+    setLocaleValue(savedSnapshot.localeValue);
+    setCurrency(savedSnapshot.currency);
+    setTimezone(savedSnapshot.timezone);
+    setCountryCode(savedSnapshot.countryCode);
+    setCountry(savedSnapshot.country);
+    setSubdivisionCode(savedSnapshot.subdivisionCode);
+    setStateRegion(savedSnapshot.stateRegion);
+    setCity(savedSnapshot.city);
+    setAddressLine(savedSnapshot.addressLine);
+    setAddressComplement(savedSnapshot.addressComplement);
+    setPostalCode(savedSnapshot.postalCode);
+    setInstagram(savedSnapshot.instagram);
+    setFacebook(savedSnapshot.facebook);
+    setTiktok(savedSnapshot.tiktok);
+    setWhatsapp(savedSnapshot.whatsapp);
+    setYoutube(savedSnapshot.youtube);
+    setProfileError(null);
+    setProfileFeedback(null);
+  }
+
   if (!profile) {
     return (
       <div className="w-full p-4 md:px-8 md:py-6">
@@ -179,8 +338,8 @@ export function ProfileView({
     );
   }
 
-  async function handleSaveProfile(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSaveProfile(e?: React.FormEvent) {
+    e?.preventDefault();
     if (readOnly) return;
 
     setSavingProfile(true);
@@ -235,6 +394,13 @@ export function ProfileView({
       setCommercialEmail(updated.commercialEmail ?? "");
       setContactEmail(updated.contactEmail);
       setLocaleValue(updated.locale);
+      setSavedSnapshot({
+        ...currentSnapshot,
+        displayName: updated.displayName,
+        commercialEmail: updated.commercialEmail ?? "",
+        contactEmail: updated.contactEmail,
+        localeValue: updated.locale,
+      });
       setProfileFeedback(dict.profileSaveSuccess);
       router.refresh();
     } catch (err) {
@@ -483,6 +649,17 @@ export function ProfileView({
           </h1>
           <p className="text-sm text-[var(--dsn-text-secondary)]">{dict.profileSubtitle}</p>
         </div>
+
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => void handleSaveProfile()}
+            disabled={savingProfile}
+            className="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-[var(--dsn-accent-hover)] disabled:opacity-50 cursor-pointer"
+          >
+            {savingProfile ? dict.profileSaving : dict.profileSaveChanges}
+          </button>
+        )}
       </header>
 
       {/* Banner de solo lectura para tenant_agent */}
@@ -974,6 +1151,19 @@ export function ProfileView({
             </div>
           )}
         </section>
+
+        {!readOnly && (
+          <FormSaveBar
+            isDirty={isDirty}
+            dirtySectionsCount={dirtySectionsCount}
+            sectionName={dict.profileTitle}
+            onSave={() => void handleSaveProfile()}
+            onDiscard={handleDiscardProfileChanges}
+            locale={activeLocale}
+            saving={savingProfile}
+            submitType="button"
+          />
+        )}
       </form>
 
       {/* Sección 4: Canales De Pago Del Comercio */}

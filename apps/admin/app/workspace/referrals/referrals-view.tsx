@@ -18,7 +18,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { TenantReferralsOverviewDto } from "@mocter/domain";
-import { DataTable, type DataTableColumn } from "@/components/data-table";
+import {
+  WorkspaceDataTable,
+  type WorkspaceTableColumn,
+} from "@/components/ui/workspace-data-table";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 export interface TenantReferralsViewProps {
@@ -74,6 +77,8 @@ export function TenantReferralsView({
   const dict = getAdminDictionary(locale).workspace;
   const [data, setData] = useState<TenantReferralsOverviewDto | null>(initialData);
   const [statusFilter, setStatusFilter] = useState<ReferralStatusFilter>("all");
+  const [pageSize, setPageSize] = useState<number>(initialData?.referrals.limit ?? 10);
+  const [searchTerm, setSearchTerm] = useState("");
   const [loadingFilter, setLoadingFilter] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -81,12 +86,19 @@ export function TenantReferralsView({
 
   const primaryCurrency = data?.metrics.currency || data?.program?.currency || "COP";
 
-  async function handleFilterChange(nextStatus: ReferralStatusFilter) {
+  async function fetchReferrals(
+    nextStatus: ReferralStatusFilter,
+    nextPage: number,
+    nextLimit: number,
+  ) {
     setStatusFilter(nextStatus);
     setErrorMsg(null);
     setLoadingFilter(true);
     try {
-      const qs = new URLSearchParams({ page: "1", limit: "20" });
+      const qs = new URLSearchParams({
+        page: String(nextPage),
+        limit: String(nextLimit),
+      });
       if (nextStatus !== "all") {
         qs.set("status", nextStatus);
       }
@@ -101,6 +113,10 @@ export function TenantReferralsView({
     } finally {
       setLoadingFilter(false);
     }
+  }
+
+  function handleFilterChange(nextStatus: ReferralStatusFilter) {
+    void fetchReferrals(nextStatus, 1, pageSize);
   }
 
   async function handleCopyLink() {
@@ -169,23 +185,56 @@ export function TenantReferralsView({
     },
   };
 
-  const invitedColumns: DataTableColumn<InvitedTableRow>[] = [
-    { key: "business", header: dict.referralsColBusiness, sortable: true, filterable: true },
-    { key: "date", header: dict.referralsColDate, sortable: true },
-    { key: "status", header: dict.referralsColStatus, sortable: true },
-    { key: "credit", header: dict.referralsColCredit, isNumeric: true },
+  const invitedColumns: WorkspaceTableColumn<InvitedTableRow>[] = [
+    {
+      key: "business",
+      header: dict.referralsColBusiness,
+      sortable: true,
+      sortValue: (row) => row.business,
+      renderCell: (row) => <span className="font-semibold text-[var(--dsn-text)]">{row.business}</span>,
+    },
+    {
+      key: "date",
+      header: dict.referralsColDate,
+      sortable: true,
+      sortValue: (row) => row.date,
+      renderCell: (row) => <span className="font-mono text-xs">{row.date}</span>,
+    },
+    {
+      key: "status",
+      header: dict.referralsColStatus,
+      sortable: true,
+      sortValue: (row) => row.status,
+      renderCell: (row) => row.status,
+    },
+    {
+      key: "credit",
+      header: dict.referralsColCredit,
+      isNumeric: true,
+      align: "right",
+      renderCell: (row) => row.credit,
+    },
   ];
 
-  const invitedRows: InvitedTableRow[] = (data?.referrals.items ?? []).map((item) => ({
-    id: item.id,
-    business: item.referredBusinessMasked,
-    date: formatShortDate(item.attributedAt, locale),
-    status: statusLabelMap[item.status] || item.status,
-    credit:
-      item.rewardAmountCents && item.rewardAmountCents > 0
-        ? formatMoneyCents(item.rewardAmountCents, item.rewardCurrency || primaryCurrency, locale)
-        : "—",
-  }));
+  const invitedRows: InvitedTableRow[] = (data?.referrals.items ?? [])
+    .map((item) => ({
+      id: item.id,
+      business: item.referredBusinessMasked,
+      date: formatShortDate(item.attributedAt, locale),
+      status: statusLabelMap[item.status] || item.status,
+      credit:
+        item.rewardAmountCents && item.rewardAmountCents > 0
+          ? formatMoneyCents(item.rewardAmountCents, item.rewardCurrency || primaryCurrency, locale)
+          : "—",
+    }))
+    .filter((row) => {
+      const q = searchTerm.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        row.business.toLowerCase().includes(q) ||
+        row.status.toLowerCase().includes(q)
+      );
+    });
 
   if (!data) {
     return (
@@ -470,11 +519,34 @@ export function TenantReferralsView({
           </div>
         </div>
 
-        <DataTable
+        <WorkspaceDataTable<InvitedTableRow>
+          testId="referrals-invited-table"
+          locale={locale}
           columns={invitedColumns}
-          rows={invitedRows}
-          emptyMessage={dict.referralsEmptyInvited}
-          pageSize={10}
+          data={invitedRows}
+          getRowKey={(row) => row.id}
+          page={data.referrals.page}
+          pageSize={pageSize}
+          totalItems={searchTerm.trim() ? invitedRows.length : data.referrals.total}
+          onPageChange={(nextPage) => void fetchReferrals(statusFilter, nextPage, pageSize)}
+          onPageSizeChange={(nextLimit) => {
+            setPageSize(nextLimit);
+            void fetchReferrals(statusFilter, 1, nextLimit);
+          }}
+          searchQuery={searchTerm}
+          onSearchChange={(q) => setSearchTerm(q)}
+          activeFiltersCount={statusFilter !== "all" ? 1 : 0}
+          onResetFilters={() => {
+            setSearchTerm("");
+            if (statusFilter !== "all") {
+              void fetchReferrals("all", 1, pageSize);
+            }
+          }}
+          loading={loadingFilter}
+          emptyState={{
+            icon: <Users className="h-8 w-8 text-[var(--dsn-text-secondary)] opacity-60" />,
+            title: dict.referralsEmptyInvited,
+          }}
         />
       </section>
 

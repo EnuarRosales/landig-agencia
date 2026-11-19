@@ -15,17 +15,23 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { WorkspaceDashboardDto } from "@mocter/domain";
+import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 interface WorkspaceDashboardViewProps {
   initialData: WorkspaceDashboardDto | null;
+  locale?: AdminLocale;
 }
 
-export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewProps) {
+export function WorkspaceDashboardView({
+  initialData,
+  locale = "es",
+}: WorkspaceDashboardViewProps) {
+  const dict = getAdminDictionary(locale).workspace;
   const [data] = useState<WorkspaceDashboardDto | null>(initialData);
   const [logoLoadError, setLogoLoadError] = useState(false);
 
-  const tenantName = data?.tenant.name || "Mi Comercio";
-  const planName = data?.tenant.planName || "Plan Pro";
+  const tenantName = data?.tenant.name || dict.dashboardDefaultStoreName;
+  const planName = data?.tenant.planName || dict.dashboardDefaultPlanName;
   const currency = data?.tenant.currency || "COP";
   const logoUrl = data?.tenant.logoUrl?.trim() || null;
 
@@ -73,7 +79,7 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
                 </span>
               </div>
               <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-0.5 font-mono">
-                Moneda Operativa: {currency}
+                {dict.dashboardOperatingCurrency}: {currency}
               </p>
             </div>
           </div>
@@ -84,14 +90,14 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
               className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity"
             >
               <PlusCircle className="h-4 w-4" />
-              <span>Nuevo Producto</span>
+              <span>{dict.dashboardNewProductCta}</span>
             </Link>
             <Link
               href="/workspace/bot"
               className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-border)]/40 transition-colors"
             >
               <Settings className="h-4 w-4" />
-              <span>Ajustes Bot</span>
+              <span>{dict.dashboardBotSettingsCta}</span>
             </Link>
           </div>
         </div>
@@ -101,7 +107,7 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-[var(--dsn-text-secondary)]">Productos Activos</span>
+            <span className="text-xs font-medium text-[var(--dsn-text-secondary)]">{dict.dashboardKpiProducts}</span>
             <div className="rounded-lg bg-cyan-500/10 p-2 text-cyan-400">
               <Package className="h-4 w-4" />
             </div>
@@ -111,7 +117,7 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
           </p>
           <div className="mt-2 flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <Link href="/workspace/products" className="inline-flex items-center gap-1 text-[var(--dsn-accent)] hover:underline">
-              <span>Gestionar catálogo</span>
+              <span>{dict.dashboardManageCatalog}</span>
               <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
@@ -119,7 +125,7 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
 
         <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-[var(--dsn-text-secondary)]">Contactos CRM</span>
+            <span className="text-xs font-medium text-[var(--dsn-text-secondary)]">{dict.dashboardKpiContacts}</span>
             <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-400">
               <Users className="h-4 w-4" />
             </div>
@@ -129,7 +135,7 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
           </p>
           <div className="mt-2 flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <Link href="/workspace/contacts" className="inline-flex items-center gap-1 text-[var(--dsn-accent)] hover:underline">
-              <span>Ver prospectos</span>
+              <span>{dict.dashboardViewLeads}</span>
               <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
@@ -137,7 +143,7 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
 
         <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-[var(--dsn-text-secondary)]">Pedidos Registrados</span>
+            <span className="text-xs font-medium text-[var(--dsn-text-secondary)]">{dict.dashboardKpiOrders}</span>
             <div className="rounded-lg bg-amber-500/10 p-2 text-amber-400">
               <ShoppingCart className="h-4 w-4" />
             </div>
@@ -147,7 +153,7 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
           </p>
           <div className="mt-2 flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <Link href="/workspace/orders" className="inline-flex items-center gap-1 text-[var(--dsn-accent)] hover:underline">
-              <span>Historial ventas</span>
+              <span>{dict.dashboardSalesHistory}</span>
               <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
@@ -155,7 +161,7 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
 
         <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-[var(--dsn-text-secondary)]">Almacenamiento Usado</span>
+            <span className="text-xs font-medium text-[var(--dsn-text-secondary)]">{dict.dashboardKpiStorage}</span>
             <div className="rounded-lg bg-purple-500/10 p-2 text-purple-400">
               <HardDrive className="h-4 w-4" />
             </div>
@@ -165,10 +171,10 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
           </p>
           <div className="mt-2 flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <span className="truncate">
-              Tope: {metrics.storageQuotaBytes ? formatBytes(metrics.storageQuotaBytes) : "Ilimitado"}
+              {dict.dashboardQuotaLimit}: {metrics.storageQuotaBytes ? formatBytes(metrics.storageQuotaBytes) : dict.dashboardUnlimited}
             </span>
             <Link href="/workspace/billing" className="text-[var(--dsn-accent)] hover:underline shrink-0">
-              Cuota
+              {dict.dashboardQuotaLink}
             </Link>
           </div>
         </div>
@@ -184,35 +190,35 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
               </div>
               <div>
                 <h2 className="text-sm font-bold text-[var(--dsn-text)]">
-                  Asistente Comercial Inteligente
+                  {dict.dashboardBotTitle}
                 </h2>
                 <p className="text-xs text-[var(--dsn-text-secondary)]">
-                  Respuestas autónomas a clientes y captura de pedidos.
+                  {dict.dashboardBotSubtitle}
                 </p>
               </div>
             </div>
             <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
-              Activo
+              {dict.dashboardBotActive}
             </span>
           </div>
 
           <div className="mt-4 space-y-3">
             <div className="flex items-center justify-between rounded-lg bg-[var(--dsn-surface-secondary)]/50 p-3 text-xs">
-              <span className="text-[var(--dsn-text-secondary)]">Preset De Personalidad</span>
+              <span className="text-[var(--dsn-text-secondary)]">{dict.dashboardBotPreset}</span>
               <span className="font-semibold text-[var(--dsn-text)] capitalize">
                 {(data?.bot.preset || "natural_rhythm").replace("_", " ")}
               </span>
             </div>
             <div className="flex items-center justify-between rounded-lg bg-[var(--dsn-surface-secondary)]/50 p-3 text-xs">
-              <span className="text-[var(--dsn-text-secondary)]">Preguntas Frecuentes Configuradas</span>
+              <span className="text-[var(--dsn-text-secondary)]">{dict.dashboardBotFaqs}</span>
               <span className="font-semibold text-[var(--dsn-text)]">
-                {data?.bot.faqsCount ?? 0} preguntas
+                {data?.bot.faqsCount ?? 0} {dict.dashboardBotFaqsUnit}
               </span>
             </div>
             <div className="flex items-center justify-between rounded-lg bg-[var(--dsn-surface-secondary)]/50 p-3 text-xs">
-              <span className="text-[var(--dsn-text-secondary)]">Recordatorios Automáticos</span>
+              <span className="text-[var(--dsn-text-secondary)]">{dict.dashboardBotReminders}</span>
               <span className="font-semibold text-[var(--dsn-text)]">
-                {data?.bot.remindersEnabled ? "Habilitados" : "Deshabilitados"}
+                {data?.bot.remindersEnabled ? dict.dashboardEnabled : dict.dashboardDisabled}
               </span>
             </div>
           </div>
@@ -222,7 +228,7 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
               href="/workspace/bot"
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-border)]/40 transition-colors"
             >
-              <span>Configurar Personalidad Y Políticas</span>
+              <span>{dict.dashboardBotConfigureCta}</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -237,10 +243,10 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
               </div>
               <div>
                 <h2 className="text-sm font-bold text-[var(--dsn-text)]">
-                  Acciones Rápidas Del Comercio
+                  {dict.dashboardQuickActionsTitle}
                 </h2>
                 <p className="text-xs text-[var(--dsn-text-secondary)]">
-                  Operaciones cotidianas para impulsar tus ventas.
+                  {dict.dashboardQuickActionsSubtitle}
                 </p>
               </div>
             </div>
@@ -253,14 +259,14 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
                 <div>
                   <Package className="h-5 w-5 text-cyan-400 mb-2" />
                   <p className="text-xs font-bold text-[var(--dsn-text)] group-hover:text-[var(--dsn-accent)]">
-                    Publicar Producto
+                    {dict.dashboardQuickPublishTitle}
                   </p>
                   <p className="text-[11px] text-[var(--dsn-text-secondary)] mt-0.5">
-                    Publica fotos, videos y ficha de tus productos.
+                    {dict.dashboardProductActionDesc}
                   </p>
                 </div>
                 <span className="text-[10px] text-[var(--dsn-accent)] mt-3 inline-flex items-center gap-1 font-semibold">
-                  Ir al catálogo →
+                  {dict.dashboardQuickPublishCta} →
                 </span>
               </Link>
 
@@ -271,23 +277,23 @@ export function WorkspaceDashboardView({ initialData }: WorkspaceDashboardViewPr
                 <div>
                   <Users className="h-5 w-5 text-emerald-400 mb-2" />
                   <p className="text-xs font-bold text-[var(--dsn-text)] group-hover:text-[var(--dsn-accent)]">
-                    Registrar Contacto
+                    {dict.dashboardQuickContactTitle}
                   </p>
                   <p className="text-[11px] text-[var(--dsn-text-secondary)] mt-0.5">
-                    Guarda clientes y prospectos comerciales.
+                    {dict.dashboardQuickContactDesc}
                   </p>
                 </div>
                 <span className="text-[10px] text-[var(--dsn-accent)] mt-3 inline-flex items-center gap-1 font-semibold">
-                  Ir a contactos →
+                  {dict.dashboardQuickContactCta} →
                 </span>
               </Link>
             </div>
           </div>
 
           <div className="mt-6 pt-4 border-t border-[var(--dsn-border)] flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
-            <span>¿Necesitas ayuda con tu tienda?</span>
+            <span>{dict.dashboardNeedHelp}</span>
             <Link href="/workspace/team" className="text-[var(--dsn-accent)] font-semibold hover:underline">
-              Gestionar equipo
+              {dict.dashboardManageTeam}
             </Link>
           </div>
         </div>

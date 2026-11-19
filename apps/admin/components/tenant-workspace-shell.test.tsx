@@ -7,8 +7,15 @@ import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { TenantWorkspaceShell } from "./tenant-workspace-shell";
 import type { CurrentUserDto } from "./user-profile-modal";
 
+const mockRefresh = vi.fn();
+const mockPush = vi.fn();
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/workspace",
+  useRouter: () => ({
+    refresh: mockRefresh,
+    push: mockPush,
+  }),
 }));
 
 vi.mock("@/lib/api-client", () => ({
@@ -193,7 +200,7 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
       </TenantWorkspaceShell>,
     );
 
-    const desktopNav = screen.getByRole("navigation", { name: /Navegación del comercio/i });
+    const desktopNav = screen.getByRole("navigation", { name: /Store navigation/i });
     const navLinks = Array.from(desktopNav.querySelectorAll("a"));
     expect(navLinks[0]?.getAttribute("href")).toBe("/workspace");
     expect(navLinks[1]?.getAttribute("href")).toBe("/workspace/conversations");

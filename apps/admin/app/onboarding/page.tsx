@@ -1,12 +1,12 @@
 import React from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   resolveAuthenticatedPortalContext,
   tenantOnboardingService,
   tenantWorkspaceService,
 } from "@mocter/domain";
-import { resolveActiveLocale } from "@/lib/i18n";
+import { resolvePortalPageLocale } from "@/lib/resolve-page-locale";
 import { TenantOnboardingWizard } from "./tenant-onboarding-wizard";
 
 export const dynamic = "force-dynamic";
@@ -19,16 +19,21 @@ export interface OnboardingPageProps {
  * Página principal del asistente unificado de onboarding en 5 pasos (`SPEC-06`).
  */
 export default async function OnboardingPage({ searchParams }: OnboardingPageProps) {
-  const cookieStore = await cookies();
+  const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
   const sid = (
     cookieStore.get("__Host-mocter_sid")?.value || cookieStore.get("mocter_sid")?.value
   )?.trim();
+  const cookieLocale = cookieStore.get("mocter_locale")?.value ?? null;
+  const acceptLanguage = headerStore.get("accept-language");
 
   if (!sid) {
     redirect("/es/login");
   }
 
-  const portalContext = await resolveAuthenticatedPortalContext(sid);
+  const portalContext = await resolveAuthenticatedPortalContext(sid, {
+    browserAcceptLanguage: acceptLanguage,
+    cookieLocale,
+  });
   if (!portalContext?.user) {
     redirect("/es/login");
   }
@@ -67,8 +72,11 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
     }
   }
 
-  const initialLocale = resolveActiveLocale({
+  const initialLocale = resolvePortalPageLocale({
+    context: portalContext,
+    cookieLocale,
     tenantLocale: initialState.client?.locale || initialState.draft.business?.locale,
+    acceptLanguage,
   });
 
   return (

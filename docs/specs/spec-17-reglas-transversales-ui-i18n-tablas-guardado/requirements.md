@@ -52,16 +52,17 @@ Establecer **primitivas transversales obligatorias** y validar su adopción en t
 
 ### Dentro del alcance
 - Infraestructura i18n tipada en `apps/admin` libre de APIs `@deprecated`:
-  - Diccionarios completos `es.json` y `en.json` cubriendo navegación (`TenantWorkspaceShell`), Onboarding, Tablero, Productos, CRM, Pedidos, Asistente AI y Bot, Equipo, Perfil, Marca Blanca, Notificaciones, Plan/Facturación/Bre-B, Comunidades y Referidos.
-  - Regla de linting/test automatizado que detecte claves faltantes entre `es` y `en` (paridad del 100%).
-  - Selector discreto de idioma en barra de usuario (`ES` / `EN`) + endpoint ligero `PATCH /api/tenant/locale` para guardar preferencia individual de usuario (`cell_users` / cookie), respetando `clients.locale` (`SPEC-05`) como base por comercio.
+  - Fachada compatible `@/lib/i18n` (`apps/admin/lib/i18n.ts`) respaldada por diccionarios JSON tipados `apps/admin/lib/i18n/es.json` y `apps/admin/lib/i18n/en.json` cubriendo navegación (`TenantWorkspaceShell`), Onboarding, Tablero, Productos, CRM, Pedidos, Asistente AI y Bot, Proveedores AI, Equipo, Perfil, Marca Blanca, Notificaciones, Plan/Facturación/Bre-B, Informes, Comunidades y Referidos.
+  - Prueba automatizada `apps/admin/lib/i18n-audit.test.ts` que detecte claves faltantes entre `es` y `en` (paridad recursiva del 100%) y escaneo estático de higiene UI.
+  - Selector discreto de idioma en barra de usuario/shell (`ES` / `EN`) + endpoint `PATCH /api/tenant/locale` para guardar preferencia individual de usuario (`cell_users.preferred_locale` + cookie `mocter_locale`), respetando `clients.locale` (`SPEC-05`) como base por comercio y `router.refresh()` inmediato.
 - Diseño e implementación del componente compartido `<WorkspaceDataTable />` (`apps/admin/components/ui/workspace-data-table.tsx` [Nuevo]):
-  - Soporta paginación controlada (`page`, `pageSize` 10/20/50, `total`), ordenamiento por columnas (`sortBy`, `sortDir: 'asc' | 'desc'`), barra de búsqueda + filtros configurables, esqueleto de carga, estado vacío con CTA, banner de error reintentable y renderizado alternativo en tarjetas Mobile First `< 768px`.
-  - Adopción verificada en: Productos, Contactos CRM, Pedidos, Equipo/Invitaciones, Facturas/Pagos, Notificaciones, Comunidades y Referidos.
+  - Soporta modo controlado server-side y modo client-side: paginación (`page`, `pageSize` 10/20/50, `total`), ordenamiento por columnas (`sortBy`, `sortDir: 'asc' | 'desc'`), barra de búsqueda debounced (`300ms`) + filtros configurables, botón «Limpiar Filtros», contador de resultados, esqueleto de carga, estado vacío con CTA, banner de error reintentable y renderizado alternativo en tarjetas Mobile First `< 768px`.
+  - Adopción verificada en: Productos, Contactos CRM, Pedidos, Equipo/Invitaciones, Facturas/Pagos (exponiendo historial de facturas en `getBillingDetails` y `billing-view.tsx`), Notificaciones, Comunidades y Referidos.
+  - Estandarización de `limit <= 50` en todos los endpoints `GET /api/tenant/*` mediante `parsePaginationQuery` (ajustando llamadas internas heredadas como `product-form-modal.tsx` de `limit=100` a `limit=50`).
 - Diseño e implementación del componente compartido `<FormSaveBar />` + hook `useUnsavedChangesGuard` (`AIB-04`):
-  - En formularios largos (`/workspace/bot`, `/workspace/profile`, `/workspace/branding`, modal de producto): botón de guardado visible tanto en el encabezado como en la **parte inferior / barra fija inferior (`sticky bottom-0`)** cuando existen cambios pendientes (`isDirty`), acompañado de contador de cambios pendientes y botón «Descartar Cambios».
-  - Confirmación mediante modal accesible `--dsn-*` (nunca `window.confirm`) si el usuario intenta cambiar de sección teniendo cambios sin guardar.
-- Auditoría transversal de cumplimiento de `AGENTS.md §4.8` (**Title Case** en todos los `<label>`, prohibido CSS `uppercase`) y `§4.17` (**cero `window.alert`/`window.confirm`/`window.prompt`** en todo `apps/admin/app/workspace/*`).
+  - En formularios largos (`/workspace/bot`, `/workspace/profile`, `/workspace/branding`, `/workspace/ai`): botón de guardado visible tanto en el encabezado como en la **parte inferior / barra fija inferior (`sticky bottom-4`)** cuando existen cambios pendientes (`isDirty`), acompañado de contador de cambios pendientes y botón «Descartar Cambios».
+  - En `/workspace/bot`, cambiar entre las 4 pestañas internas conserva las ediciones en memoria del formulario unificado; pulsar «Descartar Cambios» o intentar salir/navegar fuera de la vista con cambios pendientes abre confirmación mediante modal accesible `--dsn-*` (nunca `window.confirm`). En `product-form-modal.tsx`, cerrar el modal con cambios sin guardar también solicita confirmación mediante `--dsn-*`.
+- Auditoría transversal de cumplimiento de `AGENTS.md §4.8` (**Title Case** en todos los `<label>`, prohibido CSS `uppercase`) y `§4.17` (**cero `window.alert`/`window.confirm`/`window.prompt`** en todo `apps/admin/app/workspace/*` y `apps/admin/components/*`).
 
 ### Fuera de alcance
 - Traducción automática mediante LLM de catálogos de productos cargados por el comercio (el contenido del usuario permanece en el idioma en que lo redactó; el sistema traduce íntegramente toda la interfaz de plataforma).
@@ -81,10 +82,10 @@ Establecer **primitivas transversales obligatorias** y validar su adopción en t
 ## 7. Modelo de datos
 
 ### 7.1 Preferencia de idioma a nivel de usuario (`packages/domain/src/db/schemas/tenant/users.ts`)
-- Verificar/añadir columna opcional en `cell_users`:
+- Añadir columna opcional en `cell_users`:
   - `preferred_locale`: `VARCHAR(10)` nullable (`'es' | 'en'`). Si es `NULL`, hereda automáticamente `admin.clients.locale` (`SPEC-05`) y luego `Accept-Language` del navegador.
-- **Resolución en `resolveAuthenticatedPortalContext` (`packages/domain/src/services/session-context.service.ts`):**
-  `activeLocale = cellUser.preferredLocale ?? client.locale ?? acceptLanguageLocale ?? "es"`.
+- **Resolución en `resolveAuthenticatedPortalContext(sessionId, options?)` (`packages/domain/src/services/session-context.service.ts`):**
+  `activeLocale = cellUser.preferredLocale ?? cookieLocale ?? client.locale ?? acceptLanguageLocale ?? "es"` (sin exigir el parámetro opcional para preservar compatibilidad con callers existentes, y sincronizando la cookie `mocter_locale` desde `PATCH /api/tenant/locale` como fallback rápido para prospectos sin celda).
 
 ---
 
@@ -93,7 +94,7 @@ Establecer **primitivas transversales obligatorias** y validar su adopción en t
 - **RN-SPEC-17-01 (Paridad 100% `es`/`en` sin literales en JSX `TRV-01`):** Toda etiqueta, título, botón, placeholder, validación, estado vacío y mensaje de error visible en Onboarding y Workspace debe provenir de los diccionarios `es` y `en`. Ninguna clave puede existir en español sin su equivalente exacto en inglés, validado mediante prueba automatizada en CI (`i18n-parity.test.ts`).
 - **RN-SPEC-17-02 (Cascada canónica de idioma sin APIs `@deprecated`):** La resolución del idioma activo sigue estrictamente el orden `user.preferredLocale -> client.locale -> browser Accept-Language -> 'es'` sin usar APIs obsoletas (`setRequestLocale` prohibido). El usuario puede alternar temporal o persistentemente su idioma desde el shell sin afectar al resto del equipo.
 - **RN-SPEC-17-03 (Contrato único de tablas `TRV-02`):** Toda tabla del sistema implementa obligatoriamente paginación explícita (tamaño por defecto 20 registros, máximo 50 por página en API), al menos búsqueda por texto o filtro de estado, ordenamiento por columnas clave y vista adaptativa para móvil (`Mobile First`).
-- **RN-SPEC-17-04 (Doble punto de guardado y protección contra pérdida de datos `AIB-04`):** Todo formulario de configuración de múltiples secciones (`/workspace/bot`, `/workspace/profile`, `/workspace/branding`) presenta controles «Guardar Cambios» accesibles en su cabecera y al pie del formulario (`sticky` cuando `isDirty = true`). Si hay cambios sin guardar y el usuario pulsa «Descartar» o intenta navegar entre pestañas internas, se solicita confirmación con modal `--dsn-*`.
+- **RN-SPEC-17-04 (Doble punto de guardado y protección contra pérdida de datos `AIB-04`):** Todo formulario de configuración de múltiples secciones (`/workspace/bot`, `/workspace/profile`, `/workspace/branding`, `/workspace/ai`) presenta controles «Guardar Cambios» accesibles en su cabecera y al pie del formulario (`sticky` cuando `isDirty = true`). En `/workspace/bot`, el cambio entre pestañas conserva los cambios en memoria dentro del mismo formulario unificado; si hay cambios sin guardar y el usuario pulsa «Descartar Cambios» o intenta abandonar/navegar fuera de la vista, se solicita confirmación con modal `--dsn-*` (y de forma análoga al intentar cerrar `product-form-modal` con cambios sin guardar).
 - **RN-SPEC-17-05 (Higiene transversal de UI `AGENTS.md §4.8, §4.15, §4.17`):** Cero clases CSS `uppercase` en `<label>`, todos los `<label>` redactados en **Title Case**, cero llamadas nativas a `window.confirm`/`alert`/`prompt`, y cero identificadores internos (`ONB-`, `TRV-`, `SPEC-`, etc.) en código renderizable.
 
 ---
@@ -175,9 +176,9 @@ Característica: Estandarización i18n, tablas con paginación/filtros y barra d
 ### (c) Errores de regla de negocio
 
 ```gherkin
-  Escenario: Advertencia al intentar abandonar formulario con cambios sin guardar en modo interactivo
+  Escenario: Advertencia al intentar abandonar formulario o descartar cambios sin guardar
     Dado que el usuario editó una política comercial en "/workspace/bot" sin pulsar "Guardar Cambios"
-    Cuando intenta cambiar de sección interna o pulsar "Descartar"
+    Cuando intenta navegar hacia otra sección del backoffice o pulsar "Descartar Cambios"
     Entonces el sistema abre un modal accesible "--dsn-*" (sin window.confirm) solicitando confirmar si descarta o conserva sus cambios
 ```
 
@@ -219,16 +220,19 @@ Característica: Estandarización i18n, tablas con paginación/filtros y barra d
 
 ## 14. Definition of Done
 
-- [ ] Columna `preferred_locale` agregada a `cell_users` + endpoint `PATCH /api/tenant/locale` + cascada en `resolveAuthenticatedPortalContext`.
-- [ ] Diccionarios completos `es` y `en` integrados en todas las pantallas del workspace/onboarding con test de paridad al 100% (`TRV-01`).
-- [ ] Componente compartido `<WorkspaceDataTable />` adoptado uniformemente en todas las tablas del comercio (`TRV-02`).
-- [ ] Componente `<FormSaveBar />` + guard de cambios sin guardar integrado en `/workspace/bot` (`AIB-04`) y formularios extensos de configuración.
-- [ ] Tests estáticos confirmando cero `window.confirm`/`alert`/`prompt`, cero `uppercase` en `<label>`, cero APIs `@deprecated`, y cero códigos internos en UI.
-- [ ] `pnpm lint`, `pnpm test`, `drizzle-kit check` en verde + protocolo §4.18 ejecutado.
+- [x] Columna `preferred_locale` agregada a `cell_users` + endpoint `PATCH /api/tenant/locale` + cascada en `resolveAuthenticatedPortalContext`.
+- [x] Diccionarios completos `es` y `en` integrados en todas las pantallas del workspace/onboarding con test de paridad al 100% (`TRV-01`).
+- [x] Componente compartido `<WorkspaceDataTable />` adoptado uniformemente en todas las tablas del comercio (`TRV-02`).
+- [x] Componente `<FormSaveBar />` + guard de cambios sin guardar integrado en `/workspace/bot` (`AIB-04`) y formularios extensos de configuración.
+- [x] Tests estáticos confirmando cero `window.confirm`/`alert`/`prompt`, cero `uppercase` en `<label>`, cero APIs `@deprecated`, y cero códigos internos en UI.
+- [x] Verificación de dominio (`lint`, `db:check`, `db:check:cell`, `vitest`), build y tests de `@mocter/admin`, `eslint` en archivos `SPEC-17` y protocolo `§4.18` en vivo (`es`/`en`); los fallos preexistentes en rutas/lint fuera de alcance quedan documentados en el reporte final.
 
 ---
 
-## 15. Propuestas a Validar (PV-xx)
+## 15. Propuestas a Validar y Decisiones Cerradas (`/grill-me`)
 
-Sin preguntas abiertas para esta especificación.
+- **D-01 (Persistencia y cascada de idioma):** Columna `preferred_locale` nullable en `cell_users` (migración en `packages/domain/drizzle-cell`) + sincronización en cookie `mocter_locale` desde `PATCH /api/tenant/locale`, exponiendo `activeLocale` en `resolveAuthenticatedPortalContext(sid, { browserAcceptLanguage?, cookieLocale? })`.
+- **D-02 (Arquitectura i18n `apps/admin`):** Conservar la fachada `@/lib/i18n` (`apps/admin/lib/i18n.ts`) respaldada por diccionarios JSON tipados `apps/admin/lib/i18n/es.json` y `apps/admin/lib/i18n/en.json`, traduciendo todas las vistas/shell pendientes y validando paridad recursiva 100% + auditoría estática en `apps/admin/lib/i18n-audit.test.ts`.
+- **D-03 (`<WorkspaceDataTable />` dual, límites `<= 50` e historial de facturas):** `<WorkspaceDataTable />` soporta modo server-side controlado y modo client-side en memoria, adoptado en Productos, Contactos, Pedidos, Equipo, Notificaciones, Referidos, Comunidades y Facturas/Pagos (agregando historial de facturas en `getBillingDetails` y `billing-view.tsx`); `parsePaginationQuery` estandariza `limit <= 50` en endpoints `/api/tenant/*` (ajustando `product-form-modal.tsx` de `limit=100` a `50`).
+- **D-04 (`<FormSaveBar />` y guarda de cambios):** Barra dual (cabecera + sticky inferior cuando `isDirty`) integrada en `/workspace/bot`, `/workspace/profile`, `/workspace/branding` y `/workspace/ai`, más confirmación `--dsn-*` en cierre sucio de `product-form-modal.tsx`. En `/workspace/bot`, las 4 pestañas conservan cambios entre sí y la confirmación `--dsn-*` protege «Descartar Cambios» y navegación fuera de la vista.
 

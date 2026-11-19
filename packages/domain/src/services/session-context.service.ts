@@ -3,8 +3,9 @@ import { getDb } from "../db/client";
 import { users, clients, clientRouting, cells, plans } from "../db/schemas/admin";
 import { subscriptions, billingManualPaymentReports } from "../db/schemas/admin/billing";
 import { mediaCatalog } from "../db/schemas/admin/chatwoot-media-onboarding";
-import { cellTenantUsers } from "../db/schemas/tenant";
-import { withTenantCellTransaction } from "../db/cell-client";
+import { cellTenantUsers, cellUsers } from "../db/schemas/tenant";
+import * as cellClient from "../db/cell-client";
+import { ok, err, type Result } from "../types/result";
 import { authService } from "./auth.service";
 import { fetchUserActivePlatformRoles } from "./cell-authorization.service";
 import {
@@ -74,6 +75,49 @@ export interface PortalContextBranding {
 }
 
 /**
+ * Idiomas soportados en el portal Mocter (`SPEC-17`).
+ */
+export type SupportedPortalLocale = "es" | "en";
+
+/**
+ * Opciones opcionales de contexto HTTP para resolver la cascada oficial de idioma (`SPEC-17 §7.1`).
+ */
+export interface ResolvePortalContextOptions {
+  /** Cabecera `Accept-Language` enviada por el navegador. */
+  browserAcceptLanguage?: string | null;
+  /** Preferencia rápida sincronizada en cookie `mocter_locale` (fallback sin celda o pre-onboarding). */
+  cookieLocale?: string | null;
+}
+
+function normalizeSupportedLocale(raw: string | null | undefined): SupportedPortalLocale | null {
+  if (!raw) return null;
+  const primary = raw.trim().toLowerCase().split(",")[0]?.split("-")[0]?.trim();
+  if (primary === "es" || primary === "en") {
+    return primary;
+  }
+  return null;
+}
+
+/**
+ * Resuelve el idioma efectivo siguiendo la cascada canónica `SPEC-17`:
+ * `user.preferredLocale -> cookieLocale -> client.locale -> browser Accept-Language -> 'es'`.
+ */
+export function resolveLocaleHierarchy(params: {
+  userPreferredLocale?: string | null;
+  cookieLocale?: string | null;
+  tenantLocale?: string | null;
+  browserAcceptLanguage?: string | null;
+}): SupportedPortalLocale {
+  return (
+    normalizeSupportedLocale(params.userPreferredLocale) ??
+    normalizeSupportedLocale(params.cookieLocale) ??
+    normalizeSupportedLocale(params.tenantLocale) ??
+    normalizeSupportedLocale(params.browserAcceptLanguage) ??
+    "es"
+  );
+}
+
+/**
  * Contexto autoritativo de sesión resuelto en el servidor para layout y shells (TNT-001 R2, Feature 10).
  */
 export interface PortalContext {
@@ -89,6 +133,10 @@ export interface PortalContext {
   planName: string | null;
   capabilities: Record<string, boolean>;
   lifecycleStatus: string | null;
+  /** Idioma preferido persistido en `cell_users.preferred_locale` si existe. */
+  preferredLocale?: SupportedPortalLocale | null;
+  /** Idioma efectivo resuelto bajo la cascada oficial (`SPEC-17`). */
+  activeLocale?: SupportedPortalLocale;
   whiteLabelMode?: WhiteLabelCapabilityMode;
   branding?: PortalContextBranding | null;
   brandingTokens?: Record<string, string> | null;
@@ -127,6 +175,7 @@ export type AuthenticatedPortalContext = PortalContext;
  */
 export async function resolveAuthenticatedPortalContext(
   sessionId: string,
+  options?: ResolvePortalContextOptions,
 ): Promise<PortalContext | null> {
   const cleanSid = sessionId?.trim();
   if (!cleanSid) {
@@ -166,6 +215,11 @@ export async function resolveAuthenticatedPortalContext(
         ? "platform_owner"
         : (platformRoles[0] || "platform_admin");
 
+      const activeLocale = resolveLocaleHierarchy({
+        cookieLocale: options?.cookieLocale,
+        browserAcceptLanguage: options?.browserAcceptLanguage,
+      });
+
       return {
         user: portalUser,
         session: portalSession,
@@ -179,6 +233,8 @@ export async function resolveAuthenticatedPortalContext(
         planName: null,
         capabilities: {},
         lifecycleStatus: null,
+        preferredLocale: null,
+        activeLocale,
       };
     }
 
@@ -206,6 +262,11 @@ export async function resolveAuthenticatedPortalContext(
 
     // Si no existe ningún cliente asociado -> Prospecto sin registro de empresa
     if (!targetClientId) {
+      const activeLocale = resolveLocaleHierarchy({
+        cookieLocale: options?.cookieLocale,
+        browserAcceptLanguage: options?.browserAcceptLanguage,
+      });
+
       return {
         user: portalUser,
         session: portalSession,
@@ -219,6 +280,8 @@ export async function resolveAuthenticatedPortalContext(
         planName: null,
         capabilities: {},
         lifecycleStatus: "alta",
+        preferredLocale: null,
+        activeLocale,
       };
     }
 
@@ -308,27 +371,52 @@ export async function resolveAuthenticatedPortalContext(
 
     const isOwner = clientRecord.ownerUserId === user.id;
     let resolvedRole = isOwner ? "tenant_owner" : "tenant_agent";
-    if (!isOwner) {
-      try {
-        const membership = await withTenantCellTransaction(clientRecord.id, async (tx) => {
+    let userPreferredLocale: SupportedPortalLocale | null = null;
+
+    try {
+      const cellResult = await cellClient.withTenantCellTransaction(clientRecord.id, async (tx) => {
+        const [cellUser] = await tx
+          .select({ preferredLocale: cellUsers.preferredLocale })
+          .from(cellUsers)
+          .where(and(eq(cellUsers.clientId, clientRecord.id), eq(cellUsers.id, user.id)))
+          .limit(1);
+
+        let membership: { role: string; status: string } | undefined;
+        if (!isOwner) {
           const [m] = await tx
             .select({ role: cellTenantUsers.role, status: cellTenantUsers.status })
             .from(cellTenantUsers)
             .where(and(eq(cellTenantUsers.clientId, clientRecord.id), eq(cellTenantUsers.userId, user.id)))
             .orderBy(desc(cellTenantUsers.joinedAt))
             .limit(1);
-          return m;
-        });
-        if (membership && membership.status === "active") {
-          resolvedRole = membership.role || "tenant_agent";
-        } else if (membership && membership.status !== "active") {
+          membership = m;
+        }
+
+        return {
+          preferredLocale: normalizeSupportedLocale(cellUser?.preferredLocale),
+          membership,
+        };
+      });
+
+      userPreferredLocale = cellResult?.preferredLocale ?? null;
+      if (!isOwner && cellResult?.membership) {
+        if (cellResult.membership.status === "active") {
+          resolvedRole = cellResult.membership.role || "tenant_agent";
+        } else {
           appLogger.warn(`[resolveAuthenticatedPortalContext] Usuario ${user.id} con membresía inactiva en cliente ${clientRecord.id}`);
           return null;
         }
-      } catch (err) {
-        appLogger.warn(`[resolveAuthenticatedPortalContext] Verificación de membresía celular omitida por fallo de red transitorio`, { err });
       }
+    } catch (err) {
+      appLogger.warn(`[resolveAuthenticatedPortalContext] Consulta celular de idioma/membresía omitida por fallo transitorio`, { err });
     }
+
+    const activeLocale = resolveLocaleHierarchy({
+      userPreferredLocale,
+      cookieLocale: options?.cookieLocale,
+      tenantLocale: clientRecord.locale,
+      browserAcceptLanguage: options?.browserAcceptLanguage,
+    });
 
     let resolvedLogoUrl: string | null = null;
     if (clientRecord.logoMediaId) {
@@ -415,6 +503,8 @@ export async function resolveAuthenticatedPortalContext(
         planName,
         capabilities,
         lifecycleStatus: "alta",
+        preferredLocale: userPreferredLocale,
+        activeLocale,
       };
     }
 
@@ -502,6 +592,8 @@ export async function resolveAuthenticatedPortalContext(
         planName,
         capabilities,
         lifecycleStatus: "activo",
+        preferredLocale: userPreferredLocale,
+        activeLocale,
         whiteLabelMode,
         branding: resolvedBranding,
         brandingTokens,
@@ -523,6 +615,8 @@ export async function resolveAuthenticatedPortalContext(
       planName,
       capabilities,
       lifecycleStatus: clientRecord.lifecycleStatus,
+      preferredLocale: userPreferredLocale,
+      activeLocale,
       whiteLabelMode,
       branding: resolvedBranding,
       brandingTokens,
@@ -546,4 +640,48 @@ export async function getClientLifecycleStatus(clientId: string): Promise<string
     .limit(1);
   return row?.lifecycleStatus ?? null;
 }
+
+/**
+ * Persiste la preferencia individual de idioma (`preferred_locale`) del usuario en su celda de datos (`SPEC-17 §7.1`, `§9.1`).
+ *
+ * @param params - `clientId`, `userId`, `locale` (`'es' | 'en' | null` para heredar idioma del comercio) y `actor`.
+ * @returns Resultado tipado con el idioma guardado.
+ */
+export async function updateTenantUserPreferredLocale(params: {
+  clientId: string;
+  userId: string;
+  locale: SupportedPortalLocale | null;
+  actor?: string;
+}): Promise<Result<{ locale: SupportedPortalLocale | null }>> {
+  try {
+    const updatedRows = await cellClient.withTenantCellTransaction(params.clientId, async (tx) => {
+      return tx
+        .update(cellUsers)
+        .set({
+          preferredLocale: params.locale,
+          updatedAt: new Date(),
+          updatedBy: params.actor || params.userId,
+        })
+        .where(and(eq(cellUsers.clientId, params.clientId), eq(cellUsers.id, params.userId)))
+        .returning({ id: cellUsers.id, preferredLocale: cellUsers.preferredLocale });
+    });
+
+    if (!updatedRows || updatedRows.length === 0) {
+      appLogger.warn("[updateTenantUserPreferredLocale] Usuario sin proyección celular para guardar locale", {
+        clientId: params.clientId,
+        userId: params.userId,
+      });
+    }
+
+    return ok({ locale: params.locale });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    appLogger.error(`[updateTenantUserPreferredLocale Failed] ${msg}`, error, {
+      clientId: params.clientId,
+      userId: params.userId,
+    });
+    return err("No fue posible actualizar la preferencia de idioma.", "LOCALE_UPDATE_ERROR");
+  }
+}
+
 

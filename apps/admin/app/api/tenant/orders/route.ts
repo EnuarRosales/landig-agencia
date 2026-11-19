@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  parsePaginationQuery,
   tenantOrdersService,
   type OrderListSortBy,
 } from "@mocter/domain";
@@ -149,8 +150,20 @@ export const GET = handle(async (req: NextRequest): Promise<NextResponse> => {
     endDate = d;
   }
 
-  const page = Math.max(Number.parseInt(sp.get("page") ?? "1", 10) || 1, 1);
-  const limit = Math.min(Math.max(Number.parseInt(sp.get("limit") ?? "20", 10) || 20, 1), 50);
+  const paginationParsed = parsePaginationQuery(sp);
+  if (!paginationParsed.ok) {
+    return orderProblemJson(
+      req,
+      400,
+      "Bad Request",
+      paginationParsed.error,
+      "validation-error",
+      "INVALID_PAGINATION",
+    );
+  }
+
+  const page = paginationParsed.data.page;
+  const limit = paginationParsed.data.limit;
   const { sortBy, sortDir } = parseSortParams(sp);
 
   const res = await tenantOrdersService.listOrders(auth.clientId, {

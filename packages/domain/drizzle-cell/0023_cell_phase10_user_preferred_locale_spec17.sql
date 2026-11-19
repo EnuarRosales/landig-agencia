@@ -1,0 +1,2 @@
+ALTER TABLE "admin"."users" ADD COLUMN "preferred_locale" varchar(10);--> statement-breakpoint
+ALTER TABLE "admin"."users" ADD CONSTRAINT "cell_users_preferred_locale_check" CHECK (preferred_locale IS NULL OR preferred_locale IN ('es', 'en'));

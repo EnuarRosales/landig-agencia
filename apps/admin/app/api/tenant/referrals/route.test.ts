@@ -92,7 +92,7 @@ describe("SPEC-16 §9.1 · GET /api/tenant/referrals", () => {
     expect(json.data.referrals.items[0].referredBusinessMasked).toBe("Tienda Be***");
   });
 
-  it("retorna 400 Problem Details cuando limit excede 100 (?limit=999)", async () => {
+  it("retorna 400 Problem Details cuando limit excede 50 (?limit=999)", async () => {
     resolveContextMock.mockResolvedValue({
       scope: "tenant",
       role: "tenancy_owner",

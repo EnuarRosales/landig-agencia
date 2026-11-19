@@ -137,7 +137,7 @@ export function CommunityLeaderTab({
         if (active && json.ok) setCandidates(json.data);
       })
       .catch(() => {
-        if (active) onErrorToast("Error de red al cargar catálogo para compartir.");
+        if (active) onErrorToast(dict.networkErrorShareLoad);
       })
       .finally(() => {
         if (active) setLoadingCandidates(false);
@@ -146,7 +146,7 @@ export function CommunityLeaderTab({
     return () => {
       active = false;
     };
-  }, [selectedOrgId, isOwner, refreshTick, onErrorToast]);
+  }, [selectedOrgId, isOwner, refreshTick, onErrorToast, dict.networkErrorShareLoad]);
 
   useEffect(() => {
     if (!selectedOrgId || !isOwner || !isSelectedLeadership) return;
@@ -164,7 +164,7 @@ export function CommunityLeaderTab({
         if (active && json.ok) setMetrics(json.data);
       })
       .catch(() => {
-        if (active) onErrorToast("Error de red al cargar métricas del radar.");
+        if (active) onErrorToast(dict.networkErrorRadarLoad);
       })
       .finally(() => {
         if (active) setLoadingMetrics(false);
@@ -173,7 +173,15 @@ export function CommunityLeaderTab({
     return () => {
       active = false;
     };
-  }, [selectedOrgId, isOwner, isSelectedLeadership, periodType, refreshTick, onErrorToast]);
+  }, [
+    selectedOrgId,
+    isOwner,
+    isSelectedLeadership,
+    periodType,
+    refreshTick,
+    onErrorToast,
+    dict.networkErrorRadarLoad,
+  ]);
 
   async function handleRequestLeader(e: React.FormEvent) {
     e.preventDefault();
@@ -195,7 +203,7 @@ export function CommunityLeaderTab({
       await onDataMutated();
       onSuccessToast(dict.leaderPendingBanner);
     } catch {
-      onErrorToast("Error de red al enviar solicitud.");
+      onErrorToast(dict.networkErrorLeaderRequest);
     } finally {
       setSubmittingRequest(false);
     }
@@ -234,7 +242,7 @@ export function CommunityLeaderTab({
         locale === "en" ? "Community created successfully!" : "Comunidad creada correctamente.",
       );
     } catch {
-      onErrorToast("Error de red al crear comunidad.");
+      onErrorToast(dict.networkErrorCreateCommunity);
     } finally {
       setCreatingOrg(false);
     }
@@ -327,7 +335,7 @@ export function CommunityLeaderTab({
             : "Nueva versión publicada hacia adoptantes.",
       );
     } catch {
-      onErrorToast("Error de red al guardar publicación.");
+      onErrorToast(dict.networkErrorSaveShare);
     } finally {
       setSavingShare(false);
     }
@@ -348,7 +356,7 @@ export function CommunityLeaderTab({
       await loadCandidates();
       await onDataMutated();
     } catch {
-      onErrorToast("Error de red.");
+      onErrorToast(dict.networkErrorGeneric);
     }
   }
 

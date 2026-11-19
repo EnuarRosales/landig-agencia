@@ -6,7 +6,7 @@ import {
   type CrmContactListResultDto,
 } from "@mocter/domain";
 import { env } from "@/env";
-import { resolveActiveLocale } from "@/lib/i18n";
+import { resolvePortalPageLocale } from "@/lib/resolve-page-locale";
 import { ContactsView } from "./contacts-view";
 
 export const dynamic = "force-dynamic";
@@ -22,12 +22,19 @@ export default async function WorkspaceContactsPage() {
     cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value
   )?.trim();
 
+  const cookieLocale = cookieStore.get("mocter_locale")?.value ?? null;
+  const acceptLanguage = headerStore.get("accept-language");
+
   let initialList: CrmContactListResultDto | null = null;
   let tenantLocale: string | null = null;
   let canDelete = false;
+  let context = null;
 
   if (sid) {
-    const context = await resolveAuthenticatedPortalContext(sid);
+    context = await resolveAuthenticatedPortalContext(sid, {
+      browserAcceptLanguage: acceptLanguage,
+      cookieLocale,
+    });
     if (context?.activeClient?.id) {
       tenantLocale = context.activeClient.locale ?? null;
       canDelete =
@@ -54,10 +61,11 @@ export default async function WorkspaceContactsPage() {
     }
   }
 
-  const locale = resolveActiveLocale({
-    userLocale: cookieStore.get("mocter_locale")?.value,
+  const locale = resolvePortalPageLocale({
+    context,
+    cookieLocale,
     tenantLocale,
-    browserAcceptLanguage: headerStore.get("accept-language"),
+    acceptLanguage,
   });
 
   return <ContactsView initialList={initialList} canDelete={canDelete} locale={locale} />;

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import React from "react";
-import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from "@testing-library/react";
 import { WorkspaceDashboardView } from "./workspace-dashboard-view";
 import { ProductsView } from "./products/products-view";
 import { BillingView } from "./billing/billing-view";
@@ -557,7 +557,7 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
         target: { value: "en" },
       });
 
-      fireEvent.click(screen.getByRole("button", { name: "Guardar Cambios" }));
+      fireEvent.click(screen.getAllByRole("button", { name: "Guardar Cambios" })[0]);
 
       await waitFor(() => {
         expect(fetchMock).toHaveBeenCalledWith(
@@ -1210,6 +1210,38 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       ).length - 1;
       expect(occurrences).toBe(1);
     });
+
+    it("SPEC-17 AIB-04: solicita confirmación --dsn-* (sin window.confirm) al cerrar ProductFormModal con cambios sin guardar", () => {
+      const confirmSpy = vi.spyOn(window, "confirm").mockImplementation(() => true);
+      try {
+        render(<ProductsView initialProducts={[]} />);
+        fireEvent.click(screen.getByRole("button", { name: "Registrar Nuevo Producto" }));
+
+        const nameInput = screen.getByLabelText("Nombre del Producto *") as HTMLInputElement;
+        fireEvent.change(nameInput, { target: { value: "Producto Editado Sin Guardar" } });
+
+        fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+        expect(confirmSpy).not.toHaveBeenCalled();
+
+        const dialogs = screen.getAllByRole("dialog");
+        expect(dialogs.length).toBe(2);
+        const discardModal = dialogs[1];
+        expect(within(discardModal).getAllByText("Cambios sin Guardar").length).toBeGreaterThanOrEqual(1);
+
+        fireEvent.click(within(discardModal).getByRole("button", { name: "Seguir Editando" }));
+        expect(screen.getAllByRole("dialog").length).toBe(1);
+        expect((screen.getByLabelText("Nombre del Producto *") as HTMLInputElement).value).toBe(
+          "Producto Editado Sin Guardar",
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+        const reopenModal = screen.getAllByRole("dialog")[1];
+        fireEvent.click(within(reopenModal).getByRole("button", { name: "Descartar Cambios" }));
+        expect(screen.queryByRole("dialog")).toBeNull();
+      } finally {
+        confirmSpy.mockRestore();
+      }
+    });
   });
 
   describe("BotView · Unified Bot, Dynamic Catalog, Messages & Classifier", () => {
@@ -1368,6 +1400,153 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Mensajes y Horarios" }));
       expect(screen.getByText("Horario de Atención y Zona Horaria")).toBeDefined();
+    });
+
+    it("SPEC-17 AIB-04: conserva cambios entre pestañas de BotView sin modal y confirma descarte con ConfirmationModal --dsn-*", () => {
+      const confirmSpy = vi.spyOn(window, "confirm").mockImplementation(() => true);
+      try {
+        render(
+          <BotView
+            locale="es"
+            initialConfig={{
+              bot: {
+                id: "bot-2",
+                name: "Bot Original",
+                status: "active",
+                revision: 1,
+                objective: "Vender",
+                presetId: "preset-1",
+                presetCode: "natural_rhythm",
+                toneId: "tone-1",
+                toneCode: "cercano",
+                persona: null,
+                instructions: "Instrucción inicial",
+                allowedTopics: null,
+                excludedTopics: null,
+                handoffTriggers: [],
+                responseLanguage: "es",
+                answerPolicy: "solo_conocimiento",
+                maxTurns: 20,
+                maxMessagesPerContact: 60,
+                classifierPrompt: null,
+                defaultMessages: {
+                  welcome: { body: "Hola", enabled: true, updatedAt: "2026-11-15T00:00:00Z" },
+                  order_confirmation: {
+                    body: "Pedido {{order_number}} confirmado.",
+                    enabled: true,
+                    updatedAt: "2026-11-15T00:00:00Z",
+                  },
+                  dispatch_tracking: {
+                    body: "Tu guía es {{tracking_code}}.",
+                    enabled: true,
+                    updatedAt: "2026-11-15T00:00:00Z",
+                  },
+                  delivery_issue: {
+                    body: "Novedad en la entrega de {{order_number}}.",
+                    enabled: true,
+                    updatedAt: "2026-11-15T00:00:00Z",
+                  },
+                  out_of_hours: {
+                    body: "Nuestro horario es {{business_hours}}.",
+                    enabled: true,
+                    updatedAt: "2026-11-15T00:00:00Z",
+                  },
+                  handoff: {
+                    body: "Te conectamos con un asesor.",
+                    enabled: true,
+                    updatedAt: "2026-11-15T00:00:00Z",
+                  },
+                },
+                businessHours: {
+                  timezone: "America/Bogota",
+                  enabled: false,
+                  schedule: {
+                    mon: { open: "08:00", close: "18:00", closed: false },
+                    tue: { open: "08:00", close: "18:00", closed: false },
+                    wed: { open: "08:00", close: "18:00", closed: false },
+                    thu: { open: "08:00", close: "18:00", closed: false },
+                    fri: { open: "08:00", close: "18:00", closed: false },
+                    sat: { open: "09:00", close: "13:00", closed: false },
+                    sun: { open: "09:00", close: "13:00", closed: true },
+                  },
+                },
+              },
+              policies: {
+                botPreset: "natural_rhythm",
+                orderMessage: null,
+                warrantyPolicy: null,
+                returnsPolicy: null,
+                shippingPolicy: {
+                  freeShipping: false,
+                  defaultCostCents: 0,
+                  policyText: "",
+                  deliveryRules: [],
+                },
+                faqs: [],
+                paymentMethods: [],
+                remindersEnabled: false,
+              },
+              labels: [],
+              catalog: {
+                objectives: [{ code: "sales", labels: { es: "Vender", en: "Sell" } }],
+                presets: [
+                  {
+                    id: "preset-1",
+                    code: "natural_rhythm",
+                    labels: { es: "Ritmo Natural", en: "Natural Rhythm" },
+                    recommendedFor: null,
+                    temperature: "0.7",
+                    maxTokens: 600,
+                  },
+                ],
+                tones: [
+                  {
+                    id: "tone-1",
+                    code: "cercano",
+                    labels: { es: "Cercano", en: "Friendly" },
+                    description: null,
+                  },
+                ],
+              },
+              context: {
+                businessName: "Synergia Store",
+                locale: "es",
+                countryCode: "CO",
+                currency: "COP",
+                timezone: "America/Bogota",
+              },
+              defaultLabelsInitialized: true,
+            }}
+          />,
+        );
+
+        expect(screen.queryByTestId("form-save-bar")).toBeNull();
+
+        const botNameInput = screen.getByDisplayValue("Bot Original") as HTMLInputElement;
+        fireEvent.change(botNameInput, { target: { value: "Bot Modificado" } });
+        expect(screen.getByTestId("form-save-bar")).toBeTruthy();
+
+        fireEvent.click(screen.getByRole("button", { name: "Mensajes y Horarios" }));
+        expect(screen.queryByRole("dialog")).toBeNull();
+        expect(screen.getByTestId("form-save-bar")).toBeTruthy();
+
+        fireEvent.click(screen.getByRole("button", { name: "Identidad y Prompt" }));
+        expect((screen.getByDisplayValue("Bot Modificado") as HTMLInputElement).value).toBe(
+          "Bot Modificado",
+        );
+
+        fireEvent.click(screen.getByTestId("form-save-bar-discard"));
+        expect(confirmSpy).not.toHaveBeenCalled();
+
+        const dialog = screen.getByRole("dialog");
+        fireEvent.click(within(dialog).getByRole("button", { name: "Descartar Cambios" }));
+
+        expect(screen.queryByRole("dialog")).toBeNull();
+        expect(screen.queryByTestId("form-save-bar")).toBeNull();
+        expect(screen.getByDisplayValue("Bot Original")).toBeTruthy();
+      } finally {
+        confirmSpy.mockRestore();
+      }
     });
   });
 

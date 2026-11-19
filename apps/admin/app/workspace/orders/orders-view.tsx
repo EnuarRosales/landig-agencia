@@ -3,8 +3,6 @@
 import React, { useEffect, useState } from "react";
 import {
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   Edit3,
   Eye,
@@ -13,7 +11,6 @@ import {
   Printer,
   RefreshCw,
   Repeat,
-  Search,
   ShoppingCart,
   Truck,
 } from "lucide-react";
@@ -27,6 +24,10 @@ import type {
 } from "@mocter/domain";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
+import {
+  WorkspaceDataTable,
+  type WorkspaceTableColumn,
+} from "@/components/ui/workspace-data-table";
 import {
   ALL_ORDER_STATUSES,
   formatOrderMoneyCents,
@@ -366,26 +367,51 @@ export function OrdersView({
         </div>
       </section>
 
-      {/* Filtros y búsqueda */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-          <div className="md:col-span-4 relative">
-            <Search className="h-4 w-4 text-[var(--dsn-text-secondary)] absolute left-3 top-2.5" />
-            <input
-              type="search"
-              aria-label={w.ordersSearchPlaceholder}
-              placeholder={w.ordersSearchPlaceholder}
-              value={query}
-              onChange={(e) => {
-                const next = e.target.value;
-                setQuery(next);
-                setPage(1);
-                fetchOrders({ q: next, page: 1 });
-              }}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] pl-9 pr-3 py-2 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-            />
-          </div>
-          <div className="md:col-span-3">
+      {/* Listado Estandarizado de Pedidos (<WorkspaceDataTable />) */}
+      <WorkspaceDataTable<OrderListItemDto>
+        testId="orders-data-table"
+        locale={locale}
+        data={data.items}
+        getRowKey={(o) => o.id}
+        page={data.pagination.page}
+        pageSize={limit}
+        totalItems={data.pagination.total}
+        onPageChange={(next) => {
+          setPage(next);
+          void fetchOrders({ page: next });
+        }}
+        onPageSizeChange={(nextLimit) => {
+          setLimit(nextLimit);
+          setPage(1);
+          void fetchOrders({ limit: nextLimit, page: 1 });
+        }}
+        sortBy={sort.split(":")[0] || "created_at"}
+        sortDir={sort.split(":")[1] === "asc" ? "asc" : "desc"}
+        onSortChange={(col, dir) => {
+          const nextSort = `${col}:${dir}`;
+          setSort(nextSort);
+          setPage(1);
+          void fetchOrders({ sort: nextSort, page: 1 });
+        }}
+        searchQuery={query}
+        onSearchChange={(next) => {
+          setQuery(next);
+          setPage(1);
+          void fetchOrders({ q: next, page: 1 });
+        }}
+        searchPlaceholder={w.ordersSearchPlaceholder}
+        activeFiltersCount={
+          (statusFilter !== "all" ? 1 : 0) +
+          (carrierFilter.trim() ? 1 : 0) +
+          (dateFrom ? 1 : 0) +
+          (dateTo ? 1 : 0)
+        }
+        onResetFilters={handleClearFilters}
+        loading={loading}
+        error={errorMsg}
+        onRetry={() => void fetchOrders()}
+        filterSlot={
+          <div className="flex flex-wrap items-center gap-2">
             <select
               aria-label={w.ordersColStatus}
               value={statusFilter}
@@ -393,9 +419,9 @@ export function OrdersView({
                 const next = e.target.value;
                 setStatusFilter(next);
                 setPage(1);
-                fetchOrders({ status: next, page: 1 });
+                void fetchOrders({ status: next, page: 1 });
               }}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
+              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
             >
               <option value="all">{w.ordersFilterStatusAll}</option>
               {ALL_ORDER_STATUSES.map((st) => (
@@ -404,8 +430,7 @@ export function OrdersView({
                 </option>
               ))}
             </select>
-          </div>
-          <div className="md:col-span-2">
+
             <input
               type="text"
               aria-label={w.ordersFilterCarrierPlaceholder}
@@ -415,34 +440,29 @@ export function OrdersView({
                 const next = e.target.value;
                 setCarrierFilter(next);
                 setPage(1);
-                fetchOrders({ carrier: next, page: 1 });
+                void fetchOrders({ carrier: next, page: 1 });
               }}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
+              className="min-h-[40px] w-36 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
             />
-          </div>
-          <div className="md:col-span-3">
+
             <select
-              aria-label="Ordenar pedidos"
+              aria-label={locale === "en" ? "Sort orders" : "Ordenar pedidos"}
               value={sort}
               onChange={(e) => {
                 const next = e.target.value;
                 setSort(next);
                 setPage(1);
-                fetchOrders({ sort: next, page: 1 });
+                void fetchOrders({ sort: next, page: 1 });
               }}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
+              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
             >
               <option value="created_at:desc">{w.ordersSortNewest}</option>
               <option value="created_at:asc">{w.ordersSortOldest}</option>
               <option value="total_cents:desc">{w.ordersSortTotalDesc}</option>
               <option value="total_cents:asc">{w.ordersSortTotalAsc}</option>
             </select>
-          </div>
-        </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <label htmlFor="orders-date-from" className="text-[var(--dsn-text-secondary)]">
+            <label htmlFor="orders-date-from" className="text-[11px] text-[var(--dsn-text-secondary)]">
               {w.ordersFilterDateFrom}
             </label>
             <input
@@ -453,11 +473,12 @@ export function OrdersView({
                 const next = e.target.value;
                 setDateFrom(next);
                 setPage(1);
-                fetchOrders({ dateFrom: next, page: 1 });
+                void fetchOrders({ dateFrom: next, page: 1 });
               }}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)]"
+              className="min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1 text-xs text-[var(--dsn-text)]"
             />
-            <label htmlFor="orders-date-to" className="text-[var(--dsn-text-secondary)]">
+
+            <label htmlFor="orders-date-to" className="text-[11px] text-[var(--dsn-text-secondary)]">
               {w.ordersFilterDateTo}
             </label>
             <input
@@ -468,308 +489,247 @@ export function OrdersView({
                 const next = e.target.value;
                 setDateTo(next);
                 setPage(1);
-                fetchOrders({ dateTo: next, page: 1 });
+                void fetchOrders({ dateTo: next, page: 1 });
               }}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)]"
+              className="min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1 text-xs text-[var(--dsn-text)]"
             />
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={handleClearFilters}
-                className="text-xs font-semibold text-[var(--dsn-accent)] hover:underline ml-2"
-              >
-                {w.ordersClearFilters}
-              </button>
-            )}
           </div>
-
-          <div className="flex items-center gap-2 text-xs text-[var(--dsn-text-secondary)]">
-            <span>{w.ordersPerPage}</span>
-            <select
-              aria-label={w.ordersPerPage}
-              value={limit}
-              onChange={(e) => {
-                const next = Number(e.target.value) || 20;
-                setLimit(next);
-                setPage(1);
-                fetchOrders({ limit: next, page: 1 });
-              }}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-1 text-xs text-[var(--dsn-text)]"
+        }
+        emptyState={{
+          icon: <ShoppingCart className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto" />,
+          title: w.ordersEmptyTitle,
+          description: hasActiveFilters ? w.ordersEmptyFilteredDesc : w.ordersEmptyDesc,
+          action: !hasActiveFilters ? (
+            <button
+              type="button"
+              onClick={() => setFormModal({ open: true, mode: "create" })}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white"
             >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
-          </div>
-        </div>
-      </section>
-
-      {errorMsg && (
-        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-600 dark:text-rose-300">
-          {errorMsg}
-        </div>
-      )}
-
-      {/* Listado */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden shadow-xs">
-        {data.items.length === 0 ? (
-          <div className="p-12 text-center space-y-3">
-            <ShoppingCart className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto" />
-            <h2 className="text-sm font-semibold text-[var(--dsn-text)]">
-              {w.ordersEmptyTitle}
-            </h2>
-            <p className="text-xs text-[var(--dsn-text-secondary)] max-w-sm mx-auto">
-              {hasActiveFilters ? w.ordersEmptyFilteredDesc : w.ordersEmptyDesc}
-            </p>
-            {!hasActiveFilters && (
-              <button
-                type="button"
-                onClick={() => setFormModal({ open: true, mode: "create" })}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white"
-              >
-                <Plus className="h-4 w-4" />
-                {w.ordersNewCta}
-              </button>
-            )}
-          </div>
-        ) : (
-          <>
-            {/* Vista Mobile First en tarjetas */}
-            <div className="md:hidden divide-y divide-[var(--dsn-border)]">
-              {data.items.map((o) => (
-                <div key={o.id} className="p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-xs font-bold text-[var(--dsn-accent)]">
-                      {o.orderNumber}
-                    </span>
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${getOrderStatusBadgeClasses(o.status)}`}
-                    >
-                      {getOrderStatusLabel(o.status, locale)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <div>
-                      <div className="font-semibold text-[var(--dsn-text)]">{o.customerName}</div>
-                      <div className="font-mono text-[11px] text-[var(--dsn-text-secondary)]">
-                        {o.customerPhone} {o.city ? `· ${o.city}` : ""}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-mono font-bold text-[var(--dsn-text)]">
-                        {formatOrderMoneyCents(o.totalCents, o.currency, locale)}
-                      </div>
-                      <div className="text-[11px] text-[var(--dsn-text-secondary)]">
-                        {getPaymentStatusLabel(o.paymentStatus, locale)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setDetailOrderId(o.id)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
-                    >
-                      <Eye className="h-3 w-3 text-[var(--dsn-accent)]" />
-                      {w.ordersActionView}
-                    </button>
-                    {o.canEditDetails && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEdit(o)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
-                      >
-                        <Edit3 className="h-3 w-3 text-[var(--dsn-accent)]" />
-                        {w.ordersActionEdit}
-                      </button>
-                    )}
-                    {o.allowedNextStatuses.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setTransitionModal({ open: true, order: o })}
-                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
-                      >
-                        <RefreshCw className="h-3 w-3 text-[var(--dsn-accent)]" />
-                        {w.ordersActionTransition}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setGuideOrder(o)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
-                    >
-                      <Printer className="h-3 w-3 text-[var(--dsn-accent)]" />
-                      {w.ordersActionGuide}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRepeatOrder(o)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
-                    >
-                      <Repeat className="h-3 w-3 text-[var(--dsn-accent)]" />
-                      {w.ordersActionRepeat}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Vista Escritorio tabular */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[var(--dsn-surface-secondary)]/40 text-[var(--dsn-text-secondary)] border-b border-[var(--dsn-border)]">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">{w.ordersColNumber}</th>
-                    <th className="px-4 py-3 font-medium">{w.ordersColCustomer}</th>
-                    <th className="px-4 py-3 font-medium">{w.ordersColLocation}</th>
-                    <th className="px-4 py-3 font-medium">{w.ordersColTotal}</th>
-                    <th className="px-4 py-3 font-medium">{w.ordersColStatus}</th>
-                    <th className="px-4 py-3 font-medium">{w.ordersColPayment}</th>
-                    <th className="px-4 py-3 font-medium text-right">{w.ordersColActions}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--dsn-border)] text-[var(--dsn-text)]">
-                  {data.items.map((o) => (
-                    <tr key={o.id} className="hover:bg-[var(--dsn-surface-secondary)]/20 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="font-mono font-bold text-[var(--dsn-accent)]">
-                          {o.orderNumber}
-                        </div>
-                        <div className="text-[10px] text-[var(--dsn-text-secondary)]">
-                          {new Date(o.createdAt).toLocaleDateString(locale === "en" ? "en-US" : "es-CO")}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="font-semibold">{o.customerName}</div>
-                        <div className="font-mono text-[11px] text-[var(--dsn-text-secondary)]">
-                          {o.customerPhone}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div>{o.city || "—"}</div>
-                        <div className="text-[11px] text-[var(--dsn-text-secondary)]">
-                          {o.carrierName
-                            ? `${o.carrierName}${o.trackingCode ? ` · ${o.trackingCode}` : ""}`
-                            : o.shippingMethod === "office"
-                              ? w.ordersFormShippingOffice
-                              : w.ordersFormShippingHome}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono font-semibold">
-                        {formatOrderMoneyCents(o.totalCents, o.currency, locale)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${getOrderStatusBadgeClasses(o.status)}`}
-                        >
-                          {getOrderStatusLabel(o.status, locale)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-[11px]">
-                          {getPaymentStatusLabel(o.paymentStatus, locale)}
-                        </div>
-                        <div className="text-[11px] text-[var(--dsn-text-secondary)]">
-                          {o.paymentMethod}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="inline-flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            title={w.ordersActionView}
-                            aria-label={`${w.ordersActionView} ${o.orderNumber}`}
-                            onClick={() => setDetailOrderId(o.id)}
-                            className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
-                          >
-                            <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                          </button>
-                          {o.canEditDetails && (
-                            <button
-                              type="button"
-                              title={w.ordersActionEdit}
-                              aria-label={`${w.ordersActionEdit} ${o.orderNumber}`}
-                              onClick={() => handleOpenEdit(o)}
-                              className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
-                            >
-                              <Edit3 className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                            </button>
-                          )}
-                          {o.allowedNextStatuses.length > 0 && (
-                            <button
-                              type="button"
-                              title={w.ordersActionTransition}
-                              aria-label={`${w.ordersActionTransition} ${o.orderNumber}`}
-                              onClick={() => setTransitionModal({ open: true, order: o })}
-                              className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
-                            >
-                              <RefreshCw className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            title={w.ordersActionGuide}
-                            aria-label={`${w.ordersActionGuide} ${o.orderNumber}`}
-                            onClick={() => setGuideOrder(o)}
-                            className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
-                          >
-                            <Printer className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                          </button>
-                          <button
-                            type="button"
-                            title={w.ordersActionRepeat}
-                            aria-label={`${w.ordersActionRepeat} ${o.orderNumber}`}
-                            onClick={() => handleRepeatOrder(o)}
-                            className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
-                          >
-                            <Repeat className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Paginación */}
-            <div className="flex items-center justify-between border-t border-[var(--dsn-border)] px-4 py-3 text-xs text-[var(--dsn-text-secondary)]">
-              <span>
-                {w.crmPaginationPage} {data.pagination.page} {w.crmPaginationOf}{" "}
-                {data.pagination.totalPages} ({data.pagination.total})
+              <Plus className="h-4 w-4" />
+              {w.ordersNewCta}
+            </button>
+          ) : undefined,
+        }}
+        renderMobileCard={(o) => (
+          <div key={o.id} className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-xs font-bold text-[var(--dsn-accent)]">
+                {o.orderNumber}
               </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={data.pagination.page <= 1 || loading}
-                  onClick={() => {
-                    const prev = Math.max(1, data.pagination.page - 1);
-                    setPage(prev);
-                    fetchOrders({ page: prev });
-                  }}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text)] disabled:opacity-40"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                  {w.crmPaginationPrev}
-                </button>
-                <button
-                  type="button"
-                  disabled={data.pagination.page >= data.pagination.totalPages || loading}
-                  onClick={() => {
-                    const next = Math.min(data.pagination.totalPages, data.pagination.page + 1);
-                    setPage(next);
-                    fetchOrders({ page: next });
-                  }}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text)] disabled:opacity-40"
-                >
-                  {w.crmPaginationNext}
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </button>
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${getOrderStatusBadgeClasses(o.status)}`}
+              >
+                {getOrderStatusLabel(o.status, locale)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <div>
+                <div className="font-semibold text-[var(--dsn-text)]">{o.customerName}</div>
+                <div className="font-mono text-[11px] text-[var(--dsn-text-secondary)]">
+                  {o.customerPhone} {o.city ? `· ${o.city}` : ""}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="font-mono font-bold text-[var(--dsn-text)]">
+                  {formatOrderMoneyCents(o.totalCents, o.currency, locale)}
+                </div>
+                <div className="text-[11px] text-[var(--dsn-text-secondary)]">
+                  {getPaymentStatusLabel(o.paymentStatus, locale)}
+                </div>
               </div>
             </div>
-          </>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setDetailOrderId(o.id)}
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
+              >
+                <Eye className="h-3 w-3 text-[var(--dsn-accent)]" />
+                {w.ordersActionView}
+              </button>
+              {o.canEditDetails && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenEdit(o)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
+                >
+                  <Edit3 className="h-3 w-3 text-[var(--dsn-accent)]" />
+                  {w.ordersActionEdit}
+                </button>
+              )}
+              {o.allowedNextStatuses.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTransitionModal({ open: true, order: o })}
+                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
+                >
+                  <RefreshCw className="h-3 w-3 text-[var(--dsn-accent)]" />
+                  {w.ordersActionTransition}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setGuideOrder(o)}
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
+              >
+                <Printer className="h-3 w-3 text-[var(--dsn-accent)]" />
+                {w.ordersActionGuide}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRepeatOrder(o)}
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
+              >
+                <Repeat className="h-3 w-3 text-[var(--dsn-accent)]" />
+                {w.ordersActionRepeat}
+              </button>
+            </div>
+          </div>
         )}
-      </section>
+        columns={
+          [
+            {
+              key: "number",
+              header: w.ordersColNumber,
+              sortable: true,
+              renderCell: (o) => (
+                <div>
+                  <div className="font-mono font-bold text-[var(--dsn-accent)]">
+                    {o.orderNumber}
+                  </div>
+                  <div className="text-[10px] text-[var(--dsn-text-secondary)]">
+                    {new Date(o.createdAt).toLocaleDateString(locale === "en" ? "en-US" : "es-CO")}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: "customer_name",
+              header: w.ordersColCustomer,
+              sortable: true,
+              renderCell: (o) => (
+                <div>
+                  <div className="font-semibold">{o.customerName}</div>
+                  <div className="font-mono text-[11px] text-[var(--dsn-text-secondary)]">
+                    {o.customerPhone}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: "location",
+              header: w.ordersColLocation,
+              renderCell: (o) => (
+                <div>
+                  <div>{o.city || "—"}</div>
+                  <div className="text-[11px] text-[var(--dsn-text-secondary)]">
+                    {o.carrierName
+                      ? `${o.carrierName}${o.trackingCode ? ` · ${o.trackingCode}` : ""}`
+                      : o.shippingMethod === "office"
+                        ? w.ordersFormShippingOffice
+                        : w.ordersFormShippingHome}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: "total_cents",
+              header: w.ordersColTotal,
+              sortable: true,
+              isNumeric: true,
+              renderCell: (o) => (
+                <span className="font-mono font-semibold">
+                  {formatOrderMoneyCents(o.totalCents, o.currency, locale)}
+                </span>
+              ),
+            },
+            {
+              key: "status",
+              header: w.ordersColStatus,
+              sortable: true,
+              renderCell: (o) => (
+                <span
+                  className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${getOrderStatusBadgeClasses(o.status)}`}
+                >
+                  {getOrderStatusLabel(o.status, locale)}
+                </span>
+              ),
+            },
+            {
+              key: "payment",
+              header: w.ordersColPayment,
+              renderCell: (o) => (
+                <div>
+                  <div className="font-semibold text-[11px]">
+                    {getPaymentStatusLabel(o.paymentStatus, locale)}
+                  </div>
+                  <div className="text-[11px] text-[var(--dsn-text-secondary)]">
+                    {o.paymentMethod}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: "actions",
+              header: w.ordersColActions,
+              align: "right",
+              renderCell: (o) => (
+                <div className="inline-flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    title={w.ordersActionView}
+                    aria-label={`${w.ordersActionView} ${o.orderNumber}`}
+                    onClick={() => setDetailOrderId(o.id)}
+                    className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
+                  >
+                    <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                  </button>
+                  {o.canEditDetails && (
+                    <button
+                      type="button"
+                      title={w.ordersActionEdit}
+                      aria-label={`${w.ordersActionEdit} ${o.orderNumber}`}
+                      onClick={() => handleOpenEdit(o)}
+                      className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
+                    >
+                      <Edit3 className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                    </button>
+                  )}
+                  {o.allowedNextStatuses.length > 0 && (
+                    <button
+                      type="button"
+                      title={w.ordersActionTransition}
+                      aria-label={`${w.ordersActionTransition} ${o.orderNumber}`}
+                      onClick={() => setTransitionModal({ open: true, order: o })}
+                      className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    title={w.ordersActionGuide}
+                    aria-label={`${w.ordersActionGuide} ${o.orderNumber}`}
+                    onClick={() => setGuideOrder(o)}
+                    className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
+                  >
+                    <Printer className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                  </button>
+                  <button
+                    type="button"
+                    title={w.ordersActionRepeat}
+                    aria-label={`${w.ordersActionRepeat} ${o.orderNumber}`}
+                    onClick={() => handleRepeatOrder(o)}
+                    className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
+                  >
+                    <Repeat className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                  </button>
+                </div>
+              ),
+            },
+          ] satisfies WorkspaceTableColumn<OrderListItemDto>[]
+        }
+      />
 
       <OrderDetailModal
         isOpen={Boolean(detailOrderId)}

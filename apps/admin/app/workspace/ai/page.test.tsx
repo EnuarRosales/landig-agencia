@@ -2,6 +2,14 @@
 import React from "react";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}));
+
 import { AiSettingsView } from "./ai-settings-view";
 import type { TenantAiSettingsOverviewDto } from "@mocter/domain";
 

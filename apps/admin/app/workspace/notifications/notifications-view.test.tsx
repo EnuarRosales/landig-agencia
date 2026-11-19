@@ -68,8 +68,8 @@ describe("SPEC-14 · TenantNotificationsView (/workspace/notifications)", () => 
     render(<TenantNotificationsView initialData={baseData} locale="es" />);
 
     expect(screen.getByText("Centro de Notificaciones")).toBeDefined();
-    expect(screen.getByText("Stock mínimo alcanzado: Camisa")).toBeDefined();
-    expect(screen.getByRole("link", { name: /Ir al Recurso/i }).getAttribute("href")).toBe(
+    expect(screen.getAllByText("Stock mínimo alcanzado: Camisa").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole("link", { name: /Ir al Recurso/i })[0].getAttribute("href")).toBe(
       "/workspace/products",
     );
 
@@ -101,6 +101,6 @@ describe("SPEC-14 · TenantNotificationsView (/workspace/notifications)", () => 
     );
 
     expect(screen.queryByRole("button", { name: "Preferencias de Alertas" })).toBeNull();
-    expect(screen.getByText("Stock mínimo alcanzado: Camisa")).toBeDefined();
+    expect(screen.getAllByText("Stock mínimo alcanzado: Camisa").length).toBeGreaterThanOrEqual(1);
   });
 });

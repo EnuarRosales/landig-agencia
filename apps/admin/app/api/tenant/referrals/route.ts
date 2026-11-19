@@ -15,7 +15,7 @@ const referralsQuerySchema = z.object({
     .number()
     .int("El parámetro limit debe ser un entero.")
     .min(1, "El parámetro limit debe ser mayor o igual a 1.")
-    .max(100, "El parámetro limit no puede exceder 100 registros por página.")
+    .max(50, "El parámetro limit no puede exceder 50 registros por página.")
     .default(20),
   status: z.enum(["pending", "qualified", "rewarded", "rejected"]).optional(),
 });

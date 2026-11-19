@@ -5,7 +5,7 @@ import {
   type TenantAiSettingsOverviewDto,
 } from "@mocter/domain";
 import { env } from "@/env";
-import { resolveActiveLocale } from "@/lib/i18n";
+import { resolvePortalPageLocale } from "@/lib/resolve-page-locale";
 import { AiSettingsView } from "./ai-settings-view";
 
 export const dynamic = "force-dynamic";
@@ -17,17 +17,18 @@ export default async function WorkspaceAiSettingsPage() {
   const sid = (
     cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value
   )?.trim();
-
-  const locale = resolveActiveLocale({
-    userLocale: cookieStore.get("mocter_locale")?.value ?? null,
-    browserAcceptLanguage: requestHeaders.get("accept-language"),
-  });
+  const cookieLocale = cookieStore.get("mocter_locale")?.value ?? null;
+  const acceptLanguage = requestHeaders.get("accept-language");
 
   let initialOverview: TenantAiSettingsOverviewDto | null = null;
   let isOwner = false;
+  let context = null;
 
   if (sid) {
-    const context = await resolveAuthenticatedPortalContext(sid);
+    context = await resolveAuthenticatedPortalContext(sid, {
+      browserAcceptLanguage: acceptLanguage,
+      cookieLocale,
+    });
     if (context && context.activeClient?.id) {
       isOwner =
         context.role === "tenant_owner" ||
@@ -44,6 +45,12 @@ export default async function WorkspaceAiSettingsPage() {
       }
     }
   }
+
+  const locale = resolvePortalPageLocale({
+    context,
+    cookieLocale,
+    acceptLanguage,
+  });
 
   return (
     <AiSettingsView

@@ -5,7 +5,7 @@ import {
   type TenantNotificationsResponseDto,
 } from "@mocter/domain";
 import { env } from "@/env";
-import { resolveActiveLocale } from "@/lib/i18n";
+import { resolvePortalPageLocale } from "@/lib/resolve-page-locale";
 import { TenantNotificationsView } from "./notifications-view";
 
 export const dynamic = "force-dynamic";
@@ -31,11 +31,18 @@ export default async function WorkspaceNotificationsPage() {
     cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value
   )?.trim();
 
+  const cookieLocale = cookieStore.get("mocter_locale")?.value ?? null;
+  const acceptLanguage = headerStore.get("accept-language");
+
   let initialData: TenantNotificationsResponseDto = EMPTY_NOTIFICATIONS_DATA;
   let tenantLocale: string | null = null;
+  let context = null;
 
   if (sid) {
-    const context = await resolveAuthenticatedPortalContext(sid);
+    context = await resolveAuthenticatedPortalContext(sid, {
+      browserAcceptLanguage: acceptLanguage,
+      cookieLocale,
+    });
     if (context?.activeClient?.id) {
       tenantLocale = context.activeClient.locale ?? null;
       const isOwner =
@@ -58,10 +65,11 @@ export default async function WorkspaceNotificationsPage() {
     }
   }
 
-  const locale = resolveActiveLocale({
-    userLocale: cookieStore.get("mocter_locale")?.value,
+  const locale = resolvePortalPageLocale({
+    context,
+    cookieLocale,
     tenantLocale,
-    browserAcceptLanguage: headerStore.get("accept-language"),
+    acceptLanguage,
   });
 
   return <TenantNotificationsView initialData={initialData} locale={locale} />;

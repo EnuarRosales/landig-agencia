@@ -100,7 +100,7 @@ export function ProductDetailModal({
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
           {loading ? (
             <div className="py-12 text-center text-xs text-[var(--dsn-text-secondary)]">
-              Cargando ficha del producto...
+              {dict.productsLoadingDetail}
             </div>
           ) : error ? (
             <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-400">

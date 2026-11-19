@@ -24,6 +24,10 @@ import type {
   TenantNotificationsResponseDto,
 } from "@mocter/domain";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
+import {
+  WorkspaceDataTable,
+  type WorkspaceTableColumn,
+} from "@/components/ui/workspace-data-table";
 
 interface TenantNotificationsViewProps {
   initialData: TenantNotificationsResponseDto;
@@ -37,30 +41,38 @@ interface EditablePreferenceRow {
   customRecipientEmail: string;
 }
 
-function getSeverityBadge(severity: TenantInAppNotificationDto["severity"]) {
+function getSeverityBadge(
+  severity: TenantInAppNotificationDto["severity"],
+  labels: {
+    notificationsSeverityCritical: string;
+    notificationsSeverityWarning: string;
+    notificationsSeveritySuccess: string;
+    notificationsSeverityInfo: string;
+  },
+) {
   switch (severity) {
     case "critical":
       return {
-        label: "Crítica",
+        label: labels.notificationsSeverityCritical,
         className: "bg-rose-500/10 text-rose-500 border-rose-500/20",
         Icon: ShieldAlert,
       };
     case "warning":
       return {
-        label: "Atención",
+        label: labels.notificationsSeverityWarning,
         className: "bg-amber-500/10 text-amber-500 border-amber-500/20",
         Icon: AlertTriangle,
       };
     case "success":
       return {
-        label: "Confirmada",
+        label: labels.notificationsSeveritySuccess,
         className: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
         Icon: CheckCircle2,
       };
     case "info":
     default:
       return {
-        label: "Informativa",
+        label: labels.notificationsSeverityInfo,
         className: "bg-[var(--dsn-accent)]/10 text-[var(--dsn-accent)] border-[var(--dsn-accent)]/20",
         Icon: Info,
       };
@@ -87,6 +99,8 @@ export function TenantNotificationsView({
   const [activeTab, setActiveTab] = useState<"inbox" | "preferences">("inbox");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [page, setPage] = useState(initialData.page || 1);
+  const [pageSize, setPageSize] = useState<number>(initialData.limit || 20);
+  const [searchTerm, setSearchTerm] = useState("");
   const [loadingInbox, setLoadingInbox] = useState(false);
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
@@ -108,12 +122,16 @@ export function TenantNotificationsView({
     return initial;
   });
 
-  async function fetchInboxPage(nextPage: number, nextUnreadOnly: boolean) {
+  async function fetchInboxPage(
+    nextPage: number,
+    nextUnreadOnly: boolean,
+    nextLimit: number = pageSize,
+  ) {
     setLoadingInbox(true);
     setFeedback(null);
     try {
       const res = await fetch(
-        `/api/tenant/notifications?unreadOnly=${nextUnreadOnly}&page=${nextPage}&limit=${data.limit || 20}`,
+        `/api/tenant/notifications?unreadOnly=${nextUnreadOnly}&page=${nextPage}&limit=${nextLimit}`,
       );
       const json = await res.json();
       if (!res.ok || !json.ok || !json.data) {
@@ -122,6 +140,7 @@ export function TenantNotificationsView({
       const nextData = json.data as TenantNotificationsResponseDto;
       setData(nextData);
       setPage(nextPage);
+      setPageSize(nextData.limit || nextLimit);
       setUnreadOnly(nextUnreadOnly);
       broadcastUnreadCount(nextData.unreadCount);
     } catch (err) {
@@ -268,7 +287,115 @@ export function TenantNotificationsView({
     }
   }
 
-  const totalPages = Math.max(1, Math.ceil(data.total / Math.max(1, data.limit || 20)));
+  const filteredNotifications = data.notifications.filter((item) => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      item.title.toLowerCase().includes(q) ||
+      item.body.toLowerCase().includes(q) ||
+      item.eventKey.toLowerCase().includes(q)
+    );
+  });
+
+  const inboxColumns: WorkspaceTableColumn<TenantInAppNotificationDto>[] = [
+    {
+      key: "title",
+      header: dict.notificationsColMessage,
+      sortable: true,
+      sortValue: (item) => item.title,
+      renderCell: (item) => {
+        const isUnread = !item.readAt;
+        return (
+          <div className="space-y-1 max-w-xl">
+            <div className="flex items-center gap-2">
+              {isUnread && (
+                <span
+                  aria-label={dict.notificationsStatusUnread}
+                  className="h-2 w-2 rounded-full bg-[var(--dsn-accent)] shrink-0"
+                />
+              )}
+              <span className="font-semibold text-[var(--dsn-text)]">{item.title}</span>
+            </div>
+            <p className="text-xs text-[var(--dsn-text-secondary)] line-clamp-2">{item.body}</p>
+          </div>
+        );
+      },
+    },
+    {
+      key: "severity",
+      header: dict.notificationsColSeverity,
+      sortable: true,
+      sortValue: (item) => item.severity,
+      renderCell: (item) => {
+        const sev = getSeverityBadge(item.severity, dict);
+        const SevIcon = sev.Icon;
+        return (
+          <span
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${sev.className}`}
+          >
+            <SevIcon className="h-3 w-3" />
+            <span>{sev.label}</span>
+          </span>
+        );
+      },
+    },
+    {
+      key: "createdAt",
+      header: dict.notificationsColDate,
+      sortable: true,
+      sortValue: (item) => item.createdAt,
+      renderCell: (item) => (
+        <span className="font-mono text-xs text-[var(--dsn-text-secondary)] whitespace-nowrap">
+          {new Date(item.createdAt).toLocaleString(locale === "en" ? "en-US" : "es-CO")}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: dict.notificationsColStatus,
+      renderCell: (item) => (
+        <span className="rounded bg-[var(--dsn-surface-secondary)] px-2 py-0.5 text-[11px] font-medium text-[var(--dsn-text-secondary)] whitespace-nowrap">
+          {!item.readAt ? dict.notificationsStatusUnread : dict.notificationsStatusRead}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: dict.notificationsColActions,
+      align: "right",
+      renderCell: (item) => {
+        const isUnread = !item.readAt;
+        return (
+          <div className="inline-flex flex-wrap items-center justify-end gap-2">
+            {item.actionUrl && (
+              <Link
+                href={item.actionUrl}
+                className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              >
+                <span>{dict.notificationsViewResource}</span>
+                <ExternalLink className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+              </Link>
+            )}
+            {isUnread && (
+              <button
+                type="button"
+                disabled={markingId === item.id}
+                onClick={() => void handleMarkRead(item.id)}
+                className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] disabled:opacity-50"
+              >
+                {markingId === item.id ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
+                <span>{dict.notificationsMarkRead}</span>
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
@@ -379,145 +506,133 @@ export function TenantNotificationsView({
           )}
 
           {/* Filtros de Lectura */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void fetchInboxPage(1, false)}
-              className={`min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
-                !unreadOnly
-                  ? "bg-[var(--dsn-accent)] text-white border-[var(--dsn-accent)]"
-                  : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-              }`}
-            >
-              {dict.notificationsAllMessages}
-            </button>
-            <button
-              type="button"
-              onClick={() => void fetchInboxPage(1, true)}
-              className={`min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
-                unreadOnly
-                  ? "bg-[var(--dsn-accent)] text-white border-[var(--dsn-accent)]"
-                  : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-              }`}
-            >
-              {dict.notificationsUnreadOnly}
-            </button>
-          </div>
-
-          {loadingInbox ? (
-            <div className="flex items-center justify-center rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-12 text-xs text-[var(--dsn-text-secondary)]">
-              <Loader2 className="h-5 w-5 animate-spin text-[var(--dsn-accent)] mr-2" />
-              <span>Cargando...</span>
-            </div>
-          ) : data.notifications.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-10 text-center space-y-2">
-              <Bell className="h-8 w-8 mx-auto text-[var(--dsn-text-secondary)] opacity-60" />
-              <h2 className="text-sm font-semibold text-[var(--dsn-text)]">
-                {dict.notificationsEmptyTitle}
-              </h2>
-              <p className="text-xs text-[var(--dsn-text-secondary)] max-w-md mx-auto">
-                {dict.notificationsEmptyDesc}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {data.notifications.map((item) => {
-                const sev = getSeverityBadge(item.severity);
-                const SevIcon = sev.Icon;
-                const isUnread = !item.readAt;
-                return (
-                  <article
-                    key={item.id}
-                    className={`rounded-xl border p-4 transition-colors ${
-                      isUnread
-                        ? "border-[var(--dsn-accent)]/40 bg-[var(--dsn-surface)]"
-                        : "border-[var(--dsn-border)] bg-[var(--dsn-surface)]/70 opacity-85"
-                    }`}
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="space-y-1.5 min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {isUnread && (
-                            <span
-                              aria-label={dict.notificationsStatusUnread}
-                              className="h-2 w-2 rounded-full bg-[var(--dsn-accent)] shrink-0"
-                            />
-                          )}
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${sev.className}`}
-                          >
-                            <SevIcon className="h-3 w-3" />
-                            <span>{sev.label}</span>
-                          </span>
-                          <span className="text-[11px] font-mono text-[var(--dsn-text-secondary)]">
-                            {new Date(item.createdAt).toLocaleString(locale === "en" ? "en-US" : "es-CO")}
-                          </span>
-                          <span className="rounded bg-[var(--dsn-surface-secondary)] px-2 py-0.5 text-[10px] font-medium text-[var(--dsn-text-secondary)]">
-                            {isUnread ? dict.notificationsStatusUnread : dict.notificationsStatusRead}
-                          </span>
-                        </div>
-                        <h3 className="text-sm font-bold text-[var(--dsn-text)]">{item.title}</h3>
-                        <p className="text-xs text-[var(--dsn-text-secondary)] leading-relaxed">
-                          {item.body}
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 shrink-0">
-                        {item.actionUrl && (
-                          <Link
-                            href={item.actionUrl}
-                            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                          >
-                            <span>{dict.notificationsViewResource}</span>
-                            <ExternalLink className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                          </Link>
-                        )}
+          <WorkspaceDataTable<TenantInAppNotificationDto>
+            testId="notifications-inbox-table"
+            locale={locale}
+            data={filteredNotifications}
+            columns={inboxColumns}
+            getRowKey={(item) => item.id}
+            page={page}
+            pageSize={pageSize}
+            totalItems={searchTerm.trim() ? filteredNotifications.length : data.total}
+            onPageChange={(nextPage) => void fetchInboxPage(nextPage, unreadOnly, pageSize)}
+            onPageSizeChange={(nextLimit) => {
+              setPageSize(nextLimit);
+              void fetchInboxPage(1, unreadOnly, nextLimit);
+            }}
+            searchQuery={searchTerm}
+            onSearchChange={(q) => setSearchTerm(q)}
+            activeFiltersCount={unreadOnly ? 1 : 0}
+            onResetFilters={() => {
+              setSearchTerm("");
+              if (unreadOnly) {
+                void fetchInboxPage(1, false, pageSize);
+              }
+            }}
+            loading={loadingInbox}
+            emptyState={{
+              icon: <Bell className="h-8 w-8 mx-auto text-[var(--dsn-text-secondary)] opacity-60" />,
+              title: dict.notificationsEmptyTitle,
+              description: dict.notificationsEmptyDesc,
+            }}
+            toolbarLeft={
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void fetchInboxPage(1, false, pageSize)}
+                  className={`min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
+                    !unreadOnly
+                      ? "bg-[var(--dsn-accent)] text-white border-[var(--dsn-accent)]"
+                      : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
+                  }`}
+                >
+                  {dict.notificationsAllMessages}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void fetchInboxPage(1, true, pageSize)}
+                  className={`min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
+                    unreadOnly
+                      ? "bg-[var(--dsn-accent)] text-white border-[var(--dsn-accent)]"
+                      : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
+                  }`}
+                >
+                  {dict.notificationsUnreadOnly}
+                </button>
+              </div>
+            }
+            renderMobileCard={(item) => {
+              const sev = getSeverityBadge(item.severity, dict);
+              const SevIcon = sev.Icon;
+              const isUnread = !item.readAt;
+              return (
+                <article
+                  key={item.id}
+                  className={`rounded-xl border p-4 transition-colors ${
+                    isUnread
+                      ? "border-[var(--dsn-accent)]/40 bg-[var(--dsn-surface)]"
+                      : "border-[var(--dsn-border)] bg-[var(--dsn-surface)]/70 opacity-85"
+                  }`}
+                >
+                  <div className="flex flex-col gap-3">
+                    <div className="space-y-1.5 min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
                         {isUnread && (
-                          <button
-                            type="button"
-                            disabled={markingId === item.id}
-                            onClick={() => void handleMarkRead(item.id)}
-                            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] disabled:opacity-50"
-                          >
-                            {markingId === item.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="h-3.5 w-3.5" />
-                            )}
-                            <span>{dict.notificationsMarkRead}</span>
-                          </button>
+                          <span
+                            aria-label={dict.notificationsStatusUnread}
+                            className="h-2 w-2 rounded-full bg-[var(--dsn-accent)] shrink-0"
+                          />
                         )}
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${sev.className}`}
+                        >
+                          <SevIcon className="h-3 w-3" />
+                          <span>{sev.label}</span>
+                        </span>
+                        <span className="text-[11px] font-mono text-[var(--dsn-text-secondary)]">
+                          {new Date(item.createdAt).toLocaleString(locale === "en" ? "en-US" : "es-CO")}
+                        </span>
+                        <span className="rounded bg-[var(--dsn-surface-secondary)] px-2 py-0.5 text-[10px] font-medium text-[var(--dsn-text-secondary)]">
+                          {isUnread ? dict.notificationsStatusUnread : dict.notificationsStatusRead}
+                        </span>
                       </div>
+                      <h3 className="text-sm font-bold text-[var(--dsn-text)]">{item.title}</h3>
+                      <p className="text-xs text-[var(--dsn-text-secondary)] leading-relaxed">
+                        {item.body}
+                      </p>
                     </div>
-                  </article>
-                );
-              })}
 
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between pt-2">
-                  <button
-                    type="button"
-                    disabled={page <= 1 || loadingInbox}
-                    onClick={() => void fetchInboxPage(page - 1, unreadOnly)}
-                    className="inline-flex min-h-[36px] items-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] disabled:opacity-40"
-                  >
-                    {dict.notificationsPrevPage}
-                  </button>
-                  <span className="text-xs font-mono text-[var(--dsn-text-secondary)]">
-                    {page} / {totalPages}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={page >= totalPages || loadingInbox}
-                    onClick={() => void fetchInboxPage(page + 1, unreadOnly)}
-                    className="inline-flex min-h-[36px] items-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] disabled:opacity-40"
-                  >
-                    {dict.notificationsNextPage}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {item.actionUrl && (
+                        <Link
+                          href={item.actionUrl}
+                          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                        >
+                          <span>{dict.notificationsViewResource}</span>
+                          <ExternalLink className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                        </Link>
+                      )}
+                      {isUnread && (
+                        <button
+                          type="button"
+                          disabled={markingId === item.id}
+                          onClick={() => void handleMarkRead(item.id)}
+                          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] disabled:opacity-50"
+                        >
+                          {markingId === item.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          )}
+                          <span>{dict.notificationsMarkRead}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            }}
+          />
         </section>
       )}
 

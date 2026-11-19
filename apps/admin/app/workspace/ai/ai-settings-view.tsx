@@ -18,6 +18,7 @@ import type {
 } from "@mocter/domain";
 import { workspaceFetch } from "@/lib/workspace-client";
 import { ConfirmationModal } from "@/components/confirmation-modal";
+import { FormSaveBar } from "@/components/ui/form-save-bar";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 export interface AiSettingsViewProps {
@@ -113,6 +114,36 @@ export function AiSettingsView({
     message: string;
   } | null>(null);
 
+  const [savedSnapshot, setSavedSnapshot] = useState(() => ({
+    providerCode,
+    modelId,
+    temperature,
+    maxTokens,
+    priorityRole,
+    verifyImmediately,
+  }));
+
+  const isDirty =
+    isOwner &&
+    (apiKey.trim().length > 0 ||
+      providerCode !== savedSnapshot.providerCode ||
+      modelId !== savedSnapshot.modelId ||
+      temperature !== savedSnapshot.temperature ||
+      maxTokens !== savedSnapshot.maxTokens ||
+      priorityRole !== savedSnapshot.priorityRole ||
+      verifyImmediately !== savedSnapshot.verifyImmediately);
+
+  function handleDiscardSettings() {
+    handleProviderChange(savedSnapshot.providerCode);
+    setModelId(savedSnapshot.modelId);
+    setApiKey("");
+    setTemperature(savedSnapshot.temperature);
+    setMaxTokens(savedSnapshot.maxTokens);
+    setPriorityRole(savedSnapshot.priorityRole);
+    setVerifyImmediately(savedSnapshot.verifyImmediately);
+    setFeedback(null);
+  }
+
   function renderProviderVisual(
     name: string,
     code: string,
@@ -140,6 +171,7 @@ export function AiSettingsView({
   function handleProviderChange(nextCode: SupportedLlmProviderCode) {
     setProviderCode(nextCode);
     setFeedback(null);
+    setApiKey("");
     const prov = overview?.catalog.find((p) => p.code === nextCode);
     const existing = overview?.configuredProviders.find(
       (p) => p.providerCode === nextCode,
@@ -148,23 +180,52 @@ export function AiSettingsView({
       prov?.models.find((m) => m.isDefault) ?? prov?.models[0] ?? null;
 
     if (existing) {
-      setModelId(existing.selectedModelId ?? provDefaultModel?.id ?? "");
+      const nextModel = existing.selectedModelId ?? provDefaultModel?.id ?? "";
+      const nextMax = String(existing.maxTokens);
+      const nextRole = existing.priorityRole ?? "standby";
+      setModelId(nextModel);
       setTemperature(existing.temperature);
-      setMaxTokens(String(existing.maxTokens));
-      setPriorityRole(existing.priorityRole ?? "standby");
+      setMaxTokens(nextMax);
+      setPriorityRole(nextRole);
+      setSavedSnapshot({
+        providerCode: nextCode,
+        modelId: nextModel,
+        temperature: existing.temperature,
+        maxTokens: nextMax,
+        priorityRole: nextRole,
+        verifyImmediately,
+      });
     } else if (provDefaultModel) {
-      setModelId(provDefaultModel.id);
-      setTemperature(provDefaultModel.defaultTemperature);
-      setMaxTokens(String(provDefaultModel.defaultMaxTokens));
       const hasActivePrimary = Boolean(
         overview?.configuredProviders.some(
           (p) => p.priorityRole === "primary" && p.status === "active",
         ),
       );
-      setPriorityRole(hasActivePrimary ? "secondary" : "primary");
+      const nextMax = String(provDefaultModel.defaultMaxTokens);
+      const nextRole = hasActivePrimary ? "secondary" : "primary";
+      setModelId(provDefaultModel.id);
+      setTemperature(provDefaultModel.defaultTemperature);
+      setMaxTokens(nextMax);
+      setPriorityRole(nextRole);
+      setSavedSnapshot({
+        providerCode: nextCode,
+        modelId: provDefaultModel.id,
+        temperature: provDefaultModel.defaultTemperature,
+        maxTokens: nextMax,
+        priorityRole: nextRole,
+        verifyImmediately,
+      });
     } else {
       setModelId("");
       setPriorityRole("secondary");
+      setSavedSnapshot({
+        providerCode: nextCode,
+        modelId: "",
+        temperature,
+        maxTokens,
+        priorityRole: "secondary",
+        verifyImmediately,
+      });
     }
   }
 
@@ -186,8 +247,8 @@ export function AiSettingsView({
     }
   }
 
-  async function handleSaveSettings(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSaveSettings(e?: React.FormEvent) {
+    e?.preventDefault();
     setFeedback(null);
     setSaving(true);
 
@@ -218,6 +279,14 @@ export function AiSettingsView({
       }
 
       setApiKey("");
+      setSavedSnapshot({
+        providerCode,
+        modelId,
+        temperature,
+        maxTokens,
+        priorityRole,
+        verifyImmediately,
+      });
       await refreshOverview();
       setFeedback({
         type: "success",
@@ -401,6 +470,18 @@ export function AiSettingsView({
             {dict.aiSettingsSubtitle}
           </p>
         </div>
+
+        {isOwner && (
+          <button
+            type="button"
+            onClick={() => void handleSaveSettings()}
+            disabled={saving}
+            className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
+          >
+            <Save className="h-4 w-4" />
+            <span>{saving ? dict.saveBarSavingCta : dict.saveBarSaveCta}</span>
+          </button>
+        )}
       </header>
 
       {overview?.effectiveMode === "platform_trial" && (
@@ -644,6 +725,19 @@ export function AiSettingsView({
               </span>
             </button>
           </div>
+
+          {isOwner && (
+            <FormSaveBar
+              isDirty={isDirty}
+              dirtySectionsCount={isDirty ? 1 : 0}
+              sectionName={dict.aiSettingsTitle}
+              onSave={() => void handleSaveSettings()}
+              onDiscard={handleDiscardSettings}
+              locale={locale}
+              saving={saving}
+              submitType="button"
+            />
+          )}
         </form>
 
         {/* Estado Actual y Llaves Guardadas */}

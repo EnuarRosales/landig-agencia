@@ -11,7 +11,7 @@ import {
 
 const listPostsQuerySchema = z.object({
   organizationId: z.string().uuid().optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
 });
 
 const createPostSchema = z.object({

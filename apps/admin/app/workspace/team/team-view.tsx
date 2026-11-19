@@ -4,17 +4,13 @@ import React, { useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
-  ArrowDownUp,
   Ban,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   Edit3,
   Mail,
   MessageSquare,
   RefreshCw,
-  Search,
   Shield,
   Trash2,
   UserCheck,
@@ -31,6 +27,10 @@ import type {
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
 import { ConfirmationModal } from "@/components/confirmation-modal";
+import {
+  WorkspaceDataTable,
+  type WorkspaceTableColumn,
+} from "@/components/ui/workspace-data-table";
 
 interface TeamViewProps {
   initialData?: TeamListResultDto | null;
@@ -127,6 +127,7 @@ export function TeamView({
   const [sortBy, setSortBy] = useState<"joined_at" | "display_name" | "email" | "status">("joined_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState<number>(initialData?.pagination?.limit || 20);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -160,6 +161,7 @@ export function TeamView({
     nextSortBy?: "joined_at" | "display_name" | "email" | "status";
     nextSortDir?: "asc" | "desc";
     nextPage?: number;
+    nextLimit?: number;
   }) => {
     setLoading(true);
     try {
@@ -168,10 +170,11 @@ export function TeamView({
       const sb = overrides?.nextSortBy ?? sortBy;
       const sd = overrides?.nextSortDir ?? sortDir;
       const pg = overrides?.nextPage ?? page;
+      const lm = overrides?.nextLimit ?? limit;
 
       const params = new URLSearchParams({
         page: String(pg),
-        limit: "20",
+        limit: String(lm),
         status: st,
         sortBy: sb,
         sortDir: sd,
@@ -325,12 +328,249 @@ export function TeamView({
     }
   };
 
-  const toggleSort = (col: "joined_at" | "display_name" | "email" | "status") => {
-    const nextDir: "asc" | "desc" =
-      sortBy === col && sortDir === "asc" ? "desc" : "asc";
-    setSortBy(col);
-    setSortDir(nextDir);
-    void fetchTeam({ nextSortBy: col, nextSortDir: nextDir, nextPage: 1 });
+  const tabButtons = (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setActiveTab("members")}
+        className={`min-h-[40px] rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
+          activeTab === "members"
+            ? "bg-[var(--dsn-accent)] text-white"
+            : "border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
+        }`}
+      >
+        {w.teamTabMembers} ({data.pagination.total})
+      </button>
+
+      {isOwner && (
+        <button
+          type="button"
+          onClick={() => setActiveTab("invitations")}
+          className={`min-h-[40px] rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
+            activeTab === "invitations"
+              ? "bg-[var(--dsn-accent)] text-white"
+              : "border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
+          }`}
+        >
+          {w.teamTabInvitations} ({data.invitations.length})
+        </button>
+      )}
+    </div>
+  );
+
+  const memberColumns: WorkspaceTableColumn<TeamMemberProfileDto>[] = [
+    {
+      key: "display_name",
+      header: w.teamColName,
+      sortable: true,
+      renderCell: (m) => (
+        <div>
+          <p className="font-semibold text-[var(--dsn-text)]">{m.displayName || m.email}</p>
+          <p className="text-[11px] font-mono text-[var(--dsn-text-secondary)]">{m.email}</p>
+        </div>
+      ),
+    },
+    {
+      key: "role",
+      header: w.teamColRole,
+      renderCell: (m) => (
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+            m.role === "tenant_owner"
+              ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
+              : "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+          }`}
+        >
+          {m.role === "tenant_owner" ? w.teamRoleOwner : w.teamRoleAgent}
+        </span>
+      ),
+    },
+    {
+      key: "chatwoot",
+      header: w.teamColChatwoot,
+      renderCell: (m) => (
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+            m.grantChatwootAccess
+              ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+              : "bg-slate-500/10 text-[var(--dsn-text-secondary)] border-[var(--dsn-border)]"
+          }`}
+        >
+          {m.grantChatwootAccess ? w.teamChatwootEnabled : w.teamChatwootDisabled}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: w.teamColStatus,
+      sortable: true,
+      renderCell: (m) => (
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+            m.status === "active"
+              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+          }`}
+        >
+          {m.status === "active" ? w.teamStatusActive : w.teamStatusSuspended}
+        </span>
+      ),
+    },
+    {
+      key: "lastAccess",
+      header: w.teamColLastAccess,
+      renderCell: (m) => (
+        <span className="font-mono text-xs text-[var(--dsn-text-secondary)]">
+          {m.lastAccessAt ? formatShortDate(m.lastAccessAt) : w.teamNeverAccessed}
+        </span>
+      ),
+    },
+    ...(isOwner
+      ? [
+          {
+            key: "actions",
+            header: w.teamColActions,
+            align: "right" as const,
+            renderCell: (m: TeamMemberProfileDto) =>
+              m.role !== "tenant_owner" ? (
+                <div className="inline-flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(m)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--dsn-text)] hover:border-[var(--dsn-accent)]"
+                  >
+                    <Edit3 className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                    <span>{w.teamActionEdit}</span>
+                  </button>
+                  {m.status === "active" ? (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmState({ kind: "suspend", member: m })}
+                      className="inline-flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-400 hover:bg-amber-500/20"
+                    >
+                      <Ban className="h-3.5 w-3.5" />
+                      <span>{w.teamActionSuspend}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmState({ kind: "reactivate", member: m })}
+                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-medium text-emerald-400 hover:bg-emerald-500/20"
+                    >
+                      <UserCheck className="h-3.5 w-3.5" />
+                      <span>{w.teamActionReactivate}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setConfirmState({ kind: "retire", member: m })}
+                    className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-medium text-rose-400 hover:bg-rose-500/20"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>{w.teamActionRetire}</span>
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[11px] text-[var(--dsn-text-secondary)]">—</span>
+              ),
+          },
+        ]
+      : []),
+  ];
+
+  const invitationColumns: WorkspaceTableColumn<TeamInvitationViewDto>[] = [
+    {
+      key: "email",
+      header: w.teamColInviteEmail,
+      sortable: true,
+      sortValue: (inv) => inv.displayName || inv.email,
+      renderCell: (inv) => (
+        <div>
+          <p className="font-semibold text-[var(--dsn-text)]">{inv.displayName || inv.email}</p>
+          <p className="text-[11px] font-mono text-[var(--dsn-text-secondary)]">{inv.email}</p>
+        </div>
+      ),
+    },
+    {
+      key: "role",
+      header: w.teamColRole,
+      renderCell: () => (
+        <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-400 border border-cyan-500/20">
+          {w.teamRoleAgent}
+        </span>
+      ),
+    },
+    {
+      key: "chatwoot",
+      header: w.teamColChatwoot,
+      renderCell: (inv) => (
+        <span className="text-[11px] text-[var(--dsn-text-secondary)]">
+          {inv.grantChatwootAccess ? w.teamChatwootEnabled : w.teamChatwootDisabled}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: w.teamColInviteStatus,
+      renderCell: (inv) => (
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+            inv.status === "pending"
+              ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+          }`}
+        >
+          <Clock className="h-3 w-3" />
+          <span>{inv.status === "pending" ? w.teamInvitePending : w.teamInviteExpired}</span>
+        </span>
+      ),
+    },
+    {
+      key: "expiresAt",
+      header: w.teamColInviteExpires,
+      sortable: true,
+      sortValue: (inv) => inv.expiresAt,
+      renderCell: (inv) => (
+        <span className="font-mono text-xs text-[var(--dsn-text-secondary)]">
+          {formatShortDate(inv.expiresAt)}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: w.teamColActions,
+      align: "right",
+      renderCell: (inv) => (
+        <div className="inline-flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={resendingId === inv.id}
+            onClick={() => void handleResendInvitation(inv)}
+            className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] disabled:opacity-50"
+          >
+            <RefreshCw className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+            <span>{w.teamActionResend}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmState({ kind: "revoke", invitation: inv })}
+            className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-medium text-rose-400 hover:bg-rose-500/20"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>{w.teamActionRevoke}</span>
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  const handleSortServer = (col: string, dir: "asc" | "desc") => {
+    const validCol: "joined_at" | "display_name" | "email" | "status" =
+      col === "display_name" || col === "email" || col === "status" ? col : "joined_at";
+    setSortBy(validCol);
+    setSortDir(dir);
+    setPage(1);
+    void fetchTeam({ nextSortBy: validCol, nextSortDir: dir, nextPage: 1 });
   };
 
   const confirmModalConfig = (() => {
@@ -532,56 +772,55 @@ export function TeamView({
         </div>
       )}
 
-      {/* Pestañas + Barra de Filtros */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden shadow-xs">
-        <div className="px-4 md:px-5 pt-4 border-b border-[var(--dsn-border)] flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveTab("members")}
-              className={`min-h-[40px] rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
-                activeTab === "members"
-                  ? "bg-[var(--dsn-accent)] text-white"
-                  : "border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-              }`}
-            >
-              {w.teamTabMembers} ({data.pagination.total})
-            </button>
-
-            {isOwner && (
-              <button
-                type="button"
-                onClick={() => setActiveTab("invitations")}
-                className={`min-h-[40px] rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
-                  activeTab === "invitations"
-                    ? "bg-[var(--dsn-accent)] text-white"
-                    : "border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                }`}
-              >
-                {w.teamTabInvitations} ({data.invitations.length})
-              </button>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="h-4 w-4 text-[var(--dsn-text-secondary)] absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setQuery(val);
-                  setPage(1);
-                  void fetchTeam({ nextQuery: val, nextPage: 1 });
-                }}
-                placeholder={w.teamSearchPlaceholder}
-                aria-label={w.teamSearchPlaceholder}
-                className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] pl-9 pr-3 py-1.5 text-xs text-[var(--dsn-text)] focus:outline-none focus:ring-2 focus:ring-[var(--dsn-accent)]"
-              />
-            </div>
-
-            {activeTab === "members" && isOwner && (
+      {/* Tablas Estandarizadas de Miembros e Invitaciones */}
+      {activeTab === "members" ? (
+        <WorkspaceDataTable<TeamMemberProfileDto>
+          testId="team-members-table"
+          locale={locale}
+          data={data.members}
+          columns={memberColumns}
+          getRowKey={(m) => m.id}
+          page={data.pagination.page}
+          pageSize={limit}
+          totalItems={data.pagination.total}
+          onPageChange={(next) => {
+            setPage(next);
+            void fetchTeam({ nextPage: next });
+          }}
+          onPageSizeChange={(nextLimit) => {
+            setLimit(nextLimit);
+            setPage(1);
+            void fetchTeam({ nextLimit, nextPage: 1 });
+          }}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSortChange={handleSortServer}
+          searchQuery={query}
+          onSearchChange={(nextQuery) => {
+            setQuery(nextQuery);
+            setPage(1);
+            void fetchTeam({ nextQuery, nextPage: 1 });
+          }}
+          searchPlaceholder={w.teamSearchPlaceholder}
+          activeFiltersCount={statusFilter !== "all" ? 1 : 0}
+          onResetFilters={() => {
+            setQuery("");
+            setStatusFilter("all");
+            setSortBy("joined_at");
+            setSortDir("desc");
+            setPage(1);
+            void fetchTeam({
+              nextQuery: "",
+              nextStatus: "all",
+              nextSortBy: "joined_at",
+              nextSortDir: "desc",
+              nextPage: 1,
+            });
+          }}
+          loading={loading}
+          toolbarLeft={tabButtons}
+          filterSlot={
+            isOwner ? (
               <select
                 value={statusFilter}
                 onChange={(e) => {
@@ -597,444 +836,151 @@ export function TeamView({
                 <option value="active">{w.teamFilterActive}</option>
                 <option value="suspended">{w.teamFilterSuspended}</option>
               </select>
-            )}
-          </div>
-        </div>
-
-        {/* Contenido Pestaña Miembros */}
-        {activeTab === "members" && (
-          <>
-            {data.members.length === 0 ? (
-              <div className="p-10 text-center">
-                <Users className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto mb-3" />
-                <p className="text-sm font-medium text-[var(--dsn-text-secondary)]">
-                  {w.teamEmptyMembers}
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Mobile First Tarjetas (< 768px) */}
-                <div className="grid grid-cols-1 gap-3 p-4 md:hidden">
-                  {data.members.map((m) => (
-                    <article
-                      key={m.id}
-                      className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-background)]/40 p-4 space-y-3"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-[var(--dsn-text)]">
-                            {m.displayName || m.email}
-                          </p>
-                          <p className="text-xs font-mono text-[var(--dsn-text-secondary)]">
-                            {m.email}
-                          </p>
-                        </div>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                            m.status === "active"
-                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                          }`}
-                        >
-                          {m.status === "active" ? w.teamStatusActive : w.teamStatusSuspended}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-[var(--dsn-text-secondary)] block">
-                            {w.teamColRole}
-                          </span>
-                          <span className="font-medium text-[var(--dsn-text)]">
-                            {m.role === "tenant_owner" ? w.teamRoleOwner : w.teamRoleAgent}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[var(--dsn-text-secondary)] block">
-                            {w.teamColChatwoot}
-                          </span>
-                          <span className="font-medium text-[var(--dsn-text)]">
-                            {m.grantChatwootAccess ? w.teamChatwootEnabled : w.teamChatwootDisabled}
-                          </span>
-                        </div>
-                      </div>
-
-                      {isOwner && m.role !== "tenant_owner" && (
-                        <div className="flex flex-wrap gap-2 pt-2 border-t border-[var(--dsn-border)]">
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(m)}
-                            className="min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-medium text-[var(--dsn-text)]"
-                          >
-                            {w.teamActionEdit}
-                          </button>
-                          {m.status === "active" ? (
-                            <button
-                              type="button"
-                              onClick={() => setConfirmState({ kind: "suspend", member: m })}
-                              className="min-h-[38px] rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-400"
-                            >
-                              {w.teamActionSuspend}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setConfirmState({ kind: "reactivate", member: m })}
-                              className="min-h-[38px] rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400"
-                            >
-                              {w.teamActionReactivate}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setConfirmState({ kind: "retire", member: m })}
-                            className="min-h-[38px] rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-400"
-                          >
-                            {w.teamActionRetire}
-                          </button>
-                        </div>
-                      )}
-                    </article>
-                  ))}
+            ) : null
+          }
+          emptyState={{
+            icon: <Users className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto" />,
+            title: w.teamEmptyMembers,
+          }}
+          renderMobileCard={(m) => (
+            <article
+              key={m.id}
+              className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-background)]/40 p-4 space-y-3"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--dsn-text)]">
+                    {m.displayName || m.email}
+                  </p>
+                  <p className="text-xs font-mono text-[var(--dsn-text-secondary)]">
+                    {m.email}
+                  </p>
                 </div>
-
-                {/* Tabla Escritorio */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-[var(--dsn-surface-secondary)]/40 text-[var(--dsn-text-secondary)] border-b border-[var(--dsn-border)]">
-                      <tr>
-                        <th className="px-4 py-3 font-medium">
-                          <button
-                            type="button"
-                            onClick={() => toggleSort("display_name")}
-                            className="inline-flex items-center gap-1 hover:text-[var(--dsn-text)]"
-                          >
-                            <span>{w.teamColName}</span>
-                            <ArrowDownUp className="h-3 w-3" />
-                          </button>
-                        </th>
-                        <th className="px-4 py-3 font-medium">{w.teamColRole}</th>
-                        <th className="px-4 py-3 font-medium">{w.teamColChatwoot}</th>
-                        <th className="px-4 py-3 font-medium">
-                          <button
-                            type="button"
-                            onClick={() => toggleSort("status")}
-                            className="inline-flex items-center gap-1 hover:text-[var(--dsn-text)]"
-                          >
-                            <span>{w.teamColStatus}</span>
-                            <ArrowDownUp className="h-3 w-3" />
-                          </button>
-                        </th>
-                        <th className="px-4 py-3 font-medium">{w.teamColLastAccess}</th>
-                        {isOwner && (
-                          <th className="px-4 py-3 font-medium text-right">{w.teamColActions}</th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--dsn-border)] text-[var(--dsn-text)]">
-                      {data.members.map((m) => (
-                        <tr
-                          key={m.id}
-                          className="hover:bg-[var(--dsn-surface-secondary)]/20 transition-colors"
-                        >
-                          <td className="px-4 py-3">
-                            <p className="font-semibold text-[var(--dsn-text)]">
-                              {m.displayName || m.email}
-                            </p>
-                            <p className="text-[11px] font-mono text-[var(--dsn-text-secondary)]">
-                              {m.email}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                                m.role === "tenant_owner"
-                                  ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
-                                  : "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
-                              }`}
-                            >
-                              {m.role === "tenant_owner" ? w.teamRoleOwner : w.teamRoleAgent}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                                m.grantChatwootAccess
-                                  ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
-                                  : "bg-slate-500/10 text-[var(--dsn-text-secondary)] border-[var(--dsn-border)]"
-                              }`}
-                            >
-                              {m.grantChatwootAccess
-                                ? w.teamChatwootEnabled
-                                : w.teamChatwootDisabled}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                                m.status === "active"
-                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                  : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                              }`}
-                            >
-                              {m.status === "active"
-                                ? w.teamStatusActive
-                                : w.teamStatusSuspended}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-mono text-[var(--dsn-text-secondary)]">
-                            {m.lastAccessAt
-                              ? formatShortDate(m.lastAccessAt)
-                              : w.teamNeverAccessed}
-                          </td>
-                          {isOwner && (
-                            <td className="px-4 py-3 text-right">
-                              {m.role !== "tenant_owner" ? (
-                                <div className="inline-flex items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditModal(m)}
-                                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--dsn-text)] hover:border-[var(--dsn-accent)]"
-                                  >
-                                    <Edit3 className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                                    <span>{w.teamActionEdit}</span>
-                                  </button>
-                                  {m.status === "active" ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => setConfirmState({ kind: "suspend", member: m })}
-                                      className="inline-flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] font-medium text-amber-400 hover:bg-amber-500/20"
-                                    >
-                                      <Ban className="h-3.5 w-3.5" />
-                                      <span>{w.teamActionSuspend}</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setConfirmState({ kind: "reactivate", member: m })
-                                      }
-                                      className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-medium text-emerald-400 hover:bg-emerald-500/20"
-                                    >
-                                      <UserCheck className="h-3.5 w-3.5" />
-                                      <span>{w.teamActionReactivate}</span>
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => setConfirmState({ kind: "retire", member: m })}
-                                    className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-medium text-rose-400 hover:bg-rose-500/20"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                    <span>{w.teamActionRetire}</span>
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="text-[11px] text-[var(--dsn-text-secondary)]">
-                                  —
-                                </span>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-
-            {/* Paginación */}
-            {data.pagination.totalPages > 1 && (
-              <div className="px-4 py-3 border-t border-[var(--dsn-border)] flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
-                <span>
-                  {w.teamPaginationPage} {data.pagination.page} {w.teamPaginationOf}{" "}
-                  {data.pagination.totalPages}
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+                    m.status === "active"
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                      : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                  }`}
+                >
+                  {m.status === "active" ? w.teamStatusActive : w.teamStatusSuspended}
                 </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={page <= 1 || loading}
-                    onClick={() => {
-                      const next = Math.max(1, page - 1);
-                      setPage(next);
-                      void fetchTeam({ nextPage: next });
-                    }}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-3 py-1.5 disabled:opacity-50"
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                    <span>{w.teamPaginationPrev}</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={page >= data.pagination.totalPages || loading}
-                    onClick={() => {
-                      const next = Math.min(data.pagination.totalPages, page + 1);
-                      setPage(next);
-                      void fetchTeam({ nextPage: next });
-                    }}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-3 py-1.5 disabled:opacity-50"
-                  >
-                    <span>{w.teamPaginationNext}</span>
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-[var(--dsn-text-secondary)] block">{w.teamColRole}</span>
+                  <span className="font-medium text-[var(--dsn-text)]">
+                    {m.role === "tenant_owner" ? w.teamRoleOwner : w.teamRoleAgent}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[var(--dsn-text-secondary)] block">{w.teamColChatwoot}</span>
+                  <span className="font-medium text-[var(--dsn-text)]">
+                    {m.grantChatwootAccess ? w.teamChatwootEnabled : w.teamChatwootDisabled}
+                  </span>
                 </div>
               </div>
-            )}
-          </>
-        )}
 
-        {/* Contenido Pestaña Invitaciones Pendientes */}
-        {activeTab === "invitations" && isOwner && (
-          <>
-            {data.invitations.length === 0 ? (
-              <div className="p-10 text-center">
-                <Mail className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto mb-3" />
-                <p className="text-sm font-medium text-[var(--dsn-text-secondary)]">
-                  {w.teamEmptyInvitations}
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 gap-3 p-4 md:hidden">
-                  {data.invitations.map((inv) => (
-                    <article
-                      key={inv.id}
-                      className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-background)]/40 p-4 space-y-3"
+              {isOwner && m.role !== "tenant_owner" && (
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-[var(--dsn-border)]">
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(m)}
+                    className="min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-medium text-[var(--dsn-text)]"
+                  >
+                    {w.teamActionEdit}
+                  </button>
+                  {m.status === "active" ? (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmState({ kind: "suspend", member: m })}
+                      className="min-h-[38px] rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-400"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-[var(--dsn-text)]">
-                            {inv.displayName || inv.email}
-                          </p>
-                          <p className="text-xs font-mono text-[var(--dsn-text-secondary)]">
-                            {inv.email}
-                          </p>
-                        </div>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                            inv.status === "pending"
-                              ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
-                              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                          }`}
-                        >
-                          {inv.status === "pending" ? w.teamInvitePending : w.teamInviteExpired}
-                        </span>
-                      </div>
-                      <p className="text-xs font-mono text-[var(--dsn-text-secondary)]">
-                        {w.teamColInviteExpires}: {formatShortDate(inv.expiresAt)}
-                      </p>
-                      <div className="flex flex-wrap gap-2 pt-2 border-t border-[var(--dsn-border)]">
-                        <button
-                          type="button"
-                          disabled={resendingId === inv.id}
-                          onClick={() => void handleResendInvitation(inv)}
-                          className="min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-medium text-[var(--dsn-text)]"
-                        >
-                          {w.teamActionResend}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmState({ kind: "revoke", invitation: inv })}
-                          className="min-h-[38px] rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-400"
-                        >
-                          {w.teamActionRevoke}
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+                      {w.teamActionSuspend}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmState({ kind: "reactivate", member: m })}
+                      className="min-h-[38px] rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400"
+                    >
+                      {w.teamActionReactivate}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setConfirmState({ kind: "retire", member: m })}
+                    className="min-h-[38px] rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-400"
+                  >
+                    {w.teamActionRetire}
+                  </button>
                 </div>
-
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-[var(--dsn-surface-secondary)]/40 text-[var(--dsn-text-secondary)] border-b border-[var(--dsn-border)]">
-                      <tr>
-                        <th className="px-4 py-3 font-medium">{w.teamColInviteEmail}</th>
-                        <th className="px-4 py-3 font-medium">{w.teamColRole}</th>
-                        <th className="px-4 py-3 font-medium">{w.teamColChatwoot}</th>
-                        <th className="px-4 py-3 font-medium">{w.teamColInviteStatus}</th>
-                        <th className="px-4 py-3 font-medium">{w.teamColInviteExpires}</th>
-                        <th className="px-4 py-3 font-medium text-right">{w.teamColActions}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--dsn-border)] text-[var(--dsn-text)]">
-                      {data.invitations.map((inv) => (
-                        <tr
-                          key={inv.id}
-                          className="hover:bg-[var(--dsn-surface-secondary)]/20 transition-colors"
-                        >
-                          <td className="px-4 py-3">
-                            <p className="font-semibold text-[var(--dsn-text)]">
-                              {inv.displayName || inv.email}
-                            </p>
-                            <p className="text-[11px] font-mono text-[var(--dsn-text-secondary)]">
-                              {inv.email}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-400 border border-cyan-500/20">
-                              {w.teamRoleAgent}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-[11px] text-[var(--dsn-text-secondary)]">
-                              {inv.grantChatwootAccess
-                                ? w.teamChatwootEnabled
-                                : w.teamChatwootDisabled}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border ${
-                                inv.status === "pending"
-                                  ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
-                                  : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                              }`}
-                            >
-                              <Clock className="h-3 w-3" />
-                              <span>
-                                {inv.status === "pending"
-                                  ? w.teamInvitePending
-                                  : w.teamInviteExpired}
-                              </span>
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-mono text-[var(--dsn-text-secondary)]">
-                            {formatShortDate(inv.expiresAt)}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="inline-flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                disabled={resendingId === inv.id}
-                                onClick={() => void handleResendInvitation(inv)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] disabled:opacity-50"
-                              >
-                                <RefreshCw className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                                <span>{w.teamActionResend}</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setConfirmState({ kind: "revoke", invitation: inv })
-                                }
-                                className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-medium text-rose-400 hover:bg-rose-500/20"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                <span>{w.teamActionRevoke}</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              )}
+            </article>
+          )}
+        />
+      ) : (
+        <WorkspaceDataTable<TeamInvitationViewDto>
+          testId="team-invitations-table"
+          locale={locale}
+          data={data.invitations}
+          columns={invitationColumns}
+          getRowKey={(inv) => inv.id}
+          defaultPageSize={10}
+          searchKeys={["email", "displayName"]}
+          searchPlaceholder={w.teamSearchPlaceholder}
+          toolbarLeft={tabButtons}
+          emptyState={{
+            icon: <Mail className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto" />,
+            title: w.teamEmptyInvitations,
+          }}
+          renderMobileCard={(inv) => (
+            <article
+              key={inv.id}
+              className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-background)]/40 p-4 space-y-3"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--dsn-text)]">
+                    {inv.displayName || inv.email}
+                  </p>
+                  <p className="text-xs font-mono text-[var(--dsn-text-secondary)]">{inv.email}</p>
                 </div>
-              </>
-            )}
-          </>
-        )}
-      </section>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+                    inv.status === "pending"
+                      ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+                      : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                  }`}
+                >
+                  {inv.status === "pending" ? w.teamInvitePending : w.teamInviteExpired}
+                </span>
+              </div>
+              <p className="text-xs font-mono text-[var(--dsn-text-secondary)]">
+                {w.teamColInviteExpires}: {formatShortDate(inv.expiresAt)}
+              </p>
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-[var(--dsn-border)]">
+                <button
+                  type="button"
+                  disabled={resendingId === inv.id}
+                  onClick={() => void handleResendInvitation(inv)}
+                  className="min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-medium text-[var(--dsn-text)]"
+                >
+                  {w.teamActionResend}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmState({ kind: "revoke", invitation: inv })}
+                  className="min-h-[38px] rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-400"
+                >
+                  {w.teamActionRevoke}
+                </button>
+              </div>
+            </article>
+          )}
+        />
+      )}
 
       {/* Modal de Invitación */}
       {inviteOpen && (

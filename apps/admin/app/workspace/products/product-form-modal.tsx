@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -31,6 +31,7 @@ import type {
   ProductStatus,
   WorkspaceBillingDto,
 } from "@mocter/domain";
+import { ConfirmationModal } from "@/components/confirmation-modal";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { calculateProductProfitability } from "@/lib/pricing-margin";
 import { workspaceFetch } from "@/lib/workspace-client";
@@ -166,16 +167,88 @@ function ProductFormModalContent({
   // Prompt Maestro
   const [botMasterPrompt, setBotMasterPrompt] = useState(editTarget?.botMasterPrompt ?? "");
 
-  // Estado de envío
+  // Estado de envío y guarda de cambios sin guardar
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
+
+  const currentSerialized = useMemo(
+    () =>
+      JSON.stringify({
+        name,
+        sku,
+        category,
+        brand,
+        kind,
+        compositionType,
+        condition,
+        status,
+        availability,
+        description,
+        costAmount,
+        priceAmount,
+        stockQuantity,
+        minStockThreshold,
+        attributes,
+        comboItems,
+        botMasterPrompt,
+      }),
+    [
+      name,
+      sku,
+      category,
+      brand,
+      kind,
+      compositionType,
+      condition,
+      status,
+      availability,
+      description,
+      costAmount,
+      priceAmount,
+      stockQuantity,
+      minStockThreshold,
+      attributes,
+      comboItems,
+      botMasterPrompt,
+    ],
+  );
+  const [savedSerialized, setSavedSerialized] = useState(() => currentSerialized);
+
+  const isDirty =
+    !loadingDetail &&
+    (currentSerialized !== savedSerialized ||
+      mediaFile !== null ||
+      mediaAltText.trim().length > 0);
+
+  const handleAttemptClose = useCallback(() => {
+    if (saving) return;
+    if (isDirty) {
+      setDiscardConfirmOpen(true);
+      return;
+    }
+    onClose();
+  }, [isDirty, onClose, saving]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (discardConfirmOpen) {
+        setDiscardConfirmOpen(false);
+        return;
+      }
+      handleAttemptClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [discardConfirmOpen, handleAttemptClose]);
 
   useEffect(() => {
     if (compositionType !== "combo") return;
     let active = true;
     void (async () => {
       const res = await workspaceFetch<CatalogListResultDto>(
-        "/api/tenant/products?compositionType=simple&limit=100",
+        "/api/tenant/products?compositionType=simple&limit=50",
       );
       if (active && res.ok && res.data) {
         setSimpleOptions(res.data.items.filter((i) => i.id !== editingDetail?.id));
@@ -348,6 +421,7 @@ function ProductFormModalContent({
       }
 
       setEditingDetail(res.data);
+      setSavedSerialized(currentSerialized);
       if (stayForMedia) {
         onProductChanged?.(res.data);
         setActiveTab("media");
@@ -503,30 +577,31 @@ function ProductFormModalContent({
   );
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={activeProductId ? dict.productsFormEditTitle : dict.productsFormCreateTitle}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-3 md:p-6 backdrop-blur-xs"
-    >
-      <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl">
-        {/* Encabezado */}
-        <div className="flex items-center justify-between border-b border-[var(--dsn-border)] px-5 py-4">
-          <div className="flex items-center gap-2.5">
-            <Package className="h-5 w-5 text-[var(--dsn-accent)]" />
-            <h3 className="text-base font-bold text-[var(--dsn-text)]">
-              {activeProductId ? dict.productsFormEditTitle : dict.productsFormCreateTitle}
-            </h3>
+    <>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={activeProductId ? dict.productsFormEditTitle : dict.productsFormCreateTitle}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-3 md:p-6 backdrop-blur-xs"
+      >
+        <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl">
+          {/* Encabezado */}
+          <div className="flex items-center justify-between border-b border-[var(--dsn-border)] px-5 py-4">
+            <div className="flex items-center gap-2.5">
+              <Package className="h-5 w-5 text-[var(--dsn-accent)]" />
+              <h3 className="text-base font-bold text-[var(--dsn-text)]">
+                {activeProductId ? dict.productsFormEditTitle : dict.productsFormCreateTitle}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={handleAttemptClose}
+              aria-label={dict.productsCloseModal}
+              className="rounded-lg p-1.5 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={dict.productsCloseModal}
-            className="rounded-lg p-1.5 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
 
         {/* Pestañas */}
         <div
@@ -555,7 +630,7 @@ function ProductFormModalContent({
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {loadingDetail && (
             <div className="py-10 text-center text-xs text-[var(--dsn-text-secondary)]">
-              Cargando detalles del producto...
+              {dict.productsLoadingForm}
             </div>
           )}
 
@@ -1355,7 +1430,7 @@ function ProductFormModalContent({
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--dsn-border)] px-5 py-3.5">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleAttemptClose}
             className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors"
           >
             {dict.productsCancelAction}
@@ -1371,5 +1446,27 @@ function ProductFormModalContent({
         </div>
       </div>
     </div>
+
+    <ConfirmationModal
+      isOpen={discardConfirmOpen}
+      onClose={() => setDiscardConfirmOpen(false)}
+      onConfirm={() => {
+        setDiscardConfirmOpen(false);
+        onClose();
+      }}
+      title={dict.saveBarModalTitle}
+      subtitle={dict.saveBarModalSubtitle}
+      variant="warning"
+      details={[
+        {
+          label: dict.saveBarModalDetailSection,
+          value: activeProductId ? dict.productsFormEditTitle : dict.productsFormCreateTitle,
+        },
+      ]}
+      warningMessage={dict.saveBarModalWarning}
+      confirmText={dict.saveBarModalConfirmDiscard}
+      cancelText={dict.saveBarModalKeepEditing}
+    />
+  </>
   );
 }

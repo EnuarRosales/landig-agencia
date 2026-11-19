@@ -8,7 +8,7 @@ import {
   type TenantProfileDto,
 } from "@mocter/domain";
 import { env } from "@/env";
-import { resolveActiveLocale } from "@/lib/i18n";
+import { resolvePortalPageLocale } from "@/lib/resolve-page-locale";
 import { ProfileView } from "./profile-view";
 
 export const dynamic = "force-dynamic";
@@ -25,12 +25,19 @@ export default async function WorkspaceProfilePage() {
     cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value
   )?.trim();
 
+  const cookieLocale = cookieStore.get("mocter_locale")?.value ?? null;
+  const acceptLanguage = requestHeaders.get("accept-language");
+
   let initialProfile: TenantProfileDto | null = null;
   let initialChannels: TenantPaymentChannelDto[] = [];
   let readOnly = true;
+  let context = null;
 
   if (sid) {
-    const context = await resolveAuthenticatedPortalContext(sid);
+    context = await resolveAuthenticatedPortalContext(sid, {
+      browserAcceptLanguage: acceptLanguage,
+      cookieLocale,
+    });
     if (context && context.activeClient?.id) {
       readOnly = !isTenantProfileWriterRole(context.role, context.effectiveRoles);
 
@@ -48,10 +55,11 @@ export default async function WorkspaceProfilePage() {
     }
   }
 
-  const locale = resolveActiveLocale({
-    userLocale: cookieStore.get("mocter_locale")?.value ?? null,
+  const locale = resolvePortalPageLocale({
+    context,
+    cookieLocale,
     tenantLocale: initialProfile?.locale ?? null,
-    browserAcceptLanguage: requestHeaders.get("accept-language"),
+    acceptLanguage,
   });
 
   return (

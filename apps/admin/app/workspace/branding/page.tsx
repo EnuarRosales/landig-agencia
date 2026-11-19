@@ -1,11 +1,13 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   ALLOWED_WHITE_LABEL_FONTS,
   getWhiteLabelService,
   resolveAuthenticatedPortalContext,
 } from "@mocter/domain";
+import { env } from "@/env";
 import { siteConfig } from "@/config/site";
+import { resolvePortalPageLocale } from "@/lib/resolve-page-locale";
 import { WorkspaceBrandingView } from "./branding-view";
 
 export const dynamic = "force-dynamic";
@@ -26,21 +28,32 @@ function resolveCnameTarget(adminUrl: string): string {
  * Página del módulo de Identidad y Marca Blanca (`/workspace/branding`).
  */
 export default async function WorkspaceBrandingPage() {
-  const cookieStore = await cookies();
-  const isProduction = process.env.NODE_ENV === "production";
+  const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
+  const isProduction = env.NODE_ENV === "production";
   const sidCookieName = isProduction ? "__Host-mocter_sid" : "mocter_sid";
   const sid = (
     cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value
   )?.trim();
+  const cookieLocale = cookieStore.get("mocter_locale")?.value ?? null;
+  const acceptLanguage = headerStore.get("accept-language");
 
   if (!sid) {
     redirect("/es/login");
   }
 
-  const context = await resolveAuthenticatedPortalContext(sid);
+  const context = await resolveAuthenticatedPortalContext(sid, {
+    browserAcceptLanguage: acceptLanguage,
+    cookieLocale,
+  });
   if (!context || !context.activeClient?.id) {
     redirect("/es/login");
   }
+
+  const locale = resolvePortalPageLocale({
+    context,
+    cookieLocale,
+    acceptLanguage,
+  });
 
   const whiteLabelService = getWhiteLabelService();
   const [mode, brandingRes] = await Promise.all([
@@ -58,7 +71,7 @@ export default async function WorkspaceBrandingPage() {
 
   return (
     <WorkspaceBrandingView
-      locale={context.activeClient.locale === "en" ? "en" : "es"}
+      locale={locale}
       isOwner={isOwner}
       tenantName={context.activeClient.displayName || context.activeClient.name || "Mi Comercio"}
       tenantSlug={context.activeClient.slug || "comercio"}

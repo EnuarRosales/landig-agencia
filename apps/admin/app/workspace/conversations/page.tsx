@@ -5,7 +5,7 @@ import {
   type WorkspaceConversationsPageState,
 } from "@mocter/domain";
 import { env } from "@/env";
-import { resolveActiveLocale } from "@/lib/i18n";
+import { resolvePortalPageLocale } from "@/lib/resolve-page-locale";
 import { WorkspaceConversationsView } from "./conversations-view";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +24,11 @@ export default async function WorkspaceConversationsPage() {
     cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value
   )?.trim();
 
+  const cookieLocale = cookieStore.get("mocter_locale")?.value ?? null;
+  const acceptLanguage = headerStore.get("accept-language");
   const requestId = headerStore.get("x-request-id") ?? undefined;
   let tenantLocale: string | null = null;
+  let context = null;
   let initialState: WorkspaceConversationsPageState = {
     status: "no_capability",
     accountId: null,
@@ -33,7 +36,10 @@ export default async function WorkspaceConversationsPage() {
   };
 
   if (sid) {
-    const context = await resolveAuthenticatedPortalContext(sid);
+    context = await resolveAuthenticatedPortalContext(sid, {
+      browserAcceptLanguage: acceptLanguage,
+      cookieLocale,
+    });
     if (context?.user) {
       tenantLocale = context.activeClient?.locale ?? null;
       initialState = await tenantChatwootEmbedService.resolveWorkspacePageState({
@@ -46,10 +52,11 @@ export default async function WorkspaceConversationsPage() {
     }
   }
 
-  const locale = resolveActiveLocale({
-    userLocale: cookieStore.get("mocter_locale")?.value,
+  const locale = resolvePortalPageLocale({
+    context,
+    cookieLocale,
     tenantLocale,
-    browserAcceptLanguage: headerStore.get("accept-language"),
+    acceptLanguage,
   });
 
   return (

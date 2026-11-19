@@ -24,6 +24,7 @@ import type {
   WhiteLabelCapabilityMode,
 } from "@mocter/domain";
 import { ConfirmationModal } from "@/components/confirmation-modal";
+import { FormSaveBar } from "@/components/ui/form-save-bar";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 export interface WorkspaceBrandingDto {
@@ -249,6 +250,44 @@ export function WorkspaceBrandingView({
   const canEditPalette = isOwner && initialMode !== "none";
   const canEditFull = isOwner && initialMode === "completa";
 
+  const currentSnapshot = useMemo(
+    () => ({
+      palette,
+      brandName,
+      logoUrl,
+      faviconUrl,
+      customFont,
+      customDomain,
+      removeMocterBranding,
+    }),
+    [palette, brandName, logoUrl, faviconUrl, customFont, customDomain, removeMocterBranding],
+  );
+  const [savedSnapshot, setSavedSnapshot] = useState(() => currentSnapshot);
+
+  const dirtySectionsCount =
+    (JSON.stringify(currentSnapshot.palette) !== JSON.stringify(savedSnapshot.palette) ? 1 : 0) +
+    (currentSnapshot.brandName !== savedSnapshot.brandName ||
+    currentSnapshot.logoUrl !== savedSnapshot.logoUrl ||
+    currentSnapshot.faviconUrl !== savedSnapshot.faviconUrl ||
+    currentSnapshot.customFont !== savedSnapshot.customFont ||
+    currentSnapshot.customDomain !== savedSnapshot.customDomain ||
+    currentSnapshot.removeMocterBranding !== savedSnapshot.removeMocterBranding
+      ? 1
+      : 0);
+  const isDirty = canEditPalette && dirtySectionsCount > 0;
+
+  function handleDiscardBranding() {
+    setPalette(savedSnapshot.palette);
+    setBrandName(savedSnapshot.brandName);
+    setLogoUrl(savedSnapshot.logoUrl);
+    setFaviconUrl(savedSnapshot.faviconUrl);
+    setCustomFont(savedSnapshot.customFont);
+    setCustomDomain(savedSnapshot.customDomain);
+    setRemoveMocterBranding(savedSnapshot.removeMocterBranding);
+    setFeedbackError(null);
+    setFeedbackSuccess(null);
+  }
+
   if (initialMode === "none") {
     return (
       <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
@@ -296,8 +335,8 @@ export function WorkspaceBrandingView({
     );
   }
 
-  async function handleSaveBranding(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSaveBranding(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!canEditPalette || !allContrastsValid) return;
 
     setSaving(true);
@@ -330,15 +369,16 @@ export function WorkspaceBrandingView({
       const json = await res.json().catch(() => null);
       if (!res.ok) {
         setFeedbackError(
-          json?.detail || json?.error || "No fue posible guardar la configuración de marca.",
+          json?.detail || json?.error || dict.commonNetworkError,
         );
         return;
       }
 
+      setSavedSnapshot({ ...currentSnapshot });
       setFeedbackSuccess(dict.brandingSaveSuccess);
       router.refresh();
     } catch {
-      setFeedbackError("Error de red al guardar la configuración de marca blanca.");
+      setFeedbackError(dict.commonNetworkError);
     } finally {
       setSaving(false);
     }
@@ -365,21 +405,23 @@ export function WorkspaceBrandingView({
       const json = await res.json().catch(() => null);
       if (!res.ok) {
         setFeedbackError(
-          json?.detail || json?.error || "No fue posible cargar el archivo visual.",
+          json?.detail || json?.error || dict.commonNetworkError,
         );
         return;
       }
 
       if (kind === "logo" && json?.data?.url) {
         setLogoUrl(json.data.url);
+        setSavedSnapshot((prev) => ({ ...prev, logoUrl: json.data.url }));
       } else if (kind === "favicon" && json?.data?.url) {
         setFaviconUrl(json.data.url);
+        setSavedSnapshot((prev) => ({ ...prev, faviconUrl: json.data.url }));
       }
 
       setFeedbackSuccess(dict.brandingAssetUploadedSuccess);
       router.refresh();
     } catch {
-      setFeedbackError("Error de red al subir el activo visual.");
+      setFeedbackError(dict.commonNetworkError);
     } finally {
       setUploadingKind(null);
       if (kind === "logo" && logoInputRef.current) logoInputRef.current.value = "";
@@ -400,23 +442,34 @@ export function WorkspaceBrandingView({
       const json = await res.json().catch(() => null);
       if (!res.ok) {
         setFeedbackError(
-          json?.detail || json?.error || "No fue posible restaurar la configuración por defecto.",
+          json?.detail || json?.error || dict.commonNetworkError,
         );
         return;
       }
 
+      const resetFont = allowedFonts[0] || "Inter";
+      const resetLogo = initialLogoUrl || "";
       setPalette(DEFAULT_PALETTE);
       setBrandName("");
-      setLogoUrl(initialLogoUrl || "");
+      setLogoUrl(resetLogo);
       setFaviconUrl("");
       setCustomDomain("");
-      setCustomFont(allowedFonts[0] || "Inter");
+      setCustomFont(resetFont);
       setRemoveMocterBranding(false);
+      setSavedSnapshot({
+        palette: DEFAULT_PALETTE,
+        brandName: "",
+        logoUrl: resetLogo,
+        faviconUrl: "",
+        customDomain: "",
+        customFont: resetFont,
+        removeMocterBranding: false,
+      });
       setResetModalOpen(false);
       setFeedbackSuccess(dict.brandingResetSuccess);
       router.refresh();
     } catch {
-      setFeedbackError("Error de red al restaurar la configuración visual.");
+      setFeedbackError(dict.commonNetworkError);
     } finally {
       setResetting(false);
     }
@@ -445,14 +498,29 @@ export function WorkspaceBrandingView({
         </div>
 
         {canEditPalette && (
-          <button
-            type="button"
-            onClick={() => setResetModalOpen(true)}
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors shrink-0"
-          >
-            <RotateCcw className="h-4 w-4" />
-            <span>{dict.brandingResetCta}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setResetModalOpen(true)}
+              className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span>{dict.brandingResetCta}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSaveBranding()}
+              disabled={saving || !allContrastsValid}
+              className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              <span>{saving ? dict.saveBarSavingCta : dict.saveBarSaveCta}</span>
+            </button>
+          </div>
         )}
       </header>
 
@@ -844,6 +912,20 @@ export function WorkspaceBrandingView({
                 <span>{saving ? dict.brandingSaving : dict.brandingSaveCta}</span>
               </button>
             </div>
+          )}
+
+          {canEditPalette && (
+            <FormSaveBar
+              isDirty={isDirty}
+              dirtySectionsCount={dirtySectionsCount}
+              sectionName={dict.brandingTitle}
+              onSave={() => void handleSaveBranding()}
+              onDiscard={handleDiscardBranding}
+              locale={locale}
+              saving={saving}
+              disabled={!allContrastsValid}
+              submitType="button"
+            />
           )}
         </form>
 

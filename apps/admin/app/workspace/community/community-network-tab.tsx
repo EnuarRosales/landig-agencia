@@ -97,7 +97,7 @@ export function CommunityNetworkTab({
         locale === "en" ? "Joined community successfully!" : "Te uniste a la comunidad correctamente.",
       );
     } catch {
-      onErrorToast("Error de red al validar código.");
+      onErrorToast(dict.networkErrorValidateCode);
     } finally {
       setJoiningCode(false);
     }
@@ -118,7 +118,7 @@ export function CommunityNetworkTab({
       await onDataMutated();
       onSuccessToast(decision === "accepted" ? dict.acceptCta : dict.rejectCta);
     } catch {
-      onErrorToast("Error de red al procesar invitación.");
+      onErrorToast(dict.networkErrorProcessInvite);
     }
   }
 
@@ -143,7 +143,7 @@ export function CommunityNetworkTab({
           : dict.rejectCta,
       );
     } catch {
-      onErrorToast("Error de red al responder promoción.");
+      onErrorToast(dict.networkErrorRespondPromotion);
     }
   }
 
@@ -160,7 +160,7 @@ export function CommunityNetworkTab({
       await onDataMutated();
       onSuccessToast(dict.requestPendingBadge);
     } catch {
-      onErrorToast("Error de red al solicitar acceso.");
+      onErrorToast(dict.networkErrorRequestJoin);
     }
   }
 
@@ -190,7 +190,7 @@ export function CommunityNetworkTab({
       await onDataMutated();
       onSuccessToast(locale === "en" ? "Invitation sent." : "Invitación enviada correctamente.");
     } catch {
-      onErrorToast("Error de red al enviar invitación.");
+      onErrorToast(dict.networkErrorSendInvite);
     }
   }
 
@@ -209,7 +209,7 @@ export function CommunityNetworkTab({
       await onDataMutated();
       onSuccessToast(decision === "accepted" ? dict.acceptCta : dict.rejectCta);
     } catch {
-      onErrorToast("Error de red al revisar solicitud.");
+      onErrorToast(dict.networkErrorReviewRequest);
     }
   }
 
@@ -233,7 +233,7 @@ export function CommunityNetworkTab({
           : "Propuesta de co-líder enviada para aceptación del comercio.",
       );
     } catch {
-      onErrorToast("Error de red al proponer promoción.");
+      onErrorToast(dict.networkErrorPromote);
     }
   }
 
@@ -252,7 +252,7 @@ export function CommunityNetworkTab({
       await onDataMutated();
       onSuccessToast(locale === "en" ? "Invite code regenerated." : "Código de invitación regenerado.");
     } catch {
-      onErrorToast("Error de red al regenerar código.");
+      onErrorToast(dict.networkErrorRegenerateCode);
     }
   }
 
@@ -292,7 +292,7 @@ export function CommunityNetworkTab({
       await onDataMutated();
       onSuccessToast(locale === "en" ? "Settings saved." : "Configuración guardada.");
     } catch {
-      onErrorToast("Error de red al guardar ajustes.");
+      onErrorToast(dict.networkErrorSaveSettings);
     } finally {
       setSavingSettings(false);
     }

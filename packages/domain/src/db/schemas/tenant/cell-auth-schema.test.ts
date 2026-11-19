@@ -84,6 +84,10 @@ describe("ADM-001 T-04 · Separación de las dos líneas de migración Drizzle",
       "0018_spec10_spec20_backfill_rls_comments",
       "0019_cell_phase8_orders_spec11",
       "0020_cell_phase8_orders_spec11_rls_comments",
+      "0021_cell_phase9_team_spec12",
+      "0022_cell_phase9_team_spec12_comments",
+      "0023_cell_phase10_user_preferred_locale_spec17",
+      "0024_cell_phase10_user_preferred_locale_comments",
     ]);
     for (const tag of cellTags) {
       expect(controlTags).not.toContain(tag);
@@ -133,6 +137,7 @@ describe("AUTH-001 T-04 · Esquema de identidad en celda (admin.users y admin.id
         "status",
         "display_name",
         "avatar_url",
+        "preferred_locale",
         "created_at",
         "updated_at",
         "created_by",

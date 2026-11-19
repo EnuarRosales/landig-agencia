@@ -19,11 +19,16 @@ import {
 import type {
   WorkspaceBillingCapabilityItem,
   WorkspaceBillingDto,
+  WorkspaceBillingInvoiceItemDto,
   WorkspaceBillingQuotaItem,
 } from "@mocter/domain";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { formatStorageBytes } from "@/components/catalog-quota-banner";
 import { BillingCheckoutPanel } from "@/components/billing-checkout-panel";
+import {
+  WorkspaceDataTable,
+  type WorkspaceTableColumn,
+} from "@/components/ui/workspace-data-table";
 
 interface BillingViewProps {
   initialBilling: WorkspaceBillingDto | null;
@@ -212,10 +217,10 @@ export function PlanCapabilitiesMatrix({
   const dict = getAdminDictionary(locale).workspace;
 
   const groupLabels: Record<WorkspaceBillingCapabilityItem["category"], string> = {
-    channels: locale === "en" ? "Service Channels" : "Canales de Atención",
-    automation: locale === "en" ? "Automation & Campaigns" : "Automatización y Campañas",
-    ai: locale === "en" ? "Artificial Intelligence" : "Inteligencia Artificial",
-    team: locale === "en" ? "Team & Operations" : "Equipo y Operación",
+    channels: dict.billingCapabilitiesChannels,
+    automation: dict.billingCapabilitiesAutomation,
+    ai: dict.billingCapabilitiesAi,
+    team: dict.billingCapabilitiesTeam,
   };
 
   const groups = (["channels", "ai", "automation", "team"] as const)
@@ -397,12 +402,12 @@ export function BillingView({ initialBilling, locale = "es", isOwner = true }: B
           <div className="text-left sm:text-right">
             <p className="font-mono text-xl font-bold text-[var(--dsn-text)]">
               {billing.plan.priceMonthlyCents === 0
-                ? locale === "en" ? "Free" : "Gratuito"
+                ? dict.billingFreeLabel
                 : formatCurrencyCents(billing.plan.priceMonthlyCents, billing.plan.currency)}
             </p>
             {billing.plan.priceMonthlyCents > 0 && (
               <p className="text-[11px] text-[var(--dsn-text-secondary)]">
-                {locale === "en" ? "per month" : "por mes"}
+                {dict.billingPerMonthLabel}
               </p>
             )}
           </div>
@@ -435,6 +440,141 @@ export function BillingView({ initialBilling, locale = "es", isOwner = true }: B
           {dict.billingCapabilitiesTitle}
         </h2>
         <PlanCapabilitiesMatrix capabilityDetails={billing.capabilityDetails} locale={locale} />
+      </section>
+
+      {/* Historial de Facturas */}
+      <section className="space-y-3" data-testid="billing-invoices-section">
+        <div>
+          <h2 className="text-sm font-semibold text-[var(--dsn-text)]">
+            {dict.billingInvoicesTitle}
+          </h2>
+          <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
+            {dict.billingInvoicesSubtitle}
+          </p>
+        </div>
+
+        <WorkspaceDataTable<WorkspaceBillingInvoiceItemDto>
+          testId="billing-invoices-table"
+          locale={locale}
+          data={billing.invoices ?? []}
+          defaultPageSize={10}
+          searchKeys={["invoiceNumber", "status"]}
+          searchPlaceholder={dict.billingInvoicesSearchPlaceholder}
+          getRowKey={(inv) => inv.id}
+          emptyState={{
+            icon: <FileText className="h-8 w-8 text-[var(--dsn-text-secondary)] opacity-60" />,
+            title: dict.billingInvoicesEmpty,
+          }}
+          columns={
+            [
+              {
+                key: "invoiceNumber",
+                header: dict.billingInvoicesColNumber,
+                sortable: true,
+                sortValue: (inv) => inv.invoiceNumber,
+                renderCell: (inv) => (
+                  <span className="font-mono font-semibold text-[var(--dsn-text)]">
+                    {inv.invoiceNumber}
+                  </span>
+                ),
+              },
+              {
+                key: "issuedAt",
+                header: dict.billingInvoicesColIssuedAt,
+                sortable: true,
+                sortValue: (inv) => inv.issuedAt,
+                renderCell: (inv) => (
+                  <span className="font-mono text-xs text-[var(--dsn-text-secondary)]">
+                    {inv.issuedAt
+                      ? new Date(inv.issuedAt).toLocaleDateString(locale === "en" ? "en-US" : "es-CO")
+                      : "—"}
+                  </span>
+                ),
+              },
+              {
+                key: "dueAt",
+                header: dict.billingInvoicesColDueAt,
+                sortable: true,
+                sortValue: (inv) => inv.dueAt ?? "",
+                renderCell: (inv) => (
+                  <span className="font-mono text-xs text-[var(--dsn-text-secondary)]">
+                    {inv.dueAt
+                      ? new Date(inv.dueAt).toLocaleDateString(locale === "en" ? "en-US" : "es-CO")
+                      : "—"}
+                  </span>
+                ),
+              },
+              {
+                key: "subtotalCents",
+                header: dict.billingInvoicesColSubtotal,
+                sortable: true,
+                isNumeric: true,
+                align: "right",
+                sortValue: (inv) => inv.subtotalCents,
+                renderCell: (inv) => formatCurrencyCents(inv.subtotalCents, inv.currency),
+              },
+              {
+                key: "creditCents",
+                header: dict.billingInvoicesColCredits,
+                isNumeric: true,
+                align: "right",
+                renderCell: (inv) =>
+                  inv.creditCents > 0
+                    ? `-${formatCurrencyCents(inv.creditCents, inv.currency)}`
+                    : "—",
+              },
+              {
+                key: "totalCents",
+                header: dict.billingInvoicesColTotal,
+                sortable: true,
+                isNumeric: true,
+                align: "right",
+                sortValue: (inv) => inv.totalCents,
+                renderCell: (inv) => (
+                  <span className="font-semibold text-[var(--dsn-text)]">
+                    {formatCurrencyCents(inv.totalCents, inv.currency)}
+                  </span>
+                ),
+              },
+              {
+                key: "status",
+                header: dict.billingInvoicesColStatus,
+                sortable: true,
+                sortValue: (inv) => inv.status,
+                renderCell: (inv) => {
+                  const statusMap: Record<string, { label: string; cls: string }> = {
+                    paid: {
+                      label: dict.billingInvoicesStatusPaid,
+                      cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+                    },
+                    issued: {
+                      label: dict.billingInvoicesStatusIssued,
+                      cls: "border-amber-500/30 bg-amber-500/10 text-amber-400",
+                    },
+                    draft: {
+                      label: dict.billingInvoicesStatusDraft,
+                      cls: "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]",
+                    },
+                    past_due: {
+                      label: dict.billingInvoicesStatusPastDue,
+                      cls: "border-rose-500/30 bg-rose-500/10 text-rose-400",
+                    },
+                    void: {
+                      label: dict.billingInvoicesStatusVoid,
+                      cls: "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]",
+                    },
+                  };
+                  const st = statusMap[inv.status] ?? statusMap.draft;
+                  return (
+                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>
+                      {st.label}
+                    </span>
+                  );
+                },
+              },
+            ] satisfies WorkspaceTableColumn<WorkspaceBillingInvoiceItemDto>[]
+          }
+        />
       </section>
 
       {/* Renovación, Cambio de Plan, Prueba y Pago Bre-B */}

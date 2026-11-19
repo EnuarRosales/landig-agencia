@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   getReferralsService,
@@ -6,6 +6,7 @@ import {
   type TenantReferralsOverviewDto,
 } from "@mocter/domain";
 import { env } from "@/env";
+import { resolvePortalPageLocale } from "@/lib/resolve-page-locale";
 import { TenantReferralsView } from "./referrals-view";
 
 export const dynamic = "force-dynamic";
@@ -17,20 +18,24 @@ export const dynamic = "force-dynamic";
  * son redirigidos al tablero principal del comercio.
  */
 export default async function WorkspaceReferralsPage() {
-  const cookieStore = await cookies();
-  const isProduction = process.env.NODE_ENV === "production";
+  const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
+  const isProduction = env.NODE_ENV === "production";
   const sidCookieName = isProduction ? "__Host-mocter_sid" : "mocter_sid";
   const sid = (
     cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value
   )?.trim();
+  const cookieLocale = cookieStore.get("mocter_locale")?.value ?? null;
+  const acceptLanguage = headerStore.get("accept-language");
 
   let initialData: TenantReferralsOverviewDto | null = null;
-  let locale: "es" | "en" = "es";
+  let context = null;
 
   if (sid) {
-    const context = await resolveAuthenticatedPortalContext(sid);
+    context = await resolveAuthenticatedPortalContext(sid, {
+      browserAcceptLanguage: acceptLanguage,
+      cookieLocale,
+    });
     if (context) {
-      locale = context.activeClient?.locale === "en" ? "en" : "es";
       const isOwner =
         context.role === "tenant_owner" ||
         context.role === "tenancy_owner" ||
@@ -54,6 +59,12 @@ export default async function WorkspaceReferralsPage() {
       }
     }
   }
+
+  const locale = resolvePortalPageLocale({
+    context,
+    cookieLocale,
+    acceptLanguage,
+  });
 
   return <TenantReferralsView initialData={initialData} locale={locale} />;
 }

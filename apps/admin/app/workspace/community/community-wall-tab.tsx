@@ -87,7 +87,7 @@ export function CommunityWallTab({
       .then(async (res) => {
         if (!active) return;
         if (!res.ok) {
-          onErrorToast(await readApiError(res, "Error al cargar publicaciones."));
+          onErrorToast(await readApiError(res, dict.networkErrorLoadPosts));
           return;
         }
         const json = await res.json();
@@ -96,7 +96,7 @@ export function CommunityWallTab({
         }
       })
       .catch(() => {
-        if (active) onErrorToast("Error de red al cargar publicaciones.");
+        if (active) onErrorToast(dict.networkErrorLoadPosts);
       })
       .finally(() => {
         if (active) setLoadingPosts(false);
@@ -105,7 +105,7 @@ export function CommunityWallTab({
     return () => {
       active = false;
     };
-  }, [selectedOrgId, refreshTick, onErrorToast]);
+  }, [selectedOrgId, refreshTick, onErrorToast, dict.networkErrorLoadPosts]);
 
   useEffect(() => {
     let active = true;
@@ -157,7 +157,7 @@ export function CommunityWallTab({
             : "Mensaje publicado en el muro.",
       );
     } catch {
-      onErrorToast("Error de red al publicar.");
+      onErrorToast(dict.networkErrorPublishPost);
     } finally {
       setPublishing(false);
     }
@@ -180,7 +180,7 @@ export function CommunityWallTab({
         locale === "en" ? "Moderation updated." : "Estado de publicación actualizado.",
       );
     } catch {
-      onErrorToast("Error de red al moderar publicación.");
+      onErrorToast(dict.networkErrorModeratePost);
     }
   }
 
@@ -209,7 +209,7 @@ export function CommunityWallTab({
         locale === "en" ? "Privacy profile updated." : "Privacidad comunitaria actualizada.",
       );
     } catch {
-      onErrorToast("Error de red al guardar privacidad.");
+      onErrorToast(dict.networkErrorSavePrivacy);
     } finally {
       setSavingProfile(false);
     }

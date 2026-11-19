@@ -10,6 +10,7 @@ import type {
 } from "@mocter/domain";
 import { workspaceFetch } from "@/lib/workspace-client";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
+import { FormSaveBar } from "@/components/ui/form-save-bar";
 import {
   applyRecommendedClientGeneralPromptTemplate,
   buildClientDefaultBusinessHours,
@@ -30,6 +31,68 @@ export interface BotViewProps {
 }
 
 type BotTabKey = "identity" | "policies" | "messages" | "classifier";
+
+interface BotFormSnapshot {
+  name: string;
+  status: "draft" | "active" | "paused";
+  objective: string;
+  presetId: string | null;
+  toneId: string | null;
+  persona: string;
+  instructions: string;
+  allowedTopics: string;
+  excludedTopics: string;
+  handoffTriggersText: string;
+  responseLanguage: "es" | "en" | "auto";
+  answerPolicy: "solo_conocimiento" | "libre";
+  maxTurns: number;
+  maxMessagesPerContact: number;
+  remindersEnabled: boolean;
+  warrantyPolicy: string;
+  returnsPolicy: string;
+  shippingPolicy: ShippingPolicyUi;
+  faqs: Array<{ question: string; answer: string }>;
+  defaultMessages: TenantBotDefaultMessages;
+  businessHours: TenantBusinessHours;
+  labels: EditableBotLabel[];
+  classifierPrompt: string;
+}
+
+function serializeBotSections(s: BotFormSnapshot) {
+  return {
+    identity: JSON.stringify({
+      name: s.name,
+      status: s.status,
+      objective: s.objective,
+      presetId: s.presetId,
+      toneId: s.toneId,
+      persona: s.persona,
+      instructions: s.instructions,
+      allowedTopics: s.allowedTopics,
+      excludedTopics: s.excludedTopics,
+      handoffTriggersText: s.handoffTriggersText,
+      responseLanguage: s.responseLanguage,
+      answerPolicy: s.answerPolicy,
+      maxTurns: s.maxTurns,
+      maxMessagesPerContact: s.maxMessagesPerContact,
+    }),
+    policies: JSON.stringify({
+      remindersEnabled: s.remindersEnabled,
+      warrantyPolicy: s.warrantyPolicy,
+      returnsPolicy: s.returnsPolicy,
+      shippingPolicy: s.shippingPolicy,
+      faqs: s.faqs,
+    }),
+    messages: JSON.stringify({
+      defaultMessages: s.defaultMessages,
+      businessHours: s.businessHours,
+    }),
+    classifier: JSON.stringify({
+      labels: s.labels,
+      classifierPrompt: s.classifierPrompt,
+    }),
+  };
+}
 
 function normalizeShippingPolicyUi(raw: unknown): ShippingPolicyUi {
   if (!raw || typeof raw !== "object") {
@@ -215,6 +278,105 @@ export function BotView({
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const currentSnapshot = useMemo<BotFormSnapshot>(
+    () => ({
+      name,
+      status,
+      objective,
+      presetId,
+      toneId,
+      persona,
+      instructions,
+      allowedTopics,
+      excludedTopics,
+      handoffTriggersText,
+      responseLanguage,
+      answerPolicy,
+      maxTurns,
+      maxMessagesPerContact,
+      remindersEnabled,
+      warrantyPolicy,
+      returnsPolicy,
+      shippingPolicy,
+      faqs,
+      defaultMessages,
+      businessHours,
+      labels,
+      classifierPrompt,
+    }),
+    [
+      name,
+      status,
+      objective,
+      presetId,
+      toneId,
+      persona,
+      instructions,
+      allowedTopics,
+      excludedTopics,
+      handoffTriggersText,
+      responseLanguage,
+      answerPolicy,
+      maxTurns,
+      maxMessagesPerContact,
+      remindersEnabled,
+      warrantyPolicy,
+      returnsPolicy,
+      shippingPolicy,
+      faqs,
+      defaultMessages,
+      businessHours,
+      labels,
+      classifierPrompt,
+    ],
+  );
+
+  const [savedSnapshot, setSavedSnapshot] = useState<BotFormSnapshot>(() => currentSnapshot);
+
+  const currentSections = useMemo(
+    () => serializeBotSections(currentSnapshot),
+    [currentSnapshot],
+  );
+  const savedSections = useMemo(
+    () => serializeBotSections(savedSnapshot),
+    [savedSnapshot],
+  );
+
+  const dirtySectionsCount =
+    (currentSections.identity !== savedSections.identity ? 1 : 0) +
+    (currentSections.policies !== savedSections.policies ? 1 : 0) +
+    (currentSections.messages !== savedSections.messages ? 1 : 0) +
+    (currentSections.classifier !== savedSections.classifier ? 1 : 0);
+  const isDirty = !readOnly && dirtySectionsCount > 0;
+
+  function handleDiscardChanges() {
+    setName(savedSnapshot.name);
+    setStatus(savedSnapshot.status);
+    setObjective(savedSnapshot.objective);
+    setPresetId(savedSnapshot.presetId);
+    setToneId(savedSnapshot.toneId);
+    setPersona(savedSnapshot.persona);
+    setInstructions(savedSnapshot.instructions);
+    setAllowedTopics(savedSnapshot.allowedTopics);
+    setExcludedTopics(savedSnapshot.excludedTopics);
+    setHandoffTriggersText(savedSnapshot.handoffTriggersText);
+    setResponseLanguage(savedSnapshot.responseLanguage);
+    setAnswerPolicy(savedSnapshot.answerPolicy);
+    setMaxTurns(savedSnapshot.maxTurns);
+    setMaxMessagesPerContact(savedSnapshot.maxMessagesPerContact);
+    setRemindersEnabled(savedSnapshot.remindersEnabled);
+    setWarrantyPolicy(savedSnapshot.warrantyPolicy);
+    setReturnsPolicy(savedSnapshot.returnsPolicy);
+    setShippingPolicy(savedSnapshot.shippingPolicy);
+    setFaqs(savedSnapshot.faqs);
+    setDefaultMessages(savedSnapshot.defaultMessages);
+    setBusinessHours(savedSnapshot.businessHours);
+    setLabels(savedSnapshot.labels);
+    setClassifierPrompt(savedSnapshot.classifierPrompt);
+    setError(null);
+    setSuccess(false);
+  }
+
   function handleInsertIdealTemplate() {
     setInstructions((prev) => applyRecommendedClientGeneralPromptTemplate(prev, promptContext));
   }
@@ -329,6 +491,10 @@ export function BotView({
         setLabels(res.data.labels);
       }
 
+      setSavedSnapshot({
+        ...currentSnapshot,
+        labels: res.data?.labels ?? currentSnapshot.labels,
+      });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch {
@@ -519,6 +685,19 @@ export function BotView({
             classifierPrompt={classifierPrompt}
             onClassifierPromptChange={setClassifierPrompt}
             promptContext={promptContext}
+          />
+        )}
+
+        {!readOnly && (
+          <FormSaveBar
+            isDirty={isDirty}
+            dirtySectionsCount={dirtySectionsCount}
+            sectionName={dict.botTitle}
+            onSave={() => void handleSave()}
+            onDiscard={handleDiscardChanges}
+            locale={locale}
+            saving={saving}
+            submitType="button"
           />
         )}
       </form>

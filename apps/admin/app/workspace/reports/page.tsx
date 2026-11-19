@@ -1,21 +1,37 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { resolveAuthenticatedPortalContext } from "@mocter/domain";
 import { BarChart3, Lock } from "lucide-react";
 import Link from "next/link";
+import { getAdminDictionary } from "@/lib/i18n";
+import { resolvePortalPageLocale } from "@/lib/resolve-page-locale";
 
 export const dynamic = "force-dynamic";
 
 export default async function WorkspaceReportsPage() {
   const cookieStore = await cookies();
+  const headerStore = await headers();
   const isProduction = process.env.NODE_ENV === "production";
   const sidCookieName = isProduction ? "__Host-mocter_sid" : "mocter_sid";
   const sid = (cookieStore.get(sidCookieName)?.value || cookieStore.get("mocter_sid")?.value)?.trim();
+  const cookieLocale = cookieStore.get("mocter_locale")?.value ?? null;
+  const acceptLanguage = headerStore.get("accept-language");
 
   let hasCapability = false;
+  let context = null;
   if (sid) {
-    const context = await resolveAuthenticatedPortalContext(sid);
+    context = await resolveAuthenticatedPortalContext(sid, {
+      browserAcceptLanguage: acceptLanguage,
+      cookieLocale,
+    });
     hasCapability = !!context?.capabilities?.data_export;
   }
+
+  const locale = resolvePortalPageLocale({
+    context,
+    cookieLocale,
+    acceptLanguage,
+  });
+  const dict = getAdminDictionary(locale).workspace;
 
   if (!hasCapability) {
     return (
@@ -25,17 +41,17 @@ export default async function WorkspaceReportsPage() {
             <Lock className="h-6 w-6" />
           </div>
           <h1 className="text-lg font-bold text-[var(--dsn-text)]">
-            Informes Avanzados Y Exportación No Disponibles
+            {dict.reportsUnavailableTitle}
           </h1>
           <p className="text-xs text-[var(--dsn-text-secondary)] mt-2">
-            La generación de reportes avanzados y exportación analítica de pedidos en Excel requiere un plan comercial superior.
+            {dict.reportsUnavailableDesc}
           </p>
           <div className="mt-6">
             <Link
               href="/workspace/billing"
               className="inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity"
             >
-              <span>Ver Planes Disponibles</span>
+              <span>{dict.reportsViewPlansCta}</span>
             </Link>
           </div>
         </div>
@@ -49,13 +65,13 @@ export default async function WorkspaceReportsPage() {
         <div className="flex items-center gap-2">
           <BarChart3 className="h-5 w-5 text-emerald-400" />
           <h1 className="text-xl font-bold text-[var(--dsn-text)]">
-            Informes Y Analítica De Ventas
+            {dict.reportsTitle}
           </h1>
         </div>
       </header>
       <div className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xs">
         <p className="text-xs text-[var(--dsn-text-secondary)]">
-          Exportación de transacciones y métricas analíticas habilitada.
+          {dict.reportsReadyDesc}
         </p>
       </div>
     </div>

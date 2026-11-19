@@ -1,13 +1,10 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
-  ArrowDownUp,
   Box,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Edit3,
   Eye,
   Layers,
@@ -15,7 +12,6 @@ import {
   Plus,
   Power,
   RefreshCw,
-  Search,
   Trash2,
   UploadCloud,
   X,
@@ -37,6 +33,10 @@ import {
   type CatalogQuotaLimits,
 } from "@/components/catalog-quota-banner";
 import { ConfirmationModal } from "@/components/confirmation-modal";
+import {
+  WorkspaceDataTable,
+  type WorkspaceTableColumn,
+} from "@/components/ui/workspace-data-table";
 import { ProductDetailModal } from "./product-detail-modal";
 import { ProductFormModal, type ProductFormTab } from "./product-form-modal";
 import {
@@ -134,8 +134,7 @@ export function ProductsView({
   const [sortBy, setSortBy] = useState<SortByOption>("createdAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(catalog.pagination?.page ?? 1);
-
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pageSize, setPageSize] = useState<number>(catalog.pagination?.limit ?? 20);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -186,6 +185,7 @@ export function ProductsView({
     compositionType?: ProductCompositionType | "all";
     lowStock?: boolean;
     page?: number;
+    limit?: number;
     sortBy?: SortByOption;
     sortDir?: "asc" | "desc";
   }) {
@@ -195,6 +195,7 @@ export function ProductsView({
     const compVal = overrides?.compositionType ?? compositionFilter;
     const lowStockVal = overrides?.lowStock ?? lowStockOnly;
     const pageVal = overrides?.page ?? page;
+    const limitVal = overrides?.limit ?? pageSize;
     const sortByVal = overrides?.sortBy ?? sortBy;
     const sortDirVal = overrides?.sortDir ?? sortDir;
 
@@ -203,7 +204,7 @@ export function ProductsView({
 
     const params = new URLSearchParams();
     params.set("page", String(pageVal));
-    params.set("limit", String(catalog.pagination.limit || 20));
+    params.set("limit", String(limitVal));
     params.set("sortBy", sortByVal);
     params.set("sortDir", sortDirVal);
 
@@ -240,34 +241,12 @@ export function ProductsView({
 
     setCatalog(res.data);
     setPage(res.data.pagination.page ?? 1);
-  }
-
-  function handleSearchInputChange(nextValue: string) {
-    setSearchInput(nextValue);
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
+    if (res.data.pagination.limit) {
+      setPageSize(res.data.pagination.limit);
     }
-    searchDebounceRef.current = setTimeout(() => {
-      setPage(1);
-      void loadCatalog({ q: nextValue, page: 1 });
-    }, 300);
-  }
-
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
-      searchDebounceRef.current = null;
-    }
-    setPage(1);
-    void loadCatalog({ q: searchInput, page: 1 });
   }
 
   function handleResetFilters() {
-    if (searchDebounceRef.current) {
-      clearTimeout(searchDebounceRef.current);
-      searchDebounceRef.current = null;
-    }
     setSearchInput("");
     setStatusFilter("all");
     setKindFilter("all");
@@ -666,22 +645,58 @@ export function ProductsView({
         </button>
       </div>
 
-      {/* Barra de Búsqueda, Filtros y Ordenamiento */}
-      <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 space-y-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <form onSubmit={handleSearchSubmit} className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--dsn-text-secondary)]" />
-            <input
-              type="search"
-              value={searchInput}
-              onChange={(e) => handleSearchInputChange(e.target.value)}
-              placeholder={dict.productsSearchPlaceholder}
-              aria-label={dict.productsSearchPlaceholder}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] py-2 pl-9 pr-3 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-            />
-          </form>
-
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+      {/* Tabla Estandarizada de Productos (<WorkspaceDataTable />) */}
+      <WorkspaceDataTable<ProductListItemDto>
+        testId="products-catalog-table"
+        locale={locale}
+        data={catalog.items}
+        getRowKey={(item) => item.id}
+        page={catalog.pagination.page}
+        pageSize={pageSize}
+        totalItems={catalog.pagination.total}
+        onPageChange={(nextPage) => {
+          setPage(nextPage);
+          void loadCatalog({ page: nextPage });
+        }}
+        onPageSizeChange={(nextLimit) => {
+          setPageSize(nextLimit);
+          setPage(1);
+          void loadCatalog({ limit: nextLimit, page: 1 });
+        }}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={(nextCol, nextDir) => {
+          const validCol: SortByOption =
+            nextCol === "name" ||
+            nextCol === "priceCents" ||
+            nextCol === "stock" ||
+            nextCol === "status"
+              ? nextCol
+              : "createdAt";
+          setSortBy(validCol);
+          setSortDir(nextDir);
+          setPage(1);
+          void loadCatalog({ sortBy: validCol, sortDir: nextDir, page: 1 });
+        }}
+        searchQuery={searchInput}
+        onSearchChange={(qVal) => {
+          setSearchInput(qVal);
+          setPage(1);
+          void loadCatalog({ q: qVal, page: 1 });
+        }}
+        searchPlaceholder={dict.productsSearchPlaceholder}
+        activeFiltersCount={
+          (statusFilter !== "all" ? 1 : 0) +
+          (kindFilter !== "all" ? 1 : 0) +
+          (compositionFilter !== "all" ? 1 : 0) +
+          (lowStockOnly ? 1 : 0)
+        }
+        onResetFilters={handleResetFilters}
+        loading={loadingList}
+        error={listError}
+        onRetry={() => void loadCatalog()}
+        filterSlot={
+          <div className="flex flex-wrap items-center gap-2">
             <select
               aria-label={dict.productsColStatus}
               value={statusFilter}
@@ -691,7 +706,7 @@ export function ProductsView({
                 setPage(1);
                 void loadCatalog({ status: next, page: 1 });
               }}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
             >
               <option value="all">{dict.productsFilterAllStatuses}</option>
               <option value="active">{dict.productsFilterStatusActive}</option>
@@ -708,7 +723,7 @@ export function ProductsView({
                 setPage(1);
                 void loadCatalog({ kind: next, page: 1 });
               }}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
             >
               <option value="all">{dict.productsFilterAllKinds}</option>
               <option value="physical">{dict.productsFilterKindPhysical}</option>
@@ -725,211 +740,319 @@ export function ProductsView({
                 setPage(1);
                 void loadCatalog({ compositionType: next, page: 1 });
               }}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
             >
               <option value="all">{dict.productsFilterAllCompositions}</option>
               <option value="simple">{dict.productsFilterCompositionSimple}</option>
               <option value="combo">{dict.productsFilterCompositionCombo}</option>
             </select>
-
-            <div className="flex items-center gap-1.5">
-              <select
-                aria-label={locale === "en" ? "Sort By" : "Ordenar Por"}
-                value={sortBy}
-                onChange={(e) => {
-                  const next = e.target.value as SortByOption;
-                  setSortBy(next);
-                  setPage(1);
-                  void loadCatalog({ sortBy: next, page: 1 });
-                }}
-                className="flex-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)]"
-              >
-                <option value="createdAt">{dict.productsSortNewest}</option>
-                <option value="name">{dict.productsSortName}</option>
-                <option value="priceCents">{dict.productsSortPrice}</option>
-                <option value="stock">{dict.productsSortStock}</option>
-              </select>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const nextDir = sortDir === "asc" ? "desc" : "asc";
-                  setSortDir(nextDir);
-                  void loadCatalog({ sortDir: nextDir, page: 1 });
-                }}
-                title={sortDir === "asc" ? "Ascendente" : "Descendente"}
-                aria-label={sortDir === "asc" ? "Ascendente" : "Descendente"}
-                className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-2 text-[var(--dsn-text)] hover:bg-[var(--dsn-surface)]"
-              >
-                <ArrowDownUp className="h-4 w-4" />
-              </button>
-            </div>
           </div>
-        </div>
-
-        {hasActiveFilters && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--dsn-border)] pt-2.5 text-xs">
-            <span className="text-[var(--dsn-text-secondary)]">
-              {locale === "en" ? "Active filters applied" : "Filtros activos aplicados"}
-            </span>
+        }
+        emptyState={{
+          icon: <Package className="mx-auto h-10 w-10 text-[var(--dsn-text-secondary)]" />,
+          title: hasActiveFilters
+            ? locale === "en"
+              ? "No Matching Products Found"
+              : "No Hay Productos Con Esos Filtros"
+            : dict.productsEmptyTitle,
+          description: hasActiveFilters
+            ? locale === "en"
+              ? "Try clearing your search or filter selections."
+              : "Prueba limpiando la búsqueda o ajustando los filtros seleccionados."
+            : dict.productsEmptyDesc,
+          action: hasActiveFilters ? (
             <button
               type="button"
               onClick={handleResetFilters}
-              className="font-medium text-[var(--dsn-accent)] hover:underline"
+              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-4 py-2 text-sm font-medium text-[var(--dsn-text)]"
             >
-              {locale === "en" ? "Clear All Filters" : "Limpiar Filtros"}
+              {dict.tableClearFilters}
             </button>
-          </div>
+          ) : (
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity"
+            >
+              <Plus className="h-4 w-4" />
+              <span>{dict.productsFirstAction}</span>
+            </button>
+          ),
+        }}
+        renderMobileCard={(item) => (
+          <article
+            key={item.id}
+            className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 space-y-3"
+          >
+            <div className="flex items-start gap-3">
+              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] flex items-center justify-center">
+                {item.coverImageUrl ? (
+                  <img
+                    src={item.coverImageUrl}
+                    alt={item.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <Package className="h-6 w-6 text-[var(--dsn-text-secondary)]" />
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <h3 className="truncate font-semibold text-[var(--dsn-text)]">{item.name}</h3>
+                  {item.compositionType === "combo" && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--dsn-accent)]/15 px-2 py-0.5 text-xs font-medium text-[var(--dsn-accent)]">
+                      <Layers className="h-3 w-3" />
+                      {dict.productsFilterCompositionCombo}
+                    </span>
+                  )}
+                  {item.sourceShareId && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                      {locale === "en"
+                        ? `Imported from Community (v${item.sourceVersion ?? 1})`
+                        : `Importado de Comunidad (v${item.sourceVersion ?? 1})`}
+                    </span>
+                  )}
+                </div>
+                {item.sku && (
+                  <p className="mt-0.5 text-xs text-[var(--dsn-text-secondary)]">SKU: {item.sku}</p>
+                )}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${renderStatusBadgeClass(
+                      item.status,
+                    )}`}
+                  >
+                    {renderStatusLabel(item.status)}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs text-[var(--dsn-text-secondary)]">
+                    <Box className="h-3 w-3" />
+                    {renderKindLabel(item.kind)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 rounded-lg bg-[var(--dsn-surface-secondary)] p-2.5 text-xs">
+              <div>
+                <div className="text-[var(--dsn-text-secondary)]">{dict.productsColPrice}</div>
+                <div className="mt-0.5 font-semibold text-[var(--dsn-text)]">
+                  {formatMoneyCents(item.salePriceCents ?? item.priceCents, item.currency, locale)}
+                </div>
+                <div className="text-[var(--dsn-text-secondary)]">
+                  {dict.productsMarginLabel}: {item.profitability.marginPct.toFixed(1)}%
+                </div>
+              </div>
+              <div>
+                <div className="text-[var(--dsn-text-secondary)]">{dict.productsColStock}</div>
+                <div className="mt-1">{renderStockDisplay(item)}</div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={() => void openDetailModal(item.id)}
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                <span>{dict.productsActionView}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void openEditModal(item.id, "general")}
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              >
+                <Edit3 className="h-3.5 w-3.5" />
+                <span>{dict.productsActionEdit}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void openEditModal(item.id, "media")}
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              >
+                <UploadCloud className="h-3.5 w-3.5" />
+                <span>{dict.productsActionUpload}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusError(null);
+                  setStatusModalTarget(item);
+                }}
+                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              >
+                <Power className="h-3.5 w-3.5" />
+                <span>
+                  {item.status === "active"
+                    ? dict.productsActionInactivate
+                    : dict.productsActionActivate}
+                </span>
+              </button>
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeleteModalTarget(item);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>{dict.productsActionDelete}</span>
+                </button>
+              )}
+            </div>
+          </article>
         )}
-      </div>
-
-      {/* Error de Listado */}
-      {listError && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">
-          {listError}
-        </div>
-      )}
-
-      {/* Estado Vacío o Tabla/Tarjetas */}
-      {catalog.items.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-10 text-center">
-          <Package className="mx-auto h-10 w-10 text-[var(--dsn-text-secondary)]" />
-          <h2 className="mt-4 text-lg font-semibold text-[var(--dsn-text)]">
-            {hasActiveFilters
-              ? locale === "en"
-                ? "No Matching Products Found"
-                : "No Hay Productos Con Esos Filtros"
-              : dict.productsEmptyTitle}
-          </h2>
-          <p className="mx-auto mt-1 max-w-md text-sm text-[var(--dsn-text-secondary)]">
-            {hasActiveFilters
-              ? locale === "en"
-                ? "Try clearing your search or filter selections."
-                : "Prueba limpiando la búsqueda o ajustando los filtros seleccionados."
-              : dict.productsEmptyDesc}
-          </p>
-          <div className="mt-5 flex justify-center gap-3">
-            {hasActiveFilters ? (
-              <button
-                type="button"
-                onClick={handleResetFilters}
-                className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-4 py-2 text-sm font-medium text-[var(--dsn-text)]"
-              >
-                {locale === "en" ? "Clear Filters" : "Limpiar Filtros"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={openCreateModal}
-                className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity"
-              >
-                <Plus className="h-4 w-4" />
-                <span>{dict.productsFirstAction}</span>
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Vista Móvil (Mobile First) */}
-          <div className="grid grid-cols-1 gap-3 md:hidden">
-            {catalog.items.map((item) => (
-              <article
-                key={item.id}
-                className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 space-y-3"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] flex items-center justify-center">
-                    {item.coverImageUrl ? (
-                      <img
-                        src={item.coverImageUrl}
-                        alt={item.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <Package className="h-6 w-6 text-[var(--dsn-text-secondary)]" />
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <h3 className="truncate font-semibold text-[var(--dsn-text)]">
-                        {item.name}
-                      </h3>
-                      {item.compositionType === "combo" && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[var(--dsn-accent)]/15 px-2 py-0.5 text-xs font-medium text-[var(--dsn-accent)]">
-                          <Layers className="h-3 w-3" />
-                          {dict.productsFilterCompositionCombo}
-                        </span>
-                      )}
-                      {item.sourceShareId && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                          {locale === "en"
-                            ? `Imported from Community (v${item.sourceVersion ?? 1})`
-                            : `Importado de Comunidad (v${item.sourceVersion ?? 1})`}
+        columns={
+          [
+            {
+              key: "thumbnail",
+              header: dict.productsColThumbnail,
+              renderCell: (item) => (
+                <div className="h-11 w-11 overflow-hidden rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] flex items-center justify-center">
+                  {item.coverImageUrl ? (
+                    <img
+                      src={item.coverImageUrl}
+                      alt={item.name}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <Package className="h-5 w-5 text-[var(--dsn-text-secondary)]" />
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: "name",
+              header: dict.productsColName,
+              sortable: true,
+              renderCell: (item) => {
+                const totalMedia =
+                  item.mediaCounts.image +
+                  item.mediaCounts.video +
+                  item.mediaCounts.audio +
+                  item.mediaCounts.pdf;
+                return (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => void openDetailModal(item.id)}
+                      className="text-left font-semibold text-[var(--dsn-text)] hover:text-[var(--dsn-accent)]"
+                    >
+                      {item.name}
+                    </button>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--dsn-text-secondary)]">
+                      {item.sku && <span>SKU: {item.sku}</span>}
+                      {item.category && <span>{item.category}</span>}
+                      {totalMedia > 0 && (
+                        <span>
+                          • {totalMedia} {dict.productsTabMedia}
                         </span>
                       )}
                     </div>
-                    {item.sku && (
-                      <p className="mt-0.5 text-xs text-[var(--dsn-text-secondary)]">SKU: {item.sku}</p>
-                    )}
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${renderStatusBadgeClass(
-                          item.status,
-                        )}`}
-                      >
-                        {renderStatusLabel(item.status)}
-                      </span>
-                      <span className="inline-flex items-center gap-1 text-xs text-[var(--dsn-text-secondary)]">
-                        <Box className="h-3 w-3" />
-                        {renderKindLabel(item.kind)}
-                      </span>
+                  </div>
+                );
+              },
+            },
+            {
+              key: "type",
+              header: dict.productsColType,
+              renderCell: (item) => (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-[var(--dsn-text)]">
+                    {renderKindLabel(item.kind)}
+                  </span>
+                  {item.compositionType === "combo" ? (
+                    <span className="inline-flex w-fit items-center gap-1 rounded-full bg-[var(--dsn-accent)]/15 px-2 py-0.5 text-xs font-medium text-[var(--dsn-accent)]">
+                      <Layers className="h-3 w-3" />
+                      {dict.productsFilterCompositionCombo} ({item.comboComponentsCount})
+                    </span>
+                  ) : (
+                    <span className="text-xs text-[var(--dsn-text-secondary)]">
+                      {dict.productsFilterCompositionSimple}
+                    </span>
+                  )}
+                  {item.sourceShareId && (
+                    <span className="inline-flex w-fit items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                      {locale === "en"
+                        ? `Community v${item.sourceVersion ?? 1}`
+                        : `Importado de Comunidad v${item.sourceVersion ?? 1}`}
+                    </span>
+                  )}
+                </div>
+              ),
+            },
+            {
+              key: "priceCents",
+              header: dict.productsColPrice,
+              sortable: true,
+              isNumeric: true,
+              renderCell: (item) => (
+                <div>
+                  <div className="font-semibold text-[var(--dsn-text)]">
+                    {formatMoneyCents(item.salePriceCents ?? item.priceCents, item.currency, locale)}
+                  </div>
+                  {item.salePriceCents !== null && item.salePriceCents < item.priceCents && (
+                    <div className="text-xs text-[var(--dsn-text-secondary)] line-through">
+                      {formatMoneyCents(item.priceCents, item.currency, locale)}
                     </div>
+                  )}
+                  <div className="text-xs text-[var(--dsn-text-secondary)]">
+                    {dict.productsMarginLabel}: {item.profitability.marginPct.toFixed(1)}%
                   </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-2 rounded-lg bg-[var(--dsn-surface-secondary)] p-2.5 text-xs">
-                  <div>
-                    <div className="text-[var(--dsn-text-secondary)]">{dict.productsColPrice}</div>
-                    <div className="mt-0.5 font-semibold text-[var(--dsn-text)]">
-                      {formatMoneyCents(
-                        item.salePriceCents ?? item.priceCents,
-                        item.currency,
-                        locale,
-                      )}
-                    </div>
-                    <div className="text-[var(--dsn-text-secondary)]">
-                      {dict.productsMarginLabel}: {item.profitability.marginPct.toFixed(1)}%
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[var(--dsn-text-secondary)]">{dict.productsColStock}</div>
-                    <div className="mt-1">{renderStockDisplay(item)}</div>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              ),
+            },
+            {
+              key: "stock",
+              header: dict.productsColStock,
+              sortable: true,
+              renderCell: (item) => renderStockDisplay(item),
+            },
+            {
+              key: "status",
+              header: dict.productsColStatus,
+              sortable: true,
+              renderCell: (item) => (
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${renderStatusBadgeClass(
+                    item.status,
+                  )}`}
+                >
+                  {renderStatusLabel(item.status)}
+                </span>
+              ),
+            },
+            {
+              key: "actions",
+              header: dict.productsColActions,
+              align: "right",
+              renderCell: (item) => (
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
                   <button
                     type="button"
                     onClick={() => void openDetailModal(item.id)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                    title={dict.productsActionView}
+                    aria-label={`${dict.productsActionView} ${item.name}`}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
                   >
                     <Eye className="h-3.5 w-3.5" />
-                    <span>{dict.productsActionView}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => void openEditModal(item.id, "general")}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                    title={dict.productsActionEdit}
+                    aria-label={`${dict.productsActionEdit} ${item.name}`}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
                   >
                     <Edit3 className="h-3.5 w-3.5" />
-                    <span>{dict.productsActionEdit}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => void openEditModal(item.id, "media")}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
                   >
                     <UploadCloud className="h-3.5 w-3.5" />
                     <span>{dict.productsActionUpload}</span>
@@ -940,7 +1063,7 @@ export function ProductsView({
                       setStatusError(null);
                       setStatusModalTarget(item);
                     }}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
                   >
                     <Power className="h-3.5 w-3.5" />
                     <span>
@@ -956,239 +1079,20 @@ export function ProductsView({
                         setDeleteError(null);
                         setDeleteModalTarget(item);
                       }}
-                      className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                      title={dict.productsActionDelete}
+                      aria-label={`${dict.productsActionDelete} ${item.name}`}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       <span>{dict.productsActionDelete}</span>
                     </button>
                   )}
                 </div>
-              </article>
-            ))}
-          </div>
-
-          {/* Vista Escritorio */}
-          <div className="hidden overflow-x-auto rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] md:block">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-xs font-semibold text-[var(--dsn-text-secondary)]">
-                  <th className="px-4 py-3">{dict.productsColThumbnail}</th>
-                  <th className="px-4 py-3">{dict.productsColName}</th>
-                  <th className="px-4 py-3">{dict.productsColType}</th>
-                  <th className="px-4 py-3">{dict.productsColPrice}</th>
-                  <th className="px-4 py-3">{dict.productsColStock}</th>
-                  <th className="px-4 py-3">{dict.productsColStatus}</th>
-                  <th className="px-4 py-3 text-right">{dict.productsColActions}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--dsn-border)]">
-                {catalog.items.map((item) => (
-                  <tr key={item.id} className="hover:bg-[var(--dsn-surface-secondary)]/50">
-                    <td className="px-4 py-3">
-                      <div className="h-11 w-11 overflow-hidden rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] flex items-center justify-center">
-                        {item.coverImageUrl ? (
-                          <img
-                            src={item.coverImageUrl}
-                            alt={item.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <Package className="h-5 w-5 text-[var(--dsn-text-secondary)]" />
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => void openDetailModal(item.id)}
-                        className="text-left font-semibold text-[var(--dsn-text)] hover:text-[var(--dsn-accent)]"
-                      >
-                        {item.name}
-                      </button>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[var(--dsn-text-secondary)]">
-                        {item.sku && <span>SKU: {item.sku}</span>}
-                        {item.category && <span>{item.category}</span>}
-                        {item.mediaCounts.image +
-                          item.mediaCounts.video +
-                          item.mediaCounts.audio +
-                          item.mediaCounts.pdf >
-                          0 && (
-                          <span>
-                            •{" "}
-                            {item.mediaCounts.image +
-                              item.mediaCounts.video +
-                              item.mediaCounts.audio +
-                              item.mediaCounts.pdf}{" "}
-                            {dict.productsTabMedia}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs font-medium text-[var(--dsn-text)]">
-                          {renderKindLabel(item.kind)}
-                        </span>
-                        {item.compositionType === "combo" ? (
-                          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-[var(--dsn-accent)]/15 px-2 py-0.5 text-xs font-medium text-[var(--dsn-accent)]">
-                            <Layers className="h-3 w-3" />
-                            {dict.productsFilterCompositionCombo} ({item.comboComponentsCount})
-                          </span>
-                        ) : (
-                          <span className="text-xs text-[var(--dsn-text-secondary)]">
-                            {dict.productsFilterCompositionSimple}
-                          </span>
-                        )}
-                        {item.sourceShareId && (
-                          <span className="inline-flex w-fit items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                            {locale === "en"
-                              ? `Community v${item.sourceVersion ?? 1}`
-                              : `Importado de Comunidad v${item.sourceVersion ?? 1}`}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-[var(--dsn-text)]">
-                        {formatMoneyCents(
-                          item.salePriceCents ?? item.priceCents,
-                          item.currency,
-                          locale,
-                        )}
-                      </div>
-                      {item.salePriceCents !== null && item.salePriceCents < item.priceCents && (
-                        <div className="text-xs text-[var(--dsn-text-secondary)] line-through">
-                          {formatMoneyCents(item.priceCents, item.currency, locale)}
-                        </div>
-                      )}
-                      <div className="text-xs text-[var(--dsn-text-secondary)]">
-                        {dict.productsMarginLabel}: {item.profitability.marginPct.toFixed(1)}%
-                      </div>
-                    </td>
-
-                    <td className="px-4 py-3">{renderStockDisplay(item)}</td>
-
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${renderStatusBadgeClass(
-                          item.status,
-                        )}`}
-                      >
-                        {renderStatusLabel(item.status)}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => void openDetailModal(item.id)}
-                          title={dict.productsActionView}
-                          aria-label={`${dict.productsActionView} ${item.name}`}
-                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void openEditModal(item.id, "general")}
-                          title={dict.productsActionEdit}
-                          aria-label={`${dict.productsActionEdit} ${item.name}`}
-                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void openEditModal(item.id, "media")}
-                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                        >
-                          <UploadCloud className="h-3.5 w-3.5" />
-                          <span>{dict.productsActionUpload}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStatusError(null);
-                            setStatusModalTarget(item);
-                          }}
-                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                        >
-                          <Power className="h-3.5 w-3.5" />
-                          <span>
-                            {item.status === "active"
-                              ? dict.productsActionInactivate
-                              : dict.productsActionActivate}
-                          </span>
-                        </button>
-                        {canDelete && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteError(null);
-                              setDeleteModalTarget(item);
-                            }}
-                            title={dict.productsActionDelete}
-                            aria-label={`${dict.productsActionDelete} ${item.name}`}
-                            className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            <span>{dict.productsActionDelete}</span>
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Paginación */}
-          {catalog.pagination.totalPages > 1 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-3 text-sm">
-              <div className="text-[var(--dsn-text-secondary)]">
-                {catalog.pagination.page} {dict.productsPaginationPageOf}{" "}
-                {catalog.pagination.totalPages} ({catalog.pagination.total} {inventoryCountLabel})
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={catalog.pagination.page <= 1 || loadingList}
-                  onClick={() => {
-                    const nextPage = Math.max(1, catalog.pagination.page - 1);
-                    setPage(nextPage);
-                    void loadCatalog({ page: nextPage });
-                  }}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-3 py-1.5 text-xs font-medium text-[var(--dsn-text)] disabled:opacity-50"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span>{dict.productsPaginationPrev}</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={catalog.pagination.page >= catalog.pagination.totalPages || loadingList}
-                  onClick={() => {
-                    const nextPage = Math.min(
-                      catalog.pagination.totalPages,
-                      catalog.pagination.page + 1,
-                    );
-                    setPage(nextPage);
-                    void loadCatalog({ page: nextPage });
-                  }}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-3 py-1.5 text-xs font-medium text-[var(--dsn-text)] disabled:opacity-50"
-                >
-                  <span>{dict.productsPaginationNext}</span>
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
+              ),
+            },
+          ] satisfies WorkspaceTableColumn<ProductListItemDto>[]
+        }
+      />
 
       {/* Modal de Detalle Completo */}
       <ProductDetailModal

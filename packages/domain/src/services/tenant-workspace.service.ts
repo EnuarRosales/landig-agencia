@@ -261,6 +261,19 @@ export interface WorkspaceBillingPendingBreBDto {
   createdAt: string;
 }
 
+export interface WorkspaceBillingInvoiceItemDto {
+  id: string;
+  invoiceNumber: string;
+  status: string;
+  subtotalCents: number;
+  creditCents: number;
+  totalCents: number;
+  currency: string;
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+}
+
 export interface WorkspaceBillingDto {
   plan: {
     id: string;
@@ -302,6 +315,8 @@ export interface WorkspaceBillingDto {
   /** Saldo vigente de créditos de referidos aplicables en la moneda de facturación del comercio (`SPEC-16 D-02`). */
   availableReferralCreditCents?: number;
   referralCreditCurrency?: "COP" | "USD";
+  /** Historial reciente de facturas de suscripción emitidas al comercio (`SPEC-17 D-03`). */
+  invoices?: WorkspaceBillingInvoiceItemDto[];
 }
 
 export interface MediaUploadResult {
@@ -1184,6 +1199,7 @@ export class TenantWorkspaceService {
     let availablePlans: WorkspaceBillingPlanOptionDto[] = [];
     let availableChannels: PaymentChannelOption[] = [];
     let availableReferralCreditCents = 0;
+    let invoicesDto: WorkspaceBillingInvoiceItemDto[] = [];
 
     const clientCountry = (client.country || "CO").trim().toUpperCase();
     const clientCurrency: "COP" | "USD" = clientCountry === "CO" ? "COP" : "USD";
@@ -1193,14 +1209,30 @@ export class TenantWorkspaceService {
       const referralsRepo = new DrizzleReferralsRepository(portalDb);
       const checkoutSvc = new CheckoutService(billingRepo);
 
-      const [subRow, pendingRow, rejectedRow, publicPlans, channelsRes, availableRewards] = await Promise.all([
+      const [subRow, pendingRow, rejectedRow, publicPlans, channelsRes, availableRewards, invoiceRows] = await Promise.all([
         billingRepo.getSubscriptionByClientId(clientId),
         billingRepo.getPendingManualReportByClientId(clientId),
         billingRepo.getLatestRejectedManualReportByClientId(clientId),
         billingRepo.listActivePublicPlans(),
         checkoutSvc.listAvailableChannelsForTenant(clientCountry, clientCurrency),
         referralsRepo.listAvailableRewardsByReferrer(clientId).catch(() => []),
+        billingRepo.listInvoicesByClientId(clientId).catch(() => []),
       ]);
+
+      invoicesDto = [...invoiceRows]
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .map((inv) => ({
+          id: inv.id,
+          invoiceNumber: inv.invoiceNumber,
+          status: inv.status,
+          subtotalCents: Number(inv.subtotalCents),
+          creditCents: Number(inv.creditCents),
+          totalCents: Number(inv.totalCents),
+          currency: inv.currency,
+          issuedAt: inv.createdAt.toISOString(),
+          dueAt: inv.dueAt.toISOString(),
+          paidAt: inv.paidAt ? inv.paidAt.toISOString() : null,
+        }));
 
       availableReferralCreditCents = availableRewards
         .filter((rew) => rew.currency.toUpperCase() === clientCurrency)
@@ -1310,6 +1342,7 @@ export class TenantWorkspaceService {
       availableChannels,
       availableReferralCreditCents,
       referralCreditCurrency: clientCurrency,
+      invoices: invoicesDto,
     };
   }
 }

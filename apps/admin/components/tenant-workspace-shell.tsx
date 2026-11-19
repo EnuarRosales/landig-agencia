@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
@@ -23,18 +23,19 @@ import {
   ChevronUp,
   ArrowLeftRight,
   Shield,
-  Mail,
   Copy,
   Check,
   KeyRound,
   Building2,
   Bell,
   Gift,
+  Languages,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 import { ConfirmationModal } from "./confirmation-modal";
 import { handleLogoutRedirect } from "@/lib/api-client";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
+import { requestGuardedNavigation } from "@/lib/use-unsaved-changes-guard";
 import type { CurrentUserDto } from "./user-profile-modal";
 
 export interface TenantSubscriptionAlertDto {
@@ -104,7 +105,17 @@ export function TenantWorkspaceShell({
   branding = null,
 }: TenantWorkspaceShellProps) {
   const pathname = usePathname();
-  const dict = getAdminDictionary(locale).workspace;
+  const router = useRouter();
+  const [localeOverride, setLocaleOverride] = useState<{
+    base: AdminLocale;
+    value: AdminLocale;
+  } | null>(null);
+  const [updatingLocale, setUpdatingLocale] = useState(false);
+
+  const activeLocale =
+    localeOverride && localeOverride.base === locale ? localeOverride.value : locale;
+
+  const dict = getAdminDictionary(activeLocale).workspace;
   const [unreadOverride, setUnreadOverride] = useState<{ base: number; count: number } | null>(
     null,
   );
@@ -112,8 +123,18 @@ export function TenantWorkspaceShell({
     unreadOverride && unreadOverride.base === unreadNotificationsCount
       ? unreadOverride.count
       : unreadNotificationsCount;
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [profilePopoverOpen, setProfilePopoverOpen] = useState(false);
+  const [mobileMenuPath, setMobileMenuPath] = useState<string | null>(null);
+  const [profilePopoverPath, setProfilePopoverPath] = useState<string | null>(null);
+  const mobileMenuOpen = mobileMenuPath === pathname;
+  const profilePopoverOpen = profilePopoverPath === pathname;
+  const setMobileMenuOpen = (open: boolean) => setMobileMenuPath(open ? pathname : null);
+  const setProfilePopoverOpen = (open: boolean | ((prev: boolean) => boolean)) => {
+    setProfilePopoverPath((prevPath) => {
+      const prevOpen = prevPath === pathname;
+      const nextOpen = typeof open === "function" ? open(prevOpen) : open;
+      return nextOpen ? pathname : null;
+    });
+  };
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [switchStoreModalOpen, setSwitchStoreModalOpen] = useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
@@ -123,10 +144,10 @@ export function TenantWorkspaceShell({
 
   const tenantInfo = {
     id: tenant?.id || "tenant-default-id",
-    name: tenant?.name || "Mi Comercio",
+    name: tenant?.name || dict.dashboardDefaultStoreName,
     slug: tenant?.slug || "comercio",
     logoUrl: tenant?.logoUrl,
-    planName: tenant?.planName || "Plan Pro",
+    planName: tenant?.planName || dict.dashboardDefaultPlanName,
     connectionHealthy: tenant?.connectionHealthy ?? true,
   };
   const displayStoreName = branding?.brandName?.trim() || tenantInfo.name;
@@ -135,10 +156,74 @@ export function TenantWorkspaceShell({
   const user: CurrentUserDto = currentUser || {
     id: "00000000-0000-0000-0000-000000000000",
     email: "comercio@mocter.co",
-    displayName: "Propietario del Comercio",
+    displayName: dict.shellOwnerFullFallback,
     role: "tenant_owner",
     status: "active",
   };
+
+  async function handleLocaleChange(nextLocale: AdminLocale) {
+    if (updatingLocale || nextLocale === activeLocale) return;
+    setUpdatingLocale(true);
+    try {
+      const res = await fetch("/api/tenant/locale", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ locale: nextLocale }),
+      });
+      if (res.ok) {
+        setLocaleOverride({ base: locale, value: nextLocale });
+        router.refresh();
+      }
+    } catch {
+      // Silencio seguro ante error transitorio de red
+    } finally {
+      setUpdatingLocale(false);
+    }
+  }
+
+  function handleGuardedLinkClick(e: React.MouseEvent<HTMLAnchorElement>, href: string, afterNavigate?: () => void) {
+    const allowed = requestGuardedNavigation(href, () => {
+      afterNavigate?.();
+      router.push(href);
+    });
+    if (!allowed) {
+      e.preventDefault();
+      afterNavigate?.();
+    } else {
+      afterNavigate?.();
+    }
+  }
+
+  const renderLocaleSwitcher = (testIdSuffix: string) => (
+    <div
+      role="group"
+      aria-label={dict.shellLanguageAria}
+      data-testid={`workspace-locale-switcher-${testIdSuffix}`}
+      className="inline-flex items-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-0.5"
+    >
+      {(["es", "en"] as const).map((lang) => {
+        const selected = activeLocale === lang;
+        return (
+          <button
+            key={lang}
+            type="button"
+            disabled={updatingLocale}
+            aria-pressed={selected}
+            data-testid={`locale-option-${lang}-${testIdSuffix}`}
+            onClick={() => void handleLocaleChange(lang)}
+            className={`rounded-md px-2 py-0.5 text-[10px] font-mono font-semibold transition-colors cursor-pointer disabled:opacity-50 ${
+              selected
+                ? "bg-[var(--dsn-accent)] text-white shadow-xs"
+                : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
+            }`}
+          >
+            {lang === "es" ? dict.shellLanguageEs : dict.shellLanguageEn}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   async function handleConfirmLogout() {
     setLogoutLoading(true);
@@ -153,12 +238,6 @@ export function TenantWorkspaceShell({
       handleLogoutRedirect();
     }
   }
-
-  // Cerrar menús al cambiar de ruta
-  useEffect(() => {
-    setMobileMenuOpen(false);
-    setProfilePopoverOpen(false);
-  }, [pathname]);
 
   useEffect(() => {
     function handleNotificationsUpdated(event: Event) {
@@ -179,8 +258,8 @@ export function TenantWorkspaceShell({
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        setMobileMenuOpen(false);
-        setProfilePopoverOpen(false);
+        setMobileMenuPath(null);
+        setProfilePopoverPath(null);
         setProfileModalOpen(false);
         setSwitchStoreModalOpen(false);
       }
@@ -208,68 +287,68 @@ export function TenantWorkspaceShell({
     // ── Módulos Base y Acceso Prioritario ──
     {
       href: "/workspace",
-      label: "Tablero",
+      label: dict.navDashboard,
       icon: LayoutDashboard,
     },
     {
       href: "/workspace/conversations",
-      label: dict.navConversations || "Conversaciones",
+      label: dict.navConversations,
       icon: MessageSquare,
       capabilityCode: "chatwoot_inboxes",
       capabilityAliases: ["conversations"],
     },
     {
       href: "/workspace/products",
-      label: "Productos y Catálogo",
+      label: dict.navProducts,
       icon: Package,
     },
     {
       href: "/workspace/contacts",
-      label: "Contactos CRM",
+      label: dict.navContacts,
       icon: Users,
     },
     {
       href: "/workspace/orders",
-      label: "Pedidos y Ventas",
+      label: dict.navOrders,
       icon: ShoppingCart,
     },
     {
       href: "/workspace/bot",
-      label: "Asistente AI y Bot",
-      badge: "AI",
+      label: dict.navBot,
+      badge: dict.navBadgeAi,
       icon: Bot,
     },
     {
       href: "/workspace/ai",
-      label: "Proveedores y Llaves AI",
-      badge: "BYOK",
+      label: dict.navAi,
+      badge: dict.navBadgeByok,
       icon: KeyRound,
     },
     {
       href: "/workspace/team",
-      label: "Equipo y Miembros",
+      label: dict.navTeam,
       icon: ShieldCheck,
     },
     {
       href: "/workspace/profile",
-      label: dict.navProfile || "Perfil del Negocio",
+      label: dict.navProfile,
       icon: Building2,
       ownerOnly: true,
     },
     {
       href: "/workspace/billing",
-      label: "Mi Plan y Cuotas",
+      label: dict.navBilling,
       icon: CreditCard,
     },
     {
       href: "/workspace/referrals",
-      label: dict.navReferrals || "Programa de Referidos",
+      label: dict.navReferrals,
       icon: Gift,
       ownerOnly: true,
     },
     {
       href: "/workspace/notifications",
-      label: dict.navNotifications || "Notificaciones",
+      label: dict.navNotifications,
       badge: formattedUnreadBadge,
       icon: Bell,
     },
@@ -277,24 +356,24 @@ export function TenantWorkspaceShell({
     // ── Módulos Dinámicos (Gated por capacidades de plan) ──
     {
       href: "/workspace/branding",
-      label: dict.navBranding || "Identidad y Marca Blanca",
-      badge: "Marca",
+      label: dict.navBranding,
+      badge: dict.navBadgeBrand,
       icon: Paintbrush,
       capabilityCode: "custom_branding",
       capabilityAliases: ["branding", "white_label"],
     },
     {
       href: "/workspace/community",
-      label: "Comunidad de Comercios",
-      badge: "Red",
+      label: dict.navCommunity,
+      badge: dict.navBadgeNetwork,
       icon: Globe,
       capabilityCode: "community_feed",
       capabilityAliases: ["community"],
     },
     {
       href: "/workspace/reports",
-      label: "Informes y Analítica",
-      badge: "Datos",
+      label: dict.navReports,
+      badge: dict.navBadgeData,
       icon: BarChart3,
       capabilityCode: "data_export",
       capabilityAliases: ["reports"],
@@ -359,8 +438,8 @@ export function TenantWorkspaceShell({
   };
 
   const connectionLabel = tenantInfo.connectionHealthy
-    ? dict.connectedStatus
-    : dict.connectionIssueStatus || "Revisar Conexión";
+    ? dict.shellConnectedStatus
+    : dict.shellConnectionIssue;
 
   const renderConnectionBadge = (compact = false) => (
     <div
@@ -397,7 +476,7 @@ export function TenantWorkspaceShell({
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
-            aria-label="Abrir menú de navegación"
+            aria-label={dict.shellOpenMenuAria}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] transition-colors hover:bg-[var(--dsn-surface)] focus-visible:outline-2 focus-visible:outline-[var(--dsn-accent)]"
           >
             <Menu className="h-5 w-5" />
@@ -405,8 +484,9 @@ export function TenantWorkspaceShell({
 
           <Link
             href="/workspace"
+            onClick={(e) => handleGuardedLinkClick(e, "/workspace")}
             className="flex items-center gap-2 min-w-0 flex-1 transition-opacity hover:opacity-90 active:scale-98"
-            aria-label={`${displayStoreName} Inicio`}
+            aria-label={`${displayStoreName} ${dict.shellStoreHomeAriaSuffix}`}
           >
             {renderBrandMark("sm")}
             <span
@@ -421,7 +501,8 @@ export function TenantWorkspaceShell({
         <div className="flex items-center gap-2 shrink-0">
           <Link
             href="/workspace/notifications"
-            aria-label={dict.navNotifications || "Notificaciones"}
+            onClick={(e) => handleGuardedLinkClick(e, "/workspace/notifications")}
+            aria-label={dict.navNotifications}
             data-testid="tenant-notifications-bell-mobile"
             className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] transition-colors hover:border-[var(--dsn-accent)] hover:text-[var(--dsn-accent)]"
           >
@@ -432,6 +513,7 @@ export function TenantWorkspaceShell({
               </span>
             )}
           </Link>
+          {renderLocaleSwitcher("mobile-header")}
           {renderConnectionBadge(true)}
           <ThemeToggle />
         </div>
@@ -444,7 +526,7 @@ export function TenantWorkspaceShell({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Menú principal del comercio"
+          aria-label={dict.shellMenuAria}
           className="fixed inset-0 z-50 flex md:hidden"
         >
           {/* Backdrop con desenfoque */}
@@ -461,7 +543,7 @@ export function TenantWorkspaceShell({
               <div className="min-w-0 flex-1 space-y-2">
                 <Link
                   href="/workspace"
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={(e) => handleGuardedLinkClick(e, "/workspace", () => setMobileMenuOpen(false))}
                   className="flex items-start gap-2.5 min-w-0"
                 >
                   {renderBrandMark("md")}
@@ -474,7 +556,7 @@ export function TenantWorkspaceShell({
                     </span>
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className="rounded bg-[var(--dsn-accent)]/15 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/20 shrink-0">
-                        Comercio
+                        {dict.shellStoreBadge}
                       </span>
                       <span className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
                         {tenantInfo.slug}
@@ -487,7 +569,7 @@ export function TenantWorkspaceShell({
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(false)}
-                aria-label="Cerrar menú"
+                aria-label={dict.shellCloseMenuAria}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] hover:bg-[var(--dsn-surface)]"
               >
                 <X className="h-5 w-5" />
@@ -495,7 +577,7 @@ export function TenantWorkspaceShell({
             </div>
 
             {/* Navegación Móvil */}
-            <nav className="mt-4 flex-1 space-y-1 overflow-y-auto" aria-label="Navegación del comercio móvil">
+            <nav className="mt-4 flex-1 space-y-1 overflow-y-auto" aria-label={dict.shellNavMobileAria}>
               {visibleNavItems.map((item) => {
                 const Icon = item.icon;
                 const active = isLinkActive(item.href);
@@ -504,7 +586,7 @@ export function TenantWorkspaceShell({
                   <Link
                     key={item.href}
                     href={item.href}
-                    onClick={() => setMobileMenuOpen(false)}
+                    onClick={(e) => handleGuardedLinkClick(e, item.href, () => setMobileMenuOpen(false))}
                     className={`group flex min-h-[44px] items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                       active
                         ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30 font-semibold"
@@ -532,10 +614,15 @@ export function TenantWorkspaceShell({
             {/* Pie Drawer Móvil */}
             <div className="border-t border-[var(--dsn-border)] pt-4 space-y-3">
               <div className="flex items-center justify-between px-1">
-                <span className="text-xs text-[var(--dsn-text-secondary)]">Estado del servicio</span>
+                <span className="text-xs text-[var(--dsn-text-secondary)]">{dict.shellLanguageLabel}</span>
+                {renderLocaleSwitcher("mobile-drawer")}
+              </div>
+
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs text-[var(--dsn-text-secondary)]">{dict.shellServiceStatusLabel}</span>
                 <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Conectado
+                  {connectionLabel}
                 </span>
               </div>
 
@@ -545,7 +632,7 @@ export function TenantWorkspaceShell({
                     <div className="fixed inset-0 z-40" onClick={() => setProfilePopoverOpen(false)} aria-hidden="true" />
                     <div
                       role="menu"
-                      aria-label="Menú de cuenta del comercio"
+                      aria-label={dict.shellAccountMenuAria}
                       className="absolute bottom-full mb-2 left-0 right-0 z-50 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
                     >
                       <button
@@ -557,7 +644,7 @@ export function TenantWorkspaceShell({
                         className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors"
                       >
                         <UserIcon className="h-4 w-4 text-[var(--dsn-accent)]" />
-                        <span>Ficha De Perfil</span>
+                        <span>{dict.shellProfileCardMenuItem}</span>
                       </button>
                       <button
                         type="button"
@@ -568,7 +655,7 @@ export function TenantWorkspaceShell({
                         className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors"
                       >
                         <ArrowLeftRight className="h-4 w-4 text-[var(--dsn-accent)]" />
-                        <span>Cambiar Comercio</span>
+                        <span>{dict.shellSwitchStoreMenuItem}</span>
                       </button>
                       <button
                         type="button"
@@ -579,7 +666,7 @@ export function TenantWorkspaceShell({
                         className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
                       >
                         <LogOut className="h-4 w-4 text-rose-400" />
-                        <span>Cerrar Sesión</span>
+                        <span>{dict.shellLogoutMenuItem}</span>
                       </button>
                     </div>
                   </>
@@ -597,7 +684,7 @@ export function TenantWorkspaceShell({
                       {(user.displayName || user.email || "TO").slice(0, 2).toUpperCase()}
                     </div>
                     <div className="truncate">
-                      <p className="font-semibold text-[var(--dsn-text)] truncate">{user.displayName || "Propietario"}</p>
+                      <p className="font-semibold text-[var(--dsn-text)] truncate">{user.displayName || dict.shellOwnerFallback}</p>
                       <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">{user.email}</p>
                     </div>
                   </div>
@@ -618,8 +705,9 @@ export function TenantWorkspaceShell({
           <div className="pb-4 border-b border-[var(--dsn-border)] space-y-2.5">
             <Link
               href="/workspace"
+              onClick={(e) => handleGuardedLinkClick(e, "/workspace")}
               className="flex items-start gap-2.5 transition-opacity hover:opacity-90 active:scale-98 min-w-0"
-              aria-label={`${displayStoreName} Inicio`}
+              aria-label={`${displayStoreName} ${dict.shellStoreHomeAriaSuffix}`}
             >
               {renderBrandMark("md")}
               <div className="flex flex-col min-w-0 flex-1 gap-1">
@@ -631,7 +719,7 @@ export function TenantWorkspaceShell({
                 </span>
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="rounded bg-[var(--dsn-accent)]/15 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/20 shrink-0">
-                    Comercio
+                    {dict.shellStoreBadge}
                   </span>
                   <span className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
                     {tenantInfo.slug}
@@ -644,7 +732,8 @@ export function TenantWorkspaceShell({
               {renderConnectionBadge()}
               <Link
                 href="/workspace/notifications"
-                aria-label={dict.navNotifications || "Notificaciones"}
+                onClick={(e) => handleGuardedLinkClick(e, "/workspace/notifications")}
+                aria-label={dict.navNotifications}
                 data-testid="tenant-notifications-bell-desktop"
                 className="relative inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] transition-colors hover:border-[var(--dsn-accent)] hover:text-[var(--dsn-accent)]"
               >
@@ -659,7 +748,7 @@ export function TenantWorkspaceShell({
           </div>
 
           {/* Navegación Desktop */}
-          <nav className="mt-4 space-y-1.5" aria-label="Navegación del comercio escritorio">
+          <nav className="mt-4 space-y-1.5" aria-label={dict.shellNavDesktopAria}>
             {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const active = isLinkActive(item.href);
@@ -668,6 +757,7 @@ export function TenantWorkspaceShell({
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={(e) => handleGuardedLinkClick(e, item.href)}
                   className={`group flex min-h-[44px] items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                     active
                       ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30 font-semibold"
@@ -696,7 +786,15 @@ export function TenantWorkspaceShell({
         {/* Pie Sidebar Desktop */}
         <div className="border-t border-[var(--dsn-border)] pt-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-[var(--dsn-text-secondary)]">Tema visual</span>
+            <span className="inline-flex items-center gap-1.5 text-xs text-[var(--dsn-text-secondary)]">
+              <Languages className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+              <span>{dict.shellLanguageLabel}</span>
+            </span>
+            {renderLocaleSwitcher("desktop")}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[var(--dsn-text-secondary)]">{dict.shellThemeLabel}</span>
             <ThemeToggle />
           </div>
 
@@ -706,11 +804,11 @@ export function TenantWorkspaceShell({
                 <div className="fixed inset-0 z-40" onClick={() => setProfilePopoverOpen(false)} aria-hidden="true" />
                 <div
                   role="menu"
-                  aria-label="Menú de cuenta del comercio"
+                  aria-label={dict.shellAccountMenuAria}
                   className="absolute bottom-full mb-2 left-0 right-0 z-50 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
                 >
                   <div className="px-2.5 py-1.5 border-b border-[var(--dsn-border)]/60 mb-1">
-                    <p className="text-[11px] font-semibold text-[var(--dsn-text)] truncate">{user.displayName || "Propietario"}</p>
+                    <p className="text-[11px] font-semibold text-[var(--dsn-text)] truncate">{user.displayName || dict.shellOwnerFallback}</p>
                     <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">{user.email}</p>
                   </div>
                   <button
@@ -722,7 +820,7 @@ export function TenantWorkspaceShell({
                     className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors"
                   >
                     <UserIcon className="h-4 w-4 text-[var(--dsn-accent)]" />
-                    <span>Ficha De Perfil</span>
+                    <span>{dict.shellProfileCardMenuItem}</span>
                   </button>
                   <button
                     type="button"
@@ -733,7 +831,7 @@ export function TenantWorkspaceShell({
                     className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors"
                   >
                     <ArrowLeftRight className="h-4 w-4 text-[var(--dsn-accent)]" />
-                    <span>Cambiar Comercio</span>
+                    <span>{dict.shellSwitchStoreMenuItem}</span>
                   </button>
                   <button
                     type="button"
@@ -744,7 +842,7 @@ export function TenantWorkspaceShell({
                     className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
                   >
                     <LogOut className="h-4 w-4 text-rose-400" />
-                    <span>Cerrar Sesión</span>
+                    <span>{dict.shellLogoutMenuItem}</span>
                   </button>
                 </div>
               </>
@@ -762,7 +860,7 @@ export function TenantWorkspaceShell({
                   {(user.displayName || user.email || "TO").slice(0, 2).toUpperCase()}
                 </div>
                 <div className="truncate">
-                  <p className="font-semibold text-[var(--dsn-text)] truncate">{user.displayName || "Propietario"}</p>
+                  <p className="font-semibold text-[var(--dsn-text)] truncate">{user.displayName || dict.shellOwnerFallback}</p>
                   <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">{user.email}</p>
                 </div>
               </div>
@@ -814,6 +912,7 @@ export function TenantWorkspaceShell({
               {!subscriptionAlert.pendingBreBReview && (
                 <Link
                   href="/workspace/billing"
+                  onClick={(e) => handleGuardedLinkClick(e, "/workspace/billing")}
                   className="inline-flex min-h-[38px] shrink-0 items-center justify-center rounded-lg bg-[var(--dsn-accent)] px-4 py-1.5 text-xs font-semibold text-white hover:opacity-90"
                 >
                   {dict.billingExpirationBannerCta}
@@ -847,17 +946,17 @@ export function TenantWorkspaceShell({
                 </div>
                 <div>
                   <h2 id="tenant-profile-title" className="text-base font-bold text-[var(--dsn-text)]">
-                    Ficha De Perfil Del Comercio
+                    {dict.shellProfileModalTitle}
                   </h2>
                   <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
-                    Panel operativo de tu comercio
+                    {dict.shellProfileModalSubtitle}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setProfileModalOpen(false)}
-                aria-label="Cerrar modal"
+                aria-label={dict.shellProfileModalCloseAria}
                 className="text-xs text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] p-2 rounded-lg hover:bg-[var(--dsn-surface-secondary)] min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 <X className="h-4 w-4" />
@@ -876,17 +975,17 @@ export function TenantWorkspaceShell({
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="font-bold text-sm text-[var(--dsn-text)] truncate">
-                    {user.displayName || "Propietario del Comercio"}
+                    {user.displayName || dict.shellOwnerFullFallback}
                   </h3>
                   <p className="text-xs text-[var(--dsn-text-secondary)] truncate">
                     {user.email}
                   </p>
                   <div className="mt-1 flex items-center gap-2">
                     <span className="rounded bg-[var(--dsn-accent)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30">
-                      {user.role === "tenant_owner" ? "Propietario del Comercio" : "Agente del Comercio"}
+                      {user.role !== "tenant_agent" ? dict.shellOwnerRoleLabel : dict.shellAgentRoleLabel}
                     </span>
                     <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30">
-                      Activo
+                      {dict.shellProfileStatusActive}
                     </span>
                   </div>
                 </div>
@@ -894,36 +993,36 @@ export function TenantWorkspaceShell({
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">Comercio Activo</span>
+                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileActiveStoreLabel}</span>
                   <p className="font-semibold text-xs mt-0.5 text-[var(--dsn-text)] truncate">{tenantInfo.name}</p>
                 </div>
                 <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">Identificador Slug</span>
+                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileSlugLabel}</span>
                   <p className="font-mono text-xs mt-0.5 text-[var(--dsn-text)] truncate">{tenantInfo.slug}</p>
                 </div>
                 <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">Estado Operativo</span>
+                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileOpStatusLabel}</span>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <p className="font-mono text-xs text-emerald-400 font-semibold">Conectado</p>
+                    <p className="font-mono text-xs text-emerald-400 font-semibold">{connectionLabel}</p>
                   </div>
                 </div>
                 <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">Plan de Suscripción</span>
+                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfilePlanLabel}</span>
                   <p className="font-semibold text-xs mt-0.5 text-[var(--dsn-accent)] truncate">{tenantInfo.planName}</p>
                 </div>
               </div>
 
               <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/20 p-3 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">ID de Usuario</span>
+                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileUserIdLabel}</span>
                   <button
                     type="button"
                     onClick={copyUserId}
                     className="flex items-center gap-1 text-[10px] text-[var(--dsn-accent)] hover:underline"
                   >
                     {copiedId ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                    <span>{copiedId ? "Copiado" : "Copiar ID"}</span>
+                    <span>{copiedId ? dict.shellProfileCopiedIdCta : dict.shellProfileCopyIdCta}</span>
                   </button>
                 </div>
                 <p className="font-mono text-[11px] text-[var(--dsn-text)] truncate bg-[var(--dsn-surface)] p-1.5 rounded-lg border border-[var(--dsn-border)]">
@@ -938,7 +1037,7 @@ export function TenantWorkspaceShell({
                 onClick={() => setProfileModalOpen(false)}
                 className="rounded-lg px-4 py-2 text-xs font-semibold bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] hover:bg-[var(--dsn-border)] transition-colors min-h-[44px]"
               >
-                Cerrar Ficha
+                {dict.shellProfileCloseCta}
               </button>
             </div>
           </div>
@@ -964,17 +1063,17 @@ export function TenantWorkspaceShell({
                 </div>
                 <div>
                   <h2 id="switch-store-title" className="text-base font-bold text-[var(--dsn-text)]">
-                    Cambio de Comercio
+                    {dict.shellSwitchModalTitle}
                   </h2>
                   <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
-                    Membresía activa del operador
+                    {dict.shellSwitchModalSubtitle}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setSwitchStoreModalOpen(false)}
-                aria-label="Cerrar modal"
+                aria-label={dict.shellProfileModalCloseAria}
                 className="text-xs text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] p-2 rounded-lg hover:bg-[var(--dsn-surface-secondary)] min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 <X className="h-4 w-4" />
@@ -984,7 +1083,7 @@ export function TenantWorkspaceShell({
             <div className="space-y-4 text-xs text-[var(--dsn-text)]">
               <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4">
                 <span className="text-[10px] text-[var(--dsn-text-secondary)] tracking-wider font-semibold">
-                  Comercio Vinculado Actualmente
+                  {dict.shellSwitchCurrentLabel}
                 </span>
                 <div className="flex items-center justify-between mt-2">
                   <div>
@@ -992,7 +1091,7 @@ export function TenantWorkspaceShell({
                     <p className="text-[10px] font-mono text-[var(--dsn-text-secondary)] mt-0.5">{tenantInfo.slug}</p>
                   </div>
                   <span className="rounded bg-emerald-500/15 px-2 py-1 text-[10px] font-mono text-emerald-400 font-semibold border border-emerald-500/30">
-                    Conectado
+                    {connectionLabel}
                   </span>
                 </div>
               </div>
@@ -1000,11 +1099,10 @@ export function TenantWorkspaceShell({
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-200">
                 <div className="flex items-center gap-2 font-semibold text-xs mb-1">
                   <Shield className="h-4 w-4 text-amber-400" />
-                  <span>Espacio Dedicado y Membresía Única</span>
+                  <span>{dict.shellSwitchDedicatedTitle}</span>
                 </div>
                 <p className="text-[11px] leading-relaxed text-amber-200/90">
-                  Tu cuenta se encuentra anclada de manera autoritativa al espacio de datos dedicado de este comercio.
-                  Para gestionar otra tienda, debes iniciar sesión con las credenciales asociadas o recibir una invitación de membresía correspondiente.
+                  {dict.shellSwitchDedicatedDesc}
                 </p>
               </div>
             </div>
@@ -1015,7 +1113,7 @@ export function TenantWorkspaceShell({
                 onClick={() => setSwitchStoreModalOpen(false)}
                 className="rounded-lg px-4 py-2 text-xs font-semibold bg-[var(--dsn-accent)] text-white hover:opacity-90 transition-opacity min-h-[44px]"
               >
-                Entendido
+                {dict.shellSwitchAckCta}
               </button>
             </div>
           </div>
@@ -1027,21 +1125,21 @@ export function TenantWorkspaceShell({
         isOpen={logoutModalOpen}
         onClose={() => setLogoutModalOpen(false)}
         onConfirm={handleConfirmLogout}
-        title="Cerrar Sesión en el Comercio"
-        subtitle="Finalizar la sesión operativa activa en el backoffice de tu comercio."
+        title={dict.shellLogoutModalTitle}
+        subtitle={dict.shellLogoutModalSubtitle}
         variant="warning"
-        confirmText="Cerrar Sesión Definitivamente"
-        confirmLoadingText="Cerrando Sesión..."
-        cancelText="Permanecer Conectado"
+        confirmText={dict.shellLogoutConfirmCta}
+        confirmLoadingText={dict.shellLogoutLoadingCta}
+        cancelText={dict.shellLogoutCancelCta}
         loading={logoutLoading}
         details={[
-          { label: "Comercio", value: tenantInfo.name },
-          { label: "Operador", value: user.displayName || "Propietario del Comercio" },
-          { label: "Correo Electrónico", value: user.email, mono: true },
-          { label: "Identificador del Comercio", value: tenantInfo.slug, mono: true },
+          { label: dict.shellLogoutDetailStore, value: tenantInfo.name },
+          { label: dict.shellLogoutDetailOperator, value: user.displayName || dict.shellOwnerFullFallback },
+          { label: dict.shellLogoutDetailEmail, value: user.email, mono: true },
+          { label: dict.shellLogoutDetailSlug, value: tenantInfo.slug, mono: true },
         ]}
-        warningTitle="Finalización de Sesión Segura"
-        warningMessage="Se revocará el token de autenticación del servidor y deberás volver a ingresar credenciales para acceder al backoffice."
+        warningTitle={dict.shellLogoutWarningTitle}
+        warningMessage={dict.shellLogoutWarningMessage}
       />
     </div>
   );

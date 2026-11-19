@@ -8,6 +8,7 @@ import {
 import { AdminShell } from "@/components/admin-shell";
 import { TenantWorkspaceShell } from "@/components/tenant-workspace-shell";
 import type { CurrentUserDto } from "@/components/user-profile-modal";
+import { resolvePortalPageLocale } from "@/lib/resolve-page-locale";
 
 /**
  * Propiedades del enrutador autoritativo de cascarones visuales.
@@ -84,7 +85,12 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
   }
 
   // 2. Validación autoritativa en base de datos de control
-  const portalContext = await resolveAuthenticatedPortalContext(sid);
+  const cookieLocale = cookieStore.get("mocter_locale")?.value ?? null;
+  const browserAcceptLanguage = headerList.get("accept-language");
+  const portalContext = await resolveAuthenticatedPortalContext(sid, {
+    browserAcceptLanguage,
+    cookieLocale,
+  });
   if (!portalContext || !portalContext.user) {
     // Sesión revocada, inexistente o falsificada -> 307 a login (previene fuga de AdminShell)
     redirect(getLoginRedirectUrl(pathname, host, proto));
@@ -173,6 +179,15 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
       }
     }
 
+    const resolvedLocale =
+      portalContext.activeLocale ??
+      resolvePortalPageLocale({
+        context: portalContext,
+        cookieLocale,
+        tenantLocale: activeClient?.locale,
+        acceptLanguage: browserAcceptLanguage,
+      });
+
     return (
       <TenantWorkspaceShell
         currentUser={currentUserDto}
@@ -187,7 +202,7 @@ export async function PortalShellRouter({ children }: PortalShellRouterProps) {
         capabilities={capabilities}
         subscriptionAlert={portalContext.subscriptionAlert ?? null}
         unreadNotificationsCount={unreadNotificationsCount}
-        locale={activeClient?.locale === "en" ? "en" : "es"}
+        locale={resolvedLocale}
         brandingTokens={portalContext.brandingTokens ?? undefined}
         branding={
           portalContext.branding

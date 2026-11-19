@@ -19,6 +19,10 @@ import type {
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import {
+  WorkspaceDataTable,
+  type WorkspaceTableColumn,
+} from "@/components/ui/workspace-data-table";
+import {
   formatCommunityMoney,
   readApiError,
   SAFE_AUTO_SYNC_ATTRIBUTES,
@@ -74,7 +78,7 @@ export function CommunityClonesTab({
       .then(async (res) => {
         if (!active) return;
         if (!res.ok) {
-          onErrorToast(await readApiError(res, "Error al cargar tus clones."));
+          onErrorToast(await readApiError(res, dict.networkErrorLoadClones));
           return;
         }
         const json = await res.json();
@@ -84,7 +88,7 @@ export function CommunityClonesTab({
       })
       .catch(() => {
         if (active) {
-          onErrorToast("Error de red al cargar clones adoptados.");
+          onErrorToast(dict.networkErrorLoadClones);
         }
       })
       .finally(() => {
@@ -94,7 +98,7 @@ export function CommunityClonesTab({
     return () => {
       active = false;
     };
-  }, [onlyOutdated, refreshTick, onErrorToast]);
+  }, [onlyOutdated, refreshTick, onErrorToast, dict.networkErrorLoadClones]);
 
   async function openDiffModal(adoption: MyAdoptionItemDto) {
     setLoadingDiff(true);
@@ -120,7 +124,7 @@ export function CommunityClonesTab({
         setApplyWholesaleCost(false);
       }
     } catch {
-      onErrorToast("Error de red al consultar cambios.");
+      onErrorToast(dict.networkErrorDiff);
     } finally {
       setLoadingDiff(false);
     }
@@ -155,7 +159,7 @@ export function CommunityClonesTab({
           : "Campos seleccionados sincronizados correctamente.",
       );
     } catch {
-      onErrorToast("Error de red durante la sincronización.");
+      onErrorToast(dict.networkErrorSync);
     } finally {
       setSyncingDiff(false);
     }
@@ -180,7 +184,7 @@ export function CommunityClonesTab({
       }
       await loadAdoptions();
     } catch {
-      onErrorToast("Error de red al guardar política.");
+      onErrorToast(dict.networkErrorPolicy);
     }
   }
 
@@ -222,6 +226,142 @@ export function CommunityClonesTab({
     return String(val);
   }
 
+  const cloneColumns: WorkspaceTableColumn<MyAdoptionItemDto>[] = [
+    {
+      key: "cloneName",
+      header: dict.clonesColProduct,
+      sortable: true,
+      sortValue: (adoption) => adoption.cloneName,
+      renderCell: (adoption) => (
+        <div className="flex items-start gap-3">
+          <div className="h-11 w-11 rounded-lg bg-[var(--dsn-surface-secondary)] overflow-hidden flex items-center justify-center shrink-0">
+            {adoption.cloneCoverImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={adoption.cloneCoverImageUrl}
+                alt={adoption.cloneName}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <Package className="h-5 w-5 text-[var(--dsn-text-secondary)]" />
+            )}
+          </div>
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-semibold text-[var(--dsn-text)]">{adoption.cloneName}</span>
+              {adoption.hasUpdateAvailable && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                  {dict.updateAvailableBadge} (v{adoption.adoptedVersion} → v
+                  {adoption.latestVersion})
+                </span>
+              )}
+              {!adoption.linkActive && (
+                <span className="inline-flex items-center rounded-full bg-slate-500/15 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-300">
+                  {locale === "en" ? "Unlinked" : "Desvinculado"}
+                </span>
+              )}
+            </div>
+            {adoption.latestChangelog && (
+              <p className="text-[11px] text-[var(--dsn-text-secondary)] line-clamp-1">
+                <strong>v{adoption.latestVersion}:</strong> {adoption.latestChangelog}
+              </p>
+            )}
+            {adoption.linkActive && (
+              <div className="flex flex-wrap gap-1 pt-0.5">
+                {SAFE_AUTO_SYNC_ATTRIBUTES.map((attr) => {
+                  const active = adoption.autoSyncAttributes.includes(attr);
+                  return (
+                    <button
+                      key={attr}
+                      type="button"
+                      disabled={!isOwner}
+                      onClick={() => void handleToggleAutoSync(adoption, attr)}
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                        active
+                          ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
+                          : "border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 text-[var(--dsn-text-secondary)]"
+                      }`}
+                    >
+                      {active && <CheckCircle2 className="h-2.5 w-2.5" />}
+                      <span>{renderAttrLabel(attr)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "organizationName",
+      header: dict.clonesColCommunity,
+      sortable: true,
+      sortValue: (adoption) => adoption.organizationName,
+      renderCell: (adoption) => (
+        <div className="text-xs">
+          <div className="font-medium text-[var(--dsn-text)]">{adoption.organizationName}</div>
+          <div className="text-[11px] text-[var(--dsn-text-secondary)]">
+            {adoption.sharerDisplayName}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "version",
+      header: dict.clonesColVersion,
+      sortable: true,
+      sortValue: (adoption) => adoption.adoptedVersion,
+      renderCell: (adoption) => (
+        <span className="font-mono text-xs text-[var(--dsn-text)] whitespace-nowrap">
+          v{adoption.adoptedVersion} / v{adoption.latestVersion}
+        </span>
+      ),
+    },
+    {
+      key: "clonePriceCents",
+      header: dict.clonesColPrice,
+      isNumeric: true,
+      align: "right",
+      sortable: true,
+      sortValue: (adoption) => adoption.clonePriceCents,
+      renderCell: (adoption) =>
+        formatCommunityMoney(adoption.clonePriceCents, adoption.currency, locale),
+    },
+    {
+      key: "actions",
+      header: dict.clonesColActions,
+      align: "right",
+      renderCell: (adoption) =>
+        isOwner && adoption.linkActive ? (
+          <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+            <button
+              type="button"
+              disabled={loadingDiff}
+              onClick={() => void openDiffModal(adoption)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-2.5 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+            >
+              <GitCompare className="h-3.5 w-3.5" />
+              <span>{dict.reviewUpdateAction}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setUnlinkError(null);
+                setUnlinkTarget(adoption);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs font-semibold text-[var(--dsn-text-secondary)] hover:text-rose-600"
+            >
+              <Unlink className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+              <span>{dict.clonesUnlinkAction}</span>
+            </button>
+          </div>
+        ) : (
+          <span className="text-xs text-[var(--dsn-text-secondary)]">—</span>
+        ),
+    },
+  ];
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-3.5">
@@ -229,146 +369,156 @@ export function CommunityClonesTab({
           <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
           <span>{dict.clonesProtectedNote}</span>
         </div>
-
-        <div className="flex items-center gap-3">
-          <label className="inline-flex items-center gap-1.5 text-xs text-[var(--dsn-text)] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={onlyOutdated}
-              onChange={(e) => setOnlyOutdated(e.target.checked)}
-              className="accent-[var(--dsn-accent)]"
-            />
-            <span>{dict.updateAvailableBadge}</span>
-          </label>
-          <button
-            type="button"
-            onClick={() => void loadAdoptions()}
-            className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-2 text-[var(--dsn-accent)]"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          </button>
-        </div>
       </div>
 
-      {adoptions.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-12 text-center space-y-2">
-          <Package className="mx-auto h-8 w-8 text-[var(--dsn-text-secondary)]" />
-          <p className="text-sm font-semibold text-[var(--dsn-text)]">{dict.clonesEmptyTitle}</p>
-          <p className="text-xs text-[var(--dsn-text-secondary)]">{dict.clonesEmptyDesc}</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {adoptions.map((adoption) => (
-            <div
-              key={adoption.adoptionId}
-              className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 space-y-3"
+      <WorkspaceDataTable<MyAdoptionItemDto>
+        testId="community-clones-table"
+        locale={locale}
+        data={adoptions}
+        columns={cloneColumns}
+        getRowKey={(adoption) => adoption.adoptionId}
+        defaultPageSize={10}
+        searchKeys={["cloneName", "organizationName", "sharerDisplayName"]}
+        loading={loading}
+        activeFiltersCount={onlyOutdated ? 1 : 0}
+        onResetFilters={() => {
+          if (onlyOutdated) setOnlyOutdated(false);
+        }}
+        filterSlot={
+          <div className="flex items-center gap-3">
+            <label className="inline-flex items-center gap-1.5 text-xs text-[var(--dsn-text)] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={onlyOutdated}
+                onChange={(e) => setOnlyOutdated(e.target.checked)}
+                className="accent-[var(--dsn-accent)]"
+              />
+              <span>{dict.updateAvailableBadge}</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => void loadAdoptions()}
+              aria-label={dict.updateAvailableBadge}
+              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-2 text-[var(--dsn-accent)]"
             >
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-14 w-14 rounded-xl bg-[var(--dsn-surface-secondary)] overflow-hidden flex items-center justify-center shrink-0">
-                    {adoption.cloneCoverImageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={adoption.cloneCoverImageUrl}
-                        alt={adoption.cloneName}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <Package className="h-6 w-6 text-[var(--dsn-text-secondary)]" />
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+        }
+        emptyState={{
+          icon: <Package className="mx-auto h-8 w-8 text-[var(--dsn-text-secondary)]" />,
+          title: dict.clonesEmptyTitle,
+          description: dict.clonesEmptyDesc,
+        }}
+        renderMobileCard={(adoption) => (
+          <div
+            key={adoption.adoptionId}
+            className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 space-y-3"
+          >
+            <div className="flex flex-col justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-14 w-14 rounded-xl bg-[var(--dsn-surface-secondary)] overflow-hidden flex items-center justify-center shrink-0">
+                  {adoption.cloneCoverImageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={adoption.cloneCoverImageUrl}
+                      alt={adoption.cloneName}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <Package className="h-6 w-6 text-[var(--dsn-text-secondary)]" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-bold text-[var(--dsn-text)] truncate">
+                      {adoption.cloneName}
+                    </h3>
+                    {adoption.hasUpdateAvailable && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                        {dict.updateAvailableBadge} (v{adoption.adoptedVersion} → v
+                        {adoption.latestVersion})
+                      </span>
+                    )}
+                    {!adoption.linkActive && (
+                      <span className="inline-flex items-center rounded-full bg-slate-500/15 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                        {locale === "en" ? "Unlinked" : "Desvinculado"}
+                      </span>
                     )}
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-sm font-bold text-[var(--dsn-text)] truncate">
-                        {adoption.cloneName}
-                      </h3>
-                      {adoption.hasUpdateAvailable && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
-                          {dict.updateAvailableBadge} (v{adoption.adoptedVersion} → v
-                          {adoption.latestVersion})
-                        </span>
-                      )}
-                      {!adoption.linkActive && (
-                        <span className="inline-flex items-center rounded-full bg-slate-500/15 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                          {locale === "en" ? "Unlinked" : "Desvinculado"}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-[var(--dsn-text-secondary)]">
-                      {adoption.organizationName} · {adoption.sharerDisplayName} ·{" "}
-                      {formatCommunityMoney(adoption.clonePriceCents, adoption.currency, locale)} ·{" "}
-                      {dict.clonesVersionLabel}: v{adoption.adoptedVersion} /{" "}
-                      {dict.clonesLatestVersionLabel}: v{adoption.latestVersion}
-                    </p>
-                  </div>
+                  <p className="text-xs text-[var(--dsn-text-secondary)]">
+                    {adoption.organizationName} · {adoption.sharerDisplayName} ·{" "}
+                    {formatCommunityMoney(adoption.clonePriceCents, adoption.currency, locale)} ·{" "}
+                    {dict.clonesVersionLabel}: v{adoption.adoptedVersion} /{" "}
+                    {dict.clonesLatestVersionLabel}: v{adoption.latestVersion}
+                  </p>
                 </div>
-
-                {isOwner && adoption.linkActive && (
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      disabled={loadingDiff}
-                      onClick={() => void openDiffModal(adoption)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
-                    >
-                      <GitCompare className="h-3.5 w-3.5" />
-                      <span>{dict.reviewUpdateAction}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUnlinkError(null);
-                        setUnlinkTarget(adoption);
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs font-semibold text-[var(--dsn-text-secondary)] hover:text-rose-600"
-                    >
-                      <Unlink className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                      <span>{dict.clonesUnlinkAction}</span>
-                    </button>
-                  </div>
-                )}
               </div>
 
-              {adoption.latestChangelog && (
-                <div className="rounded-lg bg-[var(--dsn-surface-secondary)]/60 px-3 py-2 text-xs text-[var(--dsn-text-secondary)]">
-                  <strong>v{adoption.latestVersion}:</strong> {adoption.latestChangelog}
-                </div>
-              )}
+              {isOwner && adoption.linkActive && (
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    disabled={loadingDiff}
+                    onClick={() => void openDiffModal(adoption)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
+                  >
+                    <GitCompare className="h-3.5 w-3.5" />
+                    <span>{dict.reviewUpdateAction}</span>
+                  </button>
 
-              {/* Políticas de auto-sync seguras por atributo */}
-              {adoption.linkActive && (
-                <div className="border-t border-[var(--dsn-border)] pt-3 space-y-2">
-                  <span className="text-[11px] font-semibold text-[var(--dsn-text-secondary)] block">
-                    {dict.clonesAutoSyncTitle}:
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {SAFE_AUTO_SYNC_ATTRIBUTES.map((attr) => {
-                      const active = adoption.autoSyncAttributes.includes(attr);
-                      return (
-                        <button
-                          key={attr}
-                          type="button"
-                          disabled={!isOwner}
-                          onClick={() => void handleToggleAutoSync(adoption, attr)}
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                            active
-                              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-                              : "border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 text-[var(--dsn-text-secondary)]"
-                          }`}
-                        >
-                          {active && <CheckCircle2 className="h-3 w-3" />}
-                          <span>{renderAttrLabel(attr)}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUnlinkError(null);
+                      setUnlinkTarget(adoption);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs font-semibold text-[var(--dsn-text-secondary)] hover:text-rose-600"
+                  >
+                    <Unlink className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                    <span>{dict.clonesUnlinkAction}</span>
+                  </button>
                 </div>
               )}
             </div>
-          ))}
-        </div>
-      )}
+
+            {adoption.latestChangelog && (
+              <div className="rounded-lg bg-[var(--dsn-surface-secondary)]/60 px-3 py-2 text-xs text-[var(--dsn-text-secondary)]">
+                <strong>v{adoption.latestVersion}:</strong> {adoption.latestChangelog}
+              </div>
+            )}
+
+            {adoption.linkActive && (
+              <div className="border-t border-[var(--dsn-border)] pt-3 space-y-2">
+                <span className="text-[11px] font-semibold text-[var(--dsn-text-secondary)] block">
+                  {dict.clonesAutoSyncTitle}:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {SAFE_AUTO_SYNC_ATTRIBUTES.map((attr) => {
+                    const active = adoption.autoSyncAttributes.includes(attr);
+                    return (
+                      <button
+                        key={attr}
+                        type="button"
+                        disabled={!isOwner}
+                        onClick={() => void handleToggleAutoSync(adoption, attr)}
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                          active
+                            ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
+                            : "border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 text-[var(--dsn-text-secondary)]"
+                        }`}
+                      >
+                        {active && <CheckCircle2 className="h-3 w-3" />}
+                        <span>{renderAttrLabel(attr)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      />
 
       {/* Modal Comparador de Diff y Sincronización */}
       {diffData && (

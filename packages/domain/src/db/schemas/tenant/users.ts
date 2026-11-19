@@ -6,6 +6,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { cellAdminSchema } from "./namespace";
@@ -59,6 +60,8 @@ export const cellUsers = cellAdminSchema.table(
     displayName: text("display_name"),
     /** URL de avatar del usuario. */
     avatarUrl: text("avatar_url"),
+    /** Idioma preferido individual del usuario ('es' | 'en'); si es nulo hereda el idioma del comercio (`clients.locale`). */
+    preferredLocale: varchar("preferred_locale", { length: 10 }),
     ...auditColumns(),
   },
   (table) => [
@@ -66,6 +69,10 @@ export const cellUsers = cellAdminSchema.table(
     uniqueIndex("cell_users_email_unique").on(table.clientId, sql`lower(${table.email})`),
     check("cell_users_email_lowercase_check", sql.raw("email = lower(email)")),
     check("cell_users_status_check", sql.raw("status IN ('active', 'disabled')")),
+    check(
+      "cell_users_preferred_locale_check",
+      sql.raw("preferred_locale IS NULL OR preferred_locale IN ('es', 'en')"),
+    ),
     check(
       "cell_users_password_hash_check",
       sql.raw("password_hash IS NULL OR password_hash LIKE '$argon2id$%'"),
