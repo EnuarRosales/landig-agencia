@@ -1,4 +1,3 @@
-import type { Result } from "../types/result";
 import type {
   ReferralProgram,
   NewReferralProgram,
@@ -11,7 +10,65 @@ import type {
 } from "../db/schemas/admin/referrals";
 
 /**
- * Contrato de repositorio para el programa de referidos (REF-001 RF-01 a RF-05).
+ * Fila enriquecida de referido para el panel del inquilino referente (SPEC-16).
+ */
+export interface ReferrerReferralItemRow {
+  id: string;
+  referredClientId: string;
+  referredDisplayName: string | null;
+  code: string;
+  status: Referral["status"];
+  attributedAt: Date;
+  qualifiedAt: Date | null;
+  rejectedReason: string | null;
+  rewardAmountCents: number | null;
+  rewardCurrency: string | null;
+}
+
+/**
+ * Movimiento del ledger de redenciones de créditos vinculado a su factura SaaS (SPEC-16 D-02).
+ */
+export interface ReferralRedemptionWithInvoiceRow {
+  id: string;
+  rewardId: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  amountCents: number;
+  currency: string;
+  redeemedAt: Date;
+}
+
+/**
+ * Huella fiscal y de nombre comercial de un comercio para validaciones antifraude y notificaciones (SPEC-16 D-03).
+ */
+export interface ClientFraudFingerprint {
+  clientId: string;
+  displayName: string;
+  taxId: string | null;
+  billingDni: string | null;
+}
+
+/**
+ * Detalle individual de una deducción FEFO aplicada sobre un lote de recompensa.
+ */
+export interface FefoRedemptionAllocation {
+  rewardId: string;
+  amountCents: number;
+  remainingCents: number;
+  status: ReferralReward["status"];
+}
+
+/**
+ * Resultado consolidado de la redención FEFO idempotente para una factura.
+ */
+export interface RedeemCreditsFefoResult {
+  totalRedeemedCents: number;
+  allocations: FefoRedemptionAllocation[];
+  alreadyRedeemed: boolean;
+}
+
+/**
+ * Contrato de repositorio para el programa de referidos (`REF-001`, `SPEC-16`).
  */
 export interface IReferralsRepository {
   // Programs
@@ -46,6 +103,10 @@ export interface IReferralsRepository {
   ): Promise<Referral>;
   countRewardedReferralsByReferrer(referrerClientId: string): Promise<number>;
   listReferralsByReferrer(referrerClientId: string): Promise<Referral[]>;
+  listReferralsByReferrerPaginated?(
+    referrerClientId: string,
+    params: { page: number; limit: number; status?: Referral["status"] },
+  ): Promise<{ items: ReferrerReferralItemRow[]; total: number }>;
   getReferrerMetrics(referrerClientId: string): Promise<{
     totalReferred: number;
     pendingCount: number;
@@ -54,15 +115,38 @@ export interface IReferralsRepository {
     availableCreditCents: number;
   }>;
 
-  // Rewards
+  // Antifraude
+  getClientFraudFingerprint?(clientId: string): Promise<ClientFraudFingerprint | null>;
+  countReferralsByIpHash?(
+    referrerClientId: string,
+    ipHash: string,
+    since: Date,
+  ): Promise<number>;
+  hasIpCollisionWithReferrer?(
+    referrerClientId: string,
+    ipHash: string,
+  ): Promise<boolean>;
+
+  // Rewards & Redemptions
   createReward(reward: NewReferralReward): Promise<ReferralReward>;
   getRewardByReferralId(referralId: string): Promise<ReferralReward | null>;
   listAvailableRewardsByReferrer(referrerClientId: string): Promise<ReferralReward[]>;
+  listRewardsByReferrer?(referrerClientId: string): Promise<ReferralReward[]>;
+  listRedemptionsByReferrer?(
+    referrerClientId: string,
+    limit?: number,
+  ): Promise<ReferralRedemptionWithInvoiceRow[]>;
   deductRewardCredit(
     rewardId: string,
     amountCents: number,
     invoiceId: string,
   ): Promise<ReferralReward>;
+  redeemCreditsFefoForInvoice?(params: {
+    clientId: string;
+    invoiceId: string;
+    maxAmountCents: number;
+    currency: "COP" | "USD";
+    executedBy: string;
+  }): Promise<RedeemCreditsFefoResult>;
   expireOverdueRewards(): Promise<number>;
 }
-

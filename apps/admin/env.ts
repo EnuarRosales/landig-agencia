@@ -71,6 +71,10 @@ export const env = createEnv({
     AI_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
   },
   client: {
+    NEXT_PUBLIC_APP_URL: z
+      .string()
+      .url()
+      .default("http://localhost:3001"),
     NEXT_PUBLIC_ADMIN_URL: z
       .string()
       .url()
@@ -116,6 +120,7 @@ export const env = createEnv({
     AI_ENCRYPTION_KEY: process.env.AI_ENCRYPTION_KEY,
     AI_ENCRYPTION_KEY_ID: process.env.AI_ENCRYPTION_KEY_ID,
     AI_HTTP_TIMEOUT_MS: process.env.AI_HTTP_TIMEOUT_MS,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_ADMIN_URL: process.env.NEXT_PUBLIC_ADMIN_URL,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
     NEXT_PUBLIC_CHATWOOT_URL: process.env.NEXT_PUBLIC_CHATWOOT_URL,

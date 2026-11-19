@@ -135,4 +135,23 @@ describe("apps/admin · AdminShell Component (Profile & Logout)", () => {
     );
     expect(screen.queryByText(/Informes y Analítica/i)).toBeNull();
   });
+
+  it("renderiza BrandLogo con IDs de gradiente SVG únicos entre cabecera móvil y sidebar desktop", () => {
+    const { container } = render(
+      <AdminShell currentUser={mockUser}>
+        <div>Vista</div>
+      </AdminShell>
+    );
+
+    const gradients = Array.from(container.querySelectorAll("linearGradient"));
+    expect(gradients.length).toBeGreaterThanOrEqual(2);
+    const ids = gradients.map((g) => g.getAttribute("id"));
+    expect(new Set(ids).size).toBe(ids.length);
+
+    const paths = Array.from(container.querySelectorAll("svg[aria-label$='Icon'] path"));
+    expect(paths.length).toBe(gradients.length);
+    paths.forEach((p, idx) => {
+      expect(p.getAttribute("stroke")).toBe(`url(#${ids[idx]})`);
+    });
+  });
 });

@@ -10,6 +10,11 @@ export interface AvailableReferralCredit {
   expiresAt: Date;
 }
 
+export interface AppliedReferralCreditAllocation {
+  rewardId: string;
+  amountCents: number;
+}
+
 export interface IReferralRewardsProvider {
   getAvailableCredits(clientId: string): Promise<AvailableReferralCredit[]>;
   deductCredit(rewardId: string, amountCents: number, invoiceId: string): Promise<void>;
@@ -27,17 +32,18 @@ export interface IssueInvoiceWithCreditsResult {
   invoice: Invoice;
   creditsAppliedCents: number;
   appliedCreditId: string | null;
+  appliedAllocations: AppliedReferralCreditAllocation[];
   paidWithoutGateway: boolean;
   receipt?: PaymentReceipt;
 }
 
 /**
- * Gestor de aplicación de créditos de referidos en facturación SaaS (BILL-001 T-10, §4.3).
+ * Gestor de aplicación de créditos de referidos en facturación SaaS (`BILL-001 T-10`, `SPEC-16 D-02`).
  *
  * Reglas:
- * 1. Imputa créditos disponibles ordenados por fecha de expiración ascendente.
- * 2. Descuenta el crédito en el módulo de referidos (REF-001).
- * 3. Si totalCents llega a 0, marca la factura inmediatamente como 'paid' sin invocar pasarela.
+ * 1. Imputa créditos disponibles ordenados FEFO por fecha de expiración ascendente (`expiresAt ASC`).
+ * 2. Descuenta cada lote de crédito consumido de manera individual (soporte multi-recompensa).
+ * 3. Si `totalCents` llega a `0`, marca la factura inmediatamente como `'paid'` sin invocar pasarela.
  * 4. Idempotencia y protección contra totales negativos.
  */
 export class ReferralCreditBillingManager {
@@ -59,27 +65,37 @@ export class ReferralCreditBillingManager {
       if (netPayable < 0) netPayable = 0;
 
       let creditsAppliedCents = 0;
-      let appliedCreditId: string | null = null;
+      const appliedAllocations: AppliedReferralCreditAllocation[] = [];
 
-      // 1. Consultar créditos disponibles de referidos si el proveedor está inyectado
+      // 1. Consultar créditos disponibles de referidos y calcular asignaciones FEFO multi-lote
       if (this.referralProvider && netPayable > 0) {
         const availableCredits = await this.referralProvider.getAvailableCredits(input.clientId);
-        // Ordenar por expiración ascendente
-        const sorted = availableCredits.sort(
-          (a, b) => a.expiresAt.getTime() - b.expiresAt.getTime(),
-        );
+        const nowMs = Date.now();
+        const sorted = [...availableCredits]
+          .filter(
+            (credit) =>
+              credit.currency === input.currency &&
+              credit.remainingCents > 0 &&
+              credit.expiresAt.getTime() > nowMs,
+          )
+          .sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime());
 
         for (const credit of sorted) {
           if (netPayable <= 0) break;
-          if (credit.currency !== input.currency) continue;
 
           const toDeduct = Math.min(credit.remainingCents, netPayable);
+          if (toDeduct <= 0) continue;
+
           creditsAppliedCents += toDeduct;
           netPayable -= toDeduct;
-          appliedCreditId = credit.id;
+          appliedAllocations.push({
+            rewardId: credit.id,
+            amountCents: toDeduct,
+          });
         }
       }
 
+      const appliedCreditId = appliedAllocations[0]?.rewardId ?? null;
       const totalCents = Math.max(0, input.subtotalCents + prorationCents - creditsAppliedCents);
       const isFullyCovered = totalCents === 0;
 
@@ -101,13 +117,15 @@ export class ReferralCreditBillingManager {
         updatedBy: input.executedBy,
       });
 
-      // 3. Si se aplicaron créditos, persistir deducción en REF-001
-      if (this.referralProvider && appliedCreditId && creditsAppliedCents > 0) {
-        await this.referralProvider.deductCredit(
-          appliedCreditId,
-          creditsAppliedCents,
-          invoice.id,
-        );
+      // 3. Persistir deducción FEFO de CADA lote consumido (corrección multi-reward SPEC-16 D-02)
+      if (this.referralProvider && appliedAllocations.length > 0) {
+        for (const allocation of appliedAllocations) {
+          await this.referralProvider.deductCredit(
+            allocation.rewardId,
+            allocation.amountCents,
+            invoice.id,
+          );
+        }
       }
 
       // 4. Si se cubrió al 100% con créditos, emitir recibo interno de pago
@@ -139,6 +157,7 @@ export class ReferralCreditBillingManager {
           clientId: input.clientId,
           invoiceId: invoice.id,
           creditsAppliedCents,
+          allocationsCount: appliedAllocations.length,
         });
       }
 
@@ -146,14 +165,14 @@ export class ReferralCreditBillingManager {
         invoice,
         creditsAppliedCents,
         appliedCreditId,
+        appliedAllocations,
         paidWithoutGateway: isFullyCovered,
         receipt,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[ReferralCreditBilling] Error al emitir factura con créditos: ${msg}`, error);
       return err(msg, "REFERRAL_CREDIT_INVOICE_ERROR");
     }
   }
 }
-

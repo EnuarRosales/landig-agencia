@@ -54,6 +54,8 @@ describe("DAT-001 / ADM-001 · CreateCellForm Component", () => {
     expect(screen.getByLabelText(/Nombre De La Base De Datos/i)).toBeDefined();
     expect(screen.getByLabelText(/Capacidad Máxima De Inquilinos/i)).toBeDefined();
     expect(screen.getByLabelText(/Región Geográfica De Despliegue/i)).toBeDefined();
+    expect(screen.getByLabelText(/Directorio De Trabajo Canónico/i)).toBeDefined();
+    expect(screen.getByLabelText(/Usuario De Despliegue/i)).toBeDefined();
   });
 
   it("permite cerrar el modal con el botón Cancelar", () => {

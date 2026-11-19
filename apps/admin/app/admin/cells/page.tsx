@@ -209,7 +209,12 @@ export default function AdminCellsPage(): React.JSX.Element {
           </p>
         </div>
 
-        <CreateCellForm apiUrl={getApiUrl()} hosts={hostsList} onSuccess={refresh} />
+        <CreateCellForm
+          apiUrl={getApiUrl()}
+          hosts={hostsList}
+          existingCells={cellsList}
+          onSuccess={refresh}
+        />
       </header>
 
       {/* Métricas rápidas de infraestructura */}

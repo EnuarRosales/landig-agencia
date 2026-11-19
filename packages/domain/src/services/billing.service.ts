@@ -26,10 +26,16 @@ import type { PaymentGatewayConfigRow } from "../db/schemas/admin/payment-gatewa
 import { validateMediaMagicBytes } from "../utils/media-magic-bytes";
 import { S3StorageService } from "./s3-storage.service";
 import { BreBQrService, defaultBreBQrService } from "./breb-qr.service";
+import { getReferralsService, type ReferralsService } from "./referrals.service";
 import {
   buildAdminBreBReviewUrl,
   getNotificationDispatcherService,
 } from "./notification-dispatcher.service";
+
+export type BillingReferralsFacade = Pick<
+  ReferralsService,
+  "redeemCreditsFefoForInvoice" | "qualifyReferral"
+>;
 import { sendSystemNotificationEmail } from "./admin-dashboard.service";
 import { env } from "../utils/env";
 
@@ -192,6 +198,7 @@ export class BillingService {
     private readonly totpCrypto: TotpCryptoService = defaultTotpCryptoService,
     private readonly storageService: Pick<S3StorageService, "putObject" | "getObject"> = new S3StorageService(),
     private readonly breBQrService: BreBQrService = defaultBreBQrService,
+    private readonly referralsService?: BillingReferralsFacade,
   ) { }
 
   /**
@@ -326,6 +333,43 @@ export class BillingService {
       const sub = await this.repository.getSubscriptionByClientId(input.clientId);
       if (sub && sub.status === "past_due") {
         await this.repository.updateSubscriptionStatus(sub.id, "active", input.executedBy);
+      }
+
+      // 8. Consolidar redención FEFO de créditos planificados en la factura y calificar referido si aplica (SPEC-16 D-02/D-03)
+      if (this.referralsService) {
+        const plannedCreditCents = Number(invoice.creditCents ?? 0);
+        if (plannedCreditCents > 0) {
+          try {
+            await this.referralsService.redeemCreditsFefoForInvoice({
+              clientId: input.clientId,
+              invoiceId: invoice.id,
+              maxAmountCents: plannedCreditCents,
+              currency: input.currency,
+              executedBy: input.executedBy,
+            });
+          } catch (redeemErr: unknown) {
+            appLogger.warn("[BillingService.registerPayment] Fallo al consolidar redención FEFO", {
+              clientId: input.clientId,
+              invoiceId: invoice.id,
+              error: redeemErr instanceof Error ? redeemErr.message : String(redeemErr),
+            });
+          }
+        }
+
+        try {
+          await this.referralsService.qualifyReferral({
+            referredClientId: input.clientId,
+            firstInvoiceAmountCents: Number(invoice.subtotalCents || input.amountCents),
+            currency: input.currency,
+            executedBy: input.executedBy,
+          });
+        } catch (qualifyErr: unknown) {
+          appLogger.warn("[BillingService.registerPayment] Fallo no bloqueante al calificar referido", {
+            clientId: input.clientId,
+            invoiceId: invoice.id,
+            error: qualifyErr instanceof Error ? qualifyErr.message : String(qualifyErr),
+          });
+        }
       }
 
       appLogger.info("[BillingService] Pago registrado y conciliado exitosamente", {
@@ -1019,6 +1063,45 @@ export class BillingService {
           return err(txResult.error, txResult.code);
         }
 
+        // Consolidar créditos FEFO planificados en la factura y calificar referido tras aprobación Bre-B (SPEC-16 D-02/D-03)
+        if (this.referralsService) {
+          const plannedCreditCents = Number(txResult.invoice.creditCents ?? 0);
+          if (plannedCreditCents > 0) {
+            try {
+              await this.referralsService.redeemCreditsFefoForInvoice({
+                clientId: txResult.report.clientId,
+                invoiceId: txResult.invoice.id,
+                maxAmountCents: plannedCreditCents,
+                currency: "COP",
+                executedBy: input.reviewerUserId,
+              });
+            } catch (redeemErr: unknown) {
+              appLogger.warn("[BillingService.reviewManualBreBReport] Fallo al consolidar redención FEFO", {
+                reportId: txResult.report.id,
+                invoiceId: txResult.invoice.id,
+                error: redeemErr instanceof Error ? redeemErr.message : String(redeemErr),
+              });
+            }
+          }
+
+          try {
+            await this.referralsService.qualifyReferral({
+              referredClientId: txResult.report.clientId,
+              firstInvoiceAmountCents: Number(
+                txResult.invoice.subtotalCents || txResult.report.reportedAmountCents,
+              ),
+              currency: "COP",
+              executedBy: input.reviewerUserId,
+            });
+          } catch (qualifyErr: unknown) {
+            appLogger.warn("[BillingService.reviewManualBreBReport] Fallo no bloqueante al calificar referido", {
+              reportId: txResult.report.id,
+              clientId: txResult.report.clientId,
+              error: qualifyErr instanceof Error ? qualifyErr.message : String(qualifyErr),
+            });
+          }
+        }
+
         if (this.notificationDispatcher?.dispatchBreBReviewResult && detail) {
           const amountCop = new Intl.NumberFormat("es-CO", {
             style: "currency",
@@ -1255,7 +1338,14 @@ function createDefaultNotificationDispatcher(): IBillingNotificationDispatcher {
 export function getBillingService(): BillingService {
   if (!defaultBillingServiceInstance) {
     const repo = new DrizzleBillingRepository(getDb());
-    defaultBillingServiceInstance = new BillingService(repo, createDefaultNotificationDispatcher());
+    defaultBillingServiceInstance = new BillingService(
+      repo,
+      createDefaultNotificationDispatcher(),
+      defaultTotpCryptoService,
+      new S3StorageService(),
+      defaultBreBQrService,
+      getReferralsService(),
+    );
   }
   return defaultBillingServiceInstance;
 }

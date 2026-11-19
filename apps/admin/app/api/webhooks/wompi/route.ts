@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { appLogger } from "@mocter/domain";
+import { appLogger, getBillingService } from "@mocter/domain";
 import type { BillingService } from "@mocter/domain";
 
 export interface WompiWebhookPayload {
@@ -45,10 +45,10 @@ export function verifyWompiChecksum(
   for (const prop of properties) {
     // Resolver propiedades anidadas tipo "transaction.id"
     const parts = prop.split(".");
-    let current: any = payload.data;
+    let current: unknown = payload.data;
     for (const part of parts) {
       if (current && typeof current === "object" && part in current) {
-        current = current[part];
+        current = (current as Record<string, unknown>)[part];
       } else {
         current = undefined;
         break;
@@ -139,7 +139,7 @@ export function createWompiWebhookHandler(
         paymentId: result.data.payment.id,
         receiptNumber: result.data.receipt.receiptNumber,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[WompiWebhook] Error inesperado en webhook: ${msg}`, error);
       return NextResponse.json(
@@ -150,5 +150,6 @@ export function createWompiWebhookHandler(
   };
 }
 
-export const POST = createWompiWebhookHandler({} as any, process.env.WOMPI_EVENTS_SECRET || "");
+export const POST = (req: NextRequest) =>
+  createWompiWebhookHandler(getBillingService(), process.env.WOMPI_EVENTS_SECRET || "")(req);
 

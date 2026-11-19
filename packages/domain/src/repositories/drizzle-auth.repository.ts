@@ -144,6 +144,7 @@ export class DrizzleAuthRepository implements IAuthRepository {
             displayName: params.displayName || null,
             activeClientId: params.activeClientId ?? null,
             emailVerifiedAt: params.emailVerifiedAt ?? null,
+            referredByCode: params.referredByCode?.trim().toUpperCase() || null,
             status: "active",
             identityLocation: "router",
             createdBy,

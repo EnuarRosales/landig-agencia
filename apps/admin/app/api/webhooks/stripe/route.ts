@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { appLogger } from "@mocter/domain";
+import { appLogger, getBillingService } from "@mocter/domain";
 import type { BillingService } from "@mocter/domain";
 
 export interface StripeEventPayload {
@@ -121,7 +121,7 @@ export function createStripeWebhookHandler(
         paymentId: result.data.payment.id,
         receiptNumber: result.data.receipt.receiptNumber,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       appLogger.error(`[StripeWebhook] Error inesperado en webhook: ${msg}`, error);
       return NextResponse.json(
@@ -132,5 +132,6 @@ export function createStripeWebhookHandler(
   };
 }
 
-export const POST = createStripeWebhookHandler({} as any, process.env.STRIPE_WEBHOOK_SECRET || "");
+export const POST = (req: NextRequest) =>
+  createStripeWebhookHandler(getBillingService(), process.env.STRIPE_WEBHOOK_SECRET || "")(req);
 

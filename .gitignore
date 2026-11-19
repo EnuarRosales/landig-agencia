@@ -28,4 +28,7 @@ Thumbs.db
 # Engram memory
 #.engram/
 
+# Local cell deployment sandbox
+data-cell-dev/
+
 next-env.d.ts

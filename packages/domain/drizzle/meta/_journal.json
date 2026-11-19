@@ -309,6 +309,13 @@
       "when": 1794934948938,
       "tag": "0043_spec15_communities_and_cloning",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1795050654944,
+      "tag": "0044_spec16_referrals_attribution_and_redemptions",
+      "breakpoints": true
     }
   ]
 }

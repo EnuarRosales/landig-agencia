@@ -32,6 +32,7 @@ export const TENANT_COMPETENCE_EVENT_KEYS = new Set<string>([
   "community.join_accepted",
   "community.product_version_published",
   "referral.registered",
+  "referral.reward_credited",
   "tenant.inventory.low_stock",
 ]);
 

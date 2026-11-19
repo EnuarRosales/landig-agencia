@@ -313,4 +313,27 @@ describe("apps/admin · TenantWorkspaceShell Component (TNT-001 R2/R4, ADM-D-35)
     expect(screen.getAllByText("99+").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText("Notificaciones").length).toBeGreaterThanOrEqual(1);
   });
+
+  it("12. Muestra Programa de Referidos solo para tenant_owner y lo oculta para tenant_agent (SPEC-16)", () => {
+    const { rerender } = render(
+      <TenantWorkspaceShell currentUser={mockTenantUser} tenant={mockTenantInfo}>
+        <div>Contenido</div>
+      </TenantWorkspaceShell>,
+    );
+
+    const ownerLinks = screen.getAllByRole("link", { name: /Programa de Referidos/i });
+    expect(ownerLinks.length).toBeGreaterThanOrEqual(1);
+    expect(ownerLinks[0].getAttribute("href")).toBe("/workspace/referrals");
+
+    rerender(
+      <TenantWorkspaceShell
+        currentUser={{ ...mockTenantUser, role: "tenant_agent" }}
+        tenant={mockTenantInfo}
+      >
+        <div>Contenido</div>
+      </TenantWorkspaceShell>,
+    );
+
+    expect(screen.queryByRole("link", { name: /Programa de Referidos/i })).toBeNull();
+  });
 });

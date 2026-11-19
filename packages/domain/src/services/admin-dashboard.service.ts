@@ -71,7 +71,8 @@ import {
 } from "../db/schemas";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
-import { env } from "../utils/env";
+import { env, getCellManifestEnvConfig } from "../utils/env";
+import { extractAppPortFromUrl } from "./compose-cell-manifest-renderer";
 import {
   CANONICAL_EMAIL_SENDERS,
   CANONICAL_EMAIL_EVENTS,
@@ -291,6 +292,67 @@ function toAdminCellDto(row: Cell): AdminCellDto {
 }
 
 /**
+ * Valida que una celda en perfil `local_development` no colisione en puertos loopback
+ * (`pgbouncerPort` ni puerto de `appUrl`) con otras celdas asignadas al mismo host.
+ */
+async function validateLocalHostPortConflicts(params: {
+  db: ReturnType<typeof getDb>;
+  hostId: string;
+  excludeCellId?: string;
+  pgbouncerPort: number;
+  appUrl: string;
+  appPortBase: number;
+}): Promise<Result<void>> {
+  const siblings = await params.db
+    .select({
+      id: cells.id,
+      code: cells.code,
+      pgbouncerPort: cells.pgbouncerPort,
+      appUrl: cells.appUrl,
+    })
+    .from(cells)
+    .where(eq(cells.hostId, params.hostId))
+    .limit(200);
+
+  const otherCells = siblings.filter(
+    (row) => row && typeof row.id === "string" && row.id !== params.excludeCellId && typeof row.pgbouncerPort === "number",
+  );
+
+  const pgbouncerConflict = otherCells.find((row) => row.pgbouncerPort === params.pgbouncerPort);
+  if (pgbouncerConflict) {
+    const usedPgbouncerPorts = new Set(otherCells.map((r) => r.pgbouncerPort));
+    let suggested = params.pgbouncerPort + 1;
+    while (usedPgbouncerPorts.has(suggested)) {
+      suggested++;
+    }
+    return err(
+      `Colisión de puerto PgBouncer: el puerto ${params.pgbouncerPort} ya está asignado a la celda "${pgbouncerConflict.code}" en este host local. Usa otro puerto libre (ej. ${suggested}).`,
+      "PORT_CONFLICT",
+    );
+  }
+
+  const candidateAppPort = extractAppPortFromUrl(params.appUrl, params.appPortBase);
+  const appUrlConflict = otherCells.find(
+    (row) => extractAppPortFromUrl(row.appUrl || "", params.appPortBase) === candidateAppPort,
+  );
+  if (appUrlConflict) {
+    const usedAppPorts = new Set(
+      otherCells.map((r) => extractAppPortFromUrl(r.appUrl || "", params.appPortBase)),
+    );
+    let suggestedAppPort = candidateAppPort + 1;
+    while (usedAppPorts.has(suggestedAppPort)) {
+      suggestedAppPort++;
+    }
+    return err(
+      `Colisión de puerto de aplicación: el puerto ${candidateAppPort} de APP_URL ya está asignado a la celda "${appUrlConflict.code}" en este host local. Usa otro puerto libre (ej. ${suggestedAppPort}).`,
+      "PORT_CONFLICT",
+    );
+  }
+
+  return ok(undefined);
+}
+
+/**
  * Registra una nueva célula de datos en el Router Global (`admin.cells`, DAT-001).
  * - Requiere autoridad de Platform Owner y permiso `cells.provision`.
  * - Genera el paquete de secretos con CSPRNG y lo cifra con AES-256-GCM.
@@ -299,10 +361,17 @@ function toAdminCellDto(row: Cell): AdminCellDto {
  */
 export async function createAdminCell(input: CreateAdminCellInput): Promise<Result<AdminCellDto>> {
   try {
+    const envCfg = getCellManifestEnvConfig();
     const code = input.code.trim().toLowerCase();
     const pgbouncerHost = input.pgbouncerHost.trim();
     const databaseName = input.databaseName.trim();
     const appUrl = (input.appUrl || "").trim();
+    const topology = input.topologyType || "remote_vps";
+    const resolvedPgbouncerPort =
+      input.pgbouncerPort ||
+      (topology === "local_compose"
+        ? envCfg.CELL_LOCAL_PGBOUNCER_PORT_BASE
+        : envCfg.CELL_PGBOUNCER_INTERNAL_PORT);
 
     if (!code || !pgbouncerHost || !databaseName || !appUrl) {
       return err(
@@ -339,7 +408,6 @@ export async function createAdminCell(input: CreateAdminCellInput): Promise<Resu
         );
       }
 
-      const topology = input.topologyType || "remote_vps";
       if (topology === "local_compose" && host.deploymentProfile !== "local_development") {
         return err(
           `Incompatibilidad de perfil: la topología "local_compose" requiere un host con perfil "local_development", pero "${host.code}" tiene "${host.deploymentProfile}" (CEL-RF-026).`,
@@ -352,9 +420,25 @@ export async function createAdminCell(input: CreateAdminCellInput): Promise<Resu
           "PROFILE_MISMATCH",
         );
       }
+
+      if (host.deploymentProfile === "local_development") {
+        const conflictCheck = await validateLocalHostPortConflicts({
+          db,
+          hostId: host.id,
+          pgbouncerPort: resolvedPgbouncerPort,
+          appUrl,
+          appPortBase: envCfg.CELL_LOCAL_APP_PORT_BASE,
+        });
+        if (!conflictCheck.ok) {
+          return conflictCheck;
+        }
+      }
+
       hostId = host.id;
     }
 
+    const defaultWorkingDir =
+      topology === "local_compose" ? `${envCfg.CELL_LOCAL_WORK_DIR_BASE}/${code}` : `/opt/${code}`;
     const payload = cellSecretsCryptoService.generateAndEncrypt(cellId);
 
     const [row] = await db
@@ -364,16 +448,16 @@ export async function createAdminCell(input: CreateAdminCellInput): Promise<Resu
         code,
         hostId,
         tier: input.tier || "standard",
-        topologyType: input.topologyType || "remote_vps",
+        topologyType: topology,
         status: "draft",
         pgbouncerHost,
-        pgbouncerPort: input.pgbouncerPort || 6432,
+        pgbouncerPort: resolvedPgbouncerPort,
         databaseName,
-        appUrl: (input.appUrl || "").trim(),
+        appUrl,
         privateIp: input.privateIp || null,
         publicIp: input.publicIp || null,
-        workingDir: (input.workingDir || `/opt/${code}`).trim(),
-        deployUser: input.deployUser || "deploy:1000",
+        workingDir: (input.workingDir || defaultWorkingDir).trim(),
+        deployUser: input.deployUser || envCfg.CELL_DEPLOY_USER,
         cellSecretsCiphertext: payload.ciphertext,
         cellSecretsKeyId: payload.keyId,
         maxClients: input.maxClients || 100,
@@ -473,11 +557,15 @@ export async function updateAdminCell(
       );
     }
 
+    const envCfg = getCellManifestEnvConfig();
     const operator = input.actorUserId || existing.updatedBy;
     const updateValues: Partial<typeof cells.$inferInsert> = {
       updatedAt: new Date(),
       updatedBy: operator,
     };
+
+    let targetHostId: string | null = existing.hostId;
+    let targetHostProfile: string | null = null;
 
     if (input.hostId !== undefined) {
       if (input.hostId === null) {
@@ -485,6 +573,7 @@ export async function updateAdminCell(
           return err("Solo una celda en estado 'draft' puede tener host_id nulo (CEL-RF-001).", "VALIDATION_ERROR");
         }
         updateValues.hostId = null;
+        targetHostId = null;
       } else {
         const [host] = await db
           .select()
@@ -518,6 +607,32 @@ export async function updateAdminCell(
         }
 
         updateValues.hostId = input.hostId;
+        targetHostId = input.hostId;
+        targetHostProfile = host.deploymentProfile;
+      }
+    } else if (targetHostId && (input.pgbouncerPort !== undefined || input.appUrl !== undefined)) {
+      const [host] = await db
+        .select({ deploymentProfile: cellHosts.deploymentProfile })
+        .from(cellHosts)
+        .where(eq(cellHosts.id, targetHostId))
+        .limit(1);
+      targetHostProfile = host?.deploymentProfile ?? null;
+    }
+
+    const effectivePgbouncerPort = input.pgbouncerPort ?? existing.pgbouncerPort;
+    const effectiveAppUrl = input.appUrl !== undefined ? input.appUrl.trim() : existing.appUrl;
+
+    if (targetHostId && targetHostProfile === "local_development") {
+      const conflictCheck = await validateLocalHostPortConflicts({
+        db,
+        hostId: targetHostId,
+        excludeCellId: existing.id,
+        pgbouncerPort: effectivePgbouncerPort,
+        appUrl: effectiveAppUrl,
+        appPortBase: envCfg.CELL_LOCAL_APP_PORT_BASE,
+      });
+      if (!conflictCheck.ok) {
+        return conflictCheck;
       }
     }
 
@@ -2392,6 +2507,22 @@ export const CANONICAL_TEMPLATES_SEED = [
     senderKey: "referidos",
     subject: "A new user signed up with your referral link!",
     bodyHtml: "<p>Hi {{referrer_name}},</p><p><strong>{{referred_name}}</strong> has signed up using your referral link. Your accumulated reward is: {{reward_summary}}.</p>",
+  },
+  {
+    eventKey: "referral.reward_credited",
+    locale: "es",
+    senderKey: "referidos",
+    subject: "¡Ganaste {{reward_amount}} en créditos de referidos!",
+    bodyHtml:
+      "<p>Hola {{referrer_name}},</p><p><strong>{{referred_name}}</strong> completó su primer pago efectivo y acreditamos <strong>{{reward_amount}}</strong> ({{currency}}) en tu saldo disponible, vigente hasta el {{expires_at}}.</p><p><a href=\"{{referrals_url}}\">Ver Programa de Referidos</a></p>",
+  },
+  {
+    eventKey: "referral.reward_credited",
+    locale: "en",
+    senderKey: "referidos",
+    subject: "You earned {{reward_amount}} in referral credits!",
+    bodyHtml:
+      "<p>Hi {{referrer_name}},</p><p><strong>{{referred_name}}</strong> completed their first paid invoice and we credited <strong>{{reward_amount}}</strong> ({{currency}}) to your available balance, valid until {{expires_at}}.</p><p><a href=\"{{referrals_url}}\">View Referral Program</a></p>",
   },
   {
     eventKey: "community.role_promoted",

@@ -477,4 +477,55 @@ describe("BILL-001 · BillingService", () => {
       expect.objectContaining({ action: "reject", reportId: "rep-1" }),
     );
   });
+
+  it("SPEC-16 D-02/D-03 · al aprobar Bre-B consolida créditos FEFO y dispara qualifyReferral()", async () => {
+    const mockReferrals = {
+      redeemCreditsFefoForInvoice: vi.fn().mockResolvedValue({
+        ok: true,
+        data: { totalRedeemedCents: 5000000, allocations: [], alreadyRedeemed: false },
+      }),
+      qualifyReferral: vi.fn().mockResolvedValue({
+        ok: true,
+        data: { qualified: true },
+      }),
+    };
+
+    const billingWithReferrals = new BillingService(
+      mockRepo,
+      mockDispatcher,
+      undefined,
+      undefined,
+      undefined,
+      mockReferrals,
+    );
+
+    (mockRepo.approveManualPaymentReportTransaction as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      report: { id: "rep-ref-1", clientId: "client-abc", reportedAmountCents: 10000000, status: "approved" },
+      payment: { id: "pay-breb-ref" },
+      receipt: { id: "rec-breb-ref" },
+      invoice: { id: "inv-ref-1", status: "paid", subtotalCents: 15000000, creditCents: 5000000 },
+      subscription: { id: "sub-1", planId: "plan-pro", status: "active" },
+    });
+
+    const approved = await billingWithReferrals.reviewManualBreBReport({
+      reportId: "rep-ref-1",
+      action: "approve",
+      reviewerUserId: "admin-1",
+    });
+
+    expect(approved.ok).toBe(true);
+    expect(mockReferrals.redeemCreditsFefoForInvoice).toHaveBeenCalledWith({
+      clientId: "client-abc",
+      invoiceId: "inv-ref-1",
+      maxAmountCents: 5000000,
+      currency: "COP",
+      executedBy: "admin-1",
+    });
+    expect(mockReferrals.qualifyReferral).toHaveBeenCalledWith({
+      referredClientId: "client-abc",
+      firstInvoiceAmountCents: 15000000,
+      currency: "COP",
+      executedBy: "admin-1",
+    });
+  });
 });

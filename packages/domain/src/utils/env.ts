@@ -3,6 +3,34 @@ import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
 
 /**
+ * Esquema Zod para los parámetros configurables del generador de manifiestos celulares (CEL-001).
+ */
+export const cellManifestEnvSchema = z.object({
+  CELL_APP_IMAGE: z.string().min(1).default("ghcr.io/enuarrosales/mocter-web"),
+  CELL_PGVECTOR_IMAGE: z.string().min(1).default("pgvector/pgvector:pg18"),
+  CELL_PGBOUNCER_IMAGE: z.string().min(1).default("edoburu/pgbouncer:v1.26.1-p0"),
+  CELL_LOCAL_NODE_IMAGE: z.string().min(1).default("node:24-alpine"),
+  CELL_BASE_DOMAIN: z.string().min(1).default("cell.mocter.co"),
+  CELL_TRAEFIK_NETWORK: z.string().min(1).default("traefik_network"),
+  CELL_CONTROL_PLANE_NETWORK: z.string().min(1).default("mocter-admin-prod_backend"),
+  CELL_TRAEFIK_CERTRESOLVER: z.string().min(1).default("mytlschallenge"),
+  CELL_DEPLOY_USER: z.string().min(1).default("deploy:1000"),
+  CELL_APP_INTERNAL_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  CELL_PG_INTERNAL_PORT: z.coerce.number().int().min(1).max(65535).default(5432),
+  CELL_PGBOUNCER_INTERNAL_PORT: z.coerce.number().int().min(1).max(65535).default(6432),
+  CELL_LOCAL_WORK_DIR_BASE: z.string().min(1).default("data-cell-dev"),
+  CELL_LOCAL_REPO_DIR: z.string().min(1).default("../.."),
+  CELL_LOCAL_PG_PORT_BASE: z.coerce.number().int().min(1).max(65535).default(5433),
+  CELL_LOCAL_PGBOUNCER_PORT_BASE: z.coerce.number().int().min(1).max(65535).default(6432),
+  CELL_LOCAL_APP_PORT_BASE: z.coerce.number().int().min(1).max(65535).default(3004),
+});
+
+/**
+ * Tipo inferido de configuración de entorno para generación de manifiestos celulares.
+ */
+export type CellManifestEnvConfig = z.infer<typeof cellManifestEnvSchema>;
+
+/**
  * Esquema de validación estricto para variables de entorno del dominio.
  */
 export const envSchema = z.object({
@@ -82,7 +110,7 @@ export const envSchema = z.object({
     .int("AI_HTTP_TIMEOUT_MS debe ser un entero")
     .positive("AI_HTTP_TIMEOUT_MS debe ser mayor a cero")
     .default(15000),
-});
+}).merge(cellManifestEnvSchema);
 
 /**
  * Esquema estricto para validar las variables obligatorias de almacenamiento S3 y firma imgproxy.
@@ -213,6 +241,7 @@ export const env = createEnv({
       .int("AI_HTTP_TIMEOUT_MS debe ser un entero")
       .positive("AI_HTTP_TIMEOUT_MS debe ser mayor a cero")
       .default(15000),
+    ...cellManifestEnvSchema.shape,
   },
   runtimeEnv: process.env,
   skipValidation: shouldSkipEnvValidation(),
@@ -256,6 +285,7 @@ export function getValidatedEnv(
         S3_FORCE_PATH_STYLE: "true",
         AI_ENCRYPTION_KEY_ID: "key-v1",
         AI_HTTP_TIMEOUT_MS: 15000,
+        ...cellManifestEnvSchema.parse({}),
       };
     }
     const issues = result.error.issues.map((issue) => ({
@@ -296,4 +326,25 @@ export function getValidatedMediaEnv(
     );
   }
   return result.data;
+}
+
+/**
+ * Obtiene la configuración tipada para el generador de manifiestos celulares (CEL-001).
+ *
+ * Lee desde la instancia validada {@link env} aplicando valores por defecto cuando alguna variable
+ * opcional es omitida en entornos de prueba o desarrollo.
+ *
+ * @param customEnv - Diccionario opcional para pruebas unitarias.
+ * @returns Configuración completa del generador de manifiestos celulares y `S3_ENDPOINT`.
+ */
+export function getCellManifestEnvConfig(
+  customEnv?: Record<string, string | undefined>,
+): CellManifestEnvConfig & { S3_ENDPOINT: string } {
+  const source = customEnv ?? env;
+  const manifestConfig = cellManifestEnvSchema.parse(source);
+  const s3Endpoint = z.string().url().default("http://seaweedfs:8333").parse(source.S3_ENDPOINT);
+  return {
+    ...manifestConfig,
+    S3_ENDPOINT: s3Endpoint,
+  };
 }

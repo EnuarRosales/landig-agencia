@@ -29,6 +29,7 @@ import {
   KeyRound,
   Building2,
   Bell,
+  Gift,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 import { ConfirmationModal } from "./confirmation-modal";
@@ -259,6 +260,12 @@ export function TenantWorkspaceShell({
       href: "/workspace/billing",
       label: "Mi Plan y Cuotas",
       icon: CreditCard,
+    },
+    {
+      href: "/workspace/referrals",
+      label: dict.navReferrals || "Programa de Referidos",
+      icon: Gift,
+      ownerOnly: true,
     },
     {
       href: "/workspace/notifications",

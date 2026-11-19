@@ -30,6 +30,8 @@ export interface BillingCheckoutPanelProps {
   latestRejectedBreBReport?: WorkspaceBillingDto["latestRejectedBreBReport"];
   availablePlans: BillingPlanOption[];
   availableChannels: BillingChannelOption[];
+  availableReferralCreditCents?: number;
+  referralCreditCurrency?: "COP" | "USD";
   locale?: AdminLocale;
   mode: "workspace" | "onboarding";
   isOwner?: boolean;
@@ -64,6 +66,8 @@ export function BillingCheckoutPanel({
   latestRejectedBreBReport,
   availablePlans,
   availableChannels,
+  availableReferralCreditCents = 0,
+  referralCreditCurrency,
   locale = "es",
   mode,
   isOwner = true,
@@ -80,6 +84,7 @@ export function BillingCheckoutPanel({
   const [cycle, setCycle] = useState<"monthly" | "annual">(initialCycle);
   const [selectedPlanId, setSelectedPlanId] = useState<string>(initialPlanId);
   const [selectedGateway, setSelectedGateway] = useState<string>(initialChannelId);
+  const [applyReferralCredits, setApplyReferralCredits] = useState<boolean>(true);
   const [pendingReport, setPendingReport] = useState<WorkspaceBillingDto["pendingBreBReport"]>(
     pendingBreBReport ?? null,
   );
@@ -111,6 +116,30 @@ export function BillingCheckoutPanel({
       : selectedPlan.priceMonthlyCents;
   }, [selectedPlan, cycle]);
 
+  const effectiveCurrency: "COP" | "USD" =
+    selectedPlan?.currency === "USD" || currency === "USD" ? "USD" : "COP";
+
+  const applicableReferralCreditCents = useMemo(() => {
+    if (!applyReferralCredits || availableReferralCreditCents <= 0 || selectedAmountCents <= 0) {
+      return 0;
+    }
+    const creditCurr = referralCreditCurrency || effectiveCurrency;
+    if (creditCurr !== effectiveCurrency) {
+      return 0;
+    }
+    return Math.min(availableReferralCreditCents, selectedAmountCents);
+  }, [
+    applyReferralCredits,
+    availableReferralCreditCents,
+    selectedAmountCents,
+    referralCreditCurrency,
+    effectiveCurrency,
+  ]);
+
+  const netPayableCents = Math.max(0, selectedAmountCents - applicableReferralCreditCents);
+  const isCoveredFullyByCredits =
+    selectedAmountCents > 0 && applicableReferralCreditCents > 0 && netPayableCents === 0;
+
   const operationKind: "new_subscription" | "renewal" | "upgrade" = useMemo(() => {
     if (mode === "onboarding" || !subscription) return "new_subscription";
     if (selectedPlan && selectedPlan.id === currentPlanId) return "renewal";
@@ -118,18 +147,17 @@ export function BillingCheckoutPanel({
   }, [mode, subscription, selectedPlan, currentPlanId]);
 
   async function handleCreateCheckout() {
-    if (!selectedPlan || !selectedChannel || selectedAmountCents <= 0 || !isOwner) return;
+    if (!selectedPlan || selectedAmountCents <= 0 || !isOwner) return;
+    if (!isCoveredFullyByCredits && !selectedChannel) return;
     setErrorMsg(null);
     setSuccessMsg(null);
     setCheckoutLoading(true);
 
     try {
       const payloadCurrency: "COP" | "USD" =
-        selectedChannel.id === "bre_b" || selectedChannel.id === "wompi"
+        selectedChannel && (selectedChannel.id === "bre_b" || selectedChannel.id === "wompi")
           ? "COP"
-          : selectedPlan.currency === "USD" || currency === "USD"
-            ? "USD"
-            : "COP";
+          : effectiveCurrency;
 
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
@@ -141,8 +169,9 @@ export function BillingCheckoutPanel({
           amountCents: selectedAmountCents,
           currency: payloadCurrency,
           cycle,
-          gateway: selectedChannel.id,
+          gateway: selectedChannel?.id,
           operationKind,
+          applyReferralCredits,
           customerEmail: customerEmail || undefined,
         }),
       });
@@ -151,7 +180,14 @@ export function BillingCheckoutPanel({
       if (!res.ok || !json.ok || !json.data) {
         throw new Error(json.detail || json.error || "No se pudo generar la orden de pago.");
       }
-      setCheckoutSession(json.data as CheckoutSessionResponse);
+      const sessionData = json.data as CheckoutSessionResponse;
+      setCheckoutSession(sessionData);
+      if (sessionData.gateway === "referral_credit") {
+        setSuccessMsg(
+          `${dict.billingPaidWithCreditsSuccessTitle} (${sessionData.receiptNumber}). ${dict.billingPaidWithCreditsSuccessDesc}`,
+        );
+        onSuccess?.();
+      }
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     } finally {
@@ -400,74 +436,152 @@ export function BillingCheckoutPanel({
         </div>
       )}
 
+      {/* Toggle de Créditos de Referidos FEFO y Desglose Neto (SPEC-16 D-02) */}
+      {!pendingReport && selectedAmountCents > 0 && availableReferralCreditCents > 0 && (
+        <div
+          data-testid="referral-credit-checkout-box"
+          className="rounded-xl border border-emerald-500/35 bg-emerald-500/5 p-4 space-y-3"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <label
+              htmlFor="apply-referral-credits-toggle"
+              className="flex items-start gap-2.5 cursor-pointer text-xs"
+            >
+              <input
+                id="apply-referral-credits-toggle"
+                type="checkbox"
+                checked={applyReferralCredits}
+                disabled={!isOwner}
+                onChange={(e) => {
+                  setApplyReferralCredits(e.target.checked);
+                  setCheckoutSession(null);
+                }}
+                className="mt-0.5 h-4 w-4 rounded border-[var(--dsn-border)] accent-[var(--dsn-accent)]"
+              />
+              <span>
+                <span className="block font-bold text-[var(--dsn-text)]">
+                  {dict.billingApplyReferralCreditsLabel}
+                </span>
+                <span className="block text-[11px] text-[var(--dsn-text-secondary)]">
+                  {dict.billingApplyReferralCreditsDesc}
+                </span>
+              </span>
+            </label>
+            <span className="font-mono text-xs font-bold text-emerald-500 shrink-0">
+              {formatPriceCents(
+                availableReferralCreditCents,
+                referralCreditCurrency || effectiveCurrency,
+                locale,
+              )}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 border-t border-emerald-500/20 pt-3 text-xs sm:grid-cols-3">
+            <div className="flex items-center justify-between sm:block">
+              <span className="text-[11px] text-[var(--dsn-text-secondary)]">
+                {dict.billingSubtotalLabel}
+              </span>
+              <p className="font-mono font-semibold text-[var(--dsn-text)]">
+                {formatPriceCents(selectedAmountCents, effectiveCurrency, locale)}
+              </p>
+            </div>
+            <div className="flex items-center justify-between sm:block">
+              <span className="text-[11px] text-[var(--dsn-text-secondary)]">
+                {dict.billingReferralCreditDiscountLabel}
+              </span>
+              <p className="font-mono font-semibold text-emerald-500">
+                -{formatPriceCents(applicableReferralCreditCents, effectiveCurrency, locale)}
+              </p>
+            </div>
+            <div className="flex items-center justify-between sm:block">
+              <span className="text-[11px] text-[var(--dsn-text-secondary)]">
+                {dict.billingNetPayableLabel}
+              </span>
+              <p
+                data-testid="billing-net-payable-amount"
+                className="font-mono font-bold text-[var(--dsn-text)]"
+              >
+                {formatPriceCents(netPayableCents, effectiveCurrency, locale)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Selector De Canales Y Botón De Checkout */}
       {!pendingReport && selectedAmountCents > 0 && (
         <div className="space-y-4">
-          <div>
-            <p className="text-xs font-semibold text-[var(--dsn-text)] mb-2">
-              {dict.billingChannelsTitle}
-              {country ? ` (${country})` : ""}
-            </p>
+          {!isCoveredFullyByCredits && (
+            <div>
+              <p className="text-xs font-semibold text-[var(--dsn-text)] mb-2">
+                {dict.billingChannelsTitle}
+                {country ? ` (${country})` : ""}
+              </p>
 
-            {availableChannels.length === 0 ? (
-              <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-4 text-xs">
-                <p className="font-semibold text-[var(--dsn-text)]">{dict.billingNoChannelsTitle}</p>
-                <p className="mt-1 text-[var(--dsn-text-secondary)]">{dict.billingNoChannelsDesc}</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                {availableChannels.map((channel) => {
-                  const active = selectedChannel?.id === channel.id;
-                  return (
-                    <button
-                      key={channel.id}
-                      type="button"
-                      disabled={!isOwner}
-                      onClick={() => {
-                        setSelectedGateway(channel.id);
-                        setCheckoutSession(null);
-                        setErrorMsg(null);
-                      }}
-                      className={`flex items-center justify-between rounded-xl border p-3 text-left transition-colors ${
-                        active
-                          ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/10"
-                          : "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 hover:border-[var(--dsn-accent)]/40"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        {channel.id === "bre_b" ? (
-                          <QrCode className="h-4 w-4 text-[var(--dsn-accent)] shrink-0" />
-                        ) : (
-                          <CreditCard className="h-4 w-4 text-[var(--dsn-accent)] shrink-0" />
-                        )}
-                        <div>
-                          <p className="text-xs font-semibold text-[var(--dsn-text)]">
-                            {channel.displayName}
-                          </p>
-                          <p className="text-[11px] font-mono text-[var(--dsn-text-secondary)]">
-                            {channel.currency}
-                          </p>
+              {availableChannels.length === 0 ? (
+                <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-4 text-xs">
+                  <p className="font-semibold text-[var(--dsn-text)]">{dict.billingNoChannelsTitle}</p>
+                  <p className="mt-1 text-[var(--dsn-text-secondary)]">{dict.billingNoChannelsDesc}</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                  {availableChannels.map((channel) => {
+                    const active = selectedChannel?.id === channel.id;
+                    return (
+                      <button
+                        key={channel.id}
+                        type="button"
+                        disabled={!isOwner}
+                        onClick={() => {
+                          setSelectedGateway(channel.id);
+                          setCheckoutSession(null);
+                          setErrorMsg(null);
+                        }}
+                        className={`flex items-center justify-between rounded-xl border p-3 text-left transition-colors ${
+                          active
+                            ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/10"
+                            : "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 hover:border-[var(--dsn-accent)]/40"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {channel.id === "bre_b" ? (
+                            <QrCode className="h-4 w-4 text-[var(--dsn-accent)] shrink-0" />
+                          ) : (
+                            <CreditCard className="h-4 w-4 text-[var(--dsn-accent)] shrink-0" />
+                          )}
+                          <div>
+                            <p className="text-xs font-semibold text-[var(--dsn-text)]">
+                              {channel.displayName}
+                            </p>
+                            <p className="text-[11px] font-mono text-[var(--dsn-text-secondary)]">
+                              {channel.currency}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      {active && <CheckCircle2 className="h-4 w-4 text-[var(--dsn-accent)] shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                        {active && <CheckCircle2 className="h-4 w-4 text-[var(--dsn-accent)] shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
-          {availableChannels.length > 0 && !checkoutSession && (
+          {(isCoveredFullyByCredits || availableChannels.length > 0) && !checkoutSession && (
             <div className="flex justify-end">
               <button
                 type="button"
-                disabled={!isOwner || checkoutLoading || !selectedChannel}
+                disabled={!isOwner || checkoutLoading || (!isCoveredFullyByCredits && !selectedChannel)}
                 onClick={handleCreateCheckout}
                 className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-[var(--dsn-accent)] px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 {checkoutLoading && <Loader2 className="h-4 w-4 animate-spin" />}
                 <span>
-                  {checkoutLoading ? dict.billingGeneratingOrder : dict.billingProceedPayment}
+                  {checkoutLoading
+                    ? dict.billingGeneratingOrder
+                    : isCoveredFullyByCredits
+                      ? dict.billingPayWithCreditsCta
+                      : dict.billingProceedPayment}
                 </span>
               </button>
             </div>

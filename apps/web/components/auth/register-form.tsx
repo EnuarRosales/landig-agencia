@@ -31,6 +31,7 @@ export interface RegisterFormTranslations {
 interface RegisterFormProps {
   locale: string;
   selectedPlan: Plan | null;
+  referralCode?: string;
   t: RegisterFormTranslations;
 }
 
@@ -44,7 +45,7 @@ const ASCII_SPECIAL_REGEX = /[!-/:-@[-`{-~]/;
  * (Ley 1581 de 2012). Valida dinámicamente las políticas de complejidad de contraseña en tiempo real,
  * desglosa errores específicos de campos de la API y despliega la confirmación genérica anti-enumeración.
  */
-export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
+export function RegisterForm({ locale, selectedPlan, referralCode, t }: RegisterFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -97,6 +98,7 @@ export function RegisterForm({ locale, selectedPlan, t }: RegisterFormProps) {
           email,
           password,
           planCode: selectedPlan?.code,
+          referralCode: referralCode || undefined,
           treatmentConsent: true,
           policyVersion: "v1.0",
           channel: "register_form",

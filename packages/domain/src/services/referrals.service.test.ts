@@ -1,10 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { ReferralsService } from "./referrals.service";
+import {
+  ReferralsService,
+  maskBusinessName,
+  hashReferralIp,
+  type IReferralsNotificationDispatcher,
+} from "./referrals.service";
 import type { IReferralsRepository } from "../repositories/referrals.repository.interface";
-import type { ReferralProgram, ReferralCode, Referral, ReferralReward } from "../db/schemas/admin/referrals";
+import type { ReferralProgram, ReferralCode, Referral } from "../db/schemas/admin/referrals";
 
-describe("REF-001 · ReferralsService", () => {
+describe("REF-001 / SPEC-16 · ReferralsService", () => {
   let mockRepo: IReferralsRepository;
+  let mockNotifier: IReferralsNotificationDispatcher;
   let service: ReferralsService;
 
   const mockProgram: ReferralProgram = {
@@ -48,6 +54,7 @@ describe("REF-001 · ReferralsService", () => {
     attributedAt: new Date(),
     qualifiedAt: null,
     rejectedReason: null,
+    attributedIpHash: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     createdBy: "admin",
@@ -91,11 +98,37 @@ describe("REF-001 · ReferralsService", () => {
       }),
       createReward: vi.fn().mockImplementation((rew) => Promise.resolve({ ...rew, id: "rew-new" })),
       getRewardByReferralId: vi.fn(),
-      listAvailableRewardsByReferrer: vi.fn(),
+      listAvailableRewardsByReferrer: vi.fn().mockResolvedValue([]),
+      listRewardsByReferrer: vi.fn().mockResolvedValue([]),
+      listRedemptionsByReferrer: vi.fn().mockResolvedValue([]),
+      listReferralsByReferrerPaginated: vi.fn().mockResolvedValue({
+        total: 1,
+        items: [
+          {
+            id: "ref-999",
+            referredClientId: "referred-200",
+            referredDisplayName: "Tienda Beta",
+            code: "ALFA100",
+            status: "pending",
+            attributedAt: mockReferral.attributedAt,
+            qualifiedAt: null,
+            rejectedReason: null,
+            rewardAmountCents: null,
+            rewardCurrency: null,
+          },
+        ],
+      }),
+      getClientFraudFingerprint: vi.fn().mockResolvedValue(null),
+      countReferralsByIpHash: vi.fn().mockResolvedValue(0),
+      hasIpCollisionWithReferrer: vi.fn().mockResolvedValue(false),
       deductRewardCredit: vi.fn(),
       expireOverdueRewards: vi.fn(),
     };
-    service = new ReferralsService(mockRepo);
+    mockNotifier = {
+      dispatchReferralRegistered: vi.fn().mockResolvedValue(undefined),
+      dispatchReferralRewardCredited: vi.fn().mockResolvedValue(undefined),
+    };
+    service = new ReferralsService(mockRepo, mockNotifier);
   });
 
   it("rechaza autorreferencia directa (SELF_REFERRAL_DISALLOWED)", async () => {
@@ -225,12 +258,116 @@ describe("REF-001 · ReferralsService", () => {
       if (!res.ok) return;
 
       expect(res.data.code).toBe("ALFA100");
-      expect(res.data.referralLink).toBe("https://app.mocter.co/register?ref=ALFA100");
+      expect(res.data.referralLink).toBe("https://app.mocter.co/r/ALFA100");
       expect(res.data.metrics.totalReferred).toBe(3);
       expect(res.data.metrics.rewardedCount).toBe(2);
       expect(res.data.metrics.totalEarnedCents).toBe(10000000);
       expect(res.data.metrics.availableCreditCents).toBe(5000000);
       expect(res.data.referrals.length).toBe(1);
+    });
+  });
+
+  describe("SPEC-16 · Enmascaramiento, Overview Inquilino, Antifraude y Moneda", () => {
+    it("enmascara nombres comerciales sin exponer datos completos", () => {
+      expect(maskBusinessName("Café Andes")).toBe("Café An***");
+      expect(maskBusinessName("Tienda Beta")).toBe("Tienda Be***");
+      expect(maskBusinessName("Acme")).toBe("Ac***");
+      expect(maskBusinessName("")).toBe("Comercio ***");
+    });
+
+    it("retorna overview completo con enlace /r/{code}, QR SVG y nombres enmascarados", async () => {
+      const res = await service.getTenantReferralsOverview(
+        "referrer-100",
+        "cafe-andes",
+        "https://mocter.co/",
+        { page: 1, limit: 20 },
+      );
+
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+
+      expect(res.data.code).toBe("ALFA100");
+      expect(res.data.referralLink).toBe("https://mocter.co/r/ALFA100");
+      expect(res.data.qrSvgDataUrl).toMatch(/^data:image\/svg\+xml;base64,/);
+      expect(res.data.referrals.items[0]?.referredBusinessMasked).toBe("Tienda Be***");
+      expect(res.data.metrics.availableCreditCents).toBe(5000000);
+    });
+
+    it("cuando el programa está pausado no crea código nuevo pero conserva saldo vigente visible", async () => {
+      (mockRepo.getProgram as any).mockResolvedValue({ ...mockProgram, status: "paused" });
+      (mockRepo.getCodeByClientId as any).mockResolvedValue(null);
+
+      const res = await service.getTenantReferralsOverview(
+        "referrer-100",
+        "cafe-andes",
+        "https://mocter.co",
+      );
+
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(mockRepo.createCode).not.toHaveBeenCalled();
+      expect(res.data.code).toBeNull();
+      expect(res.data.program?.status).toBe("paused");
+      expect(res.data.metrics.availableCreditCents).toBe(5000000);
+    });
+
+    it("rechaza antifraude en calificación si referente y referido comparten NIT/DNI", async () => {
+      (mockRepo.getClientFraudFingerprint as any).mockImplementation(async (id: string) => {
+        if (id === "referrer-100") {
+          return { clientId: id, displayName: "Café Andes", taxId: "900.111.222-1", billingDni: null };
+        }
+        return { clientId: id, displayName: "Café Sur", taxId: null, billingDni: "9001112221" };
+      });
+
+      const res = await service.qualifyReferral({
+        referredClientId: "referred-200",
+        firstInvoiceAmountCents: 15000000,
+        currency: "COP",
+        executedBy: "breb.approve",
+      });
+
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.data.qualified).toBe(false);
+      expect(res.data.referral.status).toBe("rejected");
+      expect(mockRepo.createReward).not.toHaveBeenCalled();
+    });
+
+    it("emite recompensa fija siempre en program.currency (COP) aunque el referido pague en USD", async () => {
+      const res = await service.qualifyReferral({
+        referredClientId: "referred-200",
+        firstInvoiceAmountCents: 4900, // $49 USD
+        currency: "USD",
+        executedBy: "stripe.webhook",
+      });
+
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(res.data.reward?.amountCents).toBe(5000000);
+      expect(res.data.reward?.currency).toBe("COP");
+      expect(mockNotifier.dispatchReferralRewardCredited).toHaveBeenCalledTimes(1);
+    });
+
+    it("bloquea abuso desde la misma IP hasheada HMAC y registra referido como rejected", async () => {
+      (mockRepo.getReferralByReferredId as any).mockResolvedValue(null);
+      (mockRepo.countReferralsByIpHash as any).mockResolvedValue(3);
+
+      const res = await service.attributeReferral({
+        referredClientId: "referred-ip-abuse",
+        code: "ALFA100",
+        ipAddress: "203.0.113.10",
+        executedBy: "onboarding",
+      });
+
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.code).toBe("FRAUD_IP_ABUSE");
+      expect(mockRepo.createReferral).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "rejected",
+          attributedIpHash: hashReferralIp("203.0.113.10"),
+        }),
+      );
     });
   });
 });

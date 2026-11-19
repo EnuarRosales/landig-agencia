@@ -27,6 +27,17 @@ export function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
+  // 0. Enlaces cortos de programa de referidos (/r/[code]) se atienden directo por su Route Handler sin prefijo locale
+  if (pathname.startsWith("/r/")) {
+    const forwardedHeaders = new Headers(request.headers);
+    forwardedHeaders.set("x-request-id", requestId);
+    const response = NextResponse.next({
+      request: { headers: forwardedHeaders },
+    });
+    response.headers.set("x-request-id", requestId);
+    return response;
+  }
+
   // 1. Comportamiento universal para cualquier nodo celular (CELL_CODE definido dinámicamente)
   // En un nodo celular, no existe la base de datos central (db-portal), admin.plans ni el cluster de Redis.
   // Por ende, la landing comercial, páginas institucionales y la autenticación se delegan al

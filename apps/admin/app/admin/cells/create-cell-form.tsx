@@ -3,13 +3,53 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Server, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
-import type { CellHostDto } from "@mocter/domain";
+import type { AdminCellDto, CellHostDto } from "@mocter/domain";
 import { adminFetch } from "@/lib/api-client";
 
 interface CreateCellFormProps {
   apiUrl: string;
   hosts?: CellHostDto[];
+  existingCells?: AdminCellDto[];
   onSuccess?: () => void;
+}
+
+/**
+ * Sugiere los siguientes puertos libres y nombre base para una celda local sin colisiones.
+ */
+function suggestNextLocalCellDefaults(existingCells: AdminCellDto[]): {
+  pgbouncerPort: number;
+  appPort: number;
+} {
+  const usedPgbouncer = new Set<number>();
+  const usedAppPorts = new Set<number>();
+
+  for (const cell of existingCells) {
+    if (cell.topologyType === "local_compose") {
+      if (Number.isInteger(cell.pgbouncerPort)) {
+        usedPgbouncer.add(cell.pgbouncerPort);
+      }
+      try {
+        const parsed = new URL(cell.appUrl);
+        if (parsed.port) {
+          usedAppPorts.add(Number(parsed.port));
+        }
+      } catch {
+        // Ignorar URLs no parseables
+      }
+    }
+  }
+
+  let nextPgbouncerPort = 6432;
+  while (usedPgbouncer.has(nextPgbouncerPort)) {
+    nextPgbouncerPort++;
+  }
+
+  let nextAppPort = 3004;
+  while (usedAppPorts.has(nextAppPort)) {
+    nextAppPort++;
+  }
+
+  return { pgbouncerPort: nextPgbouncerPort, appPort: nextAppPort };
 }
 
 /**
@@ -38,12 +78,26 @@ async function fetchCsrfToken(apiUrl: string): Promise<string> {
  * Formulario interactivo para registrar una nueva célula de datos en Mocter (DAT-001 §3.3).
  * Ahora consume la API protegida de apps/web con sesión, CSRF y validación de origen admin.
  */
-export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellFormProps): React.JSX.Element {
+export function CreateCellForm({
+  apiUrl,
+  hosts = [],
+  existingCells = [],
+  onSuccess,
+}: CreateCellFormProps): React.JSX.Element {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [workingDirCustom, setWorkingDirCustom] = useState(false);
+
+  const initialLocalDefaults = suggestNextLocalCellDefaults(existingCells);
+
+  const computeDefaultWorkingDir = (topology: "remote_vps" | "local_compose", rawCode: string): string => {
+    const normalized = rawCode.trim().toLowerCase();
+    if (!normalized) return "";
+    return topology === "local_compose" ? `data-cell-dev/${normalized}` : `/opt/${normalized}`;
+  };
 
   const [formData, setFormData] = useState<{
     code: string;
@@ -58,19 +112,23 @@ export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellForm
     publicIp: string;
     maxClients: number;
     region: string;
+    workingDir: string;
+    deployUser: string;
   }>({
     code: "",
     hostId: "",
     tier: "standard",
     topologyType: "remote_vps",
     pgbouncerHost: "pgbouncer-cell-01",
-    pgbouncerPort: 6432,
+    pgbouncerPort: initialLocalDefaults.pgbouncerPort,
     databaseName: "",
     appUrl: "",
     privateIp: "",
     publicIp: "",
     maxClients: 100,
     region: "us-east-1",
+    workingDir: "",
+    deployUser: "deploy:1000",
   });
 
   async function handleSubmit(e: React.FormEvent) {
@@ -95,6 +153,8 @@ export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellForm
         publicIp: formData.publicIp.trim() || undefined,
         maxClients: Number(formData.maxClients),
         region: formData.region.trim(),
+        workingDir: formData.workingDir.trim() || undefined,
+        deployUser: formData.deployUser.trim() || undefined,
       };
 
       const res = await adminFetch(`${apiUrl}/admin/cells`, {
@@ -112,6 +172,7 @@ export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellForm
       }
 
       setSuccess(true);
+      setWorkingDirCustom(false);
       setFormData({
         code: "",
         hostId: "",
@@ -125,6 +186,8 @@ export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellForm
         publicIp: "",
         maxClients: 100,
         region: "us-east-1",
+        workingDir: "",
+        deployUser: "deploy:1000",
       });
       router.refresh();
       if (onSuccess) onSuccess();
@@ -211,7 +274,21 @@ export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellForm
                     required
                     placeholder="ej. cell-01 o cell-vip"
                     value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                    onChange={(e) => {
+                      const nextCode = e.target.value;
+                      const normalizedCode = nextCode.trim().toLowerCase();
+                      setFormData((prev) => ({
+                        ...prev,
+                        code: nextCode,
+                        pgbouncerHost:
+                          prev.topologyType === "local_compose" && normalizedCode
+                            ? `pgbouncer-${normalizedCode}`
+                            : prev.pgbouncerHost,
+                        workingDir: workingDirCustom
+                          ? prev.workingDir
+                          : computeDefaultWorkingDir(prev.topologyType, nextCode),
+                      }));
+                    }}
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
                   />
                 </div>
@@ -246,13 +323,34 @@ export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellForm
                   <select
                     id="cell-topology"
                     value={formData.topologyType}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        topologyType: e.target.value as "remote_vps" | "local_compose",
-                        hostId: "",
-                      })
-                    }
+                    onChange={(e) => {
+                      const nextTopology = e.target.value as "remote_vps" | "local_compose";
+                      const nextLocalDefaults = suggestNextLocalCellDefaults(existingCells);
+                      const readyLocalHosts = hosts.filter(
+                        (h) => h.status === "ready" && h.deploymentProfile === "local_development",
+                      );
+                      setFormData((prev) => ({
+                        ...prev,
+                        topologyType: nextTopology,
+                        hostId:
+                          nextTopology === "local_compose" && readyLocalHosts.length === 1
+                            ? readyLocalHosts[0].id
+                            : "",
+                        pgbouncerPort:
+                          nextTopology === "local_compose" ? nextLocalDefaults.pgbouncerPort : 6432,
+                        pgbouncerHost:
+                          nextTopology === "local_compose" && prev.code.trim()
+                            ? `pgbouncer-${prev.code.trim().toLowerCase()}`
+                            : prev.pgbouncerHost,
+                        appUrl:
+                          nextTopology === "local_compose" && !prev.appUrl.trim()
+                            ? `http://localhost:${nextLocalDefaults.appPort}/`
+                            : prev.appUrl,
+                        workingDir: workingDirCustom
+                          ? prev.workingDir
+                          : computeDefaultWorkingDir(nextTopology, prev.code),
+                      }));
+                    }}
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
                   >
                     <option value="remote_vps">VPS Remoto (Host Dedicado)</option>
@@ -435,6 +533,45 @@ export function CreateCellForm({ apiUrl, hosts = [], onSuccess }: CreateCellForm
                     value={formData.region}
                     onChange={(e) => setFormData({ ...formData, region: e.target.value })}
                     className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="cell-working-dir"
+                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                  >
+                    Directorio De Trabajo Canónico
+                  </label>
+                  <input
+                    id="cell-working-dir"
+                    type="text"
+                    placeholder="ej. /opt/cell-01 o data-cell-dev/cell-1"
+                    value={formData.workingDir}
+                    onChange={(e) => {
+                      setWorkingDirCustom(e.target.value.trim().length > 0);
+                      setFormData({ ...formData, workingDir: e.target.value });
+                    }}
+                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="cell-deploy-user"
+                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                  >
+                    Usuario De Despliegue
+                  </label>
+                  <input
+                    id="cell-deploy-user"
+                    type="text"
+                    disabled
+                    readOnly
+                    value={formData.deployUser}
+                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text-secondary)] opacity-70 cursor-not-allowed focus:outline-none font-mono"
                   />
                 </div>
               </div>

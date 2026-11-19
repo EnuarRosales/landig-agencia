@@ -116,5 +116,42 @@ describe("BILL-001 T-10 · ReferralCreditBillingManager", () => {
       }),
     );
   });
+
+  it("deduce múltiples recompensas en orden FEFO sin omitir lotes previos (SPEC-16 D-02)", async () => {
+    const soon = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const later = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000);
+    (mockReferralProvider.getAvailableCredits as any).mockResolvedValue([
+      { id: "rew-later", remainingCents: 5000000, currency: "COP", expiresAt: later },
+      { id: "rew-soon", remainingCents: 5000000, currency: "COP", expiresAt: soon },
+    ]);
+
+    const res = await manager.issueInvoiceWithCredits({
+      clientId: "client-ref-multi",
+      subtotalCents: 8000000, // 80.000 COP consume rew-soon (50k) + rew-later (30k)
+      currency: "COP",
+      executedBy: "billing.cycle",
+    });
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.data.paidWithoutGateway).toBe(true);
+    expect(res.data.creditsAppliedCents).toBe(8000000);
+    expect(res.data.appliedAllocations).toEqual([
+      { rewardId: "rew-soon", amountCents: 5000000 },
+      { rewardId: "rew-later", amountCents: 3000000 },
+    ]);
+    expect(mockReferralProvider.deductCredit).toHaveBeenNthCalledWith(
+      1,
+      "rew-soon",
+      5000000,
+      "inv-cred-100",
+    );
+    expect(mockReferralProvider.deductCredit).toHaveBeenNthCalledWith(
+      2,
+      "rew-later",
+      3000000,
+      "inv-cred-100",
+    );
+  });
 });
 

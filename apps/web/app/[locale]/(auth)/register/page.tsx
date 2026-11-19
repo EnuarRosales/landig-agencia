@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import Image from "next/image";
 import { getTranslations } from "next-intl/server";
@@ -42,6 +43,23 @@ export default async function RegisterPage({ params, searchParams }: Props) {
   const { locale } = await params;
   const sParams = await searchParams;
   const planCodeParam = typeof sParams?.plan_code === "string" ? sParams.plan_code : undefined;
+
+  // Captura de código de referido desde ?r=, ?ref= o cookie HttpOnly mocter_ref (SPEC-16 D-01)
+  const rawQueryRef =
+    typeof sParams?.r === "string"
+      ? sParams.r
+      : typeof sParams?.ref === "string"
+        ? sParams.ref
+        : undefined;
+  let cookieRef: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    cookieRef = cookieStore.get("mocter_ref")?.value;
+  } catch {
+    cookieRef = undefined;
+  }
+  const candidateRef = (rawQueryRef || cookieRef || "").trim().toUpperCase();
+  const referralCode = /^[A-Z0-9_-]{3,32}$/.test(candidateRef) ? candidateRef : undefined;
 
   let selectedPlan: Plan | null = null;
   if (planCodeParam) {
@@ -103,12 +121,24 @@ export default async function RegisterPage({ params, searchParams }: Props) {
                 <span className="font-bold text-white">{planName}</span>
               </div>
             )}
+
+            {/* Insignia informativa de código de invitación aplicado (SPEC-16 D-01) */}
+            {referralCode && (
+              <div
+                data-testid="register-referral-badge"
+                className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-3.5 py-1 text-xs font-medium text-emerald-300"
+              >
+                <span>{locale === "en" ? "Invitation Code:" : "Código de Invitación:"}</span>
+                <span className="font-mono font-bold text-emerald-200">{referralCode}</span>
+              </div>
+            )}
           </header>
 
           {/* Opciones de registro vertical y formulario por revelación progresiva */}
           <RegisterView
             locale={locale}
             selectedPlan={selectedPlan}
+            referralCode={referralCode}
             enabledProviders={enabledProviders}
             t={{
               nameLabel: t("nameLabel"),

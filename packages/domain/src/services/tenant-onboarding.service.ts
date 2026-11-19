@@ -63,6 +63,7 @@ import {
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
 import { getBillingService } from "./billing.service";
+import { getReferralsService } from "./referrals.service";
 
 /**
  * Llaves canónicas de etapa del asistente de onboarding en 5 pasos (`SPEC-06 §2.1`).
@@ -279,6 +280,10 @@ export interface SaveStep1BusinessInput {
   currency?: string;
   timezone?: string;
   planCode?: string;
+  /** Código de referido de respaldo (cookie `mocter_ref`) si no existía en `users.referred_by_code` (`SPEC-16 D-01`). */
+  referralCode?: string | null;
+  /** Dirección IP de la petición usada solo para hash HMAC antifraude (`SPEC-16 D-03`). */
+  clientIp?: string | null;
 }
 
 /** Alias de compatibilidad hacia atrás. */
@@ -1103,6 +1108,37 @@ export class TenantOnboardingService {
           createdBy: user.email,
           updatedBy: user.email,
         });
+
+        // Atribución automática de referido (`SPEC-16 D-01`, Fail-Soft: nunca bloquea el alta del comercio)
+        const effectiveReferralCode = (
+          user.referredByCode ||
+          input.referralCode ||
+          ""
+        )
+          .trim()
+          .toUpperCase();
+        if (effectiveReferralCode) {
+          try {
+            const refRes = await getReferralsService().attributeReferral({
+              referredClientId: clientId,
+              code: effectiveReferralCode,
+              ipAddress: input.clientIp ?? undefined,
+              executedBy: "onboarding_step1",
+            });
+            if (!refRes.ok) {
+              appLogger.warn("[saveBusinessStep] Atribución de referido descartada (Fail-Soft)", {
+                clientId,
+                code: effectiveReferralCode,
+                reason: refRes.code,
+              });
+            }
+          } catch (refErr: unknown) {
+            appLogger.warn("[saveBusinessStep] Error no bloqueante al atribuir referido", {
+              clientId,
+              error: refErr instanceof Error ? refErr.message : String(refErr),
+            });
+          }
+        }
 
         const provRes = await provisionTenantInCellDataPlane(clientId, assignedCell.id, user.id, {
           displayName,

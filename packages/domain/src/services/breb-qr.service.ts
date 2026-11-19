@@ -655,4 +655,17 @@ export class BreBQrService {
   }
 }
 
+/**
+ * Genera una imagen QR vectorial SVG codificada como Data URL base64 para cualquier cadena de texto o URL.
+ *
+ * @param payload - Texto o URL a codificar en el código QR.
+ * @returns Cadena `data:image/svg+xml;base64,...` lista para renderizado o descarga.
+ */
+export function generateQrSvgDataUrl(payload: string): string {
+  const safePayload = payload.trim() || "https://mocter.co";
+  const matrix = buildQrMatrix(safePayload);
+  const qrSvg = renderQrMatrixToSvg(matrix, 4, 6);
+  return `data:image/svg+xml;base64,${Buffer.from(qrSvg, "utf8").toString("base64")}`;
+}
+
 export const defaultBreBQrService = new BreBQrService();

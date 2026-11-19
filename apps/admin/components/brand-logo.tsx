@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 import Link from "next/link";
 import { siteConfig } from "@/config/site";
 
@@ -53,6 +53,8 @@ export function BrandLogo({
   className = "",
 }: BrandLogoProps) {
   const isSm = size === "sm";
+  const rawId = useId();
+  const gradientId = `brand-chip-glow-${rawId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
   const content = (
     <div className={`flex items-center gap-2.5 ${className}`}>
@@ -74,7 +76,7 @@ export function BrandLogo({
             className={`${isSm ? "h-7 w-7" : "h-8 w-8"} shrink-0 rounded-xl shadow-xs`}
           >
             <defs>
-              <linearGradient id="brand-chip-glow" x1="0" y1="0" x2="1" y2="1">
+              <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" stopColor="#2f6bff" />
                 <stop offset="100%" stopColor="#22d3ee" />
               </linearGradient>
@@ -94,14 +96,14 @@ export function BrandLogo({
               width="36"
               height="36"
               rx="10"
-              fill="url(#brand-chip-glow)"
+              fill={`url(#${gradientId})`}
               opacity="0.18"
             />
             {/* Trazo vectorial en 'M' redondeado */}
             <path
               d="M10 28V12L19 23L28 12V28"
               fill="none"
-              stroke="url(#brand-chip-glow)"
+              stroke={`url(#${gradientId})`}
               strokeWidth="4"
               strokeLinecap="round"
               strokeLinejoin="round"

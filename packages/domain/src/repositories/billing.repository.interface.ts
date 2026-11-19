@@ -203,5 +203,14 @@ export interface IBillingRepository {
   }): Promise<
     RejectManualReportTxResult | { error: string; code: "NOT_FOUND" | "ALREADY_PROCESSED" }
   >;
+  activateOrRenewPaidSubscription?(input: {
+    clientId: string;
+    planId: string;
+    cycle: "monthly" | "annual";
+    operationKind: "new_subscription" | "renewal" | "upgrade";
+    gateway: string;
+    now: Date;
+    actor: string;
+  }): Promise<Subscription>;
 }
 

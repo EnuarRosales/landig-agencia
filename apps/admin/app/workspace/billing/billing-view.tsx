@@ -450,6 +450,8 @@ export function BillingView({ initialBilling, locale = "es", isOwner = true }: B
           latestRejectedBreBReport={billing.latestRejectedBreBReport}
           availablePlans={billing.availablePlans || []}
           availableChannels={billing.availableChannels || []}
+          availableReferralCreditCents={billing.availableReferralCreditCents ?? 0}
+          referralCreditCurrency={billing.referralCreditCurrency}
           locale={locale}
           mode="workspace"
           isOwner={isOwner}

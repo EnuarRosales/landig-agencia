@@ -1,10 +1,11 @@
-import { eq, and, sql, lt } from "drizzle-orm";
+import { eq, and, sql, lt, gte, desc, asc } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
   referralPrograms,
   referralCodes,
   referrals,
   referralRewards,
+  referralRewardRedemptions,
   type ReferralProgram,
   type NewReferralProgram,
   type ReferralCode,
@@ -14,10 +15,19 @@ import {
   type ReferralReward,
   type NewReferralReward,
 } from "../db/schemas/admin/referrals";
-import type { IReferralsRepository } from "./referrals.repository.interface";
+import { clients } from "../db/schemas/admin/clients";
+import { clientBillingProfiles, invoices } from "../db/schemas/admin/billing";
+import type {
+  ClientFraudFingerprint,
+  FefoRedemptionAllocation,
+  IReferralsRepository,
+  RedeemCreditsFefoResult,
+  ReferralRedemptionWithInvoiceRow,
+  ReferrerReferralItemRow,
+} from "./referrals.repository.interface";
 
 /**
- * Implementación Drizzle del repositorio para el Programa de Referidos (REF-001).
+ * Implementación Drizzle del repositorio para el Programa de Referidos (`REF-001`, `SPEC-16`).
  */
 export class DrizzleReferralsRepository implements IReferralsRepository {
   constructor(private readonly db: PostgresJsDatabase<Record<string, unknown>>) {}
@@ -173,6 +183,66 @@ export class DrizzleReferralsRepository implements IReferralsRepository {
       .orderBy(sql`attributed_at DESC`) as unknown as Promise<Referral[]>;
   }
 
+  /**
+   * Lista referidos paginados del referente junto con nombre comercial (para enmascaramiento)
+   * y recompensa asociada (`SPEC-16`).
+   */
+  async listReferralsByReferrerPaginated(
+    referrerClientId: string,
+    params: { page: number; limit: number; status?: Referral["status"] },
+  ): Promise<{ items: ReferrerReferralItemRow[]; total: number }> {
+    const conditions = [eq(referrals.referrerClientId, referrerClientId)];
+    if (params.status) {
+      conditions.push(eq(referrals.status, params.status));
+    }
+    const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
+
+    const countRows = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(referrals)
+      .where(whereClause);
+    const total = countRows[0]?.total ?? 0;
+
+    const offset = Math.max(0, (params.page - 1) * params.limit);
+    const rows = await this.db
+      .select({
+        id: referrals.id,
+        referredClientId: referrals.referredClientId,
+        referredDisplayName: clients.displayName,
+        code: referrals.code,
+        status: referrals.status,
+        attributedAt: referrals.attributedAt,
+        qualifiedAt: referrals.qualifiedAt,
+        rejectedReason: referrals.rejectedReason,
+        rewardAmountCents: referralRewards.amountCents,
+        rewardCurrency: referralRewards.currency,
+      })
+      .from(referrals)
+      .leftJoin(clients, eq(referrals.referredClientId, clients.id))
+      .leftJoin(referralRewards, eq(referralRewards.referralId, referrals.id))
+      .where(whereClause)
+      .orderBy(desc(referrals.attributedAt))
+      .limit(params.limit)
+      .offset(offset);
+
+    const items: ReferrerReferralItemRow[] = rows.map((row) => ({
+      id: row.id,
+      referredClientId: row.referredClientId,
+      referredDisplayName: row.referredDisplayName ?? null,
+      code: row.code,
+      status: row.status as Referral["status"],
+      attributedAt: row.attributedAt,
+      qualifiedAt: row.qualifiedAt ?? null,
+      rejectedReason: row.rejectedReason ?? null,
+      rewardAmountCents: row.rewardAmountCents !== null && row.rewardAmountCents !== undefined
+        ? Number(row.rewardAmountCents)
+        : null,
+      rewardCurrency: row.rewardCurrency ?? null,
+    }));
+
+    return { items, total };
+  }
+
   async getReferrerMetrics(referrerClientId: string): Promise<{
     totalReferred: number;
     pendingCount: number;
@@ -206,6 +276,71 @@ export class DrizzleReferralsRepository implements IReferralsRepository {
     };
   }
 
+  /**
+   * Obtiene nombre comercial y documentos fiscales (`clients.tax_id` y `client_billing_profiles.dni`)
+   * para validaciones antifraude (`SPEC-16 D-03`).
+   */
+  async getClientFraudFingerprint(clientId: string): Promise<ClientFraudFingerprint | null> {
+    const rows = await this.db
+      .select({
+        clientId: clients.id,
+        displayName: clients.displayName,
+        taxId: clients.taxId,
+        billingDni: clientBillingProfiles.dni,
+      })
+      .from(clients)
+      .leftJoin(clientBillingProfiles, eq(clientBillingProfiles.clientId, clients.id))
+      .where(eq(clients.id, clientId))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      clientId: row.clientId,
+      displayName: row.displayName,
+      taxId: row.taxId ?? null,
+      billingDni: row.billingDni ?? null,
+    };
+  }
+
+  /**
+   * Cuenta atribuciones recibidas por un referente desde un mismo hash de IP dentro de la ventana temporal.
+   */
+  async countReferralsByIpHash(
+    referrerClientId: string,
+    ipHash: string,
+    since: Date,
+  ): Promise<number> {
+    const rows = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(referrals)
+      .where(
+        and(
+          eq(referrals.referrerClientId, referrerClientId),
+          eq(referrals.attributedIpHash, ipHash),
+          gte(referrals.attributedAt, since),
+        ),
+      );
+    return rows[0]?.count ?? 0;
+  }
+
+  /**
+   * Verifica si la IP hasheada coincide con la atribución original del propio comercio referente.
+   */
+  async hasIpCollisionWithReferrer(referrerClientId: string, ipHash: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: referrals.id })
+      .from(referrals)
+      .where(
+        and(
+          eq(referrals.referredClientId, referrerClientId),
+          eq(referrals.attributedIpHash, ipHash),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
   async createReward(reward: NewReferralReward): Promise<ReferralReward> {
     const rows = await this.db.insert(referralRewards).values(reward).returning();
     return rows[0] as unknown as ReferralReward;
@@ -231,7 +366,54 @@ export class DrizzleReferralsRepository implements IReferralsRepository {
           sql`remaining_cents > 0`,
         ),
       )
-      .orderBy(referralRewards.expiresAt) as unknown as Promise<ReferralReward[]>;
+      .orderBy(asc(referralRewards.expiresAt)) as unknown as Promise<ReferralReward[]>;
+  }
+
+  /**
+   * Lista todos los lotes de recompensas del inquilino ordenados por fecha de vencimiento y emisión.
+   */
+  async listRewardsByReferrer(referrerClientId: string): Promise<ReferralReward[]> {
+    return this.db
+      .select()
+      .from(referralRewards)
+      .where(eq(referralRewards.referrerClientId, referrerClientId))
+      .orderBy(asc(referralRewards.expiresAt), desc(referralRewards.creditedAt)) as unknown as Promise<
+      ReferralReward[]
+    >;
+  }
+
+  /**
+   * Lista el ledger de redenciones del inquilino enriquecido con número de factura SaaS (`SPEC-16 D-02`).
+   */
+  async listRedemptionsByReferrer(
+    referrerClientId: string,
+    limit = 50,
+  ): Promise<ReferralRedemptionWithInvoiceRow[]> {
+    const rows = await this.db
+      .select({
+        id: referralRewardRedemptions.id,
+        rewardId: referralRewardRedemptions.rewardId,
+        invoiceId: referralRewardRedemptions.invoiceId,
+        invoiceNumber: invoices.invoiceNumber,
+        amountCents: referralRewardRedemptions.amountCents,
+        currency: referralRewardRedemptions.currency,
+        redeemedAt: referralRewardRedemptions.redeemedAt,
+      })
+      .from(referralRewardRedemptions)
+      .innerJoin(invoices, eq(referralRewardRedemptions.invoiceId, invoices.id))
+      .where(eq(referralRewardRedemptions.clientId, referrerClientId))
+      .orderBy(desc(referralRewardRedemptions.redeemedAt))
+      .limit(limit);
+
+    return rows.map((row) => ({
+      id: row.id,
+      rewardId: row.rewardId,
+      invoiceId: row.invoiceId,
+      invoiceNumber: row.invoiceNumber,
+      amountCents: Number(row.amountCents),
+      currency: row.currency,
+      redeemedAt: row.redeemedAt,
+    }));
   }
 
   async deductRewardCredit(
@@ -245,7 +427,7 @@ export class DrizzleReferralsRepository implements IReferralsRepository {
       .where(eq(referralRewards.id, rewardId));
 
     const current = existing[0] as ReferralReward;
-    const newRemaining = Math.max(0, current.remainingCents - amountCents);
+    const newRemaining = Math.max(0, Number(current.remainingCents) - amountCents);
     const newStatus = newRemaining === 0 ? "redeemed" : "partially_redeemed";
 
     const rows = await this.db
@@ -261,6 +443,116 @@ export class DrizzleReferralsRepository implements IReferralsRepository {
       .returning();
 
     return rows[0] as unknown as ReferralReward;
+  }
+
+  /**
+   * Redime créditos disponibles en orden FEFO (`expires_at ASC`) para una factura de forma atómica e idempotente (`SPEC-16 D-02`).
+   *
+   * Si la factura ya posee movimientos registrados en `admin.referral_reward_redemptions`, retorna
+   * idempotentemente el monto ya redimido sin volver a descontar saldo.
+   */
+  async redeemCreditsFefoForInvoice(params: {
+    clientId: string;
+    invoiceId: string;
+    maxAmountCents: number;
+    currency: "COP" | "USD";
+    executedBy: string;
+  }): Promise<RedeemCreditsFefoResult> {
+    if (params.maxAmountCents <= 0) {
+      return { totalRedeemedCents: 0, allocations: [], alreadyRedeemed: false };
+    }
+
+    return this.db.transaction(async (tx) => {
+      const existingRedemptions = await tx
+        .select()
+        .from(referralRewardRedemptions)
+        .where(eq(referralRewardRedemptions.invoiceId, params.invoiceId));
+
+      if (existingRedemptions.length > 0) {
+        const total = existingRedemptions.reduce((acc, r) => acc + Number(r.amountCents), 0);
+        return {
+          totalRedeemedCents: total,
+          allocations: existingRedemptions.map((r) => ({
+            rewardId: r.rewardId,
+            amountCents: Number(r.amountCents),
+            remainingCents: 0,
+            status: "redeemed" as const,
+          })),
+          alreadyRedeemed: true,
+        };
+      }
+
+      const available = (await tx
+        .select()
+        .from(referralRewards)
+        .where(
+          and(
+            eq(referralRewards.referrerClientId, params.clientId),
+            eq(referralRewards.currency, params.currency),
+            sql`status IN ('available', 'partially_redeemed')`,
+            sql`expires_at > now()`,
+            sql`remaining_cents > 0`,
+          ),
+        )
+        .orderBy(asc(referralRewards.expiresAt))) as unknown as ReferralReward[];
+
+      let remainingToCover = params.maxAmountCents;
+      let totalRedeemedCents = 0;
+      const allocations: FefoRedemptionAllocation[] = [];
+      const now = new Date();
+
+      for (const reward of available) {
+        if (remainingToCover <= 0) break;
+        const availCents = Number(reward.remainingCents);
+        if (availCents <= 0) continue;
+
+        const toDeduct = Math.min(availCents, remainingToCover);
+        const newRemaining = Math.max(0, availCents - toDeduct);
+        const newStatus: ReferralReward["status"] =
+          newRemaining === 0 ? "redeemed" : "partially_redeemed";
+
+        await tx
+          .update(referralRewards)
+          .set({
+            remainingCents: newRemaining,
+            status: newStatus,
+            appliedInvoiceId: params.invoiceId,
+            redeemedAt: newRemaining === 0 ? now : reward.redeemedAt,
+            updatedAt: now,
+            updatedBy: params.executedBy,
+          })
+          .where(eq(referralRewards.id, reward.id));
+
+        await tx
+          .insert(referralRewardRedemptions)
+          .values({
+            rewardId: reward.id,
+            invoiceId: params.invoiceId,
+            clientId: params.clientId,
+            amountCents: toDeduct,
+            currency: params.currency,
+            redeemedAt: now,
+            createdBy: params.executedBy,
+            updatedBy: params.executedBy,
+          })
+          .onConflictDoNothing();
+
+        allocations.push({
+          rewardId: reward.id,
+          amountCents: toDeduct,
+          remainingCents: newRemaining,
+          status: newStatus,
+        });
+        totalRedeemedCents += toDeduct;
+        remainingToCover -= toDeduct;
+      }
+
+      return {
+        totalRedeemedCents,
+        allocations,
+        alreadyRedeemed: false,
+      };
+    });
   }
 
   async expireOverdueRewards(): Promise<number> {
@@ -280,4 +572,3 @@ export class DrizzleReferralsRepository implements IReferralsRepository {
     return rows.length;
   }
 }
-

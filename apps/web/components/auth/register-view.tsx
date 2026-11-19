@@ -9,6 +9,7 @@ import { RegisterForm, type RegisterFormTranslations } from "./register-form";
 export interface RegisterViewProps {
   locale: string;
   selectedPlan: Plan | null;
+  referralCode?: string;
   enabledProviders: string[];
   t: RegisterFormTranslations;
   tOauth: {
@@ -32,6 +33,7 @@ export interface RegisterViewProps {
 export function RegisterView({
   locale,
   selectedPlan,
+  referralCode,
   enabledProviders,
   t,
   tOauth,
@@ -117,6 +119,7 @@ export function RegisterView({
           <RegisterForm
             locale={locale}
             selectedPlan={selectedPlan}
+            referralCode={referralCode}
             t={t}
           />
         </div>

@@ -7,6 +7,12 @@ import type {
   SupportedPaymentGatewayId,
 } from "../repositories/billing.repository.interface";
 import { BreBQrService, defaultBreBQrService } from "./breb-qr.service";
+import { getReferralsService, type ReferralsService } from "./referrals.service";
+
+export type CheckoutReferralsFacade = Pick<
+  ReferralsService,
+  "getAvailableCreditBalance" | "redeemCreditsFefoForInvoice" | "qualifyReferral"
+>;
 
 export interface PaymentChannelOption {
   id: SupportedPaymentGatewayId;
@@ -27,6 +33,8 @@ export interface CreateCheckoutSessionInput {
   country?: string;
   customerEmail: string;
   redirectUrl?: string;
+  /** Si es `true` (default), aplica créditos vigentes de referidos en orden FEFO (`SPEC-16 D-02`). */
+  applyReferralCredits?: boolean;
   executedBy: string;
 }
 
@@ -36,6 +44,8 @@ export type CheckoutSessionResponse =
       invoiceId: string;
       invoiceNumber: string;
       reference: string;
+      subtotalCents?: number;
+      creditsAppliedCents?: number;
       amountCents: number;
       currency: "COP";
       publicKey: string;
@@ -46,6 +56,8 @@ export type CheckoutSessionResponse =
       invoiceId: string;
       invoiceNumber: string;
       reference: string;
+      subtotalCents?: number;
+      creditsAppliedCents?: number;
       amountCents: number;
       currency: "USD";
       clientSecret: string;
@@ -56,6 +68,8 @@ export type CheckoutSessionResponse =
       invoiceId: string;
       invoiceNumber: string;
       reference: string;
+      subtotalCents?: number;
+      creditsAppliedCents?: number;
       amountCents: number;
       currency: "COP";
       recipientName: string;
@@ -64,6 +78,18 @@ export type CheckoutSessionResponse =
       qrPayload: string;
       qrSvgDataUrl: string;
       amountFormattedCop: string;
+    }
+  | {
+      gateway: "referral_credit";
+      invoiceId: string;
+      invoiceNumber: string;
+      reference: string;
+      subtotalCents: number;
+      creditsAppliedCents: number;
+      amountCents: 0;
+      currency: "COP" | "USD";
+      paidWithoutGateway: true;
+      receiptNumber: string;
     };
 
 export interface ResolvedCountryPlanPricing {
@@ -119,6 +145,7 @@ export class CheckoutService {
     private readonly wompiPublicKey: string = "pub_test_wompi_public_key_123",
     private readonly stripePublishableKey: string = "pk_test_stripe_publishable_key_123",
     private readonly breBQrService: BreBQrService = defaultBreBQrService,
+    private readonly referralsService?: CheckoutReferralsFacade,
   ) {}
 
   /**
@@ -224,6 +251,121 @@ export class CheckoutService {
         }
       }
 
+      const subtotalCents = resolvedAmountCents;
+      let plannedCreditCents = 0;
+
+      if (input.applyReferralCredits !== false && this.referralsService && subtotalCents > 0) {
+        const balanceRes = await this.referralsService.getAvailableCreditBalance(
+          input.clientId,
+          resolvedCurrency,
+        );
+        if (balanceRes.ok && balanceRes.data.availableCreditCents > 0) {
+          plannedCreditCents = Math.min(balanceRes.data.availableCreditCents, subtotalCents);
+        }
+      }
+
+      const netAmountCents = Math.max(0, subtotalCents - plannedCreditCents);
+      const year = new Date().getFullYear();
+      const rand = Math.floor(100000 + Math.random() * 900000);
+      const invoiceNumber = `INV-${year}-${rand}`;
+      const reference = `cli_${input.clientId}_${invoiceNumber}`;
+
+      // Caso A: Créditos de referidos cubren el 100% del monto (totalCents === 0) → liquidación inmediata sin pasarela (SPEC-16 D-02)
+      if (netAmountCents === 0 && plannedCreditCents > 0 && this.referralsService) {
+        const now = new Date();
+        const invoice = await this.repository.createInvoice({
+          clientId: input.clientId,
+          invoiceNumber,
+          status: "paid",
+          subtotalCents,
+          taxCents: 0,
+          creditCents: plannedCreditCents,
+          prorationCents: 0,
+          totalCents: 0,
+          currency: resolvedCurrency,
+          dueAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+          paidAt: now,
+          createdBy: input.executedBy,
+          updatedBy: input.executedBy,
+        });
+
+        await this.referralsService.redeemCreditsFefoForInvoice({
+          clientId: input.clientId,
+          invoiceId: invoice.id,
+          maxAmountCents: plannedCreditCents,
+          currency: resolvedCurrency,
+          executedBy: input.executedBy,
+        });
+
+        const receiptNumber = `REC-${year}-${rand}`;
+        const payment = await this.repository.createPayment({
+          clientId: input.clientId,
+          invoiceId: invoice.id,
+          gateway: "wompi",
+          gatewayReference: `credit_${invoice.id}`,
+          amountCents: 0,
+          currency: resolvedCurrency,
+          status: "approved",
+          createdBy: input.executedBy,
+          updatedBy: input.executedBy,
+        });
+
+        await this.repository.createReceipt({
+          paymentId: payment.id,
+          receiptNumber,
+          pdfUrl: `/receipts/${receiptNumber}.pdf`,
+          emailedTo: null,
+          emailedAt: null,
+          createdBy: input.executedBy,
+          updatedBy: input.executedBy,
+        });
+
+        if (this.repository.activateOrRenewPaidSubscription) {
+          await this.repository.activateOrRenewPaidSubscription({
+            clientId: input.clientId,
+            planId: input.planId,
+            cycle: input.cycle === "annual" ? "annual" : "monthly",
+            operationKind: input.operationKind ?? "renewal",
+            gateway: "wompi",
+            now,
+            actor: input.executedBy,
+          });
+        }
+
+        // Calificación no bloqueante si corresponde al primer pago efectivo
+        try {
+          await this.referralsService.qualifyReferral({
+            referredClientId: input.clientId,
+            firstInvoiceAmountCents: subtotalCents,
+            currency: resolvedCurrency,
+            executedBy: input.executedBy,
+          });
+        } catch {
+          // Ignorar fallo no bloqueante de calificación
+        }
+
+        appLogger.info("[CheckoutService] Factura cubierta 100% con créditos de referidos", {
+          clientId: input.clientId,
+          invoiceId: invoice.id,
+          subtotalCents,
+          creditsAppliedCents: plannedCreditCents,
+          currency: resolvedCurrency,
+        });
+
+        return ok({
+          gateway: "referral_credit",
+          invoiceId: invoice.id,
+          invoiceNumber,
+          reference,
+          subtotalCents,
+          creditsAppliedCents: plannedCreditCents,
+          amountCents: 0,
+          currency: resolvedCurrency,
+          paidWithoutGateway: true,
+          receiptNumber,
+        });
+      }
+
       const selectedGateway: SupportedPaymentGatewayId =
         input.gateway ?? (resolvedCurrency === "COP" ? "wompi" : "stripe");
 
@@ -254,7 +396,7 @@ export class CheckoutService {
           );
         }
 
-        // Prevalidar país/moneda/llave antes de emitir factura en BD
+        // Prevalidar país/moneda/llave antes de emitir factura en BD (usando el monto neto tras crédito)
         const previewQr = this.breBQrService.buildDynamicBreBPaymentPayload({
           config: {
             isEnabled: gatewayConfig.isEnabled,
@@ -265,7 +407,7 @@ export class CheckoutService {
           },
           country: resolvedCountry || undefined,
           currency: resolvedCurrency,
-          amountCents: resolvedAmountCents,
+          amountCents: netAmountCents,
           invoiceNumber: "INV-PREVIEW",
           referenceCode: "MOC-PREVIEW",
         });
@@ -275,28 +417,23 @@ export class CheckoutService {
         }
       }
 
-      const year = new Date().getFullYear();
-      const rand = Math.floor(100000 + Math.random() * 900000);
-      const invoiceNumber = `INV-${year}-${rand}`;
-      const reference = `cli_${input.clientId}_${invoiceNumber}`;
-
-      // 1. Crear factura pendiente
+      // 1. Crear factura pendiente con el crédito planificado (los lotes FEFO se descuentan al confirmarse el pago)
       const invoice = await this.repository.createInvoice({
         clientId: input.clientId,
         invoiceNumber,
         status: "issued",
-        subtotalCents: resolvedAmountCents,
+        subtotalCents,
         taxCents: 0,
-        creditCents: 0,
+        creditCents: plannedCreditCents,
         prorationCents: 0,
-        totalCents: resolvedAmountCents,
+        totalCents: netAmountCents,
         currency: resolvedCurrency,
         dueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         createdBy: input.executedBy,
         updatedBy: input.executedBy,
       });
 
-      // 2. Construir respuesta según canal seleccionado
+      // 2. Construir respuesta según canal seleccionado usando el importe neto
       if (selectedGateway === "bre_b" && gatewayConfig) {
         const qrResult = this.breBQrService.buildDynamicBreBPaymentPayload({
           config: {
@@ -308,7 +445,7 @@ export class CheckoutService {
           },
           country: resolvedCountry || undefined,
           currency: resolvedCurrency,
-          amountCents: resolvedAmountCents,
+          amountCents: netAmountCents,
           invoiceNumber,
           referenceCode: invoiceNumber,
         });
@@ -321,7 +458,9 @@ export class CheckoutService {
           clientId: input.clientId,
           invoiceId: invoice.id,
           invoiceNumber,
-          amountCents: resolvedAmountCents,
+          subtotalCents,
+          creditsAppliedCents: plannedCreditCents,
+          amountCents: netAmountCents,
         });
 
         return ok({
@@ -329,7 +468,9 @@ export class CheckoutService {
           invoiceId: invoice.id,
           invoiceNumber,
           reference,
-          amountCents: resolvedAmountCents,
+          subtotalCents,
+          creditsAppliedCents: plannedCreditCents,
+          amountCents: netAmountCents,
           currency: "COP",
           recipientName: qrResult.data.recipientName,
           keyType: qrResult.data.keyType,
@@ -345,13 +486,15 @@ export class CheckoutService {
         const redirectParam = input.redirectUrl
           ? `&redirect-url=${encodeURIComponent(input.redirectUrl)}`
           : "";
-        const checkoutUrl = `https://checkout.wompi.co/p/?public-key=${publicKey}&currency=COP&amount-in-cents=${resolvedAmountCents}&reference=${reference}&customer-data:email=${encodeURIComponent(input.customerEmail)}${redirectParam}`;
+        const checkoutUrl = `https://checkout.wompi.co/p/?public-key=${publicKey}&currency=COP&amount-in-cents=${netAmountCents}&reference=${reference}&customer-data:email=${encodeURIComponent(input.customerEmail)}${redirectParam}`;
 
         appLogger.info("[CheckoutService] Sesión de Checkout Wompi inicializada", {
           clientId: input.clientId,
           invoiceId: invoice.id,
           reference,
-          amountCents: resolvedAmountCents,
+          subtotalCents,
+          creditsAppliedCents: plannedCreditCents,
+          amountCents: netAmountCents,
         });
 
         return ok({
@@ -359,7 +502,9 @@ export class CheckoutService {
           invoiceId: invoice.id,
           invoiceNumber,
           reference,
-          amountCents: resolvedAmountCents,
+          subtotalCents,
+          creditsAppliedCents: plannedCreditCents,
+          amountCents: netAmountCents,
           currency: "COP",
           publicKey,
           checkoutUrl,
@@ -373,7 +518,9 @@ export class CheckoutService {
         clientId: input.clientId,
         invoiceId: invoice.id,
         reference,
-        amountCents: resolvedAmountCents,
+        subtotalCents,
+        creditsAppliedCents: plannedCreditCents,
+        amountCents: netAmountCents,
       });
 
       return ok({
@@ -381,7 +528,9 @@ export class CheckoutService {
         invoiceId: invoice.id,
         invoiceNumber,
         reference,
-        amountCents: resolvedAmountCents,
+        subtotalCents,
+        creditsAppliedCents: plannedCreditCents,
+        amountCents: netAmountCents,
         currency: "USD",
         clientSecret,
         publishableKey,
@@ -402,7 +551,13 @@ let defaultCheckoutServiceInstance: CheckoutService | null = null;
 export function getCheckoutService(): CheckoutService {
   if (!defaultCheckoutServiceInstance) {
     const repo = new DrizzleBillingRepository(getDb());
-    defaultCheckoutServiceInstance = new CheckoutService(repo);
+    defaultCheckoutServiceInstance = new CheckoutService(
+      repo,
+      undefined,
+      undefined,
+      defaultBreBQrService,
+      getReferralsService(),
+    );
   }
   return defaultCheckoutServiceInstance;
 }

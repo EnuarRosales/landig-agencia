@@ -1,6 +1,7 @@
 import {
   bigint,
   check,
+  index,
   integer,
   text,
   timestamp,
@@ -86,10 +87,13 @@ export const referrals = adminSchema.table(
     attributedAt: timestamp("attributed_at", { withTimezone: true }).notNull().defaultNow(),
     qualifiedAt: timestamp("qualified_at", { withTimezone: true }),
     rejectedReason: text("rejected_reason"),
+    /** Hash HMAC-SHA256 de la IP de atribución para control antifraude sin almacenar PII (SPEC-16 D-03). */
+    attributedIpHash: varchar("attributed_ip_hash", { length: 128 }),
     ...auditColumns(),
   },
   (table) => [
     uniqueIndex("referrals_referred_client_unique").on(table.referredClientId),
+    index("referrals_referrer_ip_hash_idx").on(table.referrerClientId, table.attributedIpHash),
     check("referrals_status_check", sql.raw("status IN ('pending', 'qualified', 'rewarded', 'rejected')")),
   ],
 );
@@ -129,6 +133,42 @@ export const referralRewards = adminSchema.table(
   ],
 );
 
+/**
+ * Ledger normalizado de redenciones de créditos de referidos aplicadas a facturas (`admin.referral_reward_redemptions`, SPEC-16 D-02).
+ *
+ * Permite imputación FEFO multi-lote (1 factura ↔ N recompensas y 1 recompensa ↔ N facturas)
+ * con idempotencia estricta por `(reward_id, invoice_id)`.
+ */
+export const referralRewardRedemptions = adminSchema.table(
+  "referral_reward_redemptions",
+  {
+    id: uuid("id").primaryKey().default(sql`uuidv7()`),
+    rewardId: uuid("reward_id")
+      .notNull()
+      .references(() => referralRewards.id, { onDelete: "restrict" }),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "restrict" }),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "restrict" }),
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    currency: varchar("currency", { length: 3 }).notNull().default("COP"),
+    redeemedAt: timestamp("redeemed_at", { withTimezone: true }).notNull().defaultNow(),
+    ...auditColumns(),
+  },
+  (table) => [
+    uniqueIndex("referral_reward_redemptions_reward_invoice_unique").on(
+      table.rewardId,
+      table.invoiceId,
+    ),
+    index("referral_reward_redemptions_client_idx").on(table.clientId, table.redeemedAt),
+    index("referral_reward_redemptions_invoice_idx").on(table.invoiceId),
+    check("referral_reward_redemptions_amount_positive", sql.raw("amount_cents > 0")),
+    check("referral_reward_redemptions_currency_check", sql.raw("currency IN ('COP', 'USD')")),
+  ],
+);
+
 export type ReferralProgram = typeof referralPrograms.$inferSelect;
 export type NewReferralProgram = typeof referralPrograms.$inferInsert;
 export type ReferralCode = typeof referralCodes.$inferSelect;
@@ -137,4 +177,6 @@ export type Referral = typeof referrals.$inferSelect;
 export type NewReferral = typeof referrals.$inferInsert;
 export type ReferralReward = typeof referralRewards.$inferSelect;
 export type NewReferralReward = typeof referralRewards.$inferInsert;
+export type ReferralRewardRedemption = typeof referralRewardRedemptions.$inferSelect;
+export type NewReferralRewardRedemption = typeof referralRewardRedemptions.$inferInsert;
 

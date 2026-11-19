@@ -183,6 +183,23 @@ export const CANONICAL_EMAIL_EVENTS = [
     tenantConfigurable: true,
   },
   {
+    key: "referral.reward_credited",
+    category: "referral" as const,
+    description: "Notificación de crédito de referido acreditado tras el primer pago efectivo del comercio invitado.",
+    variablesSchema: [
+      "referrer_name",
+      "referred_name",
+      "reward_amount",
+      "currency",
+      "expires_at",
+      "referrals_url",
+    ],
+    defaultSenderKey: "referidos",
+    isEnabled: true,
+    isSystem: false,
+    tenantConfigurable: true,
+  },
+  {
     key: "landing.lead_received",
     category: "landing" as const,
     description: "Notificación interna de nuevo prospecto capturado en la landing.",
@@ -553,6 +570,27 @@ export class TransactionalNotificationsAndLeadsService {
         subject: "¡Nuevo referido registrado!",
         bodyHtml:
           "<p>Hola {{referrer_name}}, {{referred_name}} se registró con tu enlace. Beneficio: {{reward_summary}}.</p>",
+      },
+      {
+        eventKey: "referral.registered",
+        locale: "en",
+        subject: "New referral registered!",
+        bodyHtml:
+          "<p>Hi {{referrer_name}}, {{referred_name}} signed up using your link. Reward: {{reward_summary}}.</p>",
+      },
+      {
+        eventKey: "referral.reward_credited",
+        locale: "es",
+        subject: "¡Ganaste {{reward_amount}} en créditos de referidos!",
+        bodyHtml:
+          "<p>Hola {{referrer_name}}, <strong>{{referred_name}}</strong> completó su primer pago efectivo y acreditamos <strong>{{reward_amount}}</strong> ({{currency}}) a tu saldo disponible, vigente hasta el {{expires_at}}.</p><p>Consulta tu saldo o aplícalo en tu próxima factura desde <a href=\"{{referrals_url}}\">Programa de Referidos</a>.</p>",
+      },
+      {
+        eventKey: "referral.reward_credited",
+        locale: "en",
+        subject: "You earned {{reward_amount}} in referral credits!",
+        bodyHtml:
+          "<p>Hi {{referrer_name}}, <strong>{{referred_name}}</strong> completed their first paid invoice and we credited <strong>{{reward_amount}}</strong> ({{currency}}) to your available balance, valid until {{expires_at}}.</p><p>Review your balance or apply it to your next invoice in <a href=\"{{referrals_url}}\">Referral Program</a>.</p>",
       },
       {
         eventKey: "landing.lead_received",

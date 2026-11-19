@@ -28,6 +28,8 @@ export interface CreateUserWithConsentParams {
   policyVersion: string;
   /** Canal de captura del consentimiento (p. ej. "register_form", "manual_sales"). */
   channel: string;
+  /** Código de referido opcional capturado durante el registro (`SPEC-16 D-01`). */
+  referredByCode?: string | null;
 }
 
 /**

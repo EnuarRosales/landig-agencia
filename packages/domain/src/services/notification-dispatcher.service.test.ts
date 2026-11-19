@@ -361,6 +361,7 @@ describe("SPEC-14 · NotificationDispatcherService", () => {
       "community.join_accepted",
       "community.product_version_published",
       "referral.registered",
+      "referral.reward_credited",
       "tenant.inventory.low_stock",
     ]);
     for (const pref of ownerView.preferences) {

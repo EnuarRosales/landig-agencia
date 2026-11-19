@@ -121,8 +121,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // 4. Delegación al servicio de autenticación de dominio
-    const result = await authService.register(body, {
+    // 4. Preservar código de referido desde cookie HttpOnly mocter_ref si no llegó en el body (SPEC-16 D-01)
+    const cookieReferralCode = req.cookies.get("mocter_ref")?.value?.trim();
+    const enrichedBody =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? {
+            ...(body as Record<string, unknown>),
+            referralCode:
+              (body as Record<string, unknown>).referralCode || cookieReferralCode || undefined,
+          }
+        : body;
+
+    // 5. Delegación al servicio de autenticación de dominio
+    const result = await authService.register(enrichedBody, {
       clientIp: ip,
       pepper: env.AUTH_RATE_LIMIT_PEPPER,
     });

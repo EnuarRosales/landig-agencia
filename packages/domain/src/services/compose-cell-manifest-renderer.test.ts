@@ -59,18 +59,11 @@ function validateComposeSyntax(dockerComposeYaml: string, envLines: string[]) {
     writeFileSync(composePath, dockerComposeYaml, "utf8");
     writeFileSync(envPath, envLines.join("\n"), "utf8");
 
-    // Ejecuta docker compose config con variables necesarias para pasar la interpolación
+    // Ejecuta docker compose config con TAG de prueba; el resto de variables viene del .env renderizado
     execSync(`docker compose -f "${composePath}" --env-file "${envPath}" config -q`, {
       env: {
         ...process.env,
         TAG: "v1.0.0-test",
-        CELL_CODE: "cell-02",
-        PGBOUNCER_PORT: "6432",
-        POSTGRES_DB: "pg-cell-02",
-        POSTGRES_USER: "mocter_app",
-        POSTGRES_PASSWORD: "test-password",
-        HANDSHAKE_SECRET: "test-secret",
-        APP_URL: "https://cell-02.cell.mocter.co",
       },
       stdio: "pipe",
     });
@@ -199,17 +192,77 @@ describe("ComposeCellManifestRenderer · Perfiles de Despliegue CEL-001 §3.2 (C
   });
 
   describe("Perfil 3: local_development (CEL-RF-010, CEL-RF-011, CEL-RF-012, R-10, Regla 4.16)", () => {
-    const spec = buildCellDeploymentSpec(MOCK_CELL_SOURCE, "local_development");
-    const artifacts = renderer.render(spec, MOCK_CONTEXT);
+    const localCellSource = {
+      ...MOCK_CELL_SOURCE,
+      topologyType: "local_compose",
+      pgbouncerPort: 6433,
+      appUrl: "http://localhost:3005/",
+    };
+    const spec = buildCellDeploymentSpec(localCellSource, "local_development");
+    const artifacts = renderer.render(spec, {
+      ...MOCK_CONTEXT,
+      workingDirOverride: "data-cell-dev/cell-2",
+    });
 
-    it("publica puertos EXCLUSIVAMENTE en loopback 127.0.0.1 (R-10, CEL-RF-010, Regla 4.16)", () => {
-      expect(artifacts.dockerComposeContent).toContain('"127.0.0.1:5433:5432"');
+    it("publica puertos parametrizados EXCLUSIVAMENTE en loopback 127.0.0.1 con paridad de puerto (R-10, CEL-RF-010, Regla 4.16)", () => {
+      expect(artifacts.dockerComposeContent).toContain('"127.0.0.1:${POSTGRES_HOST_PORT}:5432"');
       expect(artifacts.dockerComposeContent).toContain('"127.0.0.1:${PGBOUNCER_PORT}:6432"');
-      expect(artifacts.dockerComposeContent).toContain('"127.0.0.1:3004:3000"');
+      expect(artifacts.dockerComposeContent).toContain('"127.0.0.1:${APP_PORT}:${APP_PORT}"');
+      expect(artifacts.dockerComposeContent).toContain('command: ["./node_modules/.bin/next", "dev", "-p", "${APP_PORT}"]');
+      expect(artifacts.dockerComposeContent).toContain("PORT: ${APP_PORT}");
 
-      // Prohibición estricta de 0.0.0.0 o puertos expuestos sin loopback
+      expect(artifacts.envContent).toContain("POSTGRES_HOST_PORT=5434");
+      expect(artifacts.envContent).toContain("PGBOUNCER_PORT=6433");
+      expect(artifacts.envContent).toContain("APP_PORT=3005");
+      expect(artifacts.envContent).toContain("REPO_DIR=../..");
+
+      // Prohibición estricta de 0.0.0.0, puertos sin loopback o puertos fijos quemados
       expect(artifacts.dockerComposeContent).not.toMatch(/"0\.0\.0\.0:/);
       expect(artifacts.dockerComposeContent).not.toMatch(/- "\d+:\d+"/);
+      expect(artifacts.dockerComposeContent).not.toContain("127.0.0.1:5433:");
+      expect(artifacts.dockerComposeContent).not.toContain("127.0.0.1:3004:");
+    });
+
+    it("genera N celdas en paralelo sin colisiones de puertos, nombres ni volúmenes en local_development", () => {
+      const cells = [1, 2, 3].map((idx) => {
+        const code = `cell-0${idx}`;
+        const cellSpec = buildCellDeploymentSpec(
+          {
+            ...MOCK_CELL_SOURCE,
+            id: `cell-uuid-0${idx}`,
+            code,
+            topologyType: "local_compose",
+            pgbouncerPort: 6431 + idx,
+            databaseName: `pg-${code}`,
+            appUrl: `http://localhost:${3003 + idx}/`,
+          },
+          "local_development",
+        );
+        return renderer.render(cellSpec, {
+          secrets: MOCK_SECRETS,
+          workingDirOverride: `data-cell-dev/${code}`,
+          deployUserOverride: null,
+          legacyRegion: "us-east-1",
+        });
+      });
+
+      const extractEnvValue = (envText: string, key: string) => {
+        const match = envText.match(new RegExp(`^${key}=(.+)$`, "m"));
+        return match?.[1]?.trim();
+      };
+
+      const pgPorts = cells.map((c) => extractEnvValue(c.envContent, "POSTGRES_HOST_PORT"));
+      const pgbPorts = cells.map((c) => extractEnvValue(c.envContent, "PGBOUNCER_PORT"));
+      const appPorts = cells.map((c) => extractEnvValue(c.envContent, "APP_PORT"));
+
+      expect(pgPorts).toEqual(["5433", "5434", "5435"]);
+      expect(pgbPorts).toEqual(["6432", "6433", "6434"]);
+      expect(appPorts).toEqual(["3004", "3005", "3006"]);
+      expect(new Set([...pgPorts, ...pgbPorts, ...appPorts]).size).toBe(9);
+
+      for (const cellArtifacts of cells) {
+        validateComposeSyntax(cellArtifacts.dockerComposeContent, cellArtifacts.envContent.split("\n"));
+      }
     });
 
     it("monta código fuente del repositorio en volumen para desarrollo activo (CEL-RF-010)", () => {

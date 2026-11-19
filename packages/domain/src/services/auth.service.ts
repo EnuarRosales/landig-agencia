@@ -940,6 +940,7 @@ export class AuthService {
         displayName: input.name,
         policyVersion: input.policyVersion,
         channel: input.channel,
+        referredByCode: input.referralCode ?? null,
       });
 
       // 4. Generar token de verificación de correo (24 horas)

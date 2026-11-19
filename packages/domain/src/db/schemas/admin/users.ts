@@ -6,6 +6,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { adminSchema } from "./namespace";
@@ -53,6 +54,8 @@ export const users = adminSchema.table(
     status: text("status").notNull().default("active"),
     displayName: text("display_name"),
     avatarUrl: text("avatar_url"),
+    /** Código de referido capturado durante el registro para atribución en Onboarding Paso 1 (SPEC-16 D-01). */
+    referredByCode: varchar("referred_by_code", { length: 32 }),
     ...auditColumns(),
   },
   (table) => [
@@ -90,5 +93,7 @@ export const users = adminSchema.table(
   ],
 );
 
-export type User = typeof users.$inferSelect;
+export type User = Omit<typeof users.$inferSelect, "referredByCode"> & {
+  referredByCode?: string | null;
+};
 export type NewUser = typeof users.$inferInsert;

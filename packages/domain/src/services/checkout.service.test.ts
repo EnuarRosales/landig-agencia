@@ -335,5 +335,104 @@ describe("BILL-001 T-06 · CheckoutService", () => {
       expect(usRes.data.currency).toBe("USD");
     }
   });
+
+  it("SPEC-16 D-02 · cubre el 100% con créditos de referidos liquidando sin pasarela y activando suscripción", async () => {
+    const mockReferrals = {
+      getAvailableCreditBalance: vi.fn().mockResolvedValue({
+        ok: true,
+        data: { availableCreditCents: 10000000, currency: "COP" as const },
+      }),
+      redeemCreditsFefoForInvoice: vi.fn().mockResolvedValue({
+        ok: true,
+        data: { totalRedeemedCents: 8000000, allocations: [], alreadyRedeemed: false },
+      }),
+      qualifyReferral: vi.fn().mockResolvedValue({ ok: false, error: "not found", code: "REFERRAL_NOT_FOUND" }),
+    };
+
+    const activateSpy = vi.fn().mockResolvedValue({ id: "sub-activated", status: "active" });
+    const repoWithSub = {
+      ...mockRepo,
+      activateOrRenewPaidSubscription: activateSpy,
+      createPayment: vi.fn().mockResolvedValue({ id: "pay-credit-1" }),
+      createReceipt: vi.fn().mockResolvedValue({ id: "rec-credit-1" }),
+    };
+
+    const svcWithCredits = new CheckoutService(
+      repoWithSub,
+      undefined,
+      undefined,
+      undefined,
+      mockReferrals,
+    );
+
+    const res = await svcWithCredits.createCheckoutSession({
+      clientId: "client-co-1",
+      planId: "plan-pro",
+      planCode: "pro",
+      amountCents: 8000000,
+      currency: "COP",
+      cycle: "monthly",
+      gateway: "bre_b",
+      applyReferralCredits: true,
+      customerEmail: "owner@cafe.co",
+      executedBy: "owner-1",
+    });
+
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.data.gateway).toBe("referral_credit");
+    if (res.data.gateway === "referral_credit") {
+      expect(res.data.paidWithoutGateway).toBe(true);
+      expect(res.data.amountCents).toBe(0);
+      expect(res.data.creditsAppliedCents).toBe(8000000);
+    }
+    expect(mockReferrals.redeemCreditsFefoForInvoice).toHaveBeenCalledTimes(1);
+    expect(activateSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("SPEC-16 D-02 · aplica descuento parcial en orden Wompi sin descontar créditos antes de confirmar pago", async () => {
+    const mockReferrals = {
+      getAvailableCreditBalance: vi.fn().mockResolvedValue({
+        ok: true,
+        data: { availableCreditCents: 5000000, currency: "COP" as const },
+      }),
+      redeemCreditsFefoForInvoice: vi.fn(),
+      qualifyReferral: vi.fn(),
+    };
+
+    (mockRepo.getPaymentGatewayConfig as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "wompi",
+      isEnabled: true,
+      publicKey: "pub_test_123",
+    });
+
+    const svcWithCredits = new CheckoutService(
+      mockRepo,
+      undefined,
+      undefined,
+      undefined,
+      mockReferrals,
+    );
+
+    const res = await svcWithCredits.createCheckoutSession({
+      clientId: "client-co-1",
+      planId: "plan-pro",
+      planCode: "pro",
+      amountCents: 12000000,
+      currency: "COP",
+      gateway: "wompi",
+      applyReferralCredits: true,
+      customerEmail: "owner@cafe.co",
+      executedBy: "owner-1",
+    });
+
+    expect(res.ok).toBe(true);
+    if (!res.ok || res.data.gateway !== "wompi") return;
+    expect(res.data.subtotalCents).toBe(12000000);
+    expect(res.data.creditsAppliedCents).toBe(5000000);
+    expect(res.data.amountCents).toBe(7000000);
+    // No quema créditos hasta que el pago sea confirmado
+    expect(mockReferrals.redeemCreditsFefoForInvoice).not.toHaveBeenCalled();
+  });
 });
 

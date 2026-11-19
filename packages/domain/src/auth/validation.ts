@@ -107,6 +107,16 @@ export const registerUserSchema = z.object({
   email: authEmailSchema,
   password: authPasswordSchema,
   planCode: z.string().trim().optional(),
+  referralCode: z
+    .string()
+    .trim()
+    .max(32)
+    .optional()
+    .transform((val) => {
+      if (!val) return undefined;
+      const upper = val.toUpperCase();
+      return /^[A-Z0-9_-]{3,32}$/.test(upper) ? upper : undefined;
+    }),
   treatmentConsent: z.preprocess(
     (val) => val === true || val === "true" || val === "on" || val === 1,
     z.boolean().refine((val) => val === true, {

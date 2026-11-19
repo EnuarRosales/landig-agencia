@@ -15,6 +15,7 @@ const checkoutRequestSchema = z.object({
   operationKind: z.enum(["new_subscription", "renewal", "upgrade"]).optional(),
   customerEmail: z.string().email().optional(),
   redirectUrl: z.string().url().optional(),
+  applyReferralCredits: z.boolean().optional(),
   executedBy: z.string().optional(),
 });
 
@@ -47,6 +48,7 @@ export function createCheckoutRouteHandler(checkoutService: CheckoutService) {
       operationKind: parsed.data.operationKind,
       customerEmail: parsed.data.customerEmail || context.user.email,
       redirectUrl: parsed.data.redirectUrl,
+      applyReferralCredits: parsed.data.applyReferralCredits,
       executedBy: parsed.data.executedBy || context.user.id,
     });
 

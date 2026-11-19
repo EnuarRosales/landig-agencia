@@ -190,9 +190,85 @@ describe("DAT-001 §3.6.2 · CellManifestService", () => {
 
     expect(manifest.dockerComposeContent).toContain("Perfil local_development");
     expect(manifest.dockerComposeContent).toContain("image: node:24-alpine");
-    expect(manifest.dockerComposeContent).toContain("127.0.0.1:3004:3000");
+    expect(manifest.dockerComposeContent).toContain('"127.0.0.1:${POSTGRES_HOST_PORT}:5432"');
+    expect(manifest.dockerComposeContent).toContain('"127.0.0.1:${APP_PORT}:${APP_PORT}"');
+    expect(manifest.envContent).toContain("POSTGRES_HOST_PORT=5433");
+    expect(manifest.envContent).toContain("APP_PORT=3004");
     expect(manifest.dockerComposeContent).not.toContain("ghcr.io/enuarrosales/mocter-web");
     expect(manifest.dockerComposeContent).not.toContain("${TAG:-latest}");
+  });
+
+  it("asigna puertos Postgres loopback distintos a múltiples celdas hermanas en local_development y advierte colisiones", async () => {
+    const cell1Id = "01930000-0000-7000-8000-000000000031";
+    const cell2Id = "01930000-0000-7000-8000-000000000032";
+    const customBundle: CellSecretsBundle = {
+      mocter_app_password: "mock-app-password-dev",
+      mocter_migrator_password: "mock-migrator-password-dev",
+      mocter_healthcheck_password: "mock-healthcheck-password-dev",
+      handshake_secret: "mock-handshake-secret-dev",
+    };
+    const payload = secretsService.encryptBundle(customBundle, cell2Id);
+
+    const cell1 = {
+      id: cell1Id,
+      code: "cell-01",
+      pgbouncerPort: 6432,
+      appUrl: "http://localhost:3004/",
+      createdAt: new Date("2026-11-18T10:00:00Z"),
+    };
+    const cell2 = {
+      id: cell2Id,
+      code: "cell-02",
+      tier: "standard",
+      status: "draft",
+      topologyType: "local_compose",
+      pgbouncerHost: "pgbouncer-cell-02",
+      pgbouncerPort: 6433,
+      databaseName: "pg-cell-02",
+      appUrl: "http://localhost:3005/",
+      privateIp: "127.0.0.1",
+      publicIp: null,
+      workingDir: "data-cell-dev/cell-2",
+      deployUser: "deploy:1000",
+      cellSecretsCiphertext: payload.ciphertext,
+      cellSecretsKeyId: payload.keyId,
+      maxClients: 100,
+      currentClients: 0,
+      region: "us-east-1",
+      hostId: "host-uuid-local-01",
+      createdAt: new Date("2026-11-18T10:05:00Z"),
+    };
+
+    const mockHost = {
+      id: "host-uuid-local-01",
+      deploymentProfile: "local_development",
+    };
+
+    let queryCount = 0;
+    const mockDb = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => {
+              queryCount++;
+              if (queryCount === 1) return [cell2];
+              if (queryCount === 2) return [mockHost];
+              return [cell1, cell2];
+            },
+          }),
+        }),
+      }),
+    };
+
+    vi.spyOn(clientModule, "getDb").mockReturnValue(mockDb as any);
+
+    const manifest = await manifestService.generateManifest(cell2Id);
+
+    expect(manifest.envContent).toContain("POSTGRES_HOST_PORT=5434");
+    expect(manifest.envContent).toContain("PGBOUNCER_PORT=6433");
+    expect(manifest.envContent).toContain("APP_PORT=3005");
+    expect(manifest.envContent).toContain("REPO_DIR=../..");
+    expect(manifest.instructions.some((line) => line.includes("ADVERTENCIA"))).toBe(false);
   });
 
   it("lanza un error explícito si la celda no existe", async () => {

@@ -878,5 +878,91 @@ export class DrizzleBillingRepository implements IBillingRepository {
       };
     });
   }
+
+  /**
+   * Activa o renueva atómicamente la suscripción de un comercio tras liquidarse una factura
+   * (por ejemplo, cubierta 100% con créditos de referidos FEFO, `SPEC-16 D-02`).
+   */
+  async activateOrRenewPaidSubscription(input: {
+    clientId: string;
+    planId: string;
+    cycle: "monthly" | "annual";
+    operationKind: "new_subscription" | "renewal" | "upgrade";
+    gateway: string;
+    now: Date;
+    actor: string;
+  }): Promise<Subscription> {
+    return this.db.transaction(async (tx) => {
+      const existingRows = await tx
+        .select()
+        .from(subscriptions)
+        .where(eq(subscriptions.clientId, input.clientId))
+        .limit(1);
+      const existingSub = existingRows[0];
+
+      const anchorDate =
+        input.operationKind === "renewal" &&
+        existingSub &&
+        existingSub.currentPeriodEnd.getTime() > input.now.getTime()
+          ? existingSub.currentPeriodEnd
+          : input.now;
+      const nextPeriodStart =
+        input.operationKind === "renewal" && existingSub
+          ? existingSub.currentPeriodStart
+          : input.now;
+      const nextPeriodEnd = addCycleDuration(anchorDate, input.cycle);
+
+      let resultSub: Subscription;
+      if (existingSub) {
+        const [updated] = await tx
+          .update(subscriptions)
+          .set({
+            planId: input.planId,
+            cycle: input.cycle,
+            status: "active",
+            gateway: input.gateway,
+            currentPeriodStart: nextPeriodStart,
+            currentPeriodEnd: nextPeriodEnd,
+            pendingUpgradePlanId: null,
+            pendingUpgradeCycle: null,
+            d5ReminderSentAt: null,
+            d0ReminderSentAt: null,
+            updatedBy: input.actor,
+            updatedAt: input.now,
+          })
+          .where(eq(subscriptions.id, existingSub.id))
+          .returning();
+        resultSub = updated as Subscription;
+      } else {
+        const [created] = await tx
+          .insert(subscriptions)
+          .values({
+            clientId: input.clientId,
+            planId: input.planId,
+            cycle: input.cycle,
+            status: "active",
+            gateway: input.gateway,
+            currentPeriodStart: nextPeriodStart,
+            currentPeriodEnd: nextPeriodEnd,
+            createdBy: input.actor,
+            updatedBy: input.actor,
+          })
+          .returning();
+        resultSub = created as Subscription;
+      }
+
+      await tx
+        .update(clients)
+        .set({
+          planId: input.planId,
+          quotaVersion: sql`${clients.quotaVersion} + 1`,
+          updatedBy: input.actor,
+          updatedAt: input.now,
+        })
+        .where(eq(clients.id, input.clientId));
+
+      return resultSub;
+    });
+  }
 }
 

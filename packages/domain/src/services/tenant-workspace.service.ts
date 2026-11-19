@@ -14,6 +14,7 @@ import {
 } from "./tenant-capability-gate.service";
 import { clientBrandings } from "../db/schemas/admin/client-brandings";
 import { DrizzleBillingRepository } from "../repositories/drizzle-billing.repository";
+import { DrizzleReferralsRepository } from "../repositories/drizzle-referrals.repository";
 import {
   CheckoutService,
   resolvePlanPricingForCountry,
@@ -298,6 +299,9 @@ export interface WorkspaceBillingDto {
   } | null;
   availablePlans?: WorkspaceBillingPlanOptionDto[];
   availableChannels?: PaymentChannelOption[];
+  /** Saldo vigente de créditos de referidos aplicables en la moneda de facturación del comercio (`SPEC-16 D-02`). */
+  availableReferralCreditCents?: number;
+  referralCreditCurrency?: "COP" | "USD";
 }
 
 export interface MediaUploadResult {
@@ -1179,21 +1183,28 @@ export class TenantWorkspaceService {
     let latestRejectedBreBReport: WorkspaceBillingDto["latestRejectedBreBReport"] = null;
     let availablePlans: WorkspaceBillingPlanOptionDto[] = [];
     let availableChannels: PaymentChannelOption[] = [];
+    let availableReferralCreditCents = 0;
 
     const clientCountry = (client.country || "CO").trim().toUpperCase();
     const clientCurrency: "COP" | "USD" = clientCountry === "CO" ? "COP" : "USD";
 
     try {
       const billingRepo = new DrizzleBillingRepository(portalDb);
+      const referralsRepo = new DrizzleReferralsRepository(portalDb);
       const checkoutSvc = new CheckoutService(billingRepo);
 
-      const [subRow, pendingRow, rejectedRow, publicPlans, channelsRes] = await Promise.all([
+      const [subRow, pendingRow, rejectedRow, publicPlans, channelsRes, availableRewards] = await Promise.all([
         billingRepo.getSubscriptionByClientId(clientId),
         billingRepo.getPendingManualReportByClientId(clientId),
         billingRepo.getLatestRejectedManualReportByClientId(clientId),
         billingRepo.listActivePublicPlans(),
         checkoutSvc.listAvailableChannelsForTenant(clientCountry, clientCurrency),
+        referralsRepo.listAvailableRewardsByReferrer(clientId).catch(() => []),
       ]);
+
+      availableReferralCreditCents = availableRewards
+        .filter((rew) => rew.currency.toUpperCase() === clientCurrency)
+        .reduce((acc, rew) => acc + Number(rew.remainingCents), 0);
 
       if (subRow) {
         const expiresAtDate =
@@ -1297,6 +1308,8 @@ export class TenantWorkspaceService {
       latestRejectedBreBReport,
       availablePlans,
       availableChannels,
+      availableReferralCreditCents,
+      referralCreditCurrency: clientCurrency,
     };
   }
 }

@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 /**
  * Mocter wordmark as pure SVG: a white gradient chip (in the spirit of the
  * original AgencIA chip) holding an "M" mark, followed by the word "Mocter".
@@ -6,6 +8,9 @@
  * exposed by `next/font`, so it adapts to any theme through `currentColor`.
  */
 export function Logo({ className }: { className?: string }) {
+  const rawId = useId();
+  const gradientId = `mocter-chip-glow-${rawId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+
   return (
     <svg
       viewBox="0 0 148 40"
@@ -14,7 +19,7 @@ export function Logo({ className }: { className?: string }) {
       className={className}
     >
       <defs>
-        <linearGradient id="mocter-chip-glow" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#2f6bff" />
           <stop offset="100%" stopColor="#22d3ee" />
         </linearGradient>
@@ -36,14 +41,14 @@ export function Logo({ className }: { className?: string }) {
         width="38"
         height="38"
         rx="12"
-        fill="url(#mocter-chip-glow)"
+        fill={`url(#${gradientId})`}
         opacity="0.16"
       />
       {/* M mark: rounded strokes in the brand gradient. */}
       <path
         d="M10 30V12.5L20 24l10-11.5V30"
         fill="none"
-        stroke="url(#mocter-chip-glow)"
+        stroke={`url(#${gradientId})`}
         strokeWidth="4.5"
         strokeLinecap="round"
         strokeLinejoin="round"

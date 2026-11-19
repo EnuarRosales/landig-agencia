@@ -240,6 +240,10 @@ export const POST = handle(async (req: NextRequest): Promise<NextResponse> => {
   const actionData = parsed.data;
 
   if (actionData.action === "step1_business") {
+    const referralCookie = req.cookies.get("mocter_ref")?.value?.trim() || null;
+    const forwardedFor = req.headers.get("x-forwarded-for");
+    const clientIp = forwardedFor ? forwardedFor.split(",")[0]?.trim() || null : null;
+
     const result = await tenantOnboardingService.saveBusinessStep(authContext.user.id, {
       displayName: actionData.displayName,
       slug: actionData.slug,
@@ -258,6 +262,8 @@ export const POST = handle(async (req: NextRequest): Promise<NextResponse> => {
       currency: actionData.currency,
       timezone: actionData.timezone,
       planCode: actionData.planCode,
+      referralCode: referralCookie,
+      clientIp,
     });
 
     if (!result.ok) {
