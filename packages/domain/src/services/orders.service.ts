@@ -88,6 +88,9 @@ export interface OrderItemInput {
   unitCostCents?: number;
   selectedAttributes?: Record<string, string> | null;
   tierMinQty?: number;
+  promotionId?: string | null;
+  promotionName?: string | null;
+  originalUnitPriceCents?: number | null;
 }
 
 /**
@@ -534,22 +537,45 @@ export class OrdersService {
       mapRepoGeoStatus(effectiveShipping.geoResolutionStatus) ??
       (resolvedSubdivisionCode && effectiveShipping.city?.trim() ? "soft_normalized" : "unresolved");
 
-    // 6. Cálculo de totales inmutables en centavos
+    // 6. Cálculo de totales inmutables en centavos y trazabilidad promocional (`SPEC-18 D-05`, `D-07`)
     let subtotalCents = 0;
     const orderItemsToCreate = items.map((item) => {
       const prod = item.productId ? productsSnapshot[item.productId] : undefined;
+      const activePromo = prod?.activePromotion ?? null;
+      let effectiveUnitPriceCents = item.unitPriceCents;
+      let promotionId = item.promotionId ?? null;
+      let promotionName = item.promotionName ?? null;
+      let originalUnitPriceCents = item.originalUnitPriceCents ?? null;
+
+      if (!promotionId && activePromo) {
+        const matchesPromoPrice = effectiveUnitPriceCents === activePromo.effectivePriceCents;
+        const botShouldApplyPromo =
+          source === "bot" &&
+          !item.tierMinQty &&
+          effectiveUnitPriceCents >= activePromo.effectivePriceCents;
+        if (matchesPromoPrice || botShouldApplyPromo) {
+          effectiveUnitPriceCents = activePromo.effectivePriceCents;
+          promotionId = activePromo.promotionId;
+          promotionName = activePromo.name;
+          originalUnitPriceCents = activePromo.originalPriceCents;
+        }
+      }
+
       const unitCostCents = item.unitCostCents ?? prod?.costPriceCents ?? 0;
-      const lineTotalCents = item.quantity * item.unitPriceCents;
+      const lineTotalCents = item.quantity * effectiveUnitPriceCents;
       subtotalCents += lineTotalCents;
       return {
         productId: item.productId,
         productName: item.productName.trim(),
         productSku: item.productSku ?? prod?.sku ?? undefined,
         quantity: item.quantity,
-        unitPriceCents: item.unitPriceCents,
+        unitPriceCents: effectiveUnitPriceCents,
         unitCostCents: Math.max(0, unitCostCents),
         selectedAttributes: item.selectedAttributes ?? null,
         tierMinQty: item.tierMinQty,
+        promotionId,
+        promotionName,
+        originalUnitPriceCents,
         lineTotalCents,
         createdBy: actor,
         updatedBy: actor,
@@ -639,6 +665,9 @@ export class OrdersService {
         ...(initialStatus === "confirmed"
           ? {
               stockAction: "deduct" as const,
+              ...(orderItemsToCreate.some((it) => Boolean(it.promotionId))
+                ? { promotionQuotaAction: "deduct" as const }
+                : {}),
               onTouchedProducts: (ids: string[]) => {
                 touchedProducts = ids;
               },
@@ -842,6 +871,9 @@ export class OrdersService {
           unitCostCents: number;
           selectedAttributes: Record<string, string> | null;
           tierMinQty?: number;
+          promotionId?: string | null;
+          promotionName?: string | null;
+          originalUnitPriceCents?: number | null;
           lineTotalCents: number;
           createdBy: string;
           updatedBy: string;
@@ -894,6 +926,25 @@ export class OrdersService {
           }
         }
         const lineTotalCents = item.quantity * item.unitPriceCents;
+        const activePromo = prod?.activePromotion ?? null;
+        const resolvedPromotionId =
+          item.promotionId !== undefined
+            ? item.promotionId
+            : activePromo && item.unitPriceCents === activePromo.effectivePriceCents
+              ? activePromo.promotionId
+              : null;
+        const resolvedPromotionName =
+          item.promotionName !== undefined
+            ? item.promotionName
+            : activePromo && resolvedPromotionId === activePromo.promotionId
+              ? activePromo.name
+              : null;
+        const resolvedOriginalPrice =
+          item.originalUnitPriceCents !== undefined
+            ? item.originalUnitPriceCents
+            : activePromo && resolvedPromotionId === activePromo.promotionId
+              ? activePromo.originalPriceCents
+              : null;
         nextSubtotalCents += lineTotalCents;
         itemsToSave.push({
           productId: item.productId,
@@ -904,6 +955,9 @@ export class OrdersService {
           unitCostCents: Math.max(0, item.unitCostCents ?? prod?.costPriceCents ?? 0),
           selectedAttributes: item.selectedAttributes ?? null,
           tierMinQty: item.tierMinQty,
+          promotionId: resolvedPromotionId,
+          promotionName: resolvedPromotionName,
+          originalUnitPriceCents: resolvedOriginalPrice,
           lineTotalCents,
           createdBy: input.actor,
           updatedBy: input.actor,
@@ -1071,21 +1125,27 @@ export class OrdersService {
       }
     }
 
-    // 6. Determinar mutación idempotente de inventario
+    // 6. Determinar mutación idempotente de inventario y cupo promocional (`SPEC-11`, `SPEC-18 D-05`)
+    const isConfirmingStage =
+      toStatus === "confirmed" ||
+      toStatus === "preparing" ||
+      toStatus === "guide_generated" ||
+      toStatus === "dispatched";
+    const isRevertingStage = toStatus === "cancelled" || toStatus === "returned";
+
     let stockAction: "deduct" | "restore" | undefined;
-    if (
-      (toStatus === "confirmed" ||
-        toStatus === "preparing" ||
-        toStatus === "guide_generated" ||
-        toStatus === "dispatched") &&
-      !existing.order.stockDeducted
-    ) {
+    if (isConfirmingStage && !existing.order.stockDeducted) {
       stockAction = "deduct";
-    } else if (
-      (toStatus === "cancelled" || toStatus === "returned") &&
-      existing.order.stockDeducted
-    ) {
+    } else if (isRevertingStage && existing.order.stockDeducted) {
       stockAction = "restore";
+    }
+
+    const hasPromotionalItems = existing.items.some((it) => Boolean(it.promotionId));
+    let promotionQuotaAction: "deduct" | "restore" | undefined;
+    if (isConfirmingStage && hasPromotionalItems && !existing.order.promotionQuotaDeducted) {
+      promotionQuotaAction = "deduct";
+    } else if (isRevertingStage && existing.order.promotionQuotaDeducted) {
+      promotionQuotaAction = "restore";
     }
 
     let touchedProducts: string[] = [];
@@ -1094,6 +1154,7 @@ export class OrdersService {
         carrierName ||
         trackingCode ||
         stockAction ||
+        promotionQuotaAction ||
         toStatus === "cancelled" ||
         toStatus === "delivery_issue",
     );
@@ -1131,6 +1192,7 @@ export class OrdersService {
                     },
                   }
                 : {}),
+              ...(promotionQuotaAction ? { promotionQuotaAction } : {}),
             }
           : undefined,
       );
@@ -1292,6 +1354,13 @@ export class OrdersService {
         unitPriceCents: currentPriceCents,
         unitCostCents: live.costPriceCents,
         selectedAttributes: oldItem.selectedAttributes ?? null,
+        ...(live.activePromotion
+          ? {
+              promotionId: live.activePromotion.promotionId,
+              promotionName: live.activePromotion.name,
+              originalUnitPriceCents: live.activePromotion.originalPriceCents,
+            }
+          : {}),
       });
     }
 

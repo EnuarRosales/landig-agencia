@@ -52,6 +52,9 @@ export interface OrderItemDto {
   unitCostCents: number;
   selectedAttributes: Record<string, string> | null;
   tierMinQty: number | null;
+  promotionId?: string | null;
+  promotionName?: string | null;
+  originalUnitPriceCents?: number | null;
   lineTotalCents: number;
 }
 
@@ -112,6 +115,7 @@ export interface OrderListItemDto {
   totalCents: number;
   currency: string;
   stockDeducted: boolean;
+  promotionQuotaDeducted?: boolean;
   guideGeneratedAt: string | null;
   repeatedFromOrderId: string | null;
   canEditDetails: boolean;
@@ -187,6 +191,7 @@ export function mapOrderToListItemDto(o: CellOrder): OrderListItemDto {
     totalCents: o.totalCents,
     currency: o.currency,
     stockDeducted: o.stockDeducted,
+    promotionQuotaDeducted: Boolean(o.promotionQuotaDeducted),
     guideGeneratedAt: o.guideGeneratedAt ? new Date(o.guideGeneratedAt).toISOString() : null,
     repeatedFromOrderId: o.repeatedFromOrderId ?? null,
     canEditDetails: PRE_DISPATCH_ORDER_STATUSES.includes(status),
@@ -222,6 +227,9 @@ export function mapOrderWithDetailsToDto(agg: OrderWithDetails): OrderDetailDto 
       unitCostCents: item.unitCostCents,
       selectedAttributes: item.selectedAttributes ?? null,
       tierMinQty: item.tierMinQty ?? null,
+      promotionId: item.promotionId ?? null,
+      promotionName: item.promotionName ?? null,
+      originalUnitPriceCents: item.originalUnitPriceCents ?? null,
       lineTotalCents: item.lineTotalCents,
     })),
     events: agg.events.map((ev) => ({

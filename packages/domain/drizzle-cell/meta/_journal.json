@@ -176,6 +176,20 @@
       "when": 1795091521076,
       "tag": "0024_cell_phase10_user_preferred_locale_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795102076367,
+      "tag": "0025_cell_phase11_promotions_spec18",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795102090345,
+      "tag": "0026_cell_phase11_promotions_spec18_rls_grants_comments",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@ import {
   calculateProductProfitability,
   type ProductProfitabilitySummary,
 } from "../utils/pricing-margin";
+import type { AppliedProductPromotionDto } from "./promotion-resolution";
 
 /**
  * Longitud máxima admitida para el Prompt Maestro del bot por producto (`SPEC-08 §7.1`, `PRD-04`).
@@ -83,6 +84,7 @@ export interface ProductListItemDto {
   costPriceCents: number;
   priceCents: number;
   salePriceCents: number | null;
+  activePromotion?: AppliedProductPromotionDto | null;
   profitability: ProductProfitabilitySummary;
   stockQuantity: number | null;
   minStockThreshold: number | null;

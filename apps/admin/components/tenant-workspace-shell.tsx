@@ -30,6 +30,7 @@ import {
   Bell,
   Gift,
   Languages,
+  Tag,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 import { ConfirmationModal } from "./confirmation-modal";
@@ -301,6 +302,11 @@ export function TenantWorkspaceShell({
       href: "/workspace/products",
       label: dict.navProducts,
       icon: Package,
+    },
+    {
+      href: "/workspace/promotions",
+      label: dict.navPromotions,
+      icon: Tag,
     },
     {
       href: "/workspace/contacts",

@@ -23,6 +23,16 @@ import {
   type CellProduct,
 } from "../db/schemas/tenant/tenancy-catalog";
 import {
+  cellPromotions,
+  cellPromotionTargets,
+  type PromotionDiscountType,
+  type PromotionScopeType,
+} from "../db/schemas/tenant/promotions";
+import {
+  resolveEffectivePromotionsForProducts,
+  type PromotionRecordWithTargets,
+} from "../services/promotion-resolution";
+import {
   cellContacts,
   cellContactAddresses,
 } from "../db/schemas/tenant/crm";
@@ -507,6 +517,64 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     });
   }
 
+  private async applyPromotionQuotaDeltaInTx(
+    tx: any,
+    clientId: string,
+    actor: string,
+    params:
+      | { mode: "deduct" | "restore"; items: Array<{ promotionId?: string | null; quantity: number }> }
+      | {
+          mode: "adjust";
+          previousItems: Array<{ promotionId?: string | null; quantity: number }>;
+          nextItems: Array<{ promotionId?: string | null; quantity: number }>;
+        },
+  ): Promise<void> {
+    const deltaByPromotion = new Map<string, number>();
+
+    if (params.mode === "deduct" || params.mode === "restore") {
+      const sign = params.mode === "deduct" ? 1 : -1;
+      for (const item of params.items) {
+        if (!item.promotionId || item.quantity <= 0) continue;
+        deltaByPromotion.set(
+          item.promotionId,
+          (deltaByPromotion.get(item.promotionId) ?? 0) + sign * item.quantity,
+        );
+      }
+    } else if (params.mode === "adjust") {
+      for (const prev of params.previousItems) {
+        if (!prev.promotionId || prev.quantity <= 0) continue;
+        deltaByPromotion.set(
+          prev.promotionId,
+          (deltaByPromotion.get(prev.promotionId) ?? 0) - prev.quantity,
+        );
+      }
+      for (const next of params.nextItems) {
+        if (!next.promotionId || next.quantity <= 0) continue;
+        deltaByPromotion.set(
+          next.promotionId,
+          (deltaByPromotion.get(next.promotionId) ?? 0) + next.quantity,
+        );
+      }
+    }
+
+    for (const [promotionId, delta] of deltaByPromotion.entries()) {
+      if (delta === 0) continue;
+      await tx
+        .update(cellPromotions)
+        .set({
+          discountedUnitsSold: sql`GREATEST(0, ${cellPromotions.discountedUnitsSold} + ${delta})`,
+          updatedAt: sql`NOW()`,
+          updatedBy: actor,
+        })
+        .where(
+          and(
+            eq(cellPromotions.clientId, clientId),
+            eq(cellPromotions.id, promotionId),
+          ),
+        );
+    }
+  }
+
   async createOrder(
     cellId: string,
     clientId: string,
@@ -533,11 +601,29 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
         stockDeducted = true;
       }
 
+      let promotionQuotaDeducted = Boolean(params.order.promotionQuotaDeducted);
+      const shouldDeductPromotionQuota =
+        (params.promotionQuotaAction === "deduct" || params.stockAction === "deduct") &&
+        !promotionQuotaDeducted;
+      if (shouldDeductPromotionQuota) {
+        await this.applyPromotionQuotaDeltaInTx(
+          tx,
+          clientId,
+          params.order.createdBy ?? "system",
+          {
+            mode: "deduct",
+            items: params.items,
+          },
+        );
+        promotionQuotaDeducted = true;
+      }
+
       const [insertedOrder] = await tx
         .insert(cellOrders)
         .values({
           ...params.order,
           stockDeducted,
+          promotionQuotaDeducted,
           clientId,
         })
         .returning();
@@ -640,6 +726,14 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
               nextItems: params.items,
             },
           );
+        }
+
+        if (existingOrder.promotionQuotaDeducted) {
+          await this.applyPromotionQuotaDeltaInTx(tx, clientId, params.event.actor, {
+            mode: "adjust",
+            previousItems,
+            nextItems: params.items,
+          });
         }
 
         await tx
@@ -755,16 +849,25 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
         updateData.guideGeneratedAt = sql`NOW()`;
       }
 
+      const effectivePromoAction = options?.promotionQuotaAction ?? options?.stockAction;
+      let loadedOrderItems: typeof cellOrderItems.$inferSelect[] | null = null;
+      const loadOrderItems = async () => {
+        if (!loadedOrderItems) {
+          loadedOrderItems = await tx
+            .select()
+            .from(cellOrderItems)
+            .where(
+              and(
+                eq(cellOrderItems.clientId, clientId),
+                eq(cellOrderItems.orderId, orderId),
+              ),
+            );
+        }
+        return loadedOrderItems;
+      };
+
       if (options?.stockAction === "deduct" && !existingOrder.stockDeducted) {
-        const items = await tx
-          .select()
-          .from(cellOrderItems)
-          .where(
-            and(
-              eq(cellOrderItems.clientId, clientId),
-              eq(cellOrderItems.orderId, orderId),
-            ),
-          );
+        const items = await loadOrderItems();
 
         touchedIds = await this.applyInventoryDeltaInTx(tx, clientId, event.actor, {
           mode: "deduct",
@@ -772,21 +875,29 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
         });
         updateData.stockDeducted = true;
       } else if (options?.stockAction === "restore" && existingOrder.stockDeducted) {
-        const items = await tx
-          .select()
-          .from(cellOrderItems)
-          .where(
-            and(
-              eq(cellOrderItems.clientId, clientId),
-              eq(cellOrderItems.orderId, orderId),
-            ),
-          );
+        const items = await loadOrderItems();
 
         touchedIds = await this.applyInventoryDeltaInTx(tx, clientId, event.actor, {
           mode: "restore",
           items,
         });
         updateData.stockDeducted = false;
+      }
+
+      if (effectivePromoAction === "deduct" && !existingOrder.promotionQuotaDeducted) {
+        const items = await loadOrderItems();
+        await this.applyPromotionQuotaDeltaInTx(tx, clientId, event.actor, {
+          mode: "deduct",
+          items,
+        });
+        updateData.promotionQuotaDeducted = true;
+      } else if (effectivePromoAction === "restore" && existingOrder.promotionQuotaDeducted) {
+        const items = await loadOrderItems();
+        await this.applyPromotionQuotaDeltaInTx(tx, clientId, event.actor, {
+          mode: "restore",
+          items,
+        });
+        updateData.promotionQuotaDeducted = false;
       }
 
       const [updatedOrder] = await tx
@@ -1200,6 +1311,66 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
           : [];
       const compMap = new Map(compProducts.map((c) => [c.id, c]));
 
+      const activePromos = await tx
+        .select()
+        .from(cellPromotions)
+        .where(
+          and(
+            eq(cellPromotions.clientId, clientId),
+            eq(cellPromotions.isActive, true),
+            isNull(cellPromotions.deletedAt),
+          ),
+        );
+      const promoTargets =
+        activePromos.length > 0
+          ? await tx
+              .select()
+              .from(cellPromotionTargets)
+              .where(
+                and(
+                  eq(cellPromotionTargets.clientId, clientId),
+                  inArray(
+                    cellPromotionTargets.promotionId,
+                    activePromos.map((pr) => pr.id),
+                  ),
+                ),
+              )
+          : [];
+      const targetsByPromo = new Map<string, typeof promoTargets>();
+      for (const pt of promoTargets) {
+        const list = targetsByPromo.get(pt.promotionId) ?? [];
+        list.push(pt);
+        targetsByPromo.set(pt.promotionId, list);
+      }
+      const promoRecords: PromotionRecordWithTargets[] = activePromos.map((pr) => ({
+        id: pr.id,
+        name: pr.name,
+        description: pr.description ?? null,
+        scopeType: pr.scopeType as PromotionScopeType,
+        discountType: pr.discountType as PromotionDiscountType,
+        discountValue: Number(pr.discountValue),
+        startsAt: pr.startsAt,
+        endsAt: pr.endsAt ?? null,
+        maxDiscountedUnits: pr.maxDiscountedUnits ?? null,
+        discountedUnitsSold: Number(pr.discountedUnitsSold ?? 0),
+        isActive: Boolean(pr.isActive),
+        deletedAt: pr.deletedAt ?? null,
+        createdAt: pr.createdAt,
+        targets: (targetsByPromo.get(pr.id) ?? []).map((t) => ({
+          targetType: t.targetType as "product" | "category",
+          productId: t.productId ?? null,
+          categoryName: t.categoryName ?? null,
+        })),
+      }));
+      const effectivePromoMap = resolveEffectivePromotionsForProducts(
+        products.map((p) => ({
+          id: p.id,
+          category: p.category ?? null,
+          priceCents: p.priceCents,
+        })),
+        promoRecords,
+      );
+
       for (const p of products) {
         let comboEffectiveStock: number | null = null;
         let hasInactiveComboComponent = false;
@@ -1228,6 +1399,8 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
           hasInactiveComboComponent = derived.hasInactiveComponent;
         }
 
+        const activePromotion = effectivePromoMap.get(p.id) ?? null;
+
         out[p.id] = {
           id: p.id,
           name: p.name,
@@ -1237,7 +1410,8 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
           availability: p.availability,
           status: p.status,
           priceCents: p.priceCents,
-          salePriceCents: p.salePriceCents,
+          salePriceCents: activePromotion ? activePromotion.effectivePriceCents : p.salePriceCents,
+          activePromotion,
           costPriceCents: p.costPriceCents,
           stockQuantity: p.stockQuantity,
           attributes: normalizeStoredAttributes(p.attributes),

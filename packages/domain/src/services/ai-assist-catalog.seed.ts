@@ -374,6 +374,18 @@ export const INITIAL_AI_ASSIST_FIELDS: Array<
     createdBy: "system.seed",
     updatedBy: "system.seed",
   },
+  {
+    fieldKey: "promotion.description",
+    entity: "promotions",
+    columnName: "description",
+    labels: {
+      es: "Argumento Comercial de la Promoción",
+      en: "Promotion Commercial Argument",
+    },
+    isActive: true,
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
 ];
 
 /**
@@ -1137,6 +1149,26 @@ Burbuja de beneficios lista para enviar:
 [A] ACCIÓN: Mejora el fragmento HTML del pie de página institucional.
 [L] LÍMITE: Máximo 1200 caracteres.`,
     outputRules: { maxLength: 1200, minLength: 15, format: "html", tone: "claro y formal" },
+    examples: [],
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "promotion.description",
+    version: 1,
+    status: "active",
+    inputHint: "Describe el beneficio comercial, condiciones o sentido de urgencia de la campaña para el asistente AI y el equipo.",
+    masterPrompt: `${IDEAL_METHODOLOGY_PREAMBLE}
+
+[I] INTENCIÓN: Redactar un argumento comercial persuasivo, claro y honesto para una promoción o campaña de descuentos que el asistente AI usará al responder clientes por WhatsApp y webchat.
+[D] DELIMITACIÓN:
+- Resalta el beneficio concreto, el sentido de urgencia real (vigencia o cupo limitado) y las condiciones clave sin inventar descuentos ni garantías no declaradas.
+- Evita lenguaje exagerado, mayúsculas sostenidas o promesas engañosas.
+- Entrega texto plano listo para usarse directamente en conversaciones comerciales.
+[E] EJEMPLO: "Aprovecha esta campaña especial por tiempo limitado en nuestra línea destacada. El descuento se aplica automáticamente en tu pedido hasta agotar las unidades promocionales o el cierre de la vigencia."
+[A] ACCIÓN: Transforma el borrador del comerciante en un argumento comercial claro, empático y orientado al cierre.
+[L] LÍMITE: Máximo 500 caracteres.`,
+    outputRules: { maxLength: 500, minLength: 20, format: "plain", tone: "persuasivo, claro y confiable" },
     examples: [],
     createdBy: "system.seed",
     updatedBy: "system.seed",

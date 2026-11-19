@@ -12,6 +12,7 @@ import {
   Plus,
   Power,
   RefreshCw,
+  Tag,
   Trash2,
   UploadCloud,
   X,
@@ -839,6 +840,29 @@ export function ProductsView({
                 <div className="mt-0.5 font-semibold text-[var(--dsn-text)]">
                   {formatMoneyCents(item.salePriceCents ?? item.priceCents, item.currency, locale)}
                 </div>
+                {item.salePriceCents !== null && item.salePriceCents < item.priceCents && (
+                  <div className="text-[11px] text-[var(--dsn-text-secondary)] line-through">
+                    {formatMoneyCents(item.priceCents, item.currency, locale)}
+                  </div>
+                )}
+                {item.activePromotion && (
+                  <div className="mt-1 space-y-0.5">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                      <Tag className="h-3 w-3 shrink-0" />
+                      <span>
+                        -{item.activePromotion.savingsPct}% · {item.activePromotion.name}
+                      </span>
+                    </span>
+                    {item.activePromotion.endsAt && (
+                      <div className="text-[10px] text-emerald-700 dark:text-emerald-300">
+                        {dict.productsPromoValidUntil}{" "}
+                        {new Date(item.activePromotion.endsAt).toLocaleDateString(
+                          locale === "en" ? "en-US" : "es-CO",
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="text-[var(--dsn-text-secondary)]">
                   {dict.productsMarginLabel}: {item.profitability.marginPct.toFixed(1)}%
                 </div>
@@ -990,13 +1014,40 @@ export function ProductsView({
               sortable: true,
               isNumeric: true,
               renderCell: (item) => (
-                <div>
+                <div className="space-y-0.5">
                   <div className="font-semibold text-[var(--dsn-text)]">
                     {formatMoneyCents(item.salePriceCents ?? item.priceCents, item.currency, locale)}
                   </div>
                   {item.salePriceCents !== null && item.salePriceCents < item.priceCents && (
                     <div className="text-xs text-[var(--dsn-text-secondary)] line-through">
                       {formatMoneyCents(item.priceCents, item.currency, locale)}
+                    </div>
+                  )}
+                  {item.activePromotion && (
+                    <div className="space-y-0.5 pt-0.5">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                        <Tag className="h-3 w-3 shrink-0" />
+                        <span>
+                          -{item.activePromotion.savingsPct}% · {item.activePromotion.name}
+                        </span>
+                      </span>
+                      {(item.activePromotion.endsAt ||
+                        item.activePromotion.remainingUnits !== null) && (
+                        <div className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                          {[
+                            item.activePromotion.endsAt
+                              ? `${dict.productsPromoValidUntil} ${new Date(
+                                  item.activePromotion.endsAt,
+                                ).toLocaleDateString(locale === "en" ? "en-US" : "es-CO")}`
+                              : null,
+                            item.activePromotion.remainingUnits !== null
+                              ? `${item.activePromotion.remainingUnits} ${dict.productsPromoUnitsLeft}`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="text-xs text-[var(--dsn-text-secondary)]">

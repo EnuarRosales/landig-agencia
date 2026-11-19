@@ -11,6 +11,7 @@ import type {
   NewCellShippingCarrier,
 } from "../db/schemas/tenant/orders";
 import type { ProductDynamicAttribute } from "../db/schemas/tenant/tenancy-catalog";
+import type { AppliedProductPromotionDto } from "../services/promotion-resolution";
 
 /**
  * Agregado completo de pedido con sus ítems, eventos y devoluciones correlacionadas.
@@ -45,6 +46,8 @@ export interface CreateOrderParams {
   event: Omit<NewCellOrderEvent, "clientId" | "orderId">;
   /** Si es `"deduct"`, descuenta inventario físico atómicamente en la misma transacción. */
   stockAction?: "deduct";
+  /** Si es `"deduct"`, suma atómicamente `discounted_units_sold` de promociones aplicadas (`SPEC-18 D-05`). */
+  promotionQuotaAction?: "deduct";
   /** Callback opcional con los IDs de productos físicos cuyo inventario fue mutado. */
   onTouchedProducts?: (productIds: string[]) => void;
 }
@@ -70,6 +73,8 @@ export interface UpdateOrderStatusRepoOptions {
   cancellationReason?: string;
   issueNotes?: string;
   stockAction?: "deduct" | "restore";
+  /** Acción idempotente sobre el cupo promocional (`discounted_units_sold`, `SPEC-18 D-05`). */
+  promotionQuotaAction?: "deduct" | "restore";
   onTouchedProducts?: (productIds: string[]) => void;
 }
 
@@ -131,6 +136,7 @@ export interface RepeatOrderCatalogContext {
       status: string;
       priceCents: number;
       salePriceCents: number | null;
+      activePromotion?: AppliedProductPromotionDto | null;
       costPriceCents: number;
       stockQuantity: number | null;
       attributes: ProductDynamicAttribute[];

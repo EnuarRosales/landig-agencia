@@ -1,5 +1,6 @@
 import { ok, err, type Result } from "../types/result";
 import type { PromptBlockKey } from "../db/schemas/admin/bot-prompt-blocks";
+import type { AppliedProductPromotionDto } from "./promotion-resolution";
 
 /** Idioma soportado por la composición. */
 export type PromptLocale = "es" | "en";
@@ -42,6 +43,10 @@ export interface PromptProduct {
    */
   botMasterPrompt?: string | null;
   faqs?: Array<{ question: string; answer: string }>;
+  /** Promoción comercial vigente aplicada automáticamente sobre este producto (`SPEC-18`, `D-04`, `D-07`). */
+  activePromotion?: AppliedProductPromotionDto | null;
+  /** Zona horaria IANA del comercio para formatear la vigencia límite de la campaña (`RN-SPEC-18-05`). */
+  timezone?: string | null;
 }
 
 /** Contexto comercial del negocio (client_business_info + transportadoras + reglas + Prompt General IDEAL). */
@@ -177,27 +182,27 @@ function renderBusiness(b: PromptBusinessContext, locale: PromptLocale): string 
   const t =
     locale === "es"
       ? {
-          pay: "Métodos de pago",
-          ret: "Devoluciones",
-          war: "Garantía",
-          shp: "Política de envíos",
-          car: "Transportadoras (no menciones otras)",
-          del: "Tiempos de entrega",
-          rest: "Resto del país",
-          faq: "Preguntas frecuentes",
-          gen: "Directivas Generales de Operación del Comercio (IDEAL)",
-        }
+        pay: "Métodos de pago",
+        ret: "Devoluciones",
+        war: "Garantía",
+        shp: "Política de envíos",
+        car: "Transportadoras (no menciones otras)",
+        del: "Tiempos de entrega",
+        rest: "Resto del país",
+        faq: "Preguntas frecuentes",
+        gen: "Directivas Generales de Operación del Comercio (IDEAL)",
+      }
       : {
-          pay: "Payment methods",
-          ret: "Returns",
-          war: "Warranty",
-          shp: "Shipping policy",
-          car: "Carriers (never mention others)",
-          del: "Delivery times",
-          rest: "Rest of country",
-          faq: "FAQs",
-          gen: "General Store Operation Guidelines (IDEAL)",
-        };
+        pay: "Payment methods",
+        ret: "Returns",
+        war: "Warranty",
+        shp: "Shipping policy",
+        car: "Carriers (never mention others)",
+        del: "Delivery times",
+        rest: "Rest of country",
+        faq: "FAQs",
+        gen: "General Store Operation Guidelines (IDEAL)",
+      };
   const lines: string[] = [];
   if (b.paymentMethods.length) lines.push(`${t.pay}: ${b.paymentMethods.join(", ")}`);
   if (b.returnsPolicy) lines.push(`${t.ret}: ${b.returnsPolicy}`);
@@ -214,14 +219,65 @@ function renderBusiness(b: PromptBusinessContext, locale: PromptLocale): string 
   return lines.join("\n");
 }
 
+function formatPromotionDeadline(
+  endsAt: string,
+  locale: PromptLocale,
+  timezone?: string | null,
+): string {
+  const date = new Date(endsAt);
+  if (Number.isNaN(date.getTime())) return endsAt;
+  try {
+    return new Intl.DateTimeFormat(locale === "es" ? "es-CO" : "en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      ...(timezone ? { timeZone: timezone } : {}),
+    }).format(date);
+  } catch {
+    return date.toISOString();
+  }
+}
+
 function renderProduct(p: PromptProduct, locale: PromptLocale): string {
   const es = locale === "es";
   const lines: string[] = [`${es ? "Producto activo" : "Active product"}: ${p.name}`];
-  lines.push(`${es ? "Precio" : "Price"}: ${formatMoney(p.priceCents, p.currency, locale)}`);
+  if (p.activePromotion) {
+    const promo = p.activePromotion;
+    lines.push(
+      `${es ? "Precio regular" : "Regular price"}: ${formatMoney(promo.originalPriceCents, p.currency, locale)}`,
+    );
+    lines.push(
+      `${es ? "Precio promocional vigente" : "Active promotional price"}: ${formatMoney(promo.effectivePriceCents, p.currency, locale)} (-${promo.savingsPct}%, ${es ? "ahorro" : "savings"}: ${formatMoney(promo.savingsCents, p.currency, locale)})`,
+    );
+    lines.push(`${es ? "Campaña activa" : "Active campaign"}: ${promo.name}`);
+    if (promo.description && promo.description.trim().length > 0) {
+      lines.push(
+        `${es ? "Argumento comercial de la campaña" : "Campaign sales pitch"}: ${promo.description.trim()}`,
+      );
+    }
+    if (promo.endsAt) {
+      lines.push(
+        `${es ? "Oferta válida hasta" : "Offer valid until"}: ${formatPromotionDeadline(promo.endsAt, locale, p.timezone)}`,
+      );
+    }
+    if (promo.remainingUnits !== null && promo.remainingUnits !== undefined) {
+      lines.push(
+        `${es ? "Unidades restantes en oferta" : "Remaining promotional units"}: ${promo.remainingUnits}`,
+      );
+    }
+  } else {
+    lines.push(`${es ? "Precio" : "Price"}: ${formatMoney(p.priceCents, p.currency, locale)}`);
+  }
   for (const tier of [...p.tiers].sort((a, b) => a.minQty - b.minQty)) {
     const mark = tier.isRecommended ? (es ? " (recomendado)" : " (recommended)") : "";
     lines.push(
       `${es ? "Desde" : "From"} ${tier.minQty} ${es ? "unidades" : "units"}: ${formatMoney(tier.priceCents, p.currency, locale)}${mark}`,
+    );
+  }
+  if (p.activePromotion && p.tiers.length > 0) {
+    lines.push(
+      es
+        ? "Regla de precios: La promoción vigente aplica sobre el precio regular base y NO se acumula con los precios escalonados por volumen; informa ambas opciones al cliente y aplica siempre el menor precio unitario según la cantidad solicitada."
+        : "Pricing rule: The active promotion applies to the regular base price and does NOT stack with volume tiers; inform the customer of both options and always apply the lowest unit price for the requested quantity.",
     );
   }
   if (p.benefits.length) {

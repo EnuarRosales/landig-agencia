@@ -28,6 +28,8 @@ export * from "./services/onboarding-and-limits.service";
 export * from "./services/chatwoot-provisioning.service";
 export * from "./services/tenant-chatwoot-embed.service";
 export * from "./services/catalog-and-media.service";
+export * from "./services/promotion-resolution";
+export * from "./services/tenant-promotions.service";
 export * from "./services/notifications-and-leads.service";
 export * from "./services/notification-dispatcher.service";
 export * from "./auth/validation";

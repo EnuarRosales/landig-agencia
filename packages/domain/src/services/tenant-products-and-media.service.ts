@@ -22,6 +22,19 @@ import {
   type ProductDynamicAttribute,
 } from "../db/schemas/tenant/tenancy-catalog";
 import {
+  cellPromotions,
+  cellPromotionTargets,
+  type CellPromotion,
+  type CellPromotionTarget,
+  type PromotionDiscountType,
+  type PromotionScopeType,
+} from "../db/schemas/tenant/promotions";
+import {
+  resolveEffectivePromotionsForProducts,
+  type AppliedProductPromotionDto,
+  type PromotionRecordWithTargets,
+} from "./promotion-resolution";
+import {
   MAX_UPLOAD_BYTES_BY_KIND,
   validateMediaMagicBytes,
 } from "../utils/media-magic-bytes";
@@ -260,6 +273,7 @@ export interface ITenantProductsRepository {
     clientId: string,
     mediaId: string,
   ): Promise<TenantMediaStreamSource | null>;
+  listPromotionsForResolution?(clientId: string): Promise<PromotionRecordWithTargets[]>;
   markLowStockAlertSentAtomically?(
     clientId: string,
     productId: string,
@@ -2042,6 +2056,62 @@ export class DrizzleTenantProductsRepository implements ITenantProductsRepositor
       locale: client.locale === "en" ? "en" : "es",
     };
   }
+
+  async listPromotionsForResolution(clientId: string): Promise<PromotionRecordWithTargets[]> {
+    return this.cellTxRunner(clientId, async (tx) => {
+      const promos: CellPromotion[] = await tx
+        .select()
+        .from(cellPromotions)
+        .where(
+          and(
+            eq(cellPromotions.clientId, clientId),
+            eq(cellPromotions.isActive, true),
+            isNull(cellPromotions.deletedAt),
+          ),
+        );
+
+      if (promos.length === 0) return [];
+
+      const promoIds = promos.map((p) => p.id);
+      const targets: CellPromotionTarget[] = await tx
+        .select()
+        .from(cellPromotionTargets)
+        .where(
+          and(
+            eq(cellPromotionTargets.clientId, clientId),
+            inArray(cellPromotionTargets.promotionId, promoIds),
+          ),
+        );
+
+      const targetsByPromo = new Map<string, CellPromotionTarget[]>();
+      for (const t of targets) {
+        const list = targetsByPromo.get(t.promotionId) ?? [];
+        list.push(t);
+        targetsByPromo.set(t.promotionId, list);
+      }
+
+      return promos.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description ?? null,
+        scopeType: p.scopeType as PromotionScopeType,
+        discountType: p.discountType as PromotionDiscountType,
+        discountValue: Number(p.discountValue),
+        startsAt: p.startsAt,
+        endsAt: p.endsAt ?? null,
+        maxDiscountedUnits: p.maxDiscountedUnits ?? null,
+        discountedUnitsSold: Number(p.discountedUnitsSold ?? 0),
+        isActive: Boolean(p.isActive),
+        deletedAt: p.deletedAt ?? null,
+        createdAt: p.createdAt,
+        targets: (targetsByPromo.get(p.id) ?? []).map((t) => ({
+          targetType: t.targetType as "product" | "category",
+          productId: t.productId ?? null,
+          categoryName: t.categoryName ?? null,
+        })),
+      }));
+    });
+  }
 }
 
 /**
@@ -2292,14 +2362,26 @@ export class TenantProductsAndMediaService {
       .filter((r) => r.compositionType === "combo")
       .map((r) => r.id);
 
-    const [allBundleLinks, allProductMedia] = await Promise.all([
+    const [allBundleLinks, allProductMedia, activePromotions] = await Promise.all([
       bundleIds.length > 0 && this.repo.getBundleItemsForProducts
         ? this.repo.getBundleItemsForProducts(clientId, bundleIds)
         : Promise.resolve([]),
       this.repo.getProductMediaDetails
         ? this.repo.getProductMediaDetails(clientId, productIds)
         : Promise.resolve([]),
+      this.repo.listPromotionsForResolution
+        ? this.repo.listPromotionsForResolution(clientId)
+        : Promise.resolve([]),
     ]);
+
+    const effectivePromotionsByProduct = resolveEffectivePromotionsForProducts(
+      rows.map((r) => ({
+        id: r.id,
+        category: r.category ?? null,
+        priceCents: r.priceCents,
+      })),
+      activePromotions,
+    );
 
     const componentProductIds = Array.from(
       new Set(allBundleLinks.map((b) => b.componentProductId)),
@@ -2371,13 +2453,19 @@ export class TenantProductsAndMediaService {
         pdf: mediaItems.filter((m) => m.mediaKind === "pdf").length,
       };
 
+      const activePromotion: AppliedProductPromotionDto | null =
+        effectivePromotionsByProduct.get(p.id) ?? null;
+      const effectiveSalePriceCents = activePromotion
+        ? activePromotion.effectivePriceCents
+        : (p.salePriceCents ?? null);
+
       const metrics = evaluateProductStockAndMargin({
         kind,
         compositionType,
         status,
         costPriceCents: p.costPriceCents ?? 0,
         priceCents: p.priceCents,
-        salePriceCents: p.salePriceCents ?? null,
+        salePriceCents: effectiveSalePriceCents,
         stockQuantity: p.stockQuantity ?? null,
         minStockThreshold: p.minStockThreshold ?? null,
         comboComponents,
@@ -2400,7 +2488,8 @@ export class TenantProductsAndMediaService {
         currency: p.currency || "COP",
         costPriceCents: p.costPriceCents ?? 0,
         priceCents: p.priceCents,
-        salePriceCents: p.salePriceCents ?? null,
+        salePriceCents: effectiveSalePriceCents,
+        activePromotion,
         profitability: metrics.profitability,
         stockQuantity:
           kind === "physical" && compositionType === "simple" ? (p.stockQuantity ?? 0) : null,

@@ -3,6 +3,7 @@ import {
   boolean,
   char,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -16,6 +17,7 @@ import {
 import { sql } from "drizzle-orm";
 import { cellAdminSchema } from "./namespace";
 import { auditColumns } from "../shared/audit-columns";
+import { cellPromotions } from "./promotions";
 
 /**
  * Los 12 estados homologados del ciclo de vida de pedidos en Mocter, compatibles con Dropi y Effi ERP (`SPEC-11`).
@@ -129,6 +131,8 @@ export const cellOrders = cellAdminSchema.table(
     notes: text("notes"),
     /** Bandera idempotente que indica si el inventario físico del pedido ya fue descontado (`SPEC-11`). */
     stockDeducted: boolean("stock_deducted").notNull().default(false),
+    /** Bandera idempotente que indica si las unidades promocionales del pedido ya fueron descontadas del cupo de `admin.promotions` (`SPEC-18 D-05`). */
+    promotionQuotaDeducted: boolean("promotion_quota_deducted").notNull().default(false),
     /** Marca de tiempo de la primera o última generación de guía imprimible (`SPEC-11`). */
     guideGeneratedAt: timestamp("guide_generated_at", { withTimezone: true }),
     /** Motivo estructurado o textual de cancelación del pedido (`SPEC-11`). */
@@ -213,16 +217,34 @@ export const cellOrderItems = cellAdminSchema.table(
     selectedAttributes: jsonb("selected_attributes").$type<Record<string, string> | null>(),
     /** Escalón de precio por cantidad aplicado (si aplica). */
     tierMinQty: integer("tier_min_qty"),
+    /** Identificador de la promoción comercial aplicada a esta línea (`SPEC-18 D-05`, `D-08`). */
+    promotionId: uuid("promotion_id"),
+    /** Snapshot inmutable del nombre comercial de la campaña aplicada al momento de la compra (`SPEC-18`). */
+    promotionName: text("promotion_name"),
+    /** Precio unitario regular previo al descuento promocional en centavos (`SPEC-18`). */
+    originalUnitPriceCents: bigint("original_unit_price_cents", { mode: "number" }),
     /** Total de la línea en centavos (quantity * unitPriceCents). */
     lineTotalCents: bigint("line_total_cents", { mode: "number" }).notNull(),
     ...auditColumns(),
   },
   (table) => [
     primaryKey({ name: "cell_order_items_pkey", columns: [table.clientId, table.id] }),
+    foreignKey({
+      name: "order_items_promotion_fk",
+      columns: [table.clientId, table.promotionId],
+      foreignColumns: [cellPromotions.clientId, cellPromotions.id],
+    }).onDelete("restrict"),
     index("order_items_client_order_idx").on(table.clientId, table.orderId),
+    index("idx_order_items_client_promotion")
+      .on(table.clientId, table.promotionId)
+      .where(sql`promotion_id IS NOT NULL`),
     check("order_items_quantity_check", sql.raw("quantity > 0")),
     check("order_items_unit_price_cents_check", sql.raw("unit_price_cents >= 0")),
     check("order_items_unit_cost_cents_check", sql.raw("unit_cost_cents >= 0")),
+    check(
+      "order_items_original_unit_price_cents_check",
+      sql.raw("original_unit_price_cents IS NULL OR original_unit_price_cents >= 0"),
+    ),
     check("order_items_line_total_cents_check", sql.raw("line_total_cents >= 0")),
   ],
 );
