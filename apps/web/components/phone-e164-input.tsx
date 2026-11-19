@@ -1,12 +1,16 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useSyncExternalStore } from "react";
 import {
   getCountryAddressProfile,
   listCountryOptions,
   normalizeAndValidatePhoneE164,
   splitPhoneForInput,
 } from "@mocter/domain/geo";
+
+const emptySubscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 export interface WebPhoneE164InputProps {
   id: string;
@@ -48,7 +52,11 @@ export function PhoneE164Input({
   const [countryCode, setCountryCode] = useState<string>(initialSplit.countryCode);
   const [nationalNumber, setNationalNumber] = useState<string>(initialSplit.nationalNumber);
 
-  const countryOptions = useMemo(() => listCountryOptions(locale), [locale]);
+  const isClient = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
+  const countryOptions = useMemo(
+    () => (isClient ? listCountryOptions(locale) : []),
+    [isClient, locale],
+  );
   const callingCode = useMemo(
     () => getCountryAddressProfile(countryCode).callingCode,
     [countryCode],
@@ -136,11 +144,24 @@ export function PhoneE164Input({
           onChange={(e) => handleCountryChange(e.target.value)}
           className="w-full sm:w-44 shrink-0 rounded-xl border border-stroke bg-[rgba(255,255,255,0.04)] px-3 py-3 text-[14px] text-txt outline-none focus:border-a2"
         >
-          {countryOptions.map((opt) => (
-            <option key={opt.countryCode} value={opt.countryCode} className="bg-[#0d111a] text-white">
-              {opt.name} (+{opt.callingCode})
+          {isClient ? (
+            countryOptions.map((opt) => (
+              <option
+                key={opt.countryCode}
+                value={opt.countryCode}
+                className="bg-surface-solid text-txt dark:bg-[#0d111a] dark:text-white"
+              >
+                {`${opt.name} (+${opt.callingCode})`}
+              </option>
+            ))
+          ) : (
+            <option
+              value={countryCode}
+              className="bg-surface-solid text-txt dark:bg-[#0d111a] dark:text-white"
+            >
+              {`${countryCode} (+${callingCode})`}
             </option>
-          ))}
+          )}
         </select>
         <input
           id={id}

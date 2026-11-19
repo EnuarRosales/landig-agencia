@@ -62,10 +62,10 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
     t: (key: string) => string,
     suffix: string = "",
   ): React.ReactNode => {
-    if (!item) return <span className="text-muted/40 font-mono">—</span>;
+    if (!item) return <span className="text-muted/60 dark:text-muted/40 font-mono">—</span>;
     if (item.mode === "UNLIMITED") {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-0">
           <Sparkles className="h-3 w-3" />
           <span>{t("unlimited")}</span>
         </span>
@@ -82,10 +82,10 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
     item: { mode: "LIMITED" | "UNLIMITED"; value: number | null } | undefined,
     t: (key: string) => string,
   ): React.ReactNode => {
-    if (!item) return <span className="text-muted/40 font-mono">—</span>;
+    if (!item) return <span className="text-muted/60 dark:text-muted/40 font-mono">—</span>;
     if (item.mode === "UNLIMITED") {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-0">
           <Sparkles className="h-3 w-3" />
           <span>{t("unlimited")}</span>
         </span>
@@ -111,21 +111,21 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
   const formatBoolean = (val: boolean | undefined): React.ReactNode => {
     if (val) {
       return (
-        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400 shadow-sm shadow-emerald-500/20">
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 ring-1 ring-emerald-500/25 shadow-sm shadow-emerald-500/15 dark:text-emerald-400 dark:ring-0 dark:shadow-emerald-500/20">
           <IconCheck className="h-3.5 w-3.5" />
         </span>
       );
     }
-    return <span className="text-muted/30 font-mono text-base select-none">—</span>;
+    return <span className="text-muted/50 dark:text-muted/30 font-mono text-base select-none">—</span>;
   };
 
   const categories: FeatureCategory[] = [
     {
       titleKey: "categoryCatalog",
-      icon: <Layers className="h-4 w-4 text-cyan-400" />,
+      icon: <Layers className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />,
       rows: [
         {
-          icon: <Package className="h-4 w-4 text-cyan-400" />,
+          icon: <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />,
           iconBg: "bg-cyan-500/10 border border-cyan-500/20",
           labelKey: "featureProducts",
           hintEs: "Límite de artículos visibles en catálogo",
@@ -133,7 +133,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p, t) => formatLimitNumber(p.limits?.products, t),
         },
         {
-          icon: <ImageIcon className="h-4 w-4 text-indigo-400" />,
+          icon: <ImageIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />,
           iconBg: "bg-indigo-500/10 border border-indigo-500/20",
           labelKey: "featureImages",
           hintEs: "Fotografías por cada producto",
@@ -141,7 +141,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p, t) => formatLimitNumber(p.limits?.images_per_product, t),
         },
         {
-          icon: <Video className="h-4 w-4 text-rose-400" />,
+          icon: <Video className="h-4 w-4 text-rose-600 dark:text-rose-400" />,
           iconBg: "bg-rose-500/10 border border-rose-500/20",
           labelKey: "featureVideos",
           hintEs: "Clips de video demostrativos",
@@ -149,7 +149,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p, t) => formatLimitNumber(p.limits?.videos_per_product, t),
         },
         {
-          icon: <FileText className="h-4 w-4 text-amber-400" />,
+          icon: <FileText className="h-4 w-4 text-amber-600 dark:text-amber-400" />,
           iconBg: "bg-amber-500/10 border border-amber-500/20",
           labelKey: "featurePdfs",
           hintEs: "Fichas técnicas y manuales en PDF",
@@ -160,10 +160,10 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
     },
     {
       titleKey: "categoryChannels",
-      icon: <Radio className="h-4 w-4 text-emerald-400" />,
+      icon: <Radio className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />,
       rows: [
         {
-          icon: <Users className="h-4 w-4 text-blue-400" />,
+          icon: <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />,
           iconBg: "bg-blue-500/10 border border-blue-500/20",
           labelKey: "featureAgents",
           hintEs: "Operadores simultáneos de atención",
@@ -171,7 +171,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p, t) => formatLimitNumber(p.limits?.chatwoot_agents, t),
         },
         {
-          icon: <Inbox className="h-4 w-4 text-teal-400" />,
+          icon: <Inbox className="h-4 w-4 text-teal-600 dark:text-teal-400" />,
           iconBg: "bg-teal-500/10 border border-teal-500/20",
           labelKey: "featureInboxes",
           hintEs: "Bandejas omnicanal conectadas",
@@ -179,7 +179,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p, t) => formatLimitNumber(p.limits?.chatwoot_inboxes, t),
         },
         {
-          icon: <IconWhatsappFilled className="h-4 w-4 text-emerald-400" />,
+          icon: <IconWhatsappFilled className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />,
           iconBg: "bg-emerald-500/15 border border-emerald-500/30",
           labelKey: "featureWhatsapp",
           hintEs: "Canal oficial WhatsApp Cloud API",
@@ -187,7 +187,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p) => formatBoolean(p.capabilities?.channel_whatsapp),
         },
         {
-          icon: <Mail className="h-4 w-4 text-sky-400" />,
+          icon: <Mail className="h-4 w-4 text-sky-600 dark:text-sky-400" />,
           iconBg: "bg-sky-500/10 border border-sky-500/20",
           labelKey: "featureEmail",
           hintEs: "Recepción y respuesta de correos",
@@ -195,7 +195,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p) => formatBoolean(p.capabilities?.channel_email),
         },
         {
-          icon: <Globe className="h-4 w-4 text-emerald-400" />,
+          icon: <Globe className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />,
           iconBg: "bg-emerald-500/10 border border-emerald-500/20",
           labelKey: "featureLiveChat",
           hintEs: "Widget de chat en vivo para tu sitio",
@@ -206,10 +206,10 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
     },
     {
       titleKey: "categoryData",
-      icon: <Database className="h-4 w-4 text-violet-400" />,
+      icon: <Database className="h-4 w-4 text-violet-600 dark:text-violet-400" />,
       rows: [
         {
-          icon: <HardDrive className="h-4 w-4 text-violet-400" />,
+          icon: <HardDrive className="h-4 w-4 text-violet-600 dark:text-violet-400" />,
           iconBg: "bg-violet-500/10 border border-violet-500/20",
           labelKey: "featureStorage",
           hintEs: "Almacenamiento total de archivos y medios",
@@ -217,7 +217,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p, t) => formatStorage(p.limits?.storage_bytes, t),
         },
         {
-          icon: <History className="h-4 w-4 text-amber-400" />,
+          icon: <History className="h-4 w-4 text-amber-600 dark:text-amber-400" />,
           iconBg: "bg-amber-500/10 border border-amber-500/20",
           labelKey: "featureRetention",
           hintEs: "Historial de mensajes de chat guardados",
@@ -229,18 +229,18 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
     },
     {
       titleKey: "categoryAutomation",
-      icon: <Cpu className="h-4 w-4 text-yellow-400" />,
+      icon: <Cpu className="h-4 w-4 text-amber-600 dark:text-yellow-400" />,
       rows: [
         {
-          icon: <Zap className="h-4 w-4 text-yellow-400" />,
-          iconBg: "bg-yellow-500/10 border border-yellow-500/20",
+          icon: <Zap className="h-4 w-4 text-amber-600 dark:text-yellow-400" />,
+          iconBg: "bg-amber-500/10 border border-amber-500/20 dark:bg-yellow-500/10 dark:border-yellow-500/20",
           labelKey: "featureCannedResponses",
           hintEs: "Plantillas rápidas con atajos de teclado",
           hintEn: "Quick reply macros and shortcuts",
           renderValue: (p) => formatBoolean(p.capabilities?.canned_responses),
         },
         {
-          icon: <Bot className="h-4 w-4 text-cyan-400" />,
+          icon: <Bot className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />,
           iconBg: "bg-cyan-500/10 border border-cyan-500/20",
           labelKey: "featureAutomations",
           hintEs: "Disparadores automáticos de eventos",
@@ -248,7 +248,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p) => formatBoolean(p.capabilities?.automations),
         },
         {
-          icon: <BookOpen className="h-4 w-4 text-emerald-400" />,
+          icon: <BookOpen className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />,
           iconBg: "bg-emerald-500/10 border border-emerald-500/20",
           labelKey: "featureHelpCenter",
           hintEs: "Portal de autoservicio y preguntas frecuentes",
@@ -259,10 +259,10 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
     },
     {
       titleKey: "categoryPlatform",
-      icon: <Building2 className="h-4 w-4 text-purple-400" />,
+      icon: <Building2 className="h-4 w-4 text-purple-600 dark:text-purple-400" />,
       rows: [
         {
-          icon: <UserCheck className="h-4 w-4 text-blue-400" />,
+          icon: <UserCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />,
           iconBg: "bg-blue-500/10 border border-blue-500/20",
           labelKey: "featureUsers",
           hintEs: "Usuarios con acceso al backoffice de inquilino",
@@ -270,7 +270,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p, t) => formatLimitNumber(p.limits?.tenant_users, t),
         },
         {
-          icon: <Contact className="h-4 w-4 text-teal-400" />,
+          icon: <Contact className="h-4 w-4 text-teal-600 dark:text-teal-400" />,
           iconBg: "bg-teal-500/10 border border-teal-500/20",
           labelKey: "featureContacts",
           hintEs: "Capacidad de contactos registrados",
@@ -278,7 +278,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p, t) => formatLimitNumber(p.limits?.contacts, t),
         },
         {
-          icon: <BarChart3 className="h-4 w-4 text-purple-400" />,
+          icon: <BarChart3 className="h-4 w-4 text-purple-600 dark:text-purple-400" />,
           iconBg: "bg-purple-500/10 border border-purple-500/20",
           labelKey: "featureReports",
           hintEs: "Métricas operativas y tiempo de respuesta",
@@ -286,7 +286,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
           renderValue: (p) => formatBoolean(p.capabilities?.reports),
         },
         {
-          icon: <Webhook className="h-4 w-4 text-rose-400" />,
+          icon: <Webhook className="h-4 w-4 text-rose-600 dark:text-rose-400" />,
           iconBg: "bg-rose-500/10 border border-rose-500/20",
           labelKey: "featureApiWebhooks",
           hintEs: "Integración REST y eventos salientes",
@@ -298,9 +298,9 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
   ];
 
   return (
-    <div className="mx-auto mt-12 max-w-[1100px] overflow-hidden rounded-3xl border border-stroke/80 bg-[linear-gradient(180deg,rgba(18,18,22,0.92)_0%,rgba(10,10,14,0.98)_100%)] p-4 shadow-[0_24px_64px_-12px_rgba(0,0,0,0.65)] ring-1 ring-white/5 backdrop-blur-xl sm:p-6 md:p-8">
+    <div className="mx-auto mt-12 max-w-[1100px] overflow-hidden rounded-3xl border border-stroke bg-[linear-gradient(180deg,rgba(255,255,255,0.96)_0%,rgba(240,244,252,0.92)_100%)] p-4 shadow-[0_24px_60px_-16px_rgba(13,22,44,0.14)] ring-1 ring-stroke2 backdrop-blur-xl sm:p-6 md:p-8 dark:border-stroke/80 dark:bg-[linear-gradient(180deg,rgba(18,18,22,0.92)_0%,rgba(10,10,14,0.98)_100%)] dark:shadow-[0_24px_64px_-12px_rgba(0,0,0,0.65)] dark:ring-white/5">
       <div className="mb-8 text-center">
-        <div className="eyebrow mx-auto mb-2 text-[11px] uppercase tracking-widest text-a1">
+        <div className="mb-2 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-accent">
           {t("pill")}
         </div>
         <h3 className="font-display text-2xl font-extrabold tracking-tight text-txt md:text-3xl">
@@ -311,10 +311,10 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-stroke/60 bg-surface/50 scrollbar-thin">
+      <div className="overflow-x-auto rounded-2xl border border-stroke bg-surface shadow-xs scrollbar-thin dark:border-stroke/60 dark:bg-surface/50 dark:shadow-none">
         <table className="w-full min-w-[700px] border-collapse text-left text-sm" role="table">
           <thead>
-            <tr className="border-b border-stroke/80 bg-surface2/60">
+            <tr className="border-b border-stroke bg-surface2/90 dark:border-stroke/80 dark:bg-surface2/60">
               {/* Columna 1: Icono */}
               <th
                 scope="col"
@@ -371,7 +371,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
                         className={`mt-2 inline-flex items-center justify-center rounded-full px-4 py-1.5 text-xs font-semibold transition-all ${
                           p.isPopular
                             ? "bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] text-white shadow-md hover:opacity-90"
-                            : "border border-stroke bg-surface hover:bg-stroke/40 text-txt"
+                            : "border border-stroke bg-surface hover:bg-surface2 text-txt shadow-xs dark:hover:bg-stroke/40 dark:shadow-none"
                         }`}
                       >
                         {t("cta")}
@@ -382,18 +382,18 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
               })}
             </tr>
           </thead>
-          <tbody className="divide-y divide-stroke/40">
+          <tbody className="divide-y divide-stroke/60 dark:divide-stroke/40">
             {categories.map((cat, catIdx) => (
               <React.Fragment key={catIdx}>
                 {/* Header de categoría */}
-                <tr className="border-t border-stroke/80 bg-[linear-gradient(90deg,rgba(34,211,238,0.12)_0%,rgba(47,107,255,0.06)_40%,transparent_100%)]">
+                <tr className="border-t border-stroke bg-[linear-gradient(90deg,rgba(8,145,178,0.10)_0%,rgba(47,107,255,0.06)_45%,rgba(240,244,252,0.45)_100%)] dark:border-stroke/80 dark:bg-[linear-gradient(90deg,rgba(34,211,238,0.12)_0%,rgba(47,107,255,0.06)_40%,transparent_100%)]">
                   <th
                     colSpan={plans.length + 2}
                     scope="colgroup"
-                    className="py-3 pl-4 pr-4 text-xs font-bold uppercase tracking-wider text-a2 sm:pl-6"
+                    className="py-3 pl-4 pr-4 text-xs font-bold uppercase tracking-wider text-accent sm:pl-6 dark:text-a2"
                   >
                     <div className="flex items-center gap-2.5">
-                      <span className="grid h-6 w-6 place-items-center rounded-md bg-a2/15 text-a2">
+                      <span className="grid h-6 w-6 place-items-center rounded-md bg-accent/15 text-accent dark:bg-a2/15 dark:text-a2">
                         {cat.icon}
                       </span>
                       <span>{t(cat.titleKey)}</span>
@@ -405,7 +405,7 @@ export function PlanComparisonTable({ plans, cycle = "monthly" }: PlanComparison
                 {cat.rows.map((row, rowIdx) => (
                   <tr
                     key={rowIdx}
-                    className="transition-colors hover:bg-surface2/50"
+                    className="transition-colors hover:bg-surface2/70 dark:hover:bg-surface2/50"
                   >
                     {/* Columna 1: Icono con badge */}
                     <td className="w-14 py-3 pl-4 text-center sm:w-16 sm:pl-6">

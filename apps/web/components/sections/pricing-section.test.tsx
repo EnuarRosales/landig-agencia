@@ -166,5 +166,17 @@ describe("PricingSection & PlanComparisonTable Component", () => {
     fireEvent.click(screen.getByText("Ocultar Tabla Comparativa"));
     expect(screen.queryByText("Comparación Detallada De Planes")).toBeNull();
   });
+
+  it("aplica tokens compatibles con tema claro y variante dark explícita en la tabla comparativa", () => {
+    const { container } = render(<PricingSection plans={mockPlans} />);
+    fireEvent.click(screen.getByText("Ver Tabla Comparativa Completa"));
+
+    const title = screen.getByText("Comparación Detallada De Planes");
+    const wrapper = title.closest("div.rounded-3xl");
+    expect(wrapper?.className).toContain("dark:bg-[linear-gradient(180deg,rgba(18,18,22,0.92)_0%,rgba(10,10,14,0.98)_100%)]");
+    expect(wrapper?.className).toContain("border-stroke");
+    expect(container.innerHTML).toContain("text-accent");
+    expect(container.innerHTML).toContain("text-emerald-700");
+  });
 });
 

@@ -138,7 +138,13 @@ export function PricingSection({ plans = [] }: PricingSectionProps) {
             }`}
           >
             <span>{t("annual")}</span>
-            <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-bold text-emerald-400">
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                cycle === "annual"
+                  ? "bg-white/20 text-white"
+                  : "bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
+              }`}
+            >
               {t("discountBadge", { percent: dynamicDiscount })}
             </span>
           </button>
