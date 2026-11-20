@@ -298,6 +298,54 @@ grep SECRET_KEY_BASE /opt/mocter-chatwoot/.env
 
 El valor obtenido se asigna a la variable `CHATWOOT_SSO_SECRET` en el archivo `.env` de Mocter en dicho entorno.
 
+### 6.2 Resto de Variables de Chatwoot (Platform API, Super Admin y URLs)
+
+| Variable                       | Qué es                                                                 | Cómo obtenerla                                                                                           |
+| :----------------------------- | :--------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------- |
+| `CHATWOOT_PLATFORM_TOKEN`      | Token de la _PlatformApp_ de Chatwoot (`/platform/api/v1/*`)           | Tabla `access_tokens` con `owner_type = 'PlatformApp'` (ver abajo). **No** es `SECRET_KEY_BASE`.         |
+| `CHATWOOT_SUPER_ADMIN_USER_ID` | `users.id` del SuperAdmin de Chatwoot usado en `/admin/conversations`  | `select id, email, type from users where type = 'SuperAdmin';`                                           |
+| `CHATWOOT_INTERNAL_URL`        | URL servidor-a-servidor (red Docker) hacia Rails                       | Local: `http://mocter-chatwoot-rails-1:3000`. Prod: `https://chatapp.mocter.co`.                          |
+| `NEXT_PUBLIC_CHATWOOT_URL`     | URL pública que abre el navegador (iframe)                             | Local: `http://localhost:3002` (puerto publicado de Rails). Prod: `https://chatapp.mocter.co`.            |
+| `CHATWOOT_BASE_URL`            | URL pública legada (fallback)                                          | Igual que `NEXT_PUBLIC_CHATWOOT_URL`.                                                                    |
+| `CHATWOOT_WEBHOOK_URL`         | Webhook que Rails invoca hacia `mocter-admin`                          | Local: `http://admin-portal:3003/api/webhooks/chatwoot`. Prod: `https://admin.mocter.co/api/webhooks/chatwoot`. |
+
+> [!IMPORTANT]
+> `CHATWOOT_PLATFORM_TOKEN` y `CHATWOOT_SSO_SECRET` **son valores distintos** y es un error frecuente intercambiarlos.
+> El token de PlatformApp tiene 24 caracteres; `SECRET_KEY_BASE` tiene 128 caracteres hexadecimales.
+
+#### Obtener el token de PlatformApp (local)
+
+```powershell
+# 1. Listar el token de la PlatformApp existente
+docker exec mocter-chatwoot-pg-chatwoot-1 psql -U chatwoot -d chatwoot -c "select owner_id, token from access_tokens where owner_type='PlatformApp';"
+
+# 2. Si no existe ninguna PlatformApp, crearla (imprime el token)
+docker exec mocter-chatwoot-rails-1 bundle exec rails runner "puts PlatformApp.create!(name: 'mocter-local').access_token.token"
+```
+
+#### Vincular recursos preexistentes a la PlatformApp
+
+La Platform API solo opera sobre usuarios y cuentas **vinculados** a la PlatformApp (tabla `platform_app_permissibles`); de lo contrario responde `401`.
+Las cuentas y usuarios creados por Mocter vía Platform API quedan vinculados automáticamente. El SuperAdmin y la cuenta creados manualmente (por ejemplo, durante el bootstrap) deben vincularse una sola vez:
+
+```powershell
+docker exec mocter-chatwoot-rails-1 bundle exec rails runner "app = PlatformApp.first; [User.find(1), Account.find(1)].each { |r| app.platform_app_permissibles.find_or_create_by!(permissible: r) }"
+```
+
+#### Verificación rápida
+
+```powershell
+# Debe responder HTTP 200 con una URL de SSO
+$tok = "<CHATWOOT_PLATFORM_TOKEN>"
+Invoke-WebRequest -Uri "http://localhost:3002/platform/api/v1/users/1/login" -Headers @{ api_access_token = $tok } -UseBasicParsing
+```
+
+Tras modificar el `.env`, recrear los portales para que tomen las nuevas variables (un simple `restart` **no** recarga el entorno): `docker compose up -d --force-recreate web-portal admin-portal`.
+
+#### Error `401 Sesión no válida o expirada` en `/api/auth/chatwoot/embed`
+
+Es independiente de las variables anteriores: significa que la cookie `mocter_sid` no corresponde a una sesión vigente (inactividad de 30 min, tope absoluto de 12 h, o Redis reiniciado, ya que no persiste datos). Cerrar sesión e iniciar sesión nuevamente en `/es/login`.
+
 ---
 
 ## 7. Compilación y Desarrollo Local
