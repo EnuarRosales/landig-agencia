@@ -11,7 +11,6 @@ import {
   Pencil,
   Trash2,
   Mail,
-  X,
   Store,
   Check,
   MessageSquare,
@@ -19,7 +18,20 @@ import {
   ExternalLink,
 } from "lucide-react";
 import type { AdminTenantItemDto } from "@mocter/domain";
-import { ConfirmationModal } from "@/components/confirmation-modal";
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  ConfirmationModal,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+} from "@mocter/ui";
 import { PhoneE164Input } from "@/components/phone-e164-input";
 
 export interface TenantActionsProps {
@@ -303,31 +315,35 @@ export function TenantActions({
   return (
     <div className="flex items-center gap-1.5 justify-end">
       {/* Botón Reenviar Onboarding / Verificación */}
-      <button
+      <Button
         type="button"
+        variant="secondary"
+        size="sm"
         disabled={resendLoading || status === "baja"}
         onClick={() => {
           setResendError(null);
           setResendModalOpen(true);
         }}
         title="Reenviar correo de onboarding y configuración de contraseña"
-        className="inline-flex items-center gap-1 rounded border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors disabled:opacity-40"
+        className="h-auto min-h-0 px-2 py-1 text-xs font-medium"
       >
         {resendLoading ? <Loader2 className="h-3 w-3 animate-spin text-[var(--dsn-accent)]" /> : <Mail className="h-3 w-3 text-cyan-400" />}
         <span className="hidden sm:inline">Onboarding</span>
-      </button>
+      </Button>
 
       {/* Botón Aprovisionar / Reintentar en Chatwoot (CHW-002 T-09, D-08) */}
       {status !== "baja" && (
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           disabled={chatwootLoading}
           onClick={() => {
             setChatwootError(null);
             setChatwootModalOpen(true);
           }}
           title={tenant?.chatwoot?.state === "failed" ? "Reintentar sincronización en Chatwoot" : "Aprovisionar en Chatwoot"}
-          className="inline-flex items-center gap-1 rounded border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors disabled:opacity-40"
+          className="h-auto min-h-0 px-2 py-1 text-xs font-medium"
         >
           {chatwootLoading ? (
             <Loader2 className="h-3 w-3 animate-spin text-[var(--dsn-accent)]" />
@@ -339,286 +355,280 @@ export function TenantActions({
           <span className="hidden sm:inline">
             {tenant?.chatwoot?.state === "failed" ? "Reintentar Sincronización" : "Aprovisionar en Chatwoot"}
           </span>
-        </button>
+        </Button>
       )}
 
       {/* Enlace directo a la Ficha en Super Admin si ya existe chatwootAccountId (CHW-002 T-09, D-08) */}
       {Boolean(tenant?.chatwoot?.chatwootAccountId) && (
-        <Link
-          href={`/admin/conversations?accountId=${tenant!.chatwoot!.chatwootAccountId}`}
-          title="Ver ficha de cuenta en consola Super Admin de Chatwoot"
-          className="inline-flex items-center gap-1 rounded border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
+        <Button
+          asChild
+          variant="secondary"
+          size="sm"
+          className="h-auto min-h-0 px-2 py-1 text-xs font-medium"
         >
-          <ExternalLink className="h-3 w-3 text-indigo-400" />
-          <span className="hidden sm:inline">Ver Cuenta En Super Admin</span>
-        </Link>
+          <Link
+            href={`/admin/conversations?accountId=${tenant!.chatwoot!.chatwootAccountId}`}
+            title="Ver ficha de cuenta en consola Super Admin de Chatwoot"
+          >
+            <ExternalLink className="h-3 w-3 text-indigo-400" />
+            <span className="hidden sm:inline">Ver Cuenta En Super Admin</span>
+          </Link>
+        </Button>
       )}
 
       {/* Botón Editar Inquilino */}
-      <button
+      <Button
         type="button"
+        variant="secondary"
+        size="sm"
         disabled={status === "baja"}
         onClick={openEditModal}
         title="Editar información del comercio"
-        className="inline-flex items-center gap-1 rounded border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors disabled:opacity-40"
+        className="h-auto min-h-0 px-2 py-1 text-xs font-medium"
       >
         <Pencil className="h-3 w-3 text-amber-400" />
         <span className="hidden sm:inline">Editar</span>
-      </button>
+      </Button>
 
       {/* Suspender para Activos (Modal Canónico Regla 4.17) */}
       {status === "activo" && (
-        <button
+        <Button
           type="button"
+          variant="destructive"
+          size="sm"
           onClick={() => {
             setStatusError(null);
             setSuspendModalOpen(true);
           }}
           title="Suspender acceso del comercio"
-          className="inline-flex items-center gap-1 rounded border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-xs font-medium text-rose-400 hover:bg-rose-500/20 transition-colors"
+          className="h-auto min-h-0 px-2 py-1 text-xs font-medium"
         >
           <ShieldAlert className="h-3 w-3" />
           <span>Suspender</span>
-        </button>
+        </Button>
       )}
 
       {/* Reactivar para Suspendidos o En Alta (Modal Canónico Regla 4.17) */}
       {(status === "suspendido" || status === "alta") && (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => {
             setStatusError(null);
             setReactivateModalOpen(true);
           }}
           title="Reactivar operación del comercio"
-          className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+          className="h-auto min-h-0 border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20"
         >
           <PlayCircle className="h-3 w-3" />
           <span>Reactivar</span>
-        </button>
+        </Button>
       )}
 
       {/* Dar de Baja (con Modal Canónico de Confirmación Regla 4.17) */}
       {status !== "baja" && (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => {
             setDeleteError(null);
             setDeleteModalOpen(true);
           }}
           title="Dar de baja el inquilino de la plataforma"
-          className="inline-flex items-center gap-1 rounded border border-[var(--dsn-border)] p-1 text-xs font-medium text-zinc-400 hover:text-rose-400 hover:border-rose-500/40 hover:bg-rose-500/10 transition-colors"
+          className="h-auto min-h-0 p-1 text-xs font-medium text-zinc-400 hover:text-rose-400 hover:border-rose-500/40 hover:bg-rose-500/10"
         >
           <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        </Button>
       )}
 
       {/* MODAL ACCESIBLE DE EDICIÓN DE INQUILINO */}
-      {editModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="edit-tenant-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-200 text-left"
-        >
-          <div className="w-full max-w-lg rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto text-left">
-            {/* Header del Modal */}
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3">
-              <div className="flex items-center gap-2">
-                <Store className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <h3 id="edit-tenant-title" className="text-base font-semibold text-[var(--dsn-text)]">
-                  Editar Inquilino Y Comercio
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditModalOpen(false)}
-                className="rounded-lg p-1.5 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-6 space-y-4 text-left">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3 pr-8">
+            <div className="flex items-center gap-2">
+              <Store className="h-5 w-5 text-[var(--dsn-accent)]" />
+              <DialogTitle className="text-base font-semibold text-[var(--dsn-text)]">
+                Editar Inquilino Y Comercio
+              </DialogTitle>
+            </div>
+          </DialogHeader>
+
+          {/* Error Banner */}
+          {editError && (
+            <Alert variant="destructive" className="text-left">
+              <AlertDescription className="text-xs">{editError}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Formulario */}
+          <form onSubmit={handleSaveEdit} className="space-y-4 text-xs text-left">
+            {/* Nombre Comercial */}
+            <div>
+              <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
+                Nombre Del Comercio
+              </Label>
+              <Input
+                type="text"
+                required
+                value={editForm.displayName}
+                onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
+                className="bg-[var(--dsn-surface)] text-xs text-left"
+              />
             </div>
 
-            {/* Error Banner */}
-            {editError && (
-              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400 text-left">
-                {editError}
-              </div>
-            )}
+            {/* Slug */}
+            <div>
+              <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
+                Slug Del Identificador
+              </Label>
+              <Input
+                type="text"
+                required
+                value={editForm.slug}
+                onChange={(e) => setEditForm({ ...editForm, slug: e.target.value.toLowerCase().trim() })}
+                className="bg-[var(--dsn-surface)] font-mono text-xs text-left"
+              />
+            </div>
 
-            {/* Formulario */}
-            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs text-left">
-              {/* Nombre Comercial */}
+            {/* Propietario y Contacto en dos columnas */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
-                  Nombre Del Comercio
-                </label>
-                <input
+                <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
+                  Nombre Del Propietario
+                </Label>
+                <Input
                   type="text"
-                  required
-                  value={editForm.displayName}
-                  onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] text-left focus:border-[var(--dsn-accent)] focus:outline-none"
+                  value={editForm.ownerDisplayName}
+                  onChange={(e) => setEditForm({ ...editForm, ownerDisplayName: e.target.value })}
+                  className="bg-[var(--dsn-surface)] text-xs text-left"
                 />
               </div>
-
-              {/* Slug */}
               <div>
-                <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
-                  Slug Del Identificador
-                </label>
-                <input
-                  type="text"
+                <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
+                  Correo De Contacto
+                </Label>
+                <Input
+                  type="email"
                   required
-                  value={editForm.slug}
-                  onChange={(e) => setEditForm({ ...editForm, slug: e.target.value.toLowerCase().trim() })}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 font-mono text-xs text-[var(--dsn-text)] text-left focus:border-[var(--dsn-accent)] focus:outline-none"
+                  value={editForm.contactEmail}
+                  onChange={(e) => setEditForm({ ...editForm, contactEmail: e.target.value })}
+                  className="bg-[var(--dsn-surface)] text-xs text-left"
                 />
               </div>
+            </div>
 
-              {/* Propietario y Contacto en dos columnas */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
-                    Nombre Del Propietario
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.ownerDisplayName}
-                    onChange={(e) => setEditForm({ ...editForm, ownerDisplayName: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] text-left focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
-                    Correo De Contacto
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={editForm.contactEmail}
-                    onChange={(e) => setEditForm({ ...editForm, contactEmail: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] text-left focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Teléfono e Idioma */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <PhoneE164Input
-                    id="admin-edit-tenant-phone"
-                    label="Teléfono de Contacto"
-                    value={editForm.phone}
-                    locale={editForm.locale === "en" ? "en" : "es"}
-                    onChange={(nextVal) => setEditForm({ ...editForm, phone: nextVal })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
-                    Idioma Del Comercio
-                  </label>
-                  <select
-                    value={editForm.locale}
-                    onChange={(e) => setEditForm({ ...editForm, locale: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] text-left focus:border-[var(--dsn-accent)] focus:outline-none"
-                  >
-                    <option value="es">Español (es)</option>
-                    <option value="en">Inglés (en)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Plan y Célula */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
-                    Plan Suscrito
-                  </label>
-                  <select
-                    value={editForm.planId}
-                    onChange={(e) => setEditForm({ ...editForm, planId: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] text-left focus:border-[var(--dsn-accent)] focus:outline-none"
-                  >
-                    {availablePlans.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
-                    Célula De Datos Asignada
-                  </label>
-                  <select
-                    value={editForm.cellId}
-                    onChange={(e) => setEditForm({ ...editForm, cellId: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] text-left focus:border-[var(--dsn-accent)] focus:outline-none"
-                  >
-                    {availableCells.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.code} ({c.currentClients}/{c.maxClients})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Estado de Ciclo de Vida */}
+            {/* Teléfono e Idioma */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
-                  Estado Del Ciclo De Vida
-                </label>
-                <select
-                  value={editForm.lifecycleStatus}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      lifecycleStatus: e.target.value as "alta" | "activo" | "suspendido" | "baja",
-                    })
-                  }
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] text-left focus:border-[var(--dsn-accent)] focus:outline-none"
-                >
-                  <option value="activo">Activo</option>
-                  <option value="alta">En Alta / Onboarding</option>
-                  <option value="suspendido">Suspendido</option>
-                  <option value="baja">Baja</option>
-                </select>
+                <PhoneE164Input
+                  id="admin-edit-tenant-phone"
+                  label="Teléfono de Contacto"
+                  value={editForm.phone}
+                  locale={editForm.locale === "en" ? "en" : "es"}
+                  onChange={(nextVal) => setEditForm({ ...editForm, phone: nextVal })}
+                />
               </div>
+              <div>
+                <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
+                  Idioma Del Comercio
+                </Label>
+                <Select
+                  value={editForm.locale}
+                  onChange={(e) => setEditForm({ ...editForm, locale: e.target.value })}
+                  className="bg-[var(--dsn-surface)] text-xs text-left"
+                >
+                  <option value="es">Español (es)</option>
+                  <option value="en">Inglés (en)</option>
+                </Select>
+              </div>
+            </div>
 
-              {/* Botones de acción */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--dsn-border)]">
-                <button
-                  type="button"
-                  onClick={() => setEditModalOpen(false)}
-                  disabled={editLoading}
-                  className="min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-transparent px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
+            {/* Plan y Célula */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
+                  Plan Suscrito
+                </Label>
+                <Select
+                  value={editForm.planId}
+                  onChange={(e) => setEditForm({ ...editForm, planId: e.target.value })}
+                  className="bg-[var(--dsn-surface)] text-xs text-left"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={editLoading}
-                  className="min-h-[44px] inline-flex items-center gap-1.5 rounded-lg px-5 py-2 text-xs font-semibold text-white bg-[var(--dsn-accent)] hover:bg-[var(--dsn-accent-hover)] shadow-sm active:scale-95 transition-all disabled:opacity-50"
-                >
-                  {editLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin text-white" />
-                      <span>Guardando Cambios...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Check className="h-4 w-4 text-white" />
-                      <span>Guardar Cambios</span>
-                    </>
-                  )}
-                </button>
+                  {availablePlans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.code})
+                    </option>
+                  ))}
+                </Select>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+              <div>
+                <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
+                  Célula De Datos Asignada
+                </Label>
+                <Select
+                  value={editForm.cellId}
+                  onChange={(e) => setEditForm({ ...editForm, cellId: e.target.value })}
+                  className="bg-[var(--dsn-surface)] text-xs text-left"
+                >
+                  {availableCells.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.code} ({c.currentClients}/{c.maxClients})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+
+            {/* Estado de Ciclo de Vida */}
+            <div>
+              <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1 text-left">
+                Estado Del Ciclo De Vida
+              </Label>
+              <Select
+                value={editForm.lifecycleStatus}
+                onChange={(e) =>
+                  setEditForm({
+                    ...editForm,
+                    lifecycleStatus: e.target.value as "alta" | "activo" | "suspendido" | "baja",
+                  })
+                }
+                className="bg-[var(--dsn-surface)] text-xs text-left"
+              >
+                <option value="activo">Activo</option>
+                <option value="alta">En Alta / Onboarding</option>
+                <option value="suspendido">Suspendido</option>
+                <option value="baja">Baja</option>
+              </Select>
+            </div>
+
+            {/* Botones de acción */}
+            <DialogFooter className="pt-4 border-t border-[var(--dsn-border)]">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setEditModalOpen(false)}
+                disabled={editLoading}
+                className="min-h-[44px] text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={editLoading}
+                loading={editLoading}
+                loadingText="Guardando Cambios..."
+                className="min-h-[44px] text-xs"
+              >
+                <Check className="h-4 w-4" />
+                <span>Guardar Cambios</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* MODAL DE CONFIRMACIÓN DE BAJA CANÓNICO (Regla 4.17) */}
       <ConfirmationModal

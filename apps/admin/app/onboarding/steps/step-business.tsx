@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useMemo, useRef } from "react";
+import React, { useRef } from "react";
 import { ArrowRight, ImagePlus, Loader2, Store } from "lucide-react";
-import { getCountryAddressProfile, listCountryOptions } from "@mocter/domain/geo";
+import { getCountryAddressProfile } from "@mocter/domain/geo";
+import { Button, Input, Label, Select } from "@mocter/ui";
 import { PhoneE164Input } from "@/components/phone-e164-input";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
+import { useCountryOptions } from "@/lib/use-country-options";
 
 export interface StepBusinessProps {
   locale: AdminLocale;
@@ -64,7 +66,7 @@ export function StepBusiness({
 }: StepBusinessProps) {
   const dict = getAdminDictionary(locale).onboarding;
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const countryOptions = useMemo(() => listCountryOptions(locale), [locale]);
+  const countryOptions = useCountryOptions(locale, countryCode);
 
   return (
     <form
@@ -104,19 +106,17 @@ export function StepBusiness({
           </div>
         </div>
         <div>
-          <button
+          <Button
             type="button"
+            variant="secondary"
             disabled={uploadingLogo || loading}
+            loading={uploadingLogo}
             onClick={() => logoInputRef.current?.click()}
-            className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors disabled:opacity-50"
+            className="min-h-[42px] rounded-xl"
           >
-            {uploadingLogo ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ImagePlus className="h-4 w-4 text-[var(--dsn-accent)]" />
-            )}
+            {!uploadingLogo && <ImagePlus className="h-4 w-4 text-[var(--dsn-accent)]" aria-hidden="true" />}
             <span>{logoPreviewUrl ? dict.step1LogoChangeCta : dict.step1LogoSelectCta}</span>
-          </button>
+          </Button>
           <input
             ref={logoInputRef}
             type="file"
@@ -133,13 +133,10 @@ export function StepBusiness({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <label
-            htmlFor="onb-display-name"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-display-name" className="mb-1.5 text-sm font-semibold">
             {dict.step1DisplayNameLabel}
-          </label>
-          <input
+          </Label>
+          <Input
             id="onb-display-name"
             type="text"
             required
@@ -147,18 +144,15 @@ export function StepBusiness({
             value={displayName}
             onChange={(e) => onDisplayNameChange(e.target.value)}
             placeholder="Ej. Café de Origen La Montaña"
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 text-sm"
           />
         </div>
 
         <div className="sm:col-span-2">
-          <label
-            htmlFor="onb-slug"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-slug" className="mb-1.5 text-sm font-semibold">
             {dict.step1SlugLabel}
-          </label>
-          <input
+          </Label>
+          <Input
             id="onb-slug"
             type="text"
             required
@@ -166,7 +160,7 @@ export function StepBusiness({
             value={slug}
             onChange={(e) => onSlugChange(e.target.value)}
             placeholder="ej. cafe-la-montana"
-            className={`w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] px-3.5 py-2.5 font-mono text-sm focus:border-[var(--dsn-accent)] focus:outline-hidden ${
+            className={`min-h-[44px] rounded-xl px-3.5 py-2.5 font-mono text-sm ${
               isSlugReadOnly
                 ? "bg-[var(--dsn-surface-secondary)]/50 text-[var(--dsn-text-secondary)] cursor-not-allowed"
                 : "bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)]"
@@ -176,19 +170,16 @@ export function StepBusiness({
         </div>
 
         <div>
-          <label
-            htmlFor="onb-commercial-email"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-commercial-email" className="mb-1.5 text-sm font-semibold">
             {dict.step1CommercialEmailLabel}
-          </label>
-          <input
+          </Label>
+          <Input
             id="onb-commercial-email"
             type="email"
             value={commercialEmail}
             onChange={(e) => onCommercialEmailChange(e.target.value)}
             placeholder="ventas@mitienda.com"
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 text-sm"
           />
         </div>
 
@@ -204,13 +195,10 @@ export function StepBusiness({
         </div>
 
         <div>
-          <label
-            htmlFor="onb-country-code"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-country-code" className="mb-1.5 text-sm font-semibold">
             {locale === "en" ? "Operating Country" : "País de Operación"}
-          </label>
-          <select
+          </Label>
+          <Select
             id="onb-country-code"
             value={countryCode}
             onChange={(e) => {
@@ -220,45 +208,39 @@ export function StepBusiness({
               if (prof.defaultCurrency) onCurrencyChange(prof.defaultCurrency);
               if (prof.defaultTimezone) onTimezoneChange(prof.defaultTimezone);
             }}
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm"
           >
             {countryOptions.map((opt) => (
               <option key={opt.countryCode} value={opt.countryCode} className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
                 {opt.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="sm:col-span-2">
-          <label
-            htmlFor="onb-website"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-website" className="mb-1.5 text-sm font-semibold">
             {dict.step1WebsiteUrlLabel}
-          </label>
-          <input
+          </Label>
+          <Input
             id="onb-website"
             type="text"
             value={websiteUrl}
             onChange={(e) => onWebsiteUrlChange(e.target.value)}
             placeholder="https://mitienda.com"
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 text-sm"
           />
         </div>
 
         <div>
-          <label
-            htmlFor="onb-locale"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-locale" className="mb-1.5 text-sm font-semibold">
             {dict.step1LocaleLabel}
-          </label>
-          <select
+          </Label>
+          <Select
             id="onb-locale"
             value={locale}
             onChange={(e) => onLocaleChange(e.target.value === "en" ? "en" : "es")}
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm"
           >
             <option value="es" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
               Español
@@ -266,21 +248,18 @@ export function StepBusiness({
             <option value="en" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
               English
             </option>
-          </select>
+          </Select>
         </div>
 
         <div>
-          <label
-            htmlFor="onb-currency"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-currency" className="mb-1.5 text-sm font-semibold">
             {dict.step1CurrencyLabel}
-          </label>
-          <select
+          </Label>
+          <Select
             id="onb-currency"
             value={currency}
             onChange={(e) => onCurrencyChange(e.target.value)}
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm"
           >
             <option value="COP" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
               COP — Peso Colombiano
@@ -303,21 +282,18 @@ export function StepBusiness({
             <option value="EUR" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
               EUR — Euro
             </option>
-          </select>
+          </Select>
         </div>
 
         <div className="sm:col-span-2">
-          <label
-            htmlFor="onb-timezone"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-timezone" className="mb-1.5 text-sm font-semibold">
             {dict.step1TimezoneLabel}
-          </label>
-          <select
+          </Label>
+          <Select
             id="onb-timezone"
             value={timezone}
             onChange={(e) => onTimezoneChange(e.target.value)}
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm"
           >
             <option value="America/Bogota" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
               America/Bogota (UTC-5)
@@ -334,28 +310,22 @@ export function StepBusiness({
             <option value="Europe/Madrid" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
               Europe/Madrid (UTC+1)
             </option>
-          </select>
+          </Select>
         </div>
       </div>
 
       <div className="flex justify-end border-t border-[var(--dsn-border)] pt-4">
-        <button
+        <Button
           type="submit"
-          disabled={loading}
-          className="inline-flex min-h-[46px] w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[var(--dsn-accent)] px-6 py-2.5 text-sm font-bold text-[var(--dsn-accent-fg)] shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50"
+          variant="primary"
+          size="lg"
+          loading={loading}
+          loadingText={dict.savingLabel}
+          className="min-h-[46px] w-full sm:w-auto rounded-xl px-6 font-bold"
         >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>{dict.savingLabel}</span>
-            </>
-          ) : (
-            <>
-              <span>{dict.step1SubmitCta}</span>
-              <ArrowRight className="h-4 w-4" />
-            </>
-          )}
-        </button>
+          <span>{dict.step1SubmitCta}</span>
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        </Button>
       </div>
     </form>
   );

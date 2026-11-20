@@ -29,6 +29,7 @@ import { BreBQrService, defaultBreBQrService } from "./breb-qr.service";
 import { getReferralsService, type ReferralsService } from "./referrals.service";
 import {
   buildAdminBreBReviewUrl,
+  buildAdminPortalUrl,
   getNotificationDispatcherService,
 } from "./notification-dispatcher.service";
 
@@ -37,7 +38,6 @@ export type BillingReferralsFacade = Pick<
   "redeemCreditsFefoForInvoice" | "qualifyReferral"
 >;
 import { sendSystemNotificationEmail } from "./admin-dashboard.service";
-import { env } from "../utils/env";
 
 export const MAX_VOUCHER_SIZE_BYTES = 10 * 1024 * 1024; // 10 MiB
 
@@ -1205,8 +1205,7 @@ let defaultBillingServiceInstance: BillingService | null = null;
 
 function createDefaultNotificationDispatcher(): IBillingNotificationDispatcher {
   const dispatcher = getNotificationDispatcherService();
-  const baseOrigin = (env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
-  const billingUrl = baseOrigin ? `${baseOrigin}/workspace/billing` : "/workspace/billing";
+  const billingUrl = buildAdminPortalUrl("/workspace/billing");
 
   return {
     async dispatchPaymentSucceeded(params) {

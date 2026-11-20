@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { Alert, AlertDescription, Button, Checkbox, Input, Label, Select } from "@mocter/ui";
 
 export interface ProgramConfig {
   id: string;
@@ -211,31 +212,31 @@ export function ReferralManagementDashboard({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Reward Type */}
           <div>
-            <label htmlFor="rewardType" className="block text-sm font-medium mb-1.5">
+            <Label htmlFor="rewardType" className="mb-1.5 block text-sm font-medium">
               {t("rewardTypeLabel")}
-            </label>
-            <select
+            </Label>
+            <Select
               id="rewardType"
               value={config.rewardType}
               disabled={isReadOnly}
               onChange={(e) =>
                 setConfig({ ...config, rewardType: e.target.value as "fixed" | "percent" })
               }
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+              className="text-sm"
             >
               <option value="fixed">{t("rewardTypeFixed")}</option>
               <option value="percent">{t("rewardTypePercent")}</option>
-            </select>
+            </Select>
           </div>
 
           {/* Reward Value */}
           <div>
-            <label htmlFor="rewardValue" className="block text-sm font-medium mb-1.5">
+            <Label htmlFor="rewardValue" className="mb-1.5 block text-sm font-medium">
               {t("rewardValueLabel")} (
               {config.rewardType === "fixed" ? config.currency : "%"}
               )
-            </label>
-            <input
+            </Label>
+            <Input
               id="rewardValue"
               type="number"
               disabled={isReadOnly}
@@ -252,66 +253,66 @@ export function ReferralManagementDashboard({
                   rewardValue: config.rewardType === "fixed" ? val * 100 : val,
                 });
               }}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+              className="text-sm"
             />
           </div>
 
           {/* Currency */}
           <div>
-            <label htmlFor="currency" className="block text-sm font-medium mb-1.5">
+            <Label htmlFor="currency" className="mb-1.5 block text-sm font-medium">
               {t("currencyLabel")}
-            </label>
-            <select
+            </Label>
+            <Select
               id="currency"
               value={config.currency}
               disabled={isReadOnly}
               onChange={(e) => setConfig({ ...config, currency: e.target.value })}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+              className="text-sm"
             >
               <option value="COP">COP (Pesos Colombianos)</option>
               <option value="USD">USD (Dólares Estadounidenses)</option>
-            </select>
+            </Select>
           </div>
 
           {/* Attribution Days */}
           <div>
-            <label htmlFor="attributionDays" className="block text-sm font-medium mb-1.5">
+            <Label htmlFor="attributionDays" className="mb-1.5 block text-sm font-medium">
               {t("attributionDaysLabel")}
-            </label>
-            <input
+            </Label>
+            <Input
               id="attributionDays"
               type="number"
               disabled={isReadOnly}
               min="1"
               value={config.attributionDays}
               onChange={(e) => setConfig({ ...config, attributionDays: Number(e.target.value) })}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+              className="text-sm"
             />
           </div>
 
           {/* Credit Validity Days */}
           <div>
-            <label htmlFor="creditValidityDays" className="block text-sm font-medium mb-1.5">
+            <Label htmlFor="creditValidityDays" className="mb-1.5 block text-sm font-medium">
               {t("creditValidityDaysLabel")}
-            </label>
-            <input
+            </Label>
+            <Input
               id="creditValidityDays"
               type="number"
               disabled={isReadOnly}
               min="1"
               value={config.creditValidityDays}
               onChange={(e) => setConfig({ ...config, creditValidityDays: Number(e.target.value) })}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+              className="text-sm"
             />
           </div>
 
           {/* Cap Referrals Per Referrer */}
           <div className="space-y-2">
-            <label htmlFor="capReferrals" className="block text-sm font-medium mb-1.5">
+            <Label htmlFor="capReferrals" className="mb-1.5 block text-sm font-medium">
               {t("capReferralsLabel")}
-            </label>
+            </Label>
             <div className="flex items-center gap-3">
-              <input
+              <Input
                 id="capReferrals"
                 type="number"
                 disabled={isReadOnly || hasNoCap}
@@ -320,44 +321,46 @@ export function ReferralManagementDashboard({
                 onChange={(e) =>
                   setConfig({ ...config, capReferralsPerReferrer: Number(e.target.value) })
                 }
-                className="w-32 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+                className="w-32 text-sm"
               />
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <input
-                  type="checkbox"
+              <Label htmlFor="noCapCheckbox" className="flex cursor-pointer select-none items-center gap-2 text-sm font-normal">
+                <Checkbox
+                  id="noCapCheckbox"
                   disabled={isReadOnly}
                   checked={hasNoCap}
-                  onChange={(e) => {
-                    setHasNoCap(e.target.checked);
-                    if (e.target.checked) {
+                  onCheckedChange={(checked) => {
+                    const nextChecked = checked === true;
+                    setHasNoCap(nextChecked);
+                    if (nextChecked) {
                       setConfig({ ...config, capReferralsPerReferrer: null });
                     } else {
                       setConfig({ ...config, capReferralsPerReferrer: 10 });
                     }
                   }}
-                  className="rounded border-border text-primary focus:ring-primary h-4 w-4"
                 />
-                {t("noCap")}
-              </label>
+                <span>{t("noCap")}</span>
+              </Label>
             </div>
           </div>
         </div>
 
         {feedback && (
-          <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
-            {feedback}
-          </p>
+          <Alert variant="success" className="text-sm font-medium">
+            <AlertDescription className="text-inherit">{feedback}</AlertDescription>
+          </Alert>
         )}
 
         {!isReadOnly && (
           <div className="flex justify-end pt-4 border-t border-border">
-            <button
+            <Button
               type="submit"
-              disabled={isSaving}
-              className="px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+              variant="primary"
+              loading={isSaving}
+              loadingText="Guardando..."
+              className="px-6 text-sm"
             >
-              {isSaving ? "Guardando..." : t("saveButton")}
-            </button>
+              {t("saveButton")}
+            </Button>
           </div>
         )}
       </form>

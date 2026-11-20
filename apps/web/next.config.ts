@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   output: "standalone",
+  transpilePackages: ["@mocter/ui"],
   allowedDevOrigins: [
     "localhost",
     "127.0.0.1",

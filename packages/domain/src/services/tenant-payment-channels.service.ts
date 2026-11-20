@@ -1,6 +1,6 @@
 import { and, asc, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { withTenantCellTransaction } from "../db/cell-client";
+import { CellPoolError, withTenantCellTransaction } from "../db/cell-client";
 import {
   cellOrders,
   cellTenantPaymentChannels,
@@ -8,6 +8,7 @@ import {
 } from "../db/schemas/tenant/orders";
 import { cellClientBusinessInfo } from "../db/schemas/tenant/tenancy-catalog";
 import { ok, err, type Result } from "../types/result";
+import { appLogger } from "../utils/logger";
 import { isTenantProfileWriterRole } from "./tenant-profile.service";
 
 export const TENANT_PAYMENT_CHANNEL_CODES = [
@@ -312,13 +313,37 @@ function mapChannelDto(row: CellTenantPaymentChannel): TenantPaymentChannelDto {
  * - Protección histórica: canales ya referenciados en pedidos retornan `CHANNEL_USED_IN_ORDERS` (`409`).
  */
 export class TenantPaymentChannelsService {
-  constructor(
+  constructor (
     private readonly repo: ITenantPaymentChannelsRepository = new DrizzleTenantPaymentChannelsRepository(),
-  ) {}
+  ) { }
+
+  private handleCellPersistenceError<T>(operation: string, clientId: string, error: unknown): Result<T> {
+    const msg = error instanceof Error ? error.message : String(error);
+    const isCellError =
+      error instanceof CellPoolError || (error instanceof Error && error.name === "CellPoolError");
+    if (isCellError) {
+      appLogger.warn(`[TenantPaymentChannelsService.${operation}] Celda no disponible`, {
+        clientId,
+        error: msg,
+      });
+      return err(
+        "La celda de datos del comercio no está disponible temporalmente.",
+        "CELL_UNAVAILABLE",
+      );
+    }
+    appLogger.error(`[TenantPaymentChannelsService.${operation}] Error inesperado`, error, {
+      clientId,
+    });
+    return err("No fue posible procesar los canales de pago del comercio.", "DB_ERROR");
+  }
 
   async listChannels(clientId: string): Promise<Result<TenantPaymentChannelDto[]>> {
-    const rows = await this.repo.listByClient(clientId);
-    return ok(rows.map(mapChannelDto));
+    try {
+      const rows = await this.repo.listByClient(clientId);
+      return ok(rows.map(mapChannelDto));
+    } catch (error) {
+      return this.handleCellPersistenceError("listChannels", clientId, error);
+    }
   }
 
   async createChannel(
@@ -352,8 +377,12 @@ export class TenantPaymentChannelsService {
       );
     }
 
-    const created = await this.repo.create(clientId, data, actor);
-    return ok(mapChannelDto(created));
+    try {
+      const created = await this.repo.create(clientId, data, actor);
+      return ok(mapChannelDto(created));
+    } catch (error) {
+      return this.handleCellPersistenceError("createChannel", clientId, error);
+    }
   }
 
   async updateChannel(
@@ -388,12 +417,16 @@ export class TenantPaymentChannelsService {
       );
     }
 
-    const updated = await this.repo.update(clientId, channelId, data, actor);
-    if (!updated) {
-      return err("El canal de pago especificado no existe.", "CHANNEL_NOT_FOUND");
-    }
+    try {
+      const updated = await this.repo.update(clientId, channelId, data, actor);
+      if (!updated) {
+        return err("El canal de pago especificado no existe.", "CHANNEL_NOT_FOUND");
+      }
 
-    return ok(mapChannelDto(updated));
+      return ok(mapChannelDto(updated));
+    } catch (error) {
+      return this.handleCellPersistenceError("updateChannel", clientId, error);
+    }
   }
 
   async deleteChannel(
@@ -410,26 +443,30 @@ export class TenantPaymentChannelsService {
       );
     }
 
-    const existing = await this.repo.getById(clientId, channelId);
-    if (!existing) {
-      return err("El canal de pago especificado no existe.", "CHANNEL_NOT_FOUND");
+    try {
+      const existing = await this.repo.getById(clientId, channelId);
+      if (!existing) {
+        return err("El canal de pago especificado no existe.", "CHANNEL_NOT_FOUND");
+      }
+
+      const usedInOrders = await this.repo.isChannelUsedInOrders(clientId, {
+        id: existing.id,
+        channelCode: existing.channelCode,
+        displayName: existing.displayName,
+      });
+
+      if (usedInOrders) {
+        return err(
+          "Este canal de pago ya fue utilizado en pedidos históricos y no puede eliminarse físicamente. Inactívalo para conservar la trazabilidad.",
+          "CHANNEL_USED_IN_ORDERS",
+        );
+      }
+
+      await this.repo.deleteAndSyncSummary(clientId, channelId, actor);
+      return ok({ deleted: true, id: channelId });
+    } catch (error) {
+      return this.handleCellPersistenceError("deleteChannel", clientId, error);
     }
-
-    const usedInOrders = await this.repo.isChannelUsedInOrders(clientId, {
-      id: existing.id,
-      channelCode: existing.channelCode,
-      displayName: existing.displayName,
-    });
-
-    if (usedInOrders) {
-      return err(
-        "Este canal de pago ya fue utilizado en pedidos históricos y no puede eliminarse físicamente. Inactívalo para conservar la trazabilidad.",
-        "CHANNEL_USED_IN_ORDERS",
-      );
-    }
-
-    await this.repo.deleteAndSyncSummary(clientId, channelId, actor);
-    return ok({ deleted: true, id: channelId });
   }
 }
 

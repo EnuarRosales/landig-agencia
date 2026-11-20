@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
 import { CatalogQuotaBanner, type CatalogQuotaLimits } from "@/components/catalog-quota-banner";
+import { Badge, Button, Input, Label, Select } from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { calculateProductProfitability } from "@/lib/pricing-margin";
 
@@ -118,13 +119,10 @@ export function StepProduct({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label
-            htmlFor="onb-product-name"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-product-name" className="mb-1.5 text-sm font-semibold">
             {dict.step3NameLabel}
-          </label>
-          <input
+          </Label>
+          <Input
             id="onb-product-name"
             type="text"
             required
@@ -132,24 +130,21 @@ export function StepProduct({
             value={productName}
             onChange={(e) => onProductNameChange(e.target.value)}
             placeholder="Ej. Café Especial 500g"
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 text-sm"
           />
         </div>
 
         <div>
-          <label
-            htmlFor="onb-product-kind"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-product-kind" className="mb-1.5 text-sm font-semibold">
             {dict.step3KindLabel}
-          </label>
-          <select
+          </Label>
+          <Select
             id="onb-product-kind"
             value={productKind}
             onChange={(e) =>
               onProductKindChange(e.target.value as "physical" | "digital" | "service")
             }
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm"
           >
             <option value="physical" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
               {dict.step3KindPhysical}
@@ -160,17 +155,14 @@ export function StepProduct({
             <option value="service" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
               {dict.step3KindService}
             </option>
-          </select>
+          </Select>
         </div>
 
         <div>
-          <label
-            htmlFor="onb-product-cost"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-product-cost" className="mb-1.5 text-sm font-semibold">
             {dict.step3CostPriceLabel} ({currency})
-          </label>
-          <input
+          </Label>
+          <Input
             id="onb-product-cost"
             type="number"
             min="0"
@@ -178,18 +170,15 @@ export function StepProduct({
             value={costPriceInput}
             onChange={(e) => onCostPriceInputChange(e.target.value)}
             placeholder="0"
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 font-mono text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 font-mono text-sm"
           />
         </div>
 
         <div>
-          <label
-            htmlFor="onb-product-sale"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-product-sale" className="mb-1.5 text-sm font-semibold">
             {dict.step3SalePriceLabel} ({currency})
-          </label>
-          <input
+          </Label>
+          <Input
             id="onb-product-sale"
             type="number"
             required
@@ -198,7 +187,7 @@ export function StepProduct({
             value={salePriceInput}
             onChange={(e) => onSalePriceInputChange(e.target.value)}
             placeholder="85000"
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 font-mono text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 font-mono text-sm"
           />
         </div>
       </div>
@@ -222,10 +211,10 @@ export function StepProduct({
             <span>{dict.step3ProfitTitle}</span>
           </div>
           {profitability.isNegative && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-rose-500">
-              <AlertTriangle className="h-3.5 w-3.5" />
+            <Badge variant="error" className="text-[11px] font-semibold">
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{dict.step3ProfitNegativeWarning}</span>
-            </span>
+            </Badge>
           )}
         </div>
 
@@ -297,19 +286,17 @@ export function StepProduct({
         </div>
 
         <div>
-          <button
+          <Button
             type="button"
+            variant="secondary"
             disabled={uploadingCover || loading}
+            loading={uploadingCover}
             onClick={() => coverInputRef.current?.click()}
-            className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors disabled:opacity-50"
+            className="min-h-[42px] rounded-xl"
           >
-            {uploadingCover ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ImagePlus className="h-4 w-4 text-[var(--dsn-accent)]" />
-            )}
+            {!uploadingCover && <ImagePlus className="h-4 w-4 text-[var(--dsn-accent)]" aria-hidden="true" />}
             <span>{coverPreviewUrl ? dict.step3CoverChangeCta : dict.step3CoverSelectCta}</span>
-          </button>
+          </Button>
           <input
             ref={coverInputRef}
             type="file"
@@ -325,33 +312,29 @@ export function StepProduct({
       </div>
 
       <div className="flex flex-col-reverse gap-3 border-t border-[var(--dsn-border)] pt-4 sm:flex-row sm:justify-between">
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="lg"
           disabled={loading}
           onClick={onBack}
-          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-5 py-2.5 text-sm font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors"
+          className="rounded-xl bg-[var(--dsn-surface-secondary)]"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>{dict.backCta}</span>
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="submit"
-          disabled={loading}
-          className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-[var(--dsn-accent)] px-6 py-2.5 text-sm font-bold text-[var(--dsn-accent-fg)] shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50"
+          variant="primary"
+          size="lg"
+          loading={loading}
+          loadingText={dict.savingLabel}
+          className="min-h-[46px] rounded-xl px-6 font-bold"
         >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>{dict.savingLabel}</span>
-            </>
-          ) : (
-            <>
-              <span>{dict.step3SubmitCta}</span>
-              <ArrowRight className="h-4 w-4" />
-            </>
-          )}
-        </button>
+          <span>{dict.step3SubmitCta}</span>
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        </Button>
       </div>
     </form>
   );

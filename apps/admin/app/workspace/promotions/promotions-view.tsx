@@ -21,6 +21,7 @@ import type {
   PromotionListResultDto,
   PromotionScopeType,
 } from "@mocter/domain";
+import { Alert, AlertDescription, Badge, Button, Card, Select } from "@mocter/ui";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import {
   WorkspaceDataTable,
@@ -358,21 +359,25 @@ export function PromotionsView({
         align: "right",
         renderCell: (row) => (
           <div className="flex items-center justify-end gap-1.5">
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => handleOpenEdit(row)}
               title={dict.promotionsActionEdit}
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 text-xs font-medium text-[var(--dsn-text)] hover:border-[var(--dsn-accent)]"
+              className="h-8 min-h-0 px-2.5 text-xs font-medium"
             >
               <Edit3 className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
               <span className="hidden xl:inline">{dict.promotionsActionEdit}</span>
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setToggleTarget(row)}
               disabled={mutatingId === row.id}
               title={row.isActive ? dict.promotionsActionPause : dict.promotionsActionActivate}
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 text-xs font-medium text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] disabled:opacity-50"
+              className="h-8 min-h-0 px-2.5 text-xs font-medium"
             >
               {row.isActive ? (
                 <PauseCircle className="h-3.5 w-3.5 text-amber-500" />
@@ -382,17 +387,19 @@ export function PromotionsView({
               <span className="hidden xl:inline">
                 {row.isActive ? dict.promotionsActionPause : dict.promotionsActionActivate}
               </span>
-            </button>
+            </Button>
             {canDelete && (
-              <button
+              <Button
                 type="button"
+                variant="destructive"
+                size="sm"
                 onClick={() => setDeleteTarget(row)}
                 disabled={mutatingId === row.id}
                 title={dict.promotionsActionDelete}
-                className="inline-flex h-8 items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 text-xs font-medium text-rose-700 dark:text-rose-300 hover:bg-rose-500/20 disabled:opacity-50"
+                className="h-8 min-h-0 px-2.5"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              </Button>
             )}
           </div>
         ),
@@ -403,45 +410,38 @@ export function PromotionsView({
 
   return (
     <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--dsn-border)] pb-5">
+      <header className="flex flex-col justify-between gap-4 border-b border-[var(--dsn-border)] pb-5 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
+          <h1 className="text-xl font-bold tracking-tight text-[var(--dsn-text)] md:text-2xl">
             {dict.promotionsTitle}
           </h1>
-          <p className="mt-1 text-xs md:text-sm text-[var(--dsn-text-secondary)]">
+          <p className="mt-1 text-xs text-[var(--dsn-text-secondary)] md:text-sm">
             {dict.promotionsSubtitle}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={() => void fetchPromotions()}
             disabled={loading}
-            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 text-[var(--dsn-accent)] ${loading ? "animate-spin" : ""}`} />
             <span>{dict.promotionsRefresh}</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleOpenCreate}
-            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity"
-          >
+          </Button>
+          <Button type="button" onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             <span>{dict.promotionsCreateNew}</span>
-          </button>
+          </Button>
         </div>
       </header>
 
       {feedback && (
-        <div
+        <Alert
           role={feedback.type === "error" ? "alert" : "status"}
-          className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs font-medium ${
-            feedback.type === "success"
-              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
-              : "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-200"
-          }`}
+          variant={feedback.type === "success" ? "success" : "error"}
+          className="flex items-center justify-between gap-3"
         >
           <div className="flex items-center gap-2">
             {feedback.type === "success" ? (
@@ -449,56 +449,58 @@ export function PromotionsView({
             ) : (
               <AlertTriangle className="h-4 w-4 shrink-0" />
             )}
-            <span>{feedback.message}</span>
+            <AlertDescription>{feedback.message}</AlertDescription>
           </div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setFeedback(null)}
-            className="text-xs underline opacity-80 hover:opacity-100"
+            className="h-auto px-2 py-0.5 text-xs underline"
           >
             {dict.promotionsCancel}
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
 
       {/* 4 Tarjetas KPI */}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs font-medium text-[var(--dsn-text-secondary)]">
             <span>{dict.promotionsKpiActive}</span>
             <Tag className="h-4 w-4 text-emerald-500" />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono text-[var(--dsn-text)]">
+          <div className="mt-2 font-mono text-2xl font-bold text-[var(--dsn-text)]">
             {listData.summary.activeCount}
           </div>
-        </div>
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+        </Card>
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs font-medium text-[var(--dsn-text-secondary)]">
             <span>{dict.promotionsKpiScheduled}</span>
             <CalendarClock className="h-4 w-4 text-sky-500" />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono text-[var(--dsn-text)]">
+          <div className="mt-2 font-mono text-2xl font-bold text-[var(--dsn-text)]">
             {listData.summary.scheduledCount}
           </div>
-        </div>
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+        </Card>
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs font-medium text-[var(--dsn-text-secondary)]">
             <span>{dict.promotionsKpiProductsOnOffer}</span>
             <CheckCircle2 className="h-4 w-4 text-[var(--dsn-accent)]" />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono text-[var(--dsn-text)]">
+          <div className="mt-2 font-mono text-2xl font-bold text-[var(--dsn-text)]">
             {listData.summary.productsOnOfferTodayCount}
           </div>
-        </div>
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+        </Card>
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs font-medium text-[var(--dsn-text-secondary)]">
             <span>{dict.promotionsKpiPausedOrEnded}</span>
             <PauseCircle className="h-4 w-4 text-amber-500" />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono text-[var(--dsn-text)]">
+          <div className="mt-2 font-mono text-2xl font-bold text-[var(--dsn-text)]">
             {listData.summary.pausedCount + listData.summary.expiredOrDepletedCount}
           </div>
-        </div>
+        </Card>
       </section>
 
       <WorkspaceDataTable
@@ -528,7 +530,7 @@ export function PromotionsView({
         }}
         filterSlot={
           <div className="flex flex-wrap items-center gap-2">
-            <select
+            <Select
               aria-label={dict.promotionsColStatus}
               value={statusFilter}
               onChange={(e) => {
@@ -537,7 +539,7 @@ export function PromotionsView({
                 setPage(1);
                 void fetchPromotions({ status: next, page: 1 });
               }}
-              className="min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-1.5 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+              className="w-auto min-h-[38px] text-xs"
             >
               <option value="all">{dict.promotionsFilterAllStatuses}</option>
               <option value="active">{dict.promotionsStatusActive}</option>
@@ -545,8 +547,8 @@ export function PromotionsView({
               <option value="paused">{dict.promotionsStatusPaused}</option>
               <option value="expired">{dict.promotionsStatusExpired}</option>
               <option value="depleted">{dict.promotionsStatusDepleted}</option>
-            </select>
-            <select
+            </Select>
+            <Select
               aria-label={dict.promotionsColScope}
               value={scopeFilter}
               onChange={(e) => {
@@ -555,13 +557,13 @@ export function PromotionsView({
                 setPage(1);
                 void fetchPromotions({ scopeType: next, page: 1 });
               }}
-              className="min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-1.5 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+              className="w-auto min-h-[38px] text-xs"
             >
               <option value="all">{dict.promotionsFilterAllScopes}</option>
               <option value="all_catalog">{dict.promotionsScopeAllCatalog}</option>
               <option value="category">{dict.promotionsScopeCategory}</option>
               <option value="product">{dict.promotionsScopeProduct}</option>
-            </select>
+            </Select>
           </div>
         }
         emptyState={{
@@ -569,14 +571,10 @@ export function PromotionsView({
           title: dict.promotionsEmptyTitle,
           description: dict.promotionsEmptyDescription,
           action: (
-            <button
-              type="button"
-              onClick={handleOpenCreate}
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white"
-            >
+            <Button type="button" onClick={handleOpenCreate}>
               <Plus className="h-4 w-4" />
               <span>{dict.promotionsCreateNew}</span>
-            </button>
+            </Button>
           ),
         }}
       />

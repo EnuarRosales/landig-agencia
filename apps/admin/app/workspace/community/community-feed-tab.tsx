@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
+  AlertTriangle,
   Check,
   CheckCircle2,
   Copy,
@@ -12,16 +14,70 @@ import {
   Sparkles,
   Tag,
   TrendingUp,
-  X,
   XCircle,
 } from "lucide-react";
 import type {
+  AdoptionPlanEligibilityDto,
   CommunityFeedCatalogPage,
   CommunityFeedItemDto,
+  PlanQuotaViolationDto,
   TenantCommunityDetailDto,
 } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { formatCommunityMoney, readApiError } from "./_types";
+
+function formatBytesUi(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function describePlanViolation(v: PlanQuotaViolationDto, locale: AdminLocale): string {
+  const isEn = locale === "en";
+  if (v.dimension === "products") {
+    return isEn
+      ? `Catalog Products (products): using ${v.currentUsed} of ${v.limitValue}, requires +${v.requiredDelta}.`
+      : `Productos en Catálogo (products): usas ${v.currentUsed} de ${v.limitValue} permitido(s), requiere +${v.requiredDelta}.`;
+  }
+  if (v.dimension === "storage_bytes") {
+    return isEn
+      ? `Storage Space (storage_bytes): using ${formatBytesUi(v.currentUsed)} of ${formatBytesUi(v.limitValue)}, requires +${formatBytesUi(v.requiredDelta)}.`
+      : `Almacenamiento Disponible (storage_bytes): usas ${formatBytesUi(v.currentUsed)} de ${formatBytesUi(v.limitValue)}, requiere +${formatBytesUi(v.requiredDelta)}.`;
+  }
+  const labelsEs: Record<string, string> = {
+    images_per_product: "Imágenes por Producto",
+    videos_per_product: "Videos por Producto",
+    audios_per_product: "Audios por Producto",
+    pdfs_per_product: "PDFs por Producto",
+  };
+  const labelsEn: Record<string, string> = {
+    images_per_product: "Images per Product",
+    videos_per_product: "Videos per Product",
+    audios_per_product: "Audios per Product",
+    pdfs_per_product: "PDFs per Product",
+  };
+  const label = isEn
+    ? labelsEn[v.dimension] ?? v.dimension
+    : labelsEs[v.dimension] ?? v.dimension;
+  return isEn
+    ? `${label} (${v.dimension}): product requires ${v.requiredDelta}, plan maximum is ${v.limitValue}.`
+    : `${label} (${v.dimension}): el producto requiere ${v.requiredDelta} y tu plan permite máximo ${v.limitValue}.`;
+}
 
 interface CommunityFeedTabProps {
   communities: TenantCommunityDetailDto[];
@@ -70,10 +126,98 @@ export function CommunityFeedTab({
   );
   const [retainLink, setRetainLink] = useState(true);
   const [adopting, setAdopting] = useState(false);
+  const [adoptModalError, setAdoptModalError] = useState<string | null>(null);
+  const [eligibilityResult, setEligibilityResult] = useState<{
+    key: string;
+    data: AdoptionPlanEligibilityDto | null;
+    violations: PlanQuotaViolationDto[];
+    error: string | null;
+  } | null>(null);
+  const [adoptPostViolations, setAdoptPostViolations] = useState<PlanQuotaViolationDto[] | null>(
+    null,
+  );
+
+  const expectedEligibilityKey = adoptTarget
+    ? `${adoptTarget.shareId}:${includeMediaMode}`
+    : null;
+  const checkingEligibility = Boolean(
+    expectedEligibilityKey && eligibilityResult?.key !== expectedEligibilityKey,
+  );
+  const adoptEligibility =
+    expectedEligibilityKey && eligibilityResult?.key === expectedEligibilityKey
+      ? eligibilityResult.data
+      : null;
+  const adoptViolations =
+    adoptPostViolations ??
+    (expectedEligibilityKey && eligibilityResult?.key === expectedEligibilityKey
+      ? eligibilityResult.violations
+      : []);
+  const effectiveAdoptError =
+    adoptModalError ??
+    (expectedEligibilityKey && eligibilityResult?.key === expectedEligibilityKey
+      ? eligibilityResult.error
+      : null);
 
   const loadFeed = useCallback(() => {
     setRefreshTick((t) => t + 1);
   }, []);
+
+  // Pre-evalúa capacidades del plan del inquilino en tiempo real al abrir el modal o cambiar el modo de medios
+  useEffect(() => {
+    if (!adoptTarget || !expectedEligibilityKey) return;
+    let active = true;
+    const targetKey = expectedEligibilityKey;
+
+    fetch(
+      `/api/tenant/community/shares/${adoptTarget.shareId}/adopt?includeMediaMode=${encodeURIComponent(
+        includeMediaMode,
+      )}`,
+      { credentials: "include" },
+    )
+      .then(async (res) => {
+        if (!active) return;
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          setEligibilityResult({
+            key: targetKey,
+            data: null,
+            violations: Array.isArray(body?.issues) ? body.issues : [],
+            error: typeof body?.detail === "string" ? body.detail : null,
+          });
+          return;
+        }
+        if (body?.ok && body?.data && typeof body.data.allowed === "boolean") {
+          const data = body.data as AdoptionPlanEligibilityDto;
+          setEligibilityResult({
+            key: targetKey,
+            data,
+            violations: Array.isArray(data.violations) ? data.violations : [],
+            error: null,
+          });
+        } else {
+          setEligibilityResult({
+            key: targetKey,
+            data: null,
+            violations: [],
+            error: null,
+          });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setEligibilityResult({
+            key: targetKey,
+            data: null,
+            violations: [],
+            error: null,
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [adoptTarget, includeMediaMode, expectedEligibilityKey]);
 
   useEffect(() => {
     let active = true;
@@ -126,6 +270,9 @@ export function CommunityFeedTab({
   ]);
 
   function openAdoptModal(item: CommunityFeedItemDto) {
+    setAdoptModalError(null);
+    setEligibilityResult(null);
+    setAdoptPostViolations(null);
     setAdoptTarget(item);
     setSalePriceInput(String(Math.round(item.suggestedPriceCents / 100)));
     setCostPriceInput(String(Math.round((item.wholesaleCostCents ?? 0) / 100)));
@@ -150,16 +297,17 @@ export function CommunityFeedTab({
       adoptTarget.minResalePriceCents !== null &&
       saleCents < adoptTarget.minResalePriceCents
     ) {
-      onErrorToast(
-        `${dict.minResaleLabel}: ${formatCommunityMoney(
-          adoptTarget.minResalePriceCents,
-          adoptTarget.currency,
-          locale,
-        )}`,
-      );
+      const msg = `${dict.minResaleLabel}: ${formatCommunityMoney(
+        adoptTarget.minResalePriceCents,
+        adoptTarget.currency,
+        locale,
+      )}`;
+      setAdoptModalError(msg);
+      onErrorToast(msg);
       return;
     }
 
+    setAdoptModalError(null);
     setAdopting(true);
     try {
       const res = await fetch(`/api/tenant/community/shares/${adoptTarget.shareId}/adopt`, {
@@ -178,16 +326,31 @@ export function CommunityFeedTab({
       });
 
       if (!res.ok) {
-        onErrorToast(await readApiError(res, "No se pudo clonar el producto."));
+        const errBody = await res.clone().json().catch(() => null);
+        if (Array.isArray(errBody?.issues)) {
+          setAdoptPostViolations(errBody.issues as PlanQuotaViolationDto[]);
+        }
+        const errMsg =
+          typeof errBody?.detail === "string" && errBody.detail.trim()
+            ? errBody.detail
+            : await readApiError(res, "No se pudo clonar el producto.");
+        setAdoptModalError(errMsg);
+        onErrorToast(errMsg);
         return;
       }
 
       const json = await res.json();
       const skipped = json.data?.skippedMedia?.length ?? 0;
       const clonedName = adoptTarget.name;
+
+      // Cierre inmediato del modal antes de refrescar listados en segundo plano
       setAdoptTarget(null);
-      await loadFeed();
-      await onDataMutated();
+      setAdoptModalError(null);
+      setEligibilityResult(null);
+      setAdoptPostViolations(null);
+
+      loadFeed();
+      void onDataMutated().catch(() => {});
 
       onSuccessToast(
         skipped > 0
@@ -199,7 +362,9 @@ export function CommunityFeedTab({
             : `"${clonedName}" clonado a tu catálogo correctamente.`,
       );
     } catch {
-      onErrorToast(dict.networkErrorClone);
+      const netErr = dict.networkErrorClone;
+      setAdoptModalError(netErr);
+      onErrorToast(netErr);
     } finally {
       setAdopting(false);
     }
@@ -273,10 +438,10 @@ export function CommunityFeedTab({
       </div>
 
       {/* Barra de filtros */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-3.5">
-        <div className="md:col-span-4 relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--dsn-text-secondary)]" />
-          <input
+      <div className="grid grid-cols-1 gap-3 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-3.5 md:grid-cols-12">
+        <div className="relative md:col-span-4">
+          <Search className="absolute top-2.5 left-3 h-4 w-4 text-[var(--dsn-text-secondary)]" />
+          <Input
             type="text"
             value={searchQ}
             onChange={(e) => {
@@ -284,18 +449,18 @@ export function CommunityFeedTab({
               setPage(1);
             }}
             placeholder={dict.searchCatalogPlaceholder}
-            className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] pl-9 pr-3 py-2 text-xs text-[var(--dsn-text)]"
+            className="h-9 py-2 pr-3 pl-9 text-xs"
           />
         </div>
 
         <div className="md:col-span-2">
-          <select
+          <Select
             value={categoryFilter}
             onChange={(e) => {
               setCategoryFilter(e.target.value);
               setPage(1);
             }}
-            className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
+            className="h-9 text-xs"
           >
             <option value="all">{dict.allCategoriesOption}</option>
             {(catalog?.categories ?? []).map((c) => (
@@ -303,58 +468,58 @@ export function CommunityFeedTab({
                 {c}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="md:col-span-2">
-          <select
+          <Select
             value={compFilter}
             onChange={(e) => {
               setCompFilter(e.target.value as "all" | "simple" | "combo");
               setPage(1);
             }}
-            className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
+            className="h-9 text-xs"
           >
             <option value="all">{dict.allCompositionsOption}</option>
             <option value="simple">{dict.simpleTypeLabel}</option>
             <option value="combo">{dict.comboTypeLabel}</option>
-          </select>
+          </Select>
         </div>
 
         <div className="md:col-span-2">
-          <select
+          <Select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
+            className="h-9 text-xs"
           >
             <option value="recent">{dict.sortRecent}</option>
             <option value="popular">{dict.sortPopular}</option>
             <option value="name">{dict.sortName}</option>
             <option value="suggestedPrice">{dict.sortPrice}</option>
-          </select>
+          </Select>
         </div>
 
-        <div className="md:col-span-2 flex items-center justify-between gap-2">
-          <label className="inline-flex items-center gap-1.5 text-xs text-[var(--dsn-text)] cursor-pointer">
-            <input
-              type="checkbox"
+        <div className="flex items-center justify-between gap-2 md:col-span-2">
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-[var(--dsn-text)]">
+            <Checkbox
               checked={onlyNotAdopted}
-              onChange={(e) => {
-                setOnlyNotAdopted(e.target.checked);
+              onCheckedChange={(checked) => {
+                setOnlyNotAdopted(checked === true);
                 setPage(1);
               }}
-              className="accent-[var(--dsn-accent)]"
             />
             <span>{dict.onlyNewToggle}</span>
           </label>
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="icon"
             onClick={() => void loadFeed()}
             aria-label="Actualizar"
-            className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-2 text-[var(--dsn-accent)]"
+            className="h-8 w-8"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          </button>
+            <RefreshCw className={`h-3.5 w-3.5 text-[var(--dsn-accent)] ${loading ? "animate-spin" : ""}`} />
+          </Button>
         </div>
       </div>
 
@@ -538,36 +703,35 @@ export function CommunityFeedTab({
               </div>
 
               {/* Pie / Acciones */}
-              <div className="border-t border-[var(--dsn-border)] p-3.5 flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2 border-t border-[var(--dsn-border)] p-3.5">
                 {item.isOwnShare ? (
                   <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--dsn-text-secondary)]">
                     <CheckCircle2 className="h-4 w-4 text-[var(--dsn-accent)]" />
                     {dict.ownShareBadge}
                   </span>
                 ) : item.alreadyAdopted ? (
-                  <button
+                  <Button
                     type="button"
+                    variant={item.hasUpdateAvailable ? "warning" : "secondary"}
+                    size="sm"
                     onClick={onAdoptedRedirectToClones}
-                    className={`w-full inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold ${
-                      item.hasUpdateAvailable
-                        ? "bg-amber-500 text-white"
-                        : "border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)]"
-                    }`}
+                    className="w-full"
                   >
                     <CheckCircle2 className="h-3.5 w-3.5" />
                     <span>
                       {item.hasUpdateAvailable ? dict.updateAvailableBadge : dict.adoptedBadge}
                     </span>
-                  </button>
+                  </Button>
                 ) : isOwner ? (
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
                     onClick={() => openAdoptModal(item)}
-                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-3.5 py-2 text-xs font-semibold text-white hover:opacity-90"
+                    className="w-full"
                   >
                     <Copy className="h-3.5 w-3.5" />
                     <span>{dict.cloneAction}</span>
-                  </button>
+                  </Button>
                 ) : (
                   <span className="text-[11px] text-[var(--dsn-text-secondary)]">
                     {locale === "en" ? "Owner action required" : "Solo propietario"}
@@ -586,175 +750,266 @@ export function CommunityFeedTab({
             {page} / {catalog.totalPages} ({catalog.total})
           </span>
           <div className="flex gap-2">
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] disabled:opacity-40"
             >
               {locale === "en" ? "Previous" : "Anterior"}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               disabled={page >= catalog.totalPages}
               onClick={() => setPage((p) => p + 1)}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] disabled:opacity-40"
             >
               {locale === "en" ? "Next" : "Siguiente"}
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {/* Modal de Clonación (se cierra automáticamente al completar) */}
-      {adoptTarget && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+      <Dialog
+        open={Boolean(adoptTarget)}
+        onOpenChange={(open) => {
+          if (!open && !adopting) setAdoptTarget(null);
+        }}
+      >
+        <DialogContent
+          className="max-h-[90vh] w-full max-w-lg overflow-y-auto p-5"
+          closeAriaLabel={locale === "en" ? "Cancel" : "Cancelar"}
+          disableEscapeKeyDown={adopting}
+          disableInteractOutside={adopting}
         >
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
+          {adoptTarget && (
+            <>
+              <DialogHeader className="pr-8">
+                <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
                   {dict.adoptModalTitle}
-                </h3>
-                <p className="text-xs text-[var(--dsn-text-secondary)]">
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
                   {dict.adoptModalSubtitle}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => !adopting && setAdoptTarget(null)}
-                className="rounded-lg p-1 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+                </DialogDescription>
+              </DialogHeader>
 
-            <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-3 text-xs space-y-1">
-              <div className="font-semibold text-[var(--dsn-text)]">
-                {adoptTarget.name} (v{adoptTarget.currentVersion})
-              </div>
-              <div className="text-[var(--dsn-text-secondary)]">
-                {adoptTarget.sharerDisplayName} · {adoptTarget.organizationName}
-              </div>
-              {adoptTarget.minResalePriceCents !== null && (
-                <div className="text-[11px] font-medium text-[var(--dsn-accent)]">
-                  {dict.minResaleLabel}:{" "}
-                  {formatCommunityMoney(adoptTarget.minResalePriceCents, adoptTarget.currency, locale)}
+              <div className="space-y-1 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-3 text-xs">
+                <div className="font-semibold text-[var(--dsn-text)]">
+                  {adoptTarget.name} (v{adoptTarget.currentVersion})
                 </div>
-              )}
-            </div>
-
-            <form onSubmit={handleConfirmAdopt} className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block text-xs font-medium text-[var(--dsn-text)]">
-                    {dict.adoptSalePriceLabel} ({adoptTarget.currency})
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    required
-                    value={salePriceInput}
-                    onChange={(e) => setSalePriceInput(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                  />
+                <div className="text-[var(--dsn-text-secondary)]">
+                  {adoptTarget.sharerDisplayName} · {adoptTarget.organizationName}
                 </div>
-                <div className="space-y-1">
-                  <label className="block text-xs font-medium text-[var(--dsn-text)]">
-                    {dict.adoptCostPriceLabel} ({adoptTarget.currency})
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    required
-                    value={costPriceInput}
-                    onChange={(e) => setCostPriceInput(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {adoptTarget.kind === "physical" && adoptTarget.compositionType === "simple" && (
-                  <div className="space-y-1">
-                    <label className="block text-xs font-medium text-[var(--dsn-text)]">
-                      {dict.adoptInitialStockLabel}
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={initialStockInput}
-                      onChange={(e) => setInitialStockInput(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                    />
+                {adoptTarget.minResalePriceCents !== null && (
+                  <div className="text-[11px] font-medium text-[var(--dsn-accent)]">
+                    {dict.minResaleLabel}:{" "}
+                    {formatCommunityMoney(adoptTarget.minResalePriceCents, adoptTarget.currency, locale)}
                   </div>
                 )}
-                <div className="space-y-1">
-                  <label className="block text-xs font-medium text-[var(--dsn-text)]">
-                    {dict.adoptStatusLabel}
-                  </label>
-                  <select
-                    value={initialStatus}
-                    onChange={(e) => setInitialStatus(e.target.value as "active" | "draft")}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                  >
-                    <option value="active">{dict.adoptStatusActive}</option>
-                    <option value="draft">{dict.adoptStatusDraft}</option>
-                  </select>
+              </div>
+
+              {/* Evaluación de capacidades del plan vigente (RN-SPEC-15-04) */}
+              {checkingEligibility ? (
+                <div className="flex items-center gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 px-3 py-2 text-[11px] text-[var(--dsn-text-secondary)]">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-[var(--dsn-accent)]" />
+                  <span>{dict.adoptCheckingPlan}</span>
                 </div>
-              </div>
+              ) : (
+                adoptEligibility && (
+                  <div className="grid grid-cols-1 gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 px-3 py-2 text-[11px] sm:grid-cols-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[var(--dsn-text-secondary)]">
+                        {dict.adoptProductsQuotaLabel}:
+                      </span>
+                      <span
+                        className={`font-semibold ${
+                          adoptEligibility.violations.some((v) => v.dimension === "products")
+                            ? "text-rose-600 dark:text-rose-400"
+                            : "text-[var(--dsn-text)]"
+                        }`}
+                      >
+                        {adoptEligibility.summary.productsUsed} (+{adoptEligibility.summary.productsNeeded}) /{" "}
+                        {adoptEligibility.summary.productsLimit !== null
+                          ? adoptEligibility.summary.productsLimit
+                          : dict.adoptUnlimitedLabel}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[var(--dsn-text-secondary)]">
+                        {dict.adoptStorageQuotaLabel}:
+                      </span>
+                      <span
+                        className={`font-semibold ${
+                          adoptEligibility.violations.some((v) => v.dimension === "storage_bytes")
+                            ? "text-rose-600 dark:text-rose-400"
+                            : "text-[var(--dsn-text)]"
+                        }`}
+                      >
+                        {formatBytesUi(adoptEligibility.summary.storageUsedBytes)} (+
+                        {formatBytesUi(adoptEligibility.summary.storageNeededBytes)}) /{" "}
+                        {adoptEligibility.summary.storageLimitBytes !== null
+                          ? formatBytesUi(adoptEligibility.summary.storageLimitBytes)
+                          : dict.adoptUnlimitedLabel}
+                      </span>
+                    </div>
+                  </div>
+                )
+              )}
 
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-[var(--dsn-text)]">
-                  {dict.adoptMediaModeLabel}
+              {(adoptViolations.length > 0 || effectiveAdoptError) && (
+                <Alert variant="destructive" className="text-xs">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription className="space-y-2 text-xs">
+                    {adoptViolations.length > 0 ? (
+                      <>
+                        <p className="font-semibold">{dict.adoptPlanBlockedTitle}</p>
+                        <ul className="list-disc space-y-1 pl-4">
+                          {adoptViolations.map((v) => (
+                            <li key={v.dimension}>{describePlanViolation(v, locale)}</li>
+                          ))}
+                        </ul>
+                        {!adoptViolations.some((v) => v.dimension === "products") && (
+                          <p className="text-[11px] opacity-90">{dict.adoptMediaOnlyHint}</p>
+                        )}
+                        <div className="pt-1">
+                          <Link
+                            href="/workspace/billing"
+                            className="inline-flex items-center rounded-md border border-current px-2.5 py-1 text-[11px] font-semibold hover:opacity-80"
+                          >
+                            {dict.adoptUpgradePlanCta}
+                          </Link>
+                        </div>
+                      </>
+                    ) : (
+                      <p>{effectiveAdoptError}</p>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <form onSubmit={handleConfirmAdopt} className="space-y-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="block text-xs font-medium">
+                      {dict.adoptSalePriceLabel} ({adoptTarget.currency})
+                    </Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="any"
+                      required
+                      value={salePriceInput}
+                      onChange={(e) => setSalePriceInput(e.target.value)}
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="block text-xs font-medium">
+                      {dict.adoptCostPriceLabel} ({adoptTarget.currency})
+                    </Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="any"
+                      required
+                      value={costPriceInput}
+                      onChange={(e) => setCostPriceInput(e.target.value)}
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {adoptTarget.kind === "physical" && adoptTarget.compositionType === "simple" && (
+                    <div className="space-y-1">
+                      <Label className="block text-xs font-medium">
+                        {dict.adoptInitialStockLabel}
+                      </Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={initialStockInput}
+                        onChange={(e) => setInitialStockInput(e.target.value)}
+                        className="text-xs"
+                      />
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <Label className="block text-xs font-medium">
+                      {dict.adoptStatusLabel}
+                    </Label>
+                    <Select
+                      value={initialStatus}
+                      onChange={(e) => setInitialStatus(e.target.value as "active" | "draft")}
+                      className="text-xs"
+                    >
+                      <option value="active">{dict.adoptStatusActive}</option>
+                      <option value="draft">{dict.adoptStatusDraft}</option>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="block text-xs font-medium">
+                    {dict.adoptMediaModeLabel}
+                  </Label>
+                  <Select
+                    value={includeMediaMode}
+                    onChange={(e) => {
+                      setAdoptModalError(null);
+                      setAdoptPostViolations(null);
+                      setIncludeMediaMode(e.target.value as typeof includeMediaMode);
+                    }}
+                    className="text-xs"
+                  >
+                    <option value="all_compatible">{dict.adoptMediaAll}</option>
+                    <option value="cover_only">{dict.adoptMediaCover}</option>
+                    <option value="none">{dict.adoptMediaNone}</option>
+                  </Select>
+                </div>
+
+                <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-3 text-xs text-[var(--dsn-text)]">
+                  <Checkbox
+                    checked={retainLink}
+                    onCheckedChange={(checked) => setRetainLink(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <span>{dict.adoptRetainLinkLabel}</span>
                 </label>
-                <select
-                  value={includeMediaMode}
-                  onChange={(e) => setIncludeMediaMode(e.target.value as typeof includeMediaMode)}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                >
-                  <option value="all_compatible">{dict.adoptMediaAll}</option>
-                  <option value="cover_only">{dict.adoptMediaCover}</option>
-                  <option value="none">{dict.adoptMediaNone}</option>
-                </select>
-              </div>
 
-              <label className="flex items-start gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-3 text-xs text-[var(--dsn-text)] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={retainLink}
-                  onChange={(e) => setRetainLink(e.target.checked)}
-                  className="mt-0.5 accent-[var(--dsn-accent)]"
-                />
-                <span>{dict.adoptRetainLinkLabel}</span>
-              </label>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  disabled={adopting}
-                  onClick={() => setAdoptTarget(null)}
-                  className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)]"
-                >
-                  {locale === "en" ? "Cancel" : "Cancelar"}
-                </button>
-                <button
-                  type="submit"
-                  disabled={adopting}
-                  className="rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {adopting ? dict.adoptCloningCta : dict.adoptConfirmCta}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                <DialogFooter className="pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={adopting}
+                    onClick={() => {
+                      setAdoptTarget(null);
+                      setAdoptModalError(null);
+                    }}
+                  >
+                    {locale === "en" ? "Cancel" : "Cancelar"}
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={
+                      adopting ||
+                      checkingEligibility ||
+                      (adoptEligibility !== null && !adoptEligibility.allowed)
+                    }
+                    loading={adopting}
+                    loadingText={dict.adoptCloningCta}
+                  >
+                    {dict.adoptConfirmCta}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

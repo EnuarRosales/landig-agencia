@@ -552,5 +552,98 @@ describe("SPEC-15 · Comunidades, Liderazgo, Multi-Comunidad, Clonación Segura 
         expect(deniedAgent.code).toBe("FORBIDDEN_AGENT_CANNOT_VIEW_AGGREGATED");
       }
     });
+
+    it("T-13 · bloquea clonación antes de escribir cuando excede capacidades del plan e informa variables exactas", async () => {
+      const storeMock = {
+        findShareWithLatestVersion: vi.fn().mockResolvedValue({
+          share: {
+            id: "share-quota-1",
+            organizationId: "org-1",
+            sharerClientId: "client-leader",
+            status: "active",
+            moderationStatus: "approved",
+          },
+          latestVersion: {
+            version: 1,
+            snapshot: {
+              id: "prod-1",
+              name: "Hidrolavadora Pro",
+              description: "Equipo industrial",
+              priceCents: 15000000,
+              suggestedPriceCents: 15000000,
+              wholesaleCostCents: 9000000,
+              minResalePriceCents: 12500000,
+              currency: "COP",
+            },
+          },
+        }),
+        getOrganizationAndMembership: vi.fn().mockResolvedValue({
+          org: { id: "org-1", status: "active" },
+          membership: { role: "member", status: "active" },
+        }),
+        listAdoptionsForClient: vi.fn().mockResolvedValue([]),
+        evaluateAdoptionPlanEligibility: vi.fn().mockResolvedValue({
+          allowed: false,
+          includeMediaMode: "all_compatible",
+          violations: [
+            {
+              dimension: "products",
+              currentUsed: 1,
+              requiredDelta: 1,
+              projectedTotal: 2,
+              limitValue: 1,
+            },
+            {
+              dimension: "images_per_product",
+              currentUsed: 0,
+              requiredDelta: 3,
+              projectedTotal: 3,
+              limitValue: 1,
+            },
+          ],
+          summary: {
+            productsUsed: 1,
+            productsNeeded: 1,
+            productsLimit: 1,
+            storageUsedBytes: 0,
+            storageNeededBytes: 204800,
+            storageLimitBytes: 104857600,
+          },
+        }),
+        adoptSnapshotToTenantCell: vi.fn(),
+      } as unknown as ISpec15ProductCloningStore;
+
+      const legacyStub = {} as IProductCloningRepository;
+      const cloning = new ProductCloningAndCommunitiesService(legacyStub, storeMock);
+
+      const elig = await cloning.checkAdoptionEligibility({
+        shareId: "share-quota-1",
+        adopterClientId: "client-vitality",
+        includeMediaMode: "all_compatible",
+      });
+      expect(elig.ok).toBe(true);
+      if (elig.ok) {
+        expect(elig.data.allowed).toBe(false);
+        expect(elig.data.violations.map((v) => v.dimension)).toEqual([
+          "products",
+          "images_per_product",
+        ]);
+      }
+
+      const adoptBlocked = await cloning.adoptShareToTenant({
+        shareId: "share-quota-1",
+        adopterClientId: "client-vitality",
+        createdByUserId: "user-vitality",
+        customSalePriceCents: 15000000,
+      });
+      expect(adoptBlocked.ok).toBe(false);
+      if (!adoptBlocked.ok) {
+        expect(adoptBlocked.code).toBe("PRODUCT_QUOTA_EXCEEDED");
+        expect(adoptBlocked.error).toContain("products");
+        expect(adoptBlocked.error).toContain("images_per_product");
+        expect(Array.isArray(adoptBlocked.issues)).toBe(true);
+      }
+      expect(storeMock.adoptSnapshotToTenantCell).not.toHaveBeenCalled();
+    });
   });
 });

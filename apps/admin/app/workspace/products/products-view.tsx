@@ -29,6 +29,7 @@ import type {
 } from "@mocter/domain";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
+import { Alert, AlertDescription, Badge, Button, Select } from "@mocter/ui";
 import {
   CatalogQuotaBanner,
   type CatalogQuotaLimits,
@@ -529,26 +530,23 @@ export function ProductsView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={() => void loadCatalog()}
             disabled={loadingList}
-            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors disabled:opacity-50"
           >
             <RefreshCw
               className={`h-4 w-4 text-[var(--dsn-accent)] ${loadingList ? "animate-spin" : ""}`}
+              aria-hidden="true"
             />
             <span>{locale === "en" ? "Refresh" : "Actualizar"}</span>
-          </button>
+          </Button>
 
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50"
-          >
-            <Plus className="h-4 w-4" />
+          <Button type="button" variant="primary" onClick={openCreateModal}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
             <span>{dict.productsNewAction}</span>
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -566,31 +564,30 @@ export function ProductsView({
 
       {/* Alerta Inline de Operación */}
       {toastBanner && (
-        <div
+        <Alert
+          variant={toastBanner.type === "success" ? "success" : "error"}
           role="status"
-          className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
-            toastBanner.type === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-              : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
-          }`}
+          className="items-center justify-between px-4 py-3 text-sm"
         >
           <div className="flex items-center gap-2">
             {toastBanner.type === "success" ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
             ) : (
-              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
             )}
-            <span>{toastBanner.message}</span>
+            <AlertDescription>{toastBanner.message}</AlertDescription>
           </div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => setToastBanner(null)}
-            className="rounded-md p-1 hover:bg-black/5 dark:hover:bg-white/10"
             aria-label={dict.productsCloseModal}
+            className="min-h-[28px] min-w-[28px] p-1"
           >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+            <X className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </Alert>
       )}
 
       {/* Métricas Resumidas */}
@@ -698,7 +695,7 @@ export function ProductsView({
         onRetry={() => void loadCatalog()}
         filterSlot={
           <div className="flex flex-wrap items-center gap-2">
-            <select
+            <Select
               aria-label={dict.productsColStatus}
               value={statusFilter}
               onChange={(e) => {
@@ -707,15 +704,15 @@ export function ProductsView({
                 setPage(1);
                 void loadCatalog({ status: next, page: 1 });
               }}
-              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
+              className="w-auto bg-[var(--dsn-surface-secondary)] text-xs"
             >
               <option value="all">{dict.productsFilterAllStatuses}</option>
               <option value="active">{dict.productsFilterStatusActive}</option>
               <option value="draft">{dict.productsFilterStatusDraft}</option>
               <option value="inactive">{dict.productsFilterStatusInactive}</option>
-            </select>
+            </Select>
 
-            <select
+            <Select
               aria-label={dict.productsFieldKindLabel}
               value={kindFilter}
               onChange={(e) => {
@@ -724,15 +721,15 @@ export function ProductsView({
                 setPage(1);
                 void loadCatalog({ kind: next, page: 1 });
               }}
-              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
+              className="w-auto bg-[var(--dsn-surface-secondary)] text-xs"
             >
               <option value="all">{dict.productsFilterAllKinds}</option>
               <option value="physical">{dict.productsFilterKindPhysical}</option>
               <option value="digital">{dict.productsFilterKindDigital}</option>
               <option value="service">{dict.productsFilterKindService}</option>
-            </select>
+            </Select>
 
-            <select
+            <Select
               aria-label={dict.productsFieldCompositionLabel}
               value={compositionFilter}
               onChange={(e) => {
@@ -741,12 +738,12 @@ export function ProductsView({
                 setPage(1);
                 void loadCatalog({ compositionType: next, page: 1 });
               }}
-              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
+              className="w-auto bg-[var(--dsn-surface-secondary)] text-xs"
             >
               <option value="all">{dict.productsFilterAllCompositions}</option>
               <option value="simple">{dict.productsFilterCompositionSimple}</option>
               <option value="combo">{dict.productsFilterCompositionCombo}</option>
-            </select>
+            </Select>
           </div>
         }
         emptyState={{
@@ -762,22 +759,14 @@ export function ProductsView({
               : "Prueba limpiando la búsqueda o ajustando los filtros seleccionados."
             : dict.productsEmptyDesc,
           action: hasActiveFilters ? (
-            <button
-              type="button"
-              onClick={handleResetFilters}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-4 py-2 text-sm font-medium text-[var(--dsn-text)]"
-            >
+            <Button type="button" variant="secondary" onClick={handleResetFilters}>
               {dict.tableClearFilters}
-            </button>
+            </Button>
           ) : (
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity"
-            >
-              <Plus className="h-4 w-4" />
+            <Button type="button" variant="primary" onClick={openCreateModal}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
               <span>{dict.productsFirstAction}</span>
-            </button>
+            </Button>
           ),
         }}
         renderMobileCard={(item) => (
@@ -874,57 +863,48 @@ export function ProductsView({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <button
-                type="button"
-                onClick={() => void openDetailModal(item.id)}
-                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-              >
-                <Eye className="h-3.5 w-3.5" />
+              <Button type="button" variant="outline" size="sm" onClick={() => void openDetailModal(item.id)}>
+                <Eye className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>{dict.productsActionView}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void openEditModal(item.id, "general")}
-                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-              >
-                <Edit3 className="h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => void openEditModal(item.id, "general")}>
+                <Edit3 className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>{dict.productsActionEdit}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void openEditModal(item.id, "media")}
-                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-              >
-                <UploadCloud className="h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => void openEditModal(item.id, "media")}>
+                <UploadCloud className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>{dict.productsActionUpload}</span>
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   setStatusError(null);
                   setStatusModalTarget(item);
                 }}
-                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
               >
-                <Power className="h-3.5 w-3.5" />
+                <Power className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>
                   {item.status === "active"
                     ? dict.productsActionInactivate
                     : dict.productsActionActivate}
                 </span>
-              </button>
+              </Button>
               {canDelete && (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => {
                     setDeleteError(null);
                     setDeleteModalTarget(item);
                   }}
-                  className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                  className="border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>{dict.productsActionDelete}</span>
-                </button>
+                </Button>
               )}
             </div>
           </article>
@@ -1082,61 +1062,71 @@ export function ProductsView({
               align: "right",
               renderCell: (item) => (
                 <div className="flex flex-wrap items-center justify-end gap-1.5">
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="icon"
                     onClick={() => void openDetailModal(item.id)}
                     title={dict.productsActionView}
                     aria-label={`${dict.productsActionView} ${item.name}`}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                    className="min-h-[32px] min-w-[32px] px-2 py-1"
                   >
-                    <Eye className="h-3.5 w-3.5" />
-                  </button>
-                  <button
+                    <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Button>
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="icon"
                     onClick={() => void openEditModal(item.id, "general")}
                     title={dict.productsActionEdit}
                     aria-label={`${dict.productsActionEdit} ${item.name}`}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                    className="min-h-[32px] min-w-[32px] px-2 py-1"
                   >
-                    <Edit3 className="h-3.5 w-3.5" />
-                  </button>
-                  <button
+                    <Edit3 className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Button>
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => void openEditModal(item.id, "media")}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                    className="min-h-[32px] px-2.5 py-1"
                   >
-                    <UploadCloud className="h-3.5 w-3.5" />
+                    <UploadCloud className="h-3.5 w-3.5" aria-hidden="true" />
                     <span>{dict.productsActionUpload}</span>
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
                       setStatusError(null);
                       setStatusModalTarget(item);
                     }}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                    className="min-h-[32px] px-2.5 py-1"
                   >
-                    <Power className="h-3.5 w-3.5" />
+                    <Power className="h-3.5 w-3.5" aria-hidden="true" />
                     <span>
                       {item.status === "active"
                         ? dict.productsActionInactivate
                         : dict.productsActionActivate}
                     </span>
-                  </button>
+                  </Button>
                   {canDelete && (
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={() => {
                         setDeleteError(null);
                         setDeleteModalTarget(item);
                       }}
                       title={dict.productsActionDelete}
                       aria-label={`${dict.productsActionDelete} ${item.name}`}
-                      className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 px-2.5 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                      className="min-h-[32px] px-2.5 py-1 border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                       <span>{dict.productsActionDelete}</span>
-                    </button>
+                    </Button>
                   )}
                 </div>
               ),

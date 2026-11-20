@@ -38,6 +38,20 @@ import { handleLogoutRedirect } from "@/lib/api-client";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { requestGuardedNavigation } from "@/lib/use-unsaved-changes-guard";
 import type { CurrentUserDto } from "./user-profile-modal";
+import {
+  Alert,
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@mocter/ui";
 
 export interface TenantSubscriptionAlertDto {
   status: string;
@@ -479,14 +493,16 @@ export function TenantWorkspaceShell({
          ───────────────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-40 flex min-h-14 w-full items-center justify-between gap-2 border-b border-[var(--dsn-border)] bg-[var(--dsn-surface)]/90 px-4 py-1.5 backdrop-blur-md md:hidden">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="icon"
             onClick={() => setMobileMenuOpen(true)}
             aria-label={dict.shellOpenMenuAria}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] transition-colors hover:bg-[var(--dsn-surface)] focus-visible:outline-2 focus-visible:outline-[var(--dsn-accent)]"
+            className="h-11 w-11 shrink-0 bg-[var(--dsn-surface-secondary)]"
           >
-            <Menu className="h-5 w-5" />
-          </button>
+            <Menu className="h-5 w-5" aria-hidden="true" />
+          </Button>
 
           <Link
             href="/workspace"
@@ -526,181 +542,171 @@ export function TenantWorkspaceShell({
       </header>
 
       {/* ─────────────────────────────────────────────────────────────
-          2. DRAWER OFF-CANVAS MÓVIL
+          2. DRAWER OFF-CANVAS MÓVIL (Radix Sheet accesible)
          ───────────────────────────────────────────────────────────── */}
-      {mobileMenuOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent
+          side="left"
+          showCloseButton={false}
           aria-label={dict.shellMenuAria}
-          className="fixed inset-0 z-50 flex md:hidden"
+          className="w-[280px] max-w-[280px] bg-[var(--dsn-sidebar)] p-4 flex flex-col md:hidden"
         >
-          {/* Backdrop con desenfoque */}
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={() => setMobileMenuOpen(false)}
-            aria-hidden="true"
-          />
-
-          {/* Panel Lateral Deslizable */}
-          <div className="relative flex w-full max-w-[280px] flex-1 flex-col bg-[var(--dsn-sidebar)] p-4 shadow-2xl animate-in slide-in-from-left duration-200">
-            {/* Cabecera del Drawer */}
-            <div className="flex items-start justify-between gap-2 pb-4 border-b border-[var(--dsn-border)]">
-              <div className="min-w-0 flex-1 space-y-2">
-                <Link
-                  href="/workspace"
-                  onClick={(e) => handleGuardedLinkClick(e, "/workspace", () => setMobileMenuOpen(false))}
-                  className="flex items-start gap-2.5 min-w-0"
-                >
-                  {renderBrandMark("md")}
-                  <div className="flex flex-col min-w-0 flex-1 gap-1">
-                    <span
-                      className="font-bold tracking-tight text-[var(--dsn-text)] text-sm break-words leading-snug line-clamp-2"
-                      title={displayStoreName.length > 36 ? displayStoreName : undefined}
-                    >
-                      {displayStoreName}
+          <SheetTitle className="sr-only">{dict.shellMenuAria}</SheetTitle>
+          <div className="flex items-start justify-between gap-2 pb-4 border-b border-[var(--dsn-border)]">
+            <div className="min-w-0 flex-1 space-y-2">
+              <Link
+                href="/workspace"
+                onClick={(e) => handleGuardedLinkClick(e, "/workspace", () => setMobileMenuOpen(false))}
+                className="flex items-start gap-2.5 min-w-0"
+              >
+                {renderBrandMark("md")}
+                <div className="flex flex-col min-w-0 flex-1 gap-1">
+                  <span
+                    className="font-bold tracking-tight text-[var(--dsn-text)] text-sm break-words leading-snug line-clamp-2"
+                    title={displayStoreName.length > 36 ? displayStoreName : undefined}
+                  >
+                    {displayStoreName}
+                  </span>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Badge variant="accent" className="rounded px-1.5 py-0.5 text-[10px] font-mono font-semibold shrink-0">
+                      {dict.shellStoreBadge}
+                    </Badge>
+                    <span className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
+                      {tenantInfo.slug}
                     </span>
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="rounded bg-[var(--dsn-accent)]/15 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/20 shrink-0">
-                        {dict.shellStoreBadge}
-                      </span>
-                      <span className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
-                        {tenantInfo.slug}
-                      </span>
-                    </div>
                   </div>
+                </div>
+              </Link>
+              <div>{renderConnectionBadge()}</div>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              onClick={() => setMobileMenuOpen(false)}
+              aria-label={dict.shellCloseMenuAria}
+              className="h-11 w-11 shrink-0 bg-[var(--dsn-surface-secondary)]"
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </Button>
+          </div>
+
+          <nav className="mt-4 flex-1 space-y-1 overflow-y-auto" aria-label={dict.shellNavMobileAria}>
+            {visibleNavItems.map((item) => {
+              const Icon = item.icon;
+              const active = isLinkActive(item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={(e) => handleGuardedLinkClick(e, item.href, () => setMobileMenuOpen(false))}
+                  className={`group flex min-h-[44px] items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                    active
+                      ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30 font-semibold"
+                      : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon
+                      className={`h-5 w-5 transition-colors ${
+                        active ? "text-[var(--dsn-accent)]" : "text-[var(--dsn-text-secondary)] group-hover:text-[var(--dsn-text)]"
+                      }`}
+                    />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge && (
+                    <Badge className="rounded px-1.5 py-0.5 text-[10px] font-mono">
+                      {item.badge}
+                    </Badge>
+                  )}
                 </Link>
-                <div>{renderConnectionBadge()}</div>
-              </div>
+              );
+            })}
+          </nav>
+
+          <div className="border-t border-[var(--dsn-border)] pt-4 space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs text-[var(--dsn-text-secondary)]">{dict.shellLanguageLabel}</span>
+              {renderLocaleSwitcher("mobile-drawer")}
+            </div>
+
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs text-[var(--dsn-text-secondary)]">{dict.shellServiceStatusLabel}</span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                {connectionLabel}
+              </span>
+            </div>
+
+            <div className="relative">
+              {profilePopoverOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setProfilePopoverOpen(false)} aria-hidden="true" />
+                  <div
+                    role="menu"
+                    aria-label={dict.shellAccountMenuAria}
+                    className="absolute bottom-full mb-2 left-0 right-0 z-50 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfilePopoverOpen(false);
+                        setProfileModalOpen(true);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors cursor-pointer"
+                    >
+                      <UserIcon className="h-4 w-4 text-[var(--dsn-accent)]" />
+                      <span>{dict.shellProfileCardMenuItem}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfilePopoverOpen(false);
+                        setSwitchStoreModalOpen(true);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors cursor-pointer"
+                    >
+                      <ArrowLeftRight className="h-4 w-4 text-[var(--dsn-accent)]" />
+                      <span>{dict.shellSwitchStoreMenuItem}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfilePopoverOpen(false);
+                        setLogoutModalOpen(true);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                    >
+                      <LogOut className="h-4 w-4 text-rose-400" />
+                      <span>{dict.shellLogoutMenuItem}</span>
+                    </button>
+                  </div>
+                </>
+              )}
+
               <button
                 type="button"
-                onClick={() => setMobileMenuOpen(false)}
-                aria-label={dict.shellCloseMenuAria}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] hover:bg-[var(--dsn-surface)]"
+                onClick={() => setProfilePopoverOpen((prev) => !prev)}
+                aria-expanded={profilePopoverOpen}
+                aria-haspopup="menu"
+                className="w-full flex items-center justify-between rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-2.5 text-xs text-left transition-colors hover:bg-[var(--dsn-surface-secondary)] cursor-pointer"
               >
-                <X className="h-5 w-5" />
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] font-semibold text-xs border border-[var(--dsn-accent)]/40">
+                    {(user.displayName || user.email || "TO").slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="truncate">
+                    <p className="font-semibold text-[var(--dsn-text)] truncate">{user.displayName || dict.shellOwnerFallback}</p>
+                    <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">{user.email}</p>
+                  </div>
+                </div>
+                <ChevronUp className={`h-4 w-4 text-[var(--dsn-text-secondary)] transition-transform duration-200 shrink-0 ${profilePopoverOpen ? "rotate-180" : ""}`} />
               </button>
             </div>
-
-            {/* Navegación Móvil */}
-            <nav className="mt-4 flex-1 space-y-1 overflow-y-auto" aria-label={dict.shellNavMobileAria}>
-              {visibleNavItems.map((item) => {
-                const Icon = item.icon;
-                const active = isLinkActive(item.href);
-
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={(e) => handleGuardedLinkClick(e, item.href, () => setMobileMenuOpen(false))}
-                    className={`group flex min-h-[44px] items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                      active
-                        ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30 font-semibold"
-                        : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon
-                        className={`h-5 w-5 transition-colors ${
-                          active ? "text-[var(--dsn-accent)]" : "text-[var(--dsn-text-secondary)] group-hover:text-[var(--dsn-text)]"
-                        }`}
-                      />
-                      <span>{item.label}</span>
-                    </div>
-                    {item.badge && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]">
-                        {item.badge}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </nav>
-
-            {/* Pie Drawer Móvil */}
-            <div className="border-t border-[var(--dsn-border)] pt-4 space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <span className="text-xs text-[var(--dsn-text-secondary)]">{dict.shellLanguageLabel}</span>
-                {renderLocaleSwitcher("mobile-drawer")}
-              </div>
-
-              <div className="flex items-center justify-between px-1">
-                <span className="text-xs text-[var(--dsn-text-secondary)]">{dict.shellServiceStatusLabel}</span>
-                <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  {connectionLabel}
-                </span>
-              </div>
-
-              <div className="relative">
-                {profilePopoverOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setProfilePopoverOpen(false)} aria-hidden="true" />
-                    <div
-                      role="menu"
-                      aria-label={dict.shellAccountMenuAria}
-                      className="absolute bottom-full mb-2 left-0 right-0 z-50 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProfilePopoverOpen(false);
-                          setProfileModalOpen(true);
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors"
-                      >
-                        <UserIcon className="h-4 w-4 text-[var(--dsn-accent)]" />
-                        <span>{dict.shellProfileCardMenuItem}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProfilePopoverOpen(false);
-                          setSwitchStoreModalOpen(true);
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors"
-                      >
-                        <ArrowLeftRight className="h-4 w-4 text-[var(--dsn-accent)]" />
-                        <span>{dict.shellSwitchStoreMenuItem}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProfilePopoverOpen(false);
-                          setLogoutModalOpen(true);
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
-                      >
-                        <LogOut className="h-4 w-4 text-rose-400" />
-                        <span>{dict.shellLogoutMenuItem}</span>
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setProfilePopoverOpen((prev) => !prev)}
-                  aria-expanded={profilePopoverOpen}
-                  aria-haspopup="menu"
-                  className="w-full flex items-center justify-between rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-2.5 text-xs text-left transition-colors hover:bg-[var(--dsn-surface-secondary)]"
-                >
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] font-semibold text-xs border border-[var(--dsn-accent)]/40">
-                      {(user.displayName || user.email || "TO").slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="truncate">
-                      <p className="font-semibold text-[var(--dsn-text)] truncate">{user.displayName || dict.shellOwnerFallback}</p>
-                      <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">{user.email}</p>
-                    </div>
-                  </div>
-                  <ChevronUp className={`h-4 w-4 text-[var(--dsn-text-secondary)] transition-transform duration-200 shrink-0 ${profilePopoverOpen ? "rotate-180" : ""}`} />
-                </button>
-              </div>
-            </div>
           </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
 
       {/* ─────────────────────────────────────────────────────────────
           3. SIDEBAR PERSISTENTE ESCRITORIO (md:flex w-[260px])
@@ -933,198 +939,142 @@ export function TenantWorkspaceShell({
       {/* ─────────────────────────────────────────────────────────────
           5. MODALES ACCESIBLES: PERFIL DEL COMERCIO, MEMBRESÍA Y LOGOUT
          ───────────────────────────────────────────────────────────── */}
-      {/* Modal Ficha de Perfil del Comercio */}
-      {profileModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="tenant-profile-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setProfileModalOpen(false);
-          }}
-        >
-          <div className="relative w-full max-w-lg rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl max-h-[90vh] flex flex-col overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-4 mb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30">
-                  <Store className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 id="tenant-profile-title" className="text-base font-bold text-[var(--dsn-text)]">
-                    {dict.shellProfileModalTitle}
-                  </h2>
-                  <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
-                    {dict.shellProfileModalSubtitle}
-                  </p>
-                </div>
+      <Dialog open={profileModalOpen} onOpenChange={setProfileModalOpen}>
+        <DialogContent className="max-w-lg rounded-2xl" closeAriaLabel={dict.shellProfileModalCloseAria}>
+          <DialogHeader className="pb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30">
+                <Store className="h-5 w-5" aria-hidden="true" />
               </div>
-              <button
-                type="button"
-                onClick={() => setProfileModalOpen(false)}
-                aria-label={dict.shellProfileModalCloseAria}
-                className="text-xs text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] p-2 rounded-lg hover:bg-[var(--dsn-surface-secondary)] min-h-[44px] min-w-[44px] flex items-center justify-center"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div>
+                <DialogTitle id="tenant-profile-title">{dict.shellProfileModalTitle}</DialogTitle>
+                <DialogDescription className="mt-0.5">{dict.shellProfileModalSubtitle}</DialogDescription>
+              </div>
             </div>
+          </DialogHeader>
 
-            <div className="space-y-4 text-xs text-[var(--dsn-text)]">
-              <div className="flex items-center gap-3 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--dsn-accent)] text-white font-bold text-sm shadow-md">
-                  {(user.displayName || user.email || "TO")
-                    .split(" ")
-                    .map((n) => n[0])
-                    .slice(0, 2)
-                    .join("")
-                    .toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-bold text-sm text-[var(--dsn-text)] truncate">
-                    {user.displayName || dict.shellOwnerFullFallback}
-                  </h3>
-                  <p className="text-xs text-[var(--dsn-text-secondary)] truncate">
-                    {user.email}
-                  </p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className="rounded bg-[var(--dsn-accent)]/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30">
-                      {user.role !== "tenant_agent" ? dict.shellOwnerRoleLabel : dict.shellAgentRoleLabel}
-                    </span>
-                    <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30">
-                      {dict.shellProfileStatusActive}
-                    </span>
-                  </div>
-                </div>
+          <div className="space-y-4 text-xs text-[var(--dsn-text)]">
+            <div className="flex items-center gap-3 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--dsn-accent)] text-white font-bold text-sm shadow-md">
+                {(user.displayName || user.email || "TO")
+                  .split(" ")
+                  .map((n) => n[0])
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase()}
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileActiveStoreLabel}</span>
-                  <p className="font-semibold text-xs mt-0.5 text-[var(--dsn-text)] truncate">{tenantInfo.name}</p>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-bold text-sm text-[var(--dsn-text)] truncate">
+                  {user.displayName || dict.shellOwnerFullFallback}
+                </h3>
+                <p className="text-xs text-[var(--dsn-text-secondary)] truncate">{user.email}</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <Badge variant="accent" className="rounded px-2 py-0.5 text-[10px] font-semibold">
+                    {user.role !== "tenant_agent" ? dict.shellOwnerRoleLabel : dict.shellAgentRoleLabel}
+                  </Badge>
+                  <Badge variant="success" className="rounded px-2 py-0.5 text-[10px] font-semibold">
+                    {dict.shellProfileStatusActive}
+                  </Badge>
                 </div>
-                <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileSlugLabel}</span>
-                  <p className="font-mono text-xs mt-0.5 text-[var(--dsn-text)] truncate">{tenantInfo.slug}</p>
-                </div>
-                <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileOpStatusLabel}</span>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <p className="font-mono text-xs text-emerald-400 font-semibold">{connectionLabel}</p>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfilePlanLabel}</span>
-                  <p className="font-semibold text-xs mt-0.5 text-[var(--dsn-accent)] truncate">{tenantInfo.planName}</p>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/20 p-3 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileUserIdLabel}</span>
-                  <button
-                    type="button"
-                    onClick={copyUserId}
-                    className="flex items-center gap-1 text-[10px] text-[var(--dsn-accent)] hover:underline"
-                  >
-                    {copiedId ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                    <span>{copiedId ? dict.shellProfileCopiedIdCta : dict.shellProfileCopyIdCta}</span>
-                  </button>
-                </div>
-                <p className="font-mono text-[11px] text-[var(--dsn-text)] truncate bg-[var(--dsn-surface)] p-1.5 rounded-lg border border-[var(--dsn-border)]">
-                  {user.id}
-                </p>
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setProfileModalOpen(false)}
-                className="rounded-lg px-4 py-2 text-xs font-semibold bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text)] hover:bg-[var(--dsn-border)] transition-colors min-h-[44px]"
-              >
-                {dict.shellProfileCloseCta}
-              </button>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
+                <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileActiveStoreLabel}</span>
+                <p className="font-semibold text-xs mt-0.5 text-[var(--dsn-text)] truncate">{tenantInfo.name}</p>
+              </div>
+              <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
+                <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileSlugLabel}</span>
+                <p className="font-mono text-xs mt-0.5 text-[var(--dsn-text)] truncate">{tenantInfo.slug}</p>
+              </div>
+              <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
+                <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileOpStatusLabel}</span>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <p className="font-mono text-xs text-emerald-400 font-semibold">{connectionLabel}</p>
+                </div>
+              </div>
+              <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3">
+                <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfilePlanLabel}</span>
+                <p className="font-semibold text-xs mt-0.5 text-[var(--dsn-accent)] truncate">{tenantInfo.planName}</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/20 p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-[var(--dsn-text-secondary)]">{dict.shellProfileUserIdLabel}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={copyUserId}
+                  className="min-h-[28px] px-2 py-0.5 text-[10px] text-[var(--dsn-accent)]"
+                >
+                  {copiedId ? <Check className="h-3 w-3 text-emerald-400" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
+                  <span>{copiedId ? dict.shellProfileCopiedIdCta : dict.shellProfileCopyIdCta}</span>
+                </Button>
+              </div>
+              <p className="font-mono text-[11px] text-[var(--dsn-text)] truncate bg-[var(--dsn-surface)] p-1.5 rounded-lg border border-[var(--dsn-border)]">
+                {user.id}
+              </p>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Modal Informativo: Cambio de Comercio (Regla D-15 1:0..1) */}
-      {switchStoreModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="switch-store-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setSwitchStoreModalOpen(false);
-          }}
-        >
-          <div className="relative w-full max-w-md rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-4 mb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30">
-                  <ArrowLeftRight className="h-5 w-5" />
-                </div>
+          <DialogFooter className="mt-6">
+            <Button type="button" variant="secondary" size="lg" onClick={() => setProfileModalOpen(false)}>
+              {dict.shellProfileCloseCta}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={switchStoreModalOpen} onOpenChange={setSwitchStoreModalOpen}>
+        <DialogContent className="max-w-md rounded-2xl" closeAriaLabel={dict.shellProfileModalCloseAria}>
+          <DialogHeader className="pb-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30">
+                <ArrowLeftRight className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div>
+                <DialogTitle id="switch-store-title">{dict.shellSwitchModalTitle}</DialogTitle>
+                <DialogDescription className="mt-0.5">{dict.shellSwitchModalSubtitle}</DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 text-xs text-[var(--dsn-text)]">
+            <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4">
+              <span className="text-[10px] text-[var(--dsn-text-secondary)] tracking-wider font-semibold">
+                {dict.shellSwitchCurrentLabel}
+              </span>
+              <div className="flex items-center justify-between mt-2">
                 <div>
-                  <h2 id="switch-store-title" className="text-base font-bold text-[var(--dsn-text)]">
-                    {dict.shellSwitchModalTitle}
-                  </h2>
-                  <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
-                    {dict.shellSwitchModalSubtitle}
-                  </p>
+                  <p className="font-bold text-sm text-[var(--dsn-text)]">{tenantInfo.name}</p>
+                  <p className="text-[10px] font-mono text-[var(--dsn-text-secondary)] mt-0.5">{tenantInfo.slug}</p>
                 </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSwitchStoreModalOpen(false)}
-                aria-label={dict.shellProfileModalCloseAria}
-                className="text-xs text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] p-2 rounded-lg hover:bg-[var(--dsn-surface-secondary)] min-h-[44px] min-w-[44px] flex items-center justify-center"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs text-[var(--dsn-text)]">
-              <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4">
-                <span className="text-[10px] text-[var(--dsn-text-secondary)] tracking-wider font-semibold">
-                  {dict.shellSwitchCurrentLabel}
-                </span>
-                <div className="flex items-center justify-between mt-2">
-                  <div>
-                    <p className="font-bold text-sm text-[var(--dsn-text)]">{tenantInfo.name}</p>
-                    <p className="text-[10px] font-mono text-[var(--dsn-text-secondary)] mt-0.5">{tenantInfo.slug}</p>
-                  </div>
-                  <span className="rounded bg-emerald-500/15 px-2 py-1 text-[10px] font-mono text-emerald-400 font-semibold border border-emerald-500/30">
-                    {connectionLabel}
-                  </span>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-200">
-                <div className="flex items-center gap-2 font-semibold text-xs mb-1">
-                  <Shield className="h-4 w-4 text-amber-400" />
-                  <span>{dict.shellSwitchDedicatedTitle}</span>
-                </div>
-                <p className="text-[11px] leading-relaxed text-amber-200/90">
-                  {dict.shellSwitchDedicatedDesc}
-                </p>
+                <Badge variant="success" className="rounded font-mono text-[10px]">
+                  {connectionLabel}
+                </Badge>
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSwitchStoreModalOpen(false)}
-                className="rounded-lg px-4 py-2 text-xs font-semibold bg-[var(--dsn-accent)] text-white hover:opacity-90 transition-opacity min-h-[44px]"
-              >
-                {dict.shellSwitchAckCta}
-              </button>
-            </div>
+            <Alert variant="warning" className="flex-col gap-1 p-4">
+              <div className="flex items-center gap-2 font-semibold text-xs">
+                <Shield className="h-4 w-4 text-amber-400" aria-hidden="true" />
+                <span>{dict.shellSwitchDedicatedTitle}</span>
+              </div>
+              <p className="text-[11px] leading-relaxed opacity-90">{dict.shellSwitchDedicatedDesc}</p>
+            </Alert>
           </div>
-        </div>
-      )}
+
+          <DialogFooter className="mt-6">
+            <Button type="button" variant="primary" size="lg" onClick={() => setSwitchStoreModalOpen(false)}>
+              {dict.shellSwitchAckCta}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Accesible de Confirmación de Logout (Regla 4.17) */}
       <ConfirmationModal

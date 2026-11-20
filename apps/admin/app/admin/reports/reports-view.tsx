@@ -11,6 +11,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import type { AdminPlatformReportsOverviewDto } from "@mocter/domain";
+import { Button, Card } from "@mocter/ui";
 
 interface ReportsViewProps {
   initialData: AdminPlatformReportsOverviewDto;
@@ -63,19 +64,22 @@ export function ReportsView({ initialData }: ReportsViewProps) {
     <div className="space-y-6">
       {/* Botón de exportación */}
       <div className="flex justify-end">
-        <button
+        <Button
           type="button"
+          variant="secondary"
           onClick={handleExportCsv}
           disabled={downloading}
-          className="inline-flex items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
+          loading={downloading}
+          className="text-xs"
         >
           <Download className="h-4 w-4 text-[var(--dsn-accent)]" />
           <span>Exportar Informe CSV</span>
-        </button>
+        </Button>
       </div>
 
       {/* Grilla 1: Distribución por Plan */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-xs">
+      <Card asChild>
+        <section className="p-5">
         <div className="flex items-center gap-2 border-b border-[var(--dsn-border)] pb-3 mb-4">
           <Layers className="h-4 w-4 text-[var(--dsn-accent)]" />
           <h3 className="text-sm font-semibold text-[var(--dsn-text)]">
@@ -110,12 +114,14 @@ export function ReportsView({ initialData }: ReportsViewProps) {
             })}
           </div>
         )}
-      </section>
+        </section>
+      </Card>
 
       {/* Grilla 2: Infraestructura SeaweedFS e Inferencia LLM */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Almacenamiento */}
-        <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-xs">
+        <Card asChild>
+          <section className="p-5">
           <div className="flex items-center gap-2 border-b border-[var(--dsn-border)] pb-3 mb-4">
             <HardDrive className="h-4 w-4 text-purple-400" />
             <h3 className="text-sm font-semibold text-[var(--dsn-text)]">
@@ -149,10 +155,12 @@ export function ReportsView({ initialData }: ReportsViewProps) {
               </span>
             </div>
           </div>
-        </section>
+          </section>
+        </Card>
 
         {/* Inferencia LLM */}
-        <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-xs">
+        <Card asChild>
+          <section className="p-5">
           <div className="flex items-center gap-2 border-b border-[var(--dsn-border)] pb-3 mb-4">
             <Cpu className="h-4 w-4 text-cyan-400" />
             <h3 className="text-sm font-semibold text-[var(--dsn-text)]">
@@ -186,7 +194,8 @@ export function ReportsView({ initialData }: ReportsViewProps) {
               </span>
             </div>
           </div>
-        </section>
+          </section>
+        </Card>
       </div>
     </div>
   );

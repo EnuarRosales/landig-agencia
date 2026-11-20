@@ -16,13 +16,29 @@ import {
   Sparkles,
   TrendingUp,
   UploadCloud,
-  X,
 } from "lucide-react";
 import type {
   AttributedCommunityMetrics,
   LeaderCandidateProductDto,
   TenantCommunitiesOverviewDto,
 } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  Card,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { formatCommunityMoney, readApiError } from "./_types";
 
@@ -380,60 +396,52 @@ export function CommunityLeaderTab({
           </div>
 
           {auth.status === "pending" && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs font-medium text-amber-800 dark:text-amber-200 flex items-center gap-2">
+            <Alert variant="warning">
               <ShieldAlert className="h-4 w-4 shrink-0" />
-              <span>{dict.leaderPendingBanner}</span>
-            </div>
+              <AlertDescription className="font-medium">{dict.leaderPendingBanner}</AlertDescription>
+            </Alert>
           )}
 
           {(auth.status === "rejected" || auth.status === "revoked") && (
-            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs font-medium text-rose-700 dark:text-rose-300 space-y-1">
-              <p>{dict.leaderRejectedBanner}</p>
-              {auth.reviewNotes && <p className="opacity-85">{auth.reviewNotes}</p>}
-            </div>
+            <Alert variant="error" className="space-y-1">
+              <AlertDescription className="font-medium">{dict.leaderRejectedBanner}</AlertDescription>
+              {auth.reviewNotes && <p className="text-xs opacity-85">{auth.reviewNotes}</p>}
+            </Alert>
           )}
 
           {isOwner && auth.status !== "pending" && (
             <form onSubmit={handleRequestLeader} className="space-y-3 text-xs">
               <div className="space-y-1">
-                <label className="block font-medium text-[var(--dsn-text)]">
-                  {dict.leaderProposedNameLabel}
-                </label>
-                <input
+                <Label className="block font-medium">{dict.leaderProposedNameLabel}</Label>
+                <Input
                   type="text"
                   required
                   minLength={3}
                   value={proposedName}
                   onChange={(e) => setProposedName(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
+                  className="text-xs"
                 />
               </div>
               <div className="space-y-1">
-                <label className="block font-medium text-[var(--dsn-text)]">
-                  {dict.leaderBusinessModelLabel}
-                </label>
-                <textarea
+                <Label className="block font-medium">{dict.leaderBusinessModelLabel}</Label>
+                <Textarea
                   rows={3}
                   required
                   minLength={10}
                   value={businessModel}
                   onChange={(e) => setBusinessModel(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
+                  className="text-xs"
                 />
               </div>
-              <button
-                type="submit"
-                disabled={submittingRequest}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 font-semibold text-white hover:opacity-90 disabled:opacity-50"
-              >
+              <Button type="submit" disabled={submittingRequest} loading={submittingRequest}>
                 <Crown className="h-3.5 w-3.5" />
                 <span>{dict.leaderSubmitRequestCta}</span>
-              </button>
+              </Button>
             </form>
           )}
         </section>
       ) : (
-        <section className="rounded-2xl border border-[var(--dsn-accent)]/30 bg-[var(--dsn-accent)]/5 p-4 md:p-5 flex flex-wrap items-center justify-between gap-4">
+        <Card className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border-[var(--dsn-accent)]/30 bg-[var(--dsn-accent)]/5 p-4 md:p-5">
           <div className="flex items-center gap-3">
             <div className="rounded-xl bg-[var(--dsn-accent)] p-2.5 text-white">
               <Crown className="h-5 w-5" />
@@ -451,16 +459,12 @@ export function CommunityLeaderTab({
           </div>
 
           {isOwner && auth.canCreateMoreCommunities && (
-            <button
-              type="button"
-              onClick={() => setCreateModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90"
-            >
+            <Button type="button" onClick={() => setCreateModalOpen(true)}>
               <Plus className="h-4 w-4" />
               <span>{dict.createCommunityTitle}</span>
-            </button>
+            </Button>
           )}
-        </section>
+        </Card>
       )}
 
       {/* Selector de comunidad activa del estudio */}
@@ -518,16 +522,16 @@ export function CommunityLeaderTab({
                   </p>
                 </div>
 
-                <select
+                <Select
                   value={periodType}
                   onChange={(e) => setPeriodType(e.target.value as typeof periodType)}
-                  className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
+                  className="h-8 w-auto text-xs"
                 >
                   <option value="daily">{dict.periodDaily}</option>
                   <option value="weekly">{dict.periodWeekly}</option>
                   <option value="monthly">{dict.periodMonthly}</option>
                   <option value="annual">{dict.periodYearly}</option>
-                </select>
+                </Select>
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -744,277 +748,247 @@ export function CommunityLeaderTab({
       )}
 
       {/* Modal Crear Comunidad (auto-cierre al guardar) */}
-      {createModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+      <Dialog
+        open={createModalOpen}
+        onOpenChange={(open) => {
+          if (!open && !creatingOrg) setCreateModalOpen(false);
+        }}
+      >
+        <DialogContent
+          className="w-full max-w-lg p-5"
+          closeAriaLabel={locale === "en" ? "Cancel" : "Cancelar"}
+          disableEscapeKeyDown={creatingOrg}
+          disableInteractOutside={creatingOrg}
         >
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[var(--dsn-text)]">
-                {dict.createCommunityTitle}
-              </h3>
-              <button
-                type="button"
-                onClick={() => !creatingOrg && setCreateModalOpen(false)}
-                className="rounded-lg p-1 text-[var(--dsn-text-secondary)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+          <DialogHeader className="pr-8">
+            <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
+              {dict.createCommunityTitle}
+            </DialogTitle>
+          </DialogHeader>
 
-            <form onSubmit={handleCreateOrg} className="space-y-3 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block font-medium text-[var(--dsn-text)]">
-                    {dict.communityNameLabel}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    minLength={3}
-                    value={newOrgName}
-                    onChange={(e) => setNewOrgName(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block font-medium text-[var(--dsn-text)]">
-                    {dict.communityCategoryLabel}
-                  </label>
-                  <input
-                    type="text"
-                    value={newOrgCategory}
-                    onChange={(e) => setNewOrgCategory(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
-                  />
-                </div>
-              </div>
-
+          <form onSubmit={handleCreateOrg} className="space-y-3 text-xs">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <label className="block font-medium text-[var(--dsn-text)]">
-                  {dict.communityDescLabel}
-                </label>
-                <textarea
-                  rows={2}
-                  value={newOrgDesc}
-                  onChange={(e) => setNewOrgDesc(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
+                <Label className="block font-medium">{dict.communityNameLabel}</Label>
+                <Input
+                  type="text"
+                  required
+                  minLength={3}
+                  value={newOrgName}
+                  onChange={(e) => setNewOrgName(e.target.value)}
+                  className="text-xs"
                 />
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block font-medium text-[var(--dsn-text)]">
-                    {dict.communityVisibilityLabel}
-                  </label>
-                  <select
-                    value={newOrgVisibility}
-                    onChange={(e) => setNewOrgVisibility(e.target.value as typeof newOrgVisibility)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
-                  >
-                    <option value="private_invite">{dict.visibilityPrivate}</option>
-                    <option value="request_to_join">{dict.visibilityDiscoverable}</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block font-medium text-[var(--dsn-text)]">
-                    {dict.communitySharePolicyLabel}
-                  </label>
-                  <select
-                    value={newOrgSharePolicy}
-                    onChange={(e) => setNewOrgSharePolicy(e.target.value as typeof newOrgSharePolicy)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
-                  >
-                    <option value="leaders_only">{dict.sharePolicyLeaders}</option>
-                    <option value="collaborative">{dict.sharePolicyCollaborative}</option>
-                  </select>
-                </div>
+              <div className="space-y-1">
+                <Label className="block font-medium">{dict.communityCategoryLabel}</Label>
+                <Input
+                  type="text"
+                  value={newOrgCategory}
+                  onChange={(e) => setNewOrgCategory(e.target.value)}
+                  className="text-xs"
+                />
               </div>
+            </div>
 
-              {newOrgSharePolicy === "collaborative" && (
-                <label className="flex items-center gap-2 text-[var(--dsn-text)] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newOrgRequireShareApproval}
-                    onChange={(e) => setNewOrgRequireShareApproval(e.target.checked)}
-                    className="accent-[var(--dsn-accent)]"
-                  />
-                  <span>{dict.communityRequireShareApprovalLabel}</span>
-                </label>
-              )}
+            <div className="space-y-1">
+              <Label className="block font-medium">{dict.communityDescLabel}</Label>
+              <Textarea
+                rows={2}
+                value={newOrgDesc}
+                onChange={(e) => setNewOrgDesc(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="block font-medium">{dict.communityVisibilityLabel}</Label>
+                <Select
+                  value={newOrgVisibility}
+                  onChange={(e) => setNewOrgVisibility(e.target.value as typeof newOrgVisibility)}
+                  className="text-xs"
+                >
+                  <option value="private_invite">{dict.visibilityPrivate}</option>
+                  <option value="request_to_join">{dict.visibilityDiscoverable}</option>
+                </Select>
+              </div>
 
               <div className="space-y-1">
-                <label className="block font-medium text-[var(--dsn-text)]">
-                  {dict.communityModerationLabel}
-                </label>
-                <select
-                  value={newOrgModeration}
-                  onChange={(e) => setNewOrgModeration(e.target.value as typeof newOrgModeration)}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
+                <Label className="block font-medium">{dict.communitySharePolicyLabel}</Label>
+                <Select
+                  value={newOrgSharePolicy}
+                  onChange={(e) => setNewOrgSharePolicy(e.target.value as typeof newOrgSharePolicy)}
+                  className="text-xs"
                 >
-                  <option value="pre">{dict.moderationPre}</option>
-                  <option value="post">{dict.moderationPost}</option>
-                  <option value="none">{dict.moderationNone}</option>
-                </select>
+                  <option value="leaders_only">{dict.sharePolicyLeaders}</option>
+                  <option value="collaborative">{dict.sharePolicyCollaborative}</option>
+                </Select>
               </div>
+            </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setCreateModalOpen(false)}
-                  className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 font-semibold text-[var(--dsn-text)]"
-                >
-                  {locale === "en" ? "Cancel" : "Cancelar"}
-                </button>
-                <button
-                  type="submit"
-                  disabled={creatingOrg}
-                  className="rounded-lg bg-[var(--dsn-accent)] px-4 py-2 font-semibold text-white"
-                >
-                  {dict.createCommunityCta}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            {newOrgSharePolicy === "collaborative" && (
+              <label className="flex cursor-pointer items-center gap-2 text-[var(--dsn-text)]">
+                <Checkbox
+                  checked={newOrgRequireShareApproval}
+                  onCheckedChange={(checked) => setNewOrgRequireShareApproval(checked === true)}
+                />
+                <span>{dict.communityRequireShareApprovalLabel}</span>
+              </label>
+            )}
+
+            <div className="space-y-1">
+              <Label className="block font-medium">{dict.communityModerationLabel}</Label>
+              <Select
+                value={newOrgModeration}
+                onChange={(e) => setNewOrgModeration(e.target.value as typeof newOrgModeration)}
+                className="text-xs"
+              >
+                <option value="pre">{dict.moderationPre}</option>
+                <option value="post">{dict.moderationPost}</option>
+                <option value="none">{dict.moderationNone}</option>
+              </Select>
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateModalOpen(false)}
+              >
+                {locale === "en" ? "Cancel" : "Cancelar"}
+              </Button>
+              <Button type="submit" disabled={creatingOrg} loading={creatingOrg}>
+                {dict.createCommunityCta}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Compartir o Publicar Nueva Versión (auto-cierre al guardar) */}
-      {shareModalState && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+      <Dialog
+        open={Boolean(shareModalState)}
+        onOpenChange={(open) => {
+          if (!open && !savingShare) setShareModalState(null);
+        }}
+      >
+        <DialogContent
+          className="w-full max-w-md p-5"
+          closeAriaLabel={locale === "en" ? "Cancel" : "Cancelar"}
+          disableEscapeKeyDown={savingShare}
+          disableInteractOutside={savingShare}
         >
-          <div className="w-full max-w-md rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
+          {shareModalState && (
+            <>
+              <DialogHeader className="pr-8">
+                <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
                   {shareModalState.mode === "create"
                     ? dict.shareToCommunityCta
                     : dict.publishVersionCta}
-                </h3>
-                <p className="text-xs text-[var(--dsn-text-secondary)]">
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
                   {shareModalState.candidate.name}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => !savingShare && setShareModalState(null)}
-                className="rounded-lg p-1 text-[var(--dsn-text-secondary)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+                </DialogDescription>
+              </DialogHeader>
 
-            <form onSubmit={handleSubmitShareModal} className="space-y-3 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <form onSubmit={handleSubmitShareModal} className="space-y-3 text-xs">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="block font-medium">
+                      {dict.wholesaleCostLabel} ({shareModalState.candidate.currency})
+                    </Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={shareModalState.wholesaleCost}
+                      onChange={(e) =>
+                        setShareModalState((s) => (s ? { ...s, wholesaleCost: e.target.value } : null))
+                      }
+                      className="text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="block font-medium">
+                      {dict.suggestedPriceLabel} ({shareModalState.candidate.currency})
+                    </Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="any"
+                      required
+                      value={shareModalState.suggestedPrice}
+                      onChange={(e) =>
+                        setShareModalState((s) =>
+                          s ? { ...s, suggestedPrice: e.target.value } : null,
+                        )
+                      }
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-1">
-                  <label className="block font-medium text-[var(--dsn-text)]">
-                    {dict.wholesaleCostLabel} ({shareModalState.candidate.currency})
-                  </label>
-                  <input
+                  <Label className="block font-medium">
+                    {dict.minResaleLabel} ({shareModalState.candidate.currency})
+                  </Label>
+                  <Input
                     type="number"
                     min={0}
                     step="any"
-                    value={shareModalState.wholesaleCost}
+                    value={shareModalState.minResalePrice}
                     onChange={(e) =>
-                      setShareModalState((s) => (s ? { ...s, wholesaleCost: e.target.value } : null))
+                      setShareModalState((s) => (s ? { ...s, minResalePrice: e.target.value } : null))
                     }
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
+                    placeholder={locale === "en" ? "Optional minimum floor" : "Opcional (mínimo sugerido)"}
+                    className="text-xs"
                   />
                 </div>
+
                 <div className="space-y-1">
-                  <label className="block font-medium text-[var(--dsn-text)]">
-                    {dict.suggestedPriceLabel} ({shareModalState.candidate.currency})
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    required
-                    value={shareModalState.suggestedPrice}
+                  <Label className="block font-medium">{dict.shareChangelogLabel}</Label>
+                  <Textarea
+                    rows={2}
+                    value={shareModalState.changelog}
                     onChange={(e) =>
+                      setShareModalState((s) => (s ? { ...s, changelog: e.target.value } : null))
+                    }
+                    placeholder={dict.shareChangelogPlaceholder}
+                    className="text-xs"
+                  />
+                </div>
+
+                <label className="flex cursor-pointer items-center gap-2 text-[var(--dsn-text)]">
+                  <Checkbox
+                    checked={shareModalState.includeReferenceStock}
+                    onCheckedChange={(checked) =>
                       setShareModalState((s) =>
-                        s ? { ...s, suggestedPrice: e.target.value } : null,
+                        s ? { ...s, includeReferenceStock: checked === true } : null,
                       )
                     }
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
                   />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block font-medium text-[var(--dsn-text)]">
-                  {dict.minResaleLabel} ({shareModalState.candidate.currency})
+                  <span>{dict.referenceStockLabel}</span>
                 </label>
-                <input
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={shareModalState.minResalePrice}
-                  onChange={(e) =>
-                    setShareModalState((s) => (s ? { ...s, minResalePrice: e.target.value } : null))
-                  }
-                  placeholder={locale === "en" ? "Optional minimum floor" : "Opcional (mínimo sugerido)"}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
-                />
-              </div>
 
-              <div className="space-y-1">
-                <label className="block font-medium text-[var(--dsn-text)]">
-                  {dict.shareChangelogLabel}
-                </label>
-                <textarea
-                  rows={2}
-                  value={shareModalState.changelog}
-                  onChange={(e) =>
-                    setShareModalState((s) => (s ? { ...s, changelog: e.target.value } : null))
-                  }
-                  placeholder={dict.shareChangelogPlaceholder}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
-                />
-              </div>
-
-              <label className="flex items-center gap-2 text-[var(--dsn-text)] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={shareModalState.includeReferenceStock}
-                  onChange={(e) =>
-                    setShareModalState((s) =>
-                      s ? { ...s, includeReferenceStock: e.target.checked } : null,
-                    )
-                  }
-                  className="accent-[var(--dsn-accent)]"
-                />
-                <span>{dict.referenceStockLabel}</span>
-              </label>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShareModalState(null)}
-                  className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 font-semibold text-[var(--dsn-text)]"
-                >
-                  {locale === "en" ? "Cancel" : "Cancelar"}
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingShare}
-                  className="rounded-lg bg-[var(--dsn-accent)] px-4 py-2 font-semibold text-white"
-                >
-                  {shareModalState.mode === "create"
-                    ? dict.shareToCommunityCta
-                    : dict.publishVersionCta}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                <DialogFooter className="pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShareModalState(null)}
+                  >
+                    {locale === "en" ? "Cancel" : "Cancelar"}
+                  </Button>
+                  <Button type="submit" disabled={savingShare} loading={savingShare}>
+                    {shareModalState.mode === "create"
+                      ? dict.shareToCommunityCta
+                      : dict.publishVersionCta}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

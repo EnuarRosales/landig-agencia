@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { Alert, AlertDescription, Button, Input, Label, Textarea } from "@mocter/ui";
 
 export interface FollowupStepItem {
   id?: string;
@@ -266,9 +267,9 @@ export function FollowupSequencesView({
       </div>
 
       {aiFeedback && (
-        <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm rounded-lg">
-          {aiFeedback}
-        </div>
+        <Alert variant="success" className="p-3 text-sm">
+          <AlertDescription className="text-inherit">{aiFeedback}</AlertDescription>
+        </Alert>
       )}
 
       {/* Editor Modal / Inline */}
@@ -279,30 +280,30 @@ export function FollowupSequencesView({
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="seq-name" className="block text-sm font-medium text-txt mb-1">
+              <Label htmlFor="seq-name" className="mb-1 block text-sm font-medium text-txt">
                 {t.labelName}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="seq-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-txt focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="bg-bg text-sm text-txt"
               />
             </div>
             <div>
-              <label htmlFor="seq-inactivity" className="block text-sm font-medium text-txt mb-1">
+              <Label htmlFor="seq-inactivity" className="mb-1 block text-sm font-medium text-txt">
                 {t.labelTriggerInactivity}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="seq-inactivity"
                 type="number"
                 min="1"
                 value={triggerInactivity}
                 onChange={(e) => setTriggerInactivity(Number(e.target.value))}
                 required
-                className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-bg text-txt focus:outline-none focus:ring-2 focus:ring-primary/40"
+                className="bg-bg text-sm text-txt"
               />
               <span className="text-xs text-txt-secondary mt-1 block">
                 {t.triggerInactivityHelp}
@@ -315,13 +316,15 @@ export function FollowupSequencesView({
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold text-txt">{t.stepsSectionTitle}</h2>
               {steps.length < 10 && (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={handleAddStep}
-                  className="text-xs font-medium px-3 py-1.5 rounded-md border border-border hover:bg-surface text-primary"
+                  className="h-auto px-3 py-1.5 text-xs font-medium text-primary"
                 >
                   + {t.buttonAddStep}
-                </button>
+                </Button>
               )}
             </div>
 
@@ -340,29 +343,31 @@ export function FollowupSequencesView({
                       {t.stepPositionLabel} #{step.position}
                     </span>
                     {steps.length > 1 && (
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleRemoveStep(idx)}
-                        className="text-xs text-rose-400 hover:text-rose-300"
+                        className="h-auto px-2 py-0.5 text-xs text-rose-400 hover:text-rose-300"
                       >
                         {t.buttonRemoveStep}
-                      </button>
+                      </Button>
                     )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-txt mb-1">
+                      <Label className="mb-1 block text-xs font-medium text-txt">
                         {t.stepDelayLabel}
-                      </label>
-                      <input
+                      </Label>
+                      <Input
                         type="number"
                         min="0"
                         value={step.delayMinutes}
                         onChange={(e) =>
                           handleStepChange(idx, "delayMinutes", Number(e.target.value))
                         }
-                        className="w-full px-2.5 py-1.5 text-sm rounded border border-border bg-surface text-txt"
+                        className="min-h-[34px] bg-surface px-2.5 py-1.5 text-sm text-txt"
                       />
                       <span className="text-[10px] text-txt-secondary block mt-0.5">
                         {t.stepDelayHelp}
@@ -371,23 +376,25 @@ export function FollowupSequencesView({
 
                     <div className="sm:col-span-2">
                       <div className="flex items-center justify-between mb-1">
-                        <label className="block text-xs font-medium text-txt">
+                        <Label className="block text-xs font-medium text-txt">
                           {t.stepMessageLabel}
-                        </label>
-                        <button
+                        </Label>
+                        <Button
                           type="button"
+                          variant="ai"
+                          size="sm"
                           onClick={() => handleImproveWithAi(idx)}
-                          className="text-[11px] font-medium text-amber-400 hover:text-amber-300 flex items-center gap-1"
+                          className="h-auto min-h-[24px] px-2 py-0.5 text-[11px] font-medium"
                         >
                           ✨ {t.buttonImproveWithAi}
-                        </button>
+                        </Button>
                       </div>
-                      <textarea
+                      <Textarea
                         rows={2}
                         value={step.message}
                         onChange={(e) => handleStepChange(idx, "message", e.target.value)}
                         required
-                        className="w-full px-2.5 py-1.5 text-sm rounded border border-border bg-surface text-txt focus:outline-none"
+                        className="bg-surface px-2.5 py-1.5 text-sm text-txt"
                       />
                     </div>
                   </div>
@@ -397,19 +404,21 @@ export function FollowupSequencesView({
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-border/40">
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={() => setIsEditing(false)}
-              className="px-4 py-2 text-sm rounded-lg border border-border text-txt hover:bg-surface"
+              className="text-sm"
             >
               {t.buttonCancel}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-fg hover:bg-primary-hover shadow-sm"
+              variant="primary"
+              className="text-sm"
             >
               {t.buttonSaveSequence}
-            </button>
+            </Button>
           </div>
         </form>
       )}

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useSyncExternalStore } from "react";
+import { Input, Label, Select } from "@mocter/ui";
 import {
   getCountryAddressProfile,
   listCountryOptions,
@@ -132,17 +133,17 @@ export function PhoneE164Input({
 
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-[14px] font-medium">
+      <Label htmlFor={id} className="mb-1 block text-[14px] font-medium text-txt">
         {label}
-      </label>
+      </Label>
       <input type="hidden" name={name} value={e164Result.value} />
       <div className="flex flex-col gap-2 sm:flex-row">
-        <select
+        <Select
           id={`${id}-country`}
           aria-label={countryAriaLabel}
           value={countryCode}
           onChange={(e) => handleCountryChange(e.target.value)}
-          className="w-full sm:w-44 shrink-0 rounded-xl border border-stroke bg-[rgba(255,255,255,0.04)] px-3 py-3 text-[14px] text-txt outline-none focus:border-a2"
+          className="w-full shrink-0 rounded-xl border-stroke bg-[rgba(255,255,255,0.04)] px-3 py-3 text-[14px] text-txt focus:border-a2 sm:w-44"
         >
           {isClient ? (
             countryOptions.map((opt) => (
@@ -162,8 +163,8 @@ export function PhoneE164Input({
               {`${countryCode} (+${callingCode})`}
             </option>
           )}
-        </select>
-        <input
+        </Select>
+        <Input
           id={id}
           type="tel"
           required={required}
@@ -171,11 +172,8 @@ export function PhoneE164Input({
           placeholder={placeholder}
           value={nationalNumber}
           onChange={(e) => handleNationalChange(e.target.value)}
-          aria-invalid={Boolean(errorText)}
-          className={
-            "w-full flex-1 rounded-xl border bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[15px] text-txt placeholder:text-muted outline-none focus:border-a2 " +
-            (errorText ? "border-hot" : "border-stroke")
-          }
+          error={Boolean(errorText)}
+          className="flex-1 rounded-xl bg-[rgba(255,255,255,0.04)] px-4 py-3 text-[15px] text-txt placeholder:text-muted focus:border-a2"
         />
       </div>
       {errorText ? (

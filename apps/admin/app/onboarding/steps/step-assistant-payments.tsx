@@ -13,6 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { TenantOnboardingStateDto } from "@mocter/domain";
+import { Button, Checkbox, Input, Label, Select } from "@mocter/ui";
 import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
@@ -139,13 +140,10 @@ export function StepAssistantPayments({
       {/* Nombre y Objetivo del Asistente */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label
-            htmlFor="onb-bot-name"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-bot-name" className="mb-1.5 text-sm font-semibold">
             {dict.step4BotNameLabel}
-          </label>
-          <input
+          </Label>
+          <Input
             id="onb-bot-name"
             type="text"
             required
@@ -153,22 +151,19 @@ export function StepAssistantPayments({
             value={botName}
             onChange={(e) => onBotNameChange(e.target.value)}
             placeholder="Ej. Asistente Comercial"
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface-secondary)] px-3.5 py-2.5 text-sm"
           />
         </div>
 
         <div>
-          <label
-            htmlFor="onb-bot-objective"
-            className="mb-1.5 block text-sm font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor="onb-bot-objective" className="mb-1.5 text-sm font-semibold">
             {dict.step4BotObjectiveLabel}
-          </label>
-          <select
+          </Label>
+          <Select
             id="onb-bot-objective"
             value={botObjective}
             onChange={(e) => onBotObjectiveChange(e.target.value)}
-            className="w-full min-h-[44px] rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="min-h-[44px] rounded-xl bg-[var(--dsn-surface)] px-3.5 py-2.5 text-sm"
           >
             {botCatalog.objectives.map((obj) => {
               const label = obj.labels[locale] || obj.labels.es;
@@ -182,7 +177,7 @@ export function StepAssistantPayments({
                 </option>
               );
             })}
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -268,14 +263,16 @@ export function StepAssistantPayments({
               </p>
             </div>
           </div>
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={addChannel}
-            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)]"
+            className="min-h-[38px] rounded-xl bg-[var(--dsn-surface-secondary)]"
           >
-            <Plus className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+            <Plus className="h-3.5 w-3.5 text-[var(--dsn-accent)]" aria-hidden="true" />
             <span>{dict.step4PaymentsAddCta}</span>
-          </button>
+          </Button>
         </div>
 
         <div className="space-y-2.5">
@@ -285,14 +282,12 @@ export function StepAssistantPayments({
               className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-3 grid grid-cols-1 gap-2.5 sm:grid-cols-12 sm:items-center"
             >
               <div className="sm:col-span-3 flex items-center gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={ch.isActive}
-                  onChange={(e) => updateChannel(idx, { isActive: e.target.checked })}
+                  onCheckedChange={(checked) => updateChannel(idx, { isActive: checked === true })}
                   aria-label={`Activar ${ch.displayName}`}
-                  className="h-4 w-4 accent-[var(--dsn-accent)]"
                 />
-                <select
+                <Select
                   value={ch.channelCode}
                   onChange={(e) => {
                     const nextCode = e.target.value as OnboardingPaymentChannelItem["channelCode"];
@@ -300,7 +295,7 @@ export function StepAssistantPayments({
                       CHANNEL_CATALOG.find((c) => c.code === nextCode)?.label || ch.displayName;
                     updateChannel(idx, { channelCode: nextCode, displayName: presetLabel });
                   }}
-                  className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs font-semibold text-[var(--dsn-text)]"
+                  className="bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs font-semibold"
                 >
                   {CHANNEL_CATALOG.map((option) => (
                     <option
@@ -311,39 +306,41 @@ export function StepAssistantPayments({
                       {option.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div className="sm:col-span-4">
-                <input
+                <Input
                   type="text"
                   value={ch.accountIdentifier}
                   onChange={(e) => updateChannel(idx, { accountIdentifier: e.target.value })}
                   placeholder={dict.step4PaymentsAccountPlaceholder}
-                  className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                  className="bg-[var(--dsn-surface)] text-xs"
                 />
               </div>
 
               <div className="sm:col-span-4">
-                <input
+                <Input
                   type="text"
                   value={ch.instructions}
                   onChange={(e) => updateChannel(idx, { instructions: e.target.value })}
                   placeholder="Instrucciones breves (opcional)"
-                  className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                  className="bg-[var(--dsn-surface)] text-xs"
                 />
               </div>
 
               <div className="sm:col-span-1 flex justify-end">
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="icon"
                   disabled={paymentChannels.length <= 1}
                   onClick={() => removeChannel(idx)}
                   aria-label="Quitar canal"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--dsn-border)] text-[var(--dsn-text-secondary)] hover:text-rose-500 disabled:opacity-40"
+                  className="h-9 w-9 min-h-[36px] min-w-[36px] hover:text-rose-500"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </Button>
               </div>
             </div>
           ))}
@@ -371,33 +368,29 @@ export function StepAssistantPayments({
       </div>
 
       <div className="flex flex-col-reverse gap-3 border-t border-[var(--dsn-border)] pt-4 sm:flex-row sm:justify-between">
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="lg"
           disabled={loading}
           onClick={onBack}
-          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-5 py-2.5 text-sm font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors"
+          className="rounded-xl bg-[var(--dsn-surface-secondary)]"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>{dict.backCta}</span>
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="submit"
-          disabled={loading}
-          className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-[var(--dsn-accent)] px-6 py-2.5 text-sm font-bold text-[var(--dsn-accent-fg)] shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50"
+          variant="primary"
+          size="lg"
+          loading={loading}
+          loadingText={dict.savingLabel}
+          className="min-h-[46px] rounded-xl px-6 font-bold"
         >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>{dict.savingLabel}</span>
-            </>
-          ) : (
-            <>
-              <span>{dict.step4SubmitCta}</span>
-              <ArrowRight className="h-4 w-4" />
-            </>
-          )}
-        </button>
+          <span>{dict.step4SubmitCta}</span>
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        </Button>
       </div>
     </form>
   );

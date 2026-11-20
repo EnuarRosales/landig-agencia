@@ -7,6 +7,10 @@ const mockGovernanceService = {
   reviewLeaderAuthorization: vi.fn(),
   setOrganizationPlatformStatus: vi.fn(),
 };
+const mockFeedService = {
+  updateRetentionSettings: vi.fn(),
+  purgeExpiredPosts: vi.fn(),
+};
 
 vi.mock("@/lib/billing-route-auth", () => ({
   requirePlatformAdmin: (...args: unknown[]) => mockRequirePlatformAdmin(...args),
@@ -17,6 +21,7 @@ vi.mock("@mocter/domain", async () => {
   return {
     ...actual,
     getCommunitiesGovernanceService: () => mockGovernanceService,
+    getCommunityFeedService: () => mockFeedService,
   };
 });
 
@@ -75,5 +80,54 @@ describe("SPEC-15 · /api/admin/communities", () => {
         maxOwnedCommunities: 5,
       }),
     );
+  });
+
+  it("POST update_retention_settings y run_retention_purge gestionan la retención del muro", async () => {
+    mockFeedService.updateRetentionSettings.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        feedRetentionDays: 60,
+        lastRetentionPurgeAt: null,
+        lastRetentionPurgedCount: 0,
+        eligibleToPurgeCount: 2,
+      },
+    });
+
+    const updateRes = await POST(
+      new NextRequest("http://localhost:3003/api/admin/communities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_retention_settings",
+          feedRetentionDays: 60,
+        }),
+      }),
+    );
+    expect(updateRes.status).toBe(200);
+    expect(mockFeedService.updateRetentionSettings).toHaveBeenCalledWith({
+      feedRetentionDays: 60,
+      actorUserId: "11111111-1111-1111-1111-111111111111",
+    });
+
+    mockFeedService.purgeExpiredPosts.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        purgedPostsCount: 2,
+        releasedMediaCount: 1,
+        releasedBytesTotal: 512000,
+        skippedQuotaReleasesCount: 0,
+        executedAt: "2026-11-20T00:00:00.000Z",
+      },
+    });
+
+    const purgeRes = await POST(
+      new NextRequest("http://localhost:3003/api/admin/communities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "run_retention_purge" }),
+      }),
+    );
+    expect(purgeRes.status).toBe(200);
+    expect(mockFeedService.purgeExpiredPosts).toHaveBeenCalledTimes(1);
   });
 });

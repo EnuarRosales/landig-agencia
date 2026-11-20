@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     include: ["app/**/*.test.{ts,tsx}", "lib/**/*.test.{ts,tsx}", "components/**/*.test.{ts,tsx}"],
     environment: "node",
+    setupFiles: ["./vitest.setup.ts"],
   },
   resolve: {
     alias: {

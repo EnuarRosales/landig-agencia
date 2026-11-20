@@ -9,7 +9,6 @@ import {
   Check,
   Globe,
   ImagePlus,
-  Loader2,
   Lock,
   Paintbrush,
   RotateCcw,
@@ -23,8 +22,19 @@ import type {
   BrandingPaletteTokens,
   WhiteLabelCapabilityMode,
 } from "@mocter/domain";
-import { ConfirmationModal } from "@/components/confirmation-modal";
-import { FormSaveBar } from "@/components/ui/form-save-bar";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  ConfirmationModal,
+  FormSaveBar,
+  Input,
+  Label,
+  Select,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 export interface WorkspaceBrandingDto {
@@ -120,9 +130,9 @@ function ColorTokenField({
   const pickerValue = HEX_COLOR_RE.test(value) ? value : "#000000";
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-xs font-medium text-[var(--dsn-text)]">
+      <Label htmlFor={id} className="block text-xs font-medium text-[var(--dsn-text)]">
         {label}
-      </label>
+      </Label>
       <div className="flex items-center gap-2">
         <input
           type="color"
@@ -132,7 +142,7 @@ function ColorTokenField({
           onChange={(e) => onChange(e.target.value.toUpperCase())}
           className="h-11 w-12 shrink-0 cursor-pointer rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-1 disabled:cursor-not-allowed disabled:opacity-50"
         />
-        <input
+        <Input
           id={id}
           type="text"
           value={value}
@@ -140,7 +150,7 @@ function ColorTokenField({
           maxLength={7}
           placeholder="#0F766E"
           onChange={(e) => onChange(e.target.value)}
-          className="h-11 w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 font-mono text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-11 font-mono text-xs"
         />
       </div>
     </div>
@@ -158,16 +168,10 @@ function ContrastBadge({
 }) {
   const valid = ratio >= 4.5;
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-mono ${
-        valid
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-          : "border-rose-500/40 bg-rose-500/10 text-rose-400"
-      }`}
-    >
+    <Badge variant={valid ? "success" : "destructive"} className="font-mono text-[11px]">
       <span>{valid ? passLabel : failLabel}</span>
       <span>· {ratio.toFixed(2)}:1</span>
-    </span>
+    </Badge>
   );
 }
 
@@ -299,38 +303,35 @@ export function WorkspaceBrandingView({
           <p className="text-xs text-[var(--dsn-text-secondary)]">{dict.brandingSubtitle}</p>
         </header>
 
-        <section
-          data-testid="branding-mode-none-card"
-          className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 md:p-10 text-center max-w-2xl mx-auto shadow-xs space-y-5"
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400 mx-auto border border-amber-500/20">
-            <Lock className="h-6 w-6" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-lg font-bold text-[var(--dsn-text)]">
-              {dict.brandingModeNoneTitle}
-            </h2>
-            <p className="text-sm text-[var(--dsn-text-secondary)] leading-relaxed">
-              {dict.brandingModeNoneDesc}
-            </p>
-          </div>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            <Link
-              href="/workspace/profile"
-              className="w-full sm:w-auto inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-4 py-2.5 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors"
-            >
-              <Store className="h-4 w-4 text-[var(--dsn-accent)]" />
-              <span>{dict.brandingModeNoneProfileCta}</span>
-            </Link>
-            <Link
-              href="/workspace/billing"
-              className="w-full sm:w-auto inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2.5 text-xs font-semibold text-[var(--dsn-accent-fg)] hover:opacity-90 transition-opacity"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span>{dict.brandingModeNoneUpgradeCta}</span>
-            </Link>
-          </div>
-        </section>
+        <Card asChild data-testid="branding-mode-none-card">
+          <section className="rounded-2xl p-6 md:p-10 text-center max-w-2xl mx-auto space-y-5">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400 mx-auto border border-amber-500/20">
+              <Lock className="h-6 w-6" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-lg font-bold text-[var(--dsn-text)]">
+                {dict.brandingModeNoneTitle}
+              </h2>
+              <p className="text-sm text-[var(--dsn-text-secondary)] leading-relaxed">
+                {dict.brandingModeNoneDesc}
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <Button asChild variant="secondary" className="w-full sm:w-auto min-h-[44px] text-xs">
+                <Link href="/workspace/profile">
+                  <Store className="h-4 w-4 text-[var(--dsn-accent)]" />
+                  <span>{dict.brandingModeNoneProfileCta}</span>
+                </Link>
+              </Button>
+              <Button asChild variant="primary" className="w-full sm:w-auto min-h-[44px] text-xs">
+                <Link href="/workspace/billing">
+                  <Sparkles className="h-4 w-4" />
+                  <span>{dict.brandingModeNoneUpgradeCta}</span>
+                </Link>
+              </Button>
+            </div>
+          </section>
+        </Card>
       </div>
     );
   }
@@ -490,71 +491,66 @@ export function WorkspaceBrandingView({
           <div className="flex flex-wrap items-center gap-2">
             <Paintbrush className="h-5 w-5 text-[var(--dsn-accent)]" />
             <h1 className="text-xl font-bold text-[var(--dsn-text)]">{dict.brandingTitle}</h1>
-            <span className="rounded-full border border-[var(--dsn-accent)]/30 bg-[var(--dsn-accent)]/15 px-2.5 py-0.5 text-[11px] font-medium text-[var(--dsn-accent)]">
+            <Badge variant="accent" className="text-[11px]">
               {initialMode === "completa" ? dict.brandingModeFullBadge : dict.brandingModePaletteBadge}
-            </span>
+            </Badge>
           </div>
           <p className="text-xs text-[var(--dsn-text-secondary)]">{dict.brandingSubtitle}</p>
         </div>
 
         {canEditPalette && (
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
+            <Button
               type="button"
+              variant="destructive"
               onClick={() => setResetModalOpen(true)}
-              className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer"
+              className="min-h-[40px] text-xs"
             >
               <RotateCcw className="h-4 w-4" />
               <span>{dict.brandingResetCta}</span>
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="primary"
               onClick={() => void handleSaveBranding()}
               disabled={saving || !allContrastsValid}
-              className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+              loading={saving}
+              loadingText={dict.saveBarSavingCta}
+              className="min-h-[40px] text-xs"
             >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              <span>{saving ? dict.saveBarSavingCta : dict.saveBarSaveCta}</span>
-            </button>
+              <Save className="h-4 w-4" />
+              <span>{dict.saveBarSaveCta}</span>
+            </Button>
           </div>
         )}
       </header>
 
       {!isOwner && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-300">
-          <ShieldAlert className="h-5 w-5 shrink-0 text-amber-400" />
-          <p>{dict.brandingOwnerOnlyNotice}</p>
-        </div>
+        <Alert variant="warning">
+          <ShieldAlert className="h-4 w-4" />
+          <AlertDescription className="text-xs">{dict.brandingOwnerOnlyNotice}</AlertDescription>
+        </Alert>
       )}
 
       {feedbackError && (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs text-rose-300"
-        >
-          <ShieldAlert className="h-5 w-5 shrink-0 text-rose-400" />
-          <p>{feedbackError}</p>
-        </div>
+        <Alert variant="destructive" role="alert">
+          <ShieldAlert className="h-4 w-4" />
+          <AlertDescription className="text-xs">{feedbackError}</AlertDescription>
+        </Alert>
       )}
 
       {feedbackSuccess && (
-        <div
-          role="status"
-          className="flex items-start gap-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-xs text-emerald-300"
-        >
-          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
-          <p>{feedbackSuccess}</p>
-        </div>
+        <Alert variant="success" role="status">
+          <CheckCircle2 className="h-4 w-4" />
+          <AlertDescription className="text-xs">{feedbackSuccess}</AlertDescription>
+        </Alert>
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <form onSubmit={handleSaveBranding} className="space-y-6 lg:col-span-7">
           {/* Sección 1: Paleta de Colores y Contraste Accesible */}
-          <section className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 space-y-5 shadow-xs">
+          <Card asChild>
+            <section className="rounded-2xl p-5 space-y-5">
             <div className="space-y-1">
               <h2 className="text-base font-bold text-[var(--dsn-text)]">
                 {dict.brandingSectionPaletteTitle}
@@ -659,10 +655,12 @@ export function WorkspaceBrandingView({
                 failLabel={dict.brandingContrastFail}
               />
             </div>
-          </section>
+            </section>
+          </Card>
 
           {/* Sección 2: Activos y Marca Blanca Completa */}
-          <section className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 space-y-5 shadow-xs">
+          <Card asChild>
+            <section className="rounded-2xl p-5 space-y-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
                 <h2 className="text-base font-bold text-[var(--dsn-text)]">
@@ -673,13 +671,17 @@ export function WorkspaceBrandingView({
                 </p>
               </div>
               {initialMode !== "completa" && (
-                <Link
-                  href="/workspace/billing"
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/15 shrink-0"
+                <Button
+                  asChild
+                  variant="warning"
+                  size="sm"
+                  className="text-[11px] shrink-0"
                 >
-                  <Lock className="h-3.5 w-3.5" />
-                  <span>{dict.brandingModeNoneUpgradeCta}</span>
-                </Link>
+                  <Link href="/workspace/billing">
+                    <Lock className="h-3.5 w-3.5" />
+                    <span>{dict.brandingModeNoneUpgradeCta}</span>
+                  </Link>
+                </Button>
               )}
             </div>
 
@@ -691,13 +693,13 @@ export function WorkspaceBrandingView({
               <div className="space-y-5">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <label
+                    <Label
                       htmlFor="branding-brand-name"
                       className="block text-xs font-medium text-[var(--dsn-text)]"
                     >
                       {dict.brandingBrandNameLabel}
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       id="branding-brand-name"
                       type="text"
                       maxLength={120}
@@ -705,30 +707,30 @@ export function WorkspaceBrandingView({
                       value={brandName}
                       placeholder={dict.brandingBrandNamePlaceholder}
                       onChange={(e) => setBrandName(e.target.value)}
-                      className="h-11 w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                      className="h-11 text-sm"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label
+                    <Label
                       htmlFor="branding-custom-font"
                       className="block text-xs font-medium text-[var(--dsn-text)]"
                     >
                       {dict.brandingFontLabel}
-                    </label>
-                    <select
+                    </Label>
+                    <Select
                       id="branding-custom-font"
                       disabled={!canEditFull}
                       value={customFont}
                       onChange={(e) => setCustomFont(e.target.value)}
-                      className="h-11 w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                      className="h-11 text-sm"
                     >
                       {allowedFonts.map((font) => (
                         <option key={font} value={font}>
                           {font}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
 
@@ -758,23 +760,18 @@ export function WorkspaceBrandingView({
                       aria-label={dict.brandingLogoUploadCta}
                       onChange={(e) => void handleAssetUpload("logo", e.target.files?.[0])}
                     />
-                    <button
+                    <Button
                       type="button"
+                      variant="secondary"
                       disabled={!canEditFull || uploadingKind !== null}
+                      loading={uploadingKind === "logo"}
+                      loadingText={dict.brandingLogoUploading}
                       onClick={() => logoInputRef.current?.click()}
-                      className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors disabled:opacity-50"
+                      className="min-h-[44px] w-full text-xs"
                     >
-                      {uploadingKind === "logo" ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <ImagePlus className="h-4 w-4 text-[var(--dsn-accent)]" />
-                      )}
-                      <span>
-                        {uploadingKind === "logo"
-                          ? dict.brandingLogoUploading
-                          : dict.brandingLogoUploadCta}
-                      </span>
-                    </button>
+                      <ImagePlus className="h-4 w-4 text-[var(--dsn-accent)]" />
+                      <span>{dict.brandingLogoUploadCta}</span>
+                    </Button>
                   </div>
 
                   <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4 space-y-3">
@@ -801,38 +798,33 @@ export function WorkspaceBrandingView({
                       aria-label={dict.brandingFaviconUploadCta}
                       onChange={(e) => void handleAssetUpload("favicon", e.target.files?.[0])}
                     />
-                    <button
+                    <Button
                       type="button"
+                      variant="secondary"
                       disabled={!canEditFull || uploadingKind !== null}
+                      loading={uploadingKind === "favicon"}
+                      loadingText={dict.brandingFaviconUploading}
                       onClick={() => faviconInputRef.current?.click()}
-                      className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors disabled:opacity-50"
+                      className="min-h-[44px] w-full text-xs"
                     >
-                      {uploadingKind === "favicon" ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Upload className="h-4 w-4 text-[var(--dsn-accent)]" />
-                      )}
-                      <span>
-                        {uploadingKind === "favicon"
-                          ? dict.brandingFaviconUploading
-                          : dict.brandingFaviconUploadCta}
-                      </span>
-                    </button>
+                      <Upload className="h-4 w-4 text-[var(--dsn-accent)]" />
+                      <span>{dict.brandingFaviconUploadCta}</span>
+                    </Button>
                   </div>
                 </div>
 
                 {/* Dominio Personalizado + Instrucción CNAME */}
                 <div className="space-y-3">
                   <div className="space-y-1.5">
-                    <label
+                    <Label
                       htmlFor="branding-custom-domain"
                       className="block text-xs font-medium text-[var(--dsn-text)]"
                     >
                       {dict.brandingCustomDomainLabel}
-                    </label>
+                    </Label>
                     <div className="relative">
                       <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--dsn-text-secondary)]" />
-                      <input
+                      <Input
                         id="branding-custom-domain"
                         type="text"
                         maxLength={255}
@@ -840,7 +832,7 @@ export function WorkspaceBrandingView({
                         value={customDomain}
                         placeholder={dict.brandingCustomDomainPlaceholder}
                         onChange={(e) => setCustomDomain(e.target.value)}
-                        className="h-11 w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] pl-9 pr-3 font-mono text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                        className="h-11 pl-9 font-mono text-xs"
                       />
                     </div>
                     <p className="text-[11px] text-[var(--dsn-text-secondary)]">
@@ -859,10 +851,12 @@ export function WorkspaceBrandingView({
                           "  CNAME  " +
                           cnameTargetHost}
                       </span>
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="sm"
                         onClick={copyCnameHost}
-                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-[var(--dsn-accent)] hover:bg-[var(--dsn-surface-secondary)]"
+                        className="h-auto px-2 py-1 text-[var(--dsn-accent)]"
                       >
                         {copiedCname ? (
                           <Check className="h-3.5 w-3.5" />
@@ -870,19 +864,18 @@ export function WorkspaceBrandingView({
                           <Copy className="h-3.5 w-3.5" />
                         )}
                         <span>{cnameTargetHost}</span>
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </div>
 
                 {/* Toggle Ocultar Marca Mocter */}
                 <label className="flex items-start gap-3 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-3.5 cursor-pointer">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     disabled={!canEditFull}
                     checked={removeMocterBranding}
-                    onChange={(e) => setRemoveMocterBranding(e.target.checked)}
-                    className="mt-1 h-4 w-4 accent-[var(--dsn-accent)]"
+                    onCheckedChange={(checked) => setRemoveMocterBranding(checked === true)}
+                    className="mt-0.5"
                   />
                   <div className="space-y-0.5">
                     <span className="block text-xs font-semibold text-[var(--dsn-text)]">
@@ -895,22 +888,22 @@ export function WorkspaceBrandingView({
                 </label>
               </div>
             )}
-          </section>
+            </section>
+          </Card>
 
           {canEditPalette && (
             <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
-              <button
+              <Button
                 type="submit"
+                variant="primary"
                 disabled={saving || !allContrastsValid}
-                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-5 py-2.5 text-xs font-semibold text-[var(--dsn-accent-fg)] hover:opacity-90 transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+                loading={saving}
+                loadingText={dict.brandingSaving}
+                className="min-h-[44px] text-xs"
               >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                <span>{saving ? dict.brandingSaving : dict.brandingSaveCta}</span>
-              </button>
+                <Save className="h-4 w-4" />
+                <span>{dict.brandingSaveCta}</span>
+              </Button>
             </div>
           )}
 

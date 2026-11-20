@@ -30,6 +30,7 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/domain/package.json packages/domain/package.json
+COPY packages/ui/package.json packages/ui/package.json
 RUN corepack pnpm install --frozen-lockfile
 
 # --- build: compile domain, then web, with Turborepo -------------------------
@@ -44,6 +45,7 @@ RUN corepack enable
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /app/packages/domain/node_modules ./packages/domain/node_modules
+COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules
 COPY . .
 RUN corepack pnpm turbo run build --filter=@mocter/domain
 RUN corepack pnpm turbo run build --filter=@mocter/web

@@ -15,7 +15,10 @@ import type {
   ReferralProgram,
 } from "../db/schemas/admin/referrals";
 import { generateQrSvgDataUrl } from "./breb-qr.service";
-import { getNotificationDispatcherService } from "./notification-dispatcher.service";
+import {
+  buildAdminPortalUrl,
+  getNotificationDispatcherService,
+} from "./notification-dispatcher.service";
 
 /**
  * Umbral máximo de atribuciones permitidas desde la misma IP hasheada por referente
@@ -1038,8 +1041,7 @@ let defaultReferralsServiceInstance: ReferralsService | null = null;
 
 function createDefaultReferralsNotificationDispatcher(): IReferralsNotificationDispatcher {
   const dispatcher = getNotificationDispatcherService();
-  const baseOrigin = (env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
-  const referralsUrl = baseOrigin ? `${baseOrigin}/workspace/referrals` : "/workspace/referrals";
+  const referralsUrl = buildAdminPortalUrl("/workspace/referrals");
 
   return {
     async dispatchReferralRegistered(params) {

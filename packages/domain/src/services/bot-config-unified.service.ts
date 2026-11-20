@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { withTenantCellTransaction } from "../db/cell-client";
+import { CellPoolError, withTenantCellTransaction } from "../db/cell-client";
 import { clients } from "../db/schemas/admin/clients";
 import { aiModels, botPresets, botTones } from "../db/schemas/admin/bot-catalog";
 import {
@@ -523,11 +523,21 @@ export class BotConfigUnifiedService {
         defaultLabelsInitialized: cellData.labelRows.length >= BOT_DEFAULT_LABELS_SEED.length,
       });
     } catch (error) {
-      appLogger.error("Error al cargar configuración unificada del bot", {
-        event: "tenant.bot.config_read_failed",
-        clientId,
-        errorName: error instanceof Error ? error.name : "UnknownError",
-      });
+      const isCellUnavailable =
+        error instanceof CellPoolError || (error instanceof Error && error.name === "CellPoolError");
+      if (isCellUnavailable) {
+        appLogger.warn("Celda no disponible al cargar configuración unificada del bot", {
+          event: "tenant.bot.config_read_degraded",
+          clientId,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      } else {
+        appLogger.error("Error al cargar configuración unificada del bot", error, {
+          event: "tenant.bot.config_read_failed",
+          clientId,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
       return err("No se pudo cargar la configuración del asistente.", "BOT_CONFIG_READ_ERROR");
     }
   }

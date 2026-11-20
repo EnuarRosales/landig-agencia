@@ -31,6 +31,7 @@ import { getAdminDictionary } from "@/lib/i18n";
 import { UserProfileModal, type CurrentUserDto } from "./user-profile-modal";
 import { ConfirmationModal } from "./confirmation-modal";
 import { handleLogoutRedirect } from "@/lib/api-client";
+import { Badge, Button, Sheet, SheetContent, SheetTitle } from "@mocter/ui";
 
 interface AdminShellProps {
   children: React.ReactNode;
@@ -216,15 +217,17 @@ export function AdminShell({ children, currentUser, tenantCapabilities }: AdminS
          ───────────────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between border-b border-[var(--dsn-border)] bg-[var(--dsn-surface)]/90 px-4 backdrop-blur-md md:hidden">
         <div className="flex items-center gap-3">
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="icon"
             onClick={() => setMobileMenuOpen(true)}
             aria-label={dict.menuOpen}
             aria-expanded={mobileMenuOpen}
-            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text)] transition-colors hover:bg-[var(--dsn-surface-secondary)] active:scale-95"
+            className="min-h-[44px] min-w-[44px] active:scale-95"
           >
-            <Menu className="h-5 w-5" />
-          </button>
+            <Menu className="h-5 w-5" aria-hidden="true" />
+          </Button>
           <BrandLogo size="sm" badgeText="Core" />
         </div>
 
@@ -234,159 +237,148 @@ export function AdminShell({ children, currentUser, tenantCapabilities }: AdminS
       </header>
 
       {/* ─────────────────────────────────────────────────────────────
-          2. DRAWER / CAJÓN MÓVIL (Slide-over off-canvas con backdrop)
+          2. DRAWER / CAJÓN MÓVIL (Radix Sheet accesible)
          ───────────────────────────────────────────────────────────── */}
-      {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-50 flex md:hidden animate-in fade-in duration-200"
-          role="dialog"
-          aria-modal="true"
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent
+          side="left"
+          showCloseButton={false}
           aria-label="Menú de navegación móvil"
+          className="w-[280px] max-w-[85vw] p-4 flex flex-col justify-between md:hidden"
         >
-          {/* Backdrop con desenfoque */}
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-xs"
-            onClick={() => setMobileMenuOpen(false)}
-            aria-hidden="true"
-          />
-
-          {/* Panel deslizante desde la izquierda */}
-          <div className="relative z-10 flex w-[280px] max-w-[85vw] h-dvh flex-col justify-between border-r border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-2xl animate-in slide-in-from-left duration-200">
-            <div className="flex flex-col flex-1 min-h-0">
-              {/* Encabezado del Drawer */}
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--dsn-border)] shrink-0">
-                <BrandLogo size="md" badgeText="Core" />
-                <button
-                  type="button"
-                  onClick={() => setMobileMenuOpen(false)}
-                  aria-label={dict.menuClose}
-                  className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Lista de navegación vertical con scroll independiente */}
-              <nav className="mt-4 space-y-1.5 overflow-y-auto flex-1 pr-1 overscroll-contain" aria-label="Navegación principal móvil">
-                {visibleNavItems.map((item) => {
-                  const Icon = item.icon;
-                  const active = isLinkActive(item.href);
-
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`group flex min-h-[44px] items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                        active
-                          ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30 font-semibold"
-                          : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Icon
-                          className={`h-4 w-4 transition-colors ${
-                            active
-                              ? "text-[var(--dsn-accent)]"
-                              : "text-[var(--dsn-text-secondary)] group-hover:text-[var(--dsn-text)]"
-                          }`}
-                        />
-                        <span>{item.label}</span>
-                      </div>
-                      {item.badge && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]">
-                          {item.badge}
-                        </span>
-                      )}
-                    </Link>
-                  );
-                })}
-              </nav>
+          <SheetTitle className="sr-only">Menú de navegación móvil</SheetTitle>
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--dsn-border)] shrink-0">
+              <BrandLogo size="md" badgeText="Core" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setMobileMenuOpen(false)}
+                aria-label={dict.menuClose}
+                className="min-h-[44px] min-w-[44px]"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </Button>
             </div>
 
-            {/* Pie del drawer móvil */}
-            <div className="border-t border-[var(--dsn-border)] pt-4 space-y-3 shrink-0">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[var(--dsn-text-secondary)]">Tema visual</span>
-                <ThemeToggle />
-              </div>
+            <nav className="mt-4 space-y-1.5 overflow-y-auto flex-1 pr-1 overscroll-contain" aria-label="Navegación principal móvil">
+              {visibleNavItems.map((item) => {
+                const Icon = item.icon;
+                const active = isLinkActive(item.href);
 
-              {/* Menú de usuario en drawer móvil */}
-              <div className="relative">
-                {profilePopoverOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40"
-                      onClick={() => setProfilePopoverOpen(false)}
-                      aria-hidden="true"
-                    />
-                    <div
-                      role="menu"
-                      aria-label="Menú de cuenta de operador"
-                      className="absolute bottom-full mb-2 left-0 right-0 z-50 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
-                    >
-                      <div className="px-2.5 py-1.5 border-b border-[var(--dsn-border)]/60 mb-1">
-                        <p className="text-[11px] font-semibold text-[var(--dsn-text)] truncate">
-                          {user.displayName || "Platform Owner"}
-                        </p>
-                        <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
-                          {user.email}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMobileMenuOpen(false);
-                          setProfilePopoverOpen(false);
-                          setProfileModalOpen(true);
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors"
-                      >
-                        <UserIcon className="h-4 w-4 text-[var(--dsn-accent)]" />
-                        <span>Ficha De Perfil</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMobileMenuOpen(false);
-                          setProfilePopoverOpen(false);
-                          setLogoutModalOpen(true);
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
-                      >
-                        <LogOut className="h-4 w-4 text-rose-400" />
-                        <span>Cerrar Sesión</span>
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setProfilePopoverOpen((prev) => !prev)}
-                  aria-expanded={profilePopoverOpen}
-                  aria-haspopup="menu"
-                  className="w-full flex items-center justify-between rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-2.5 text-xs text-left transition-colors hover:bg-[var(--dsn-surface-secondary)] hover:border-[var(--dsn-border-strong)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)]"
-                >
-                  <div className="flex items-center gap-2.5 truncate">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] font-semibold text-xs border border-[var(--dsn-accent)]/40">
-                      {(user.displayName || user.email || "PO").slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="truncate">
-                      <p className="font-semibold text-[var(--dsn-text)] truncate">{user.displayName || "Platform Owner"}</p>
-                      <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">{user.email}</p>
-                    </div>
-                  </div>
-                  <ChevronUp
-                    className={`h-4 w-4 text-[var(--dsn-text-secondary)] transition-transform duration-200 shrink-0 ${
-                      profilePopoverOpen ? "rotate-180" : ""
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`group flex min-h-[44px] items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                      active
+                        ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30 font-semibold"
+                        : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
                     }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon
+                        className={`h-4 w-4 transition-colors ${
+                          active
+                            ? "text-[var(--dsn-accent)]"
+                            : "text-[var(--dsn-text-secondary)] group-hover:text-[var(--dsn-text)]"
+                        }`}
+                      />
+                      <span>{item.label}</span>
+                    </div>
+                    {item.badge && (
+                      <Badge className="rounded px-1.5 py-0.5 text-[10px] font-mono">
+                        {item.badge}
+                      </Badge>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+
+          <div className="border-t border-[var(--dsn-border)] pt-4 space-y-3 shrink-0">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-[var(--dsn-text-secondary)]">Tema visual</span>
+              <ThemeToggle />
+            </div>
+
+            <div className="relative">
+              {profilePopoverOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setProfilePopoverOpen(false)}
+                    aria-hidden="true"
                   />
-                </button>
-              </div>
+                  <div
+                    role="menu"
+                    aria-label="Menú de cuenta de operador"
+                    className="absolute bottom-full mb-2 left-0 right-0 z-50 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150"
+                  >
+                    <div className="px-2.5 py-1.5 border-b border-[var(--dsn-border)]/60 mb-1">
+                      <p className="text-[11px] font-semibold text-[var(--dsn-text)] truncate">
+                        {user.displayName || "Platform Owner"}
+                      </p>
+                      <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">
+                        {user.email}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        setProfilePopoverOpen(false);
+                        setProfileModalOpen(true);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-accent)] transition-colors cursor-pointer"
+                    >
+                      <UserIcon className="h-4 w-4 text-[var(--dsn-accent)]" />
+                      <span>Ficha De Perfil</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        setProfilePopoverOpen(false);
+                        setLogoutModalOpen(true);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                    >
+                      <LogOut className="h-4 w-4 text-rose-400" />
+                      <span>Cerrar Sesión</span>
+                    </button>
+                  </div>
+                </>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setProfilePopoverOpen((prev) => !prev)}
+                aria-expanded={profilePopoverOpen}
+                aria-haspopup="menu"
+                className="w-full flex items-center justify-between rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-2.5 text-xs text-left transition-colors hover:bg-[var(--dsn-surface-secondary)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)] cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] font-semibold text-xs border border-[var(--dsn-accent)]/40">
+                    {(user.displayName || user.email || "PO").slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="truncate">
+                    <p className="font-semibold text-[var(--dsn-text)] truncate">{user.displayName || "Platform Owner"}</p>
+                    <p className="text-[10px] text-[var(--dsn-text-secondary)] font-mono truncate">{user.email}</p>
+                  </div>
+                </div>
+                <ChevronUp
+                  className={`h-4 w-4 text-[var(--dsn-text-secondary)] transition-transform duration-200 shrink-0 ${
+                    profilePopoverOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
             </div>
           </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
 
       {/* ─────────────────────────────────────────────────────────────
           3. SIDEBAR PERSISTENTE ESCRITORIO (md:flex)

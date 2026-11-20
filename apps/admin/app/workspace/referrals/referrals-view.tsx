@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { TenantReferralsOverviewDto } from "@mocter/domain";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, Input } from "@mocter/ui";
 import {
   WorkspaceDataTable,
   type WorkspaceTableColumn,
@@ -283,109 +284,107 @@ export function TenantReferralsView({
           </div>
         </div>
 
-        <Link
-          href="/workspace/billing"
-          className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-opacity hover:opacity-90"
-        >
-          <span>{dict.referralsApplyBillingCta}</span>
-          <ArrowUpRight className="h-4 w-4" />
-        </Link>
+        <Button asChild className="min-h-[44px] shrink-0 rounded-xl">
+          <Link href="/workspace/billing">
+            <span>{dict.referralsApplyBillingCta}</span>
+            <ArrowUpRight className="h-4 w-4" />
+          </Link>
+        </Button>
       </header>
 
       {/* Banner de Estado Pausado / Finalizado */}
       {!isProgramActive && (
-        <div
-          data-testid="referrals-status-banner"
-          className="flex items-start gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 text-xs"
-        >
-          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500 mt-0.5" />
+        <Alert data-testid="referrals-status-banner" variant="warning" className="p-4">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
           <div className="space-y-1">
-            <p className="font-bold text-amber-500">
+            <AlertTitle className="font-bold text-amber-500">
               {programStatus === "paused"
                 ? dict.referralsPausedTitle
                 : programStatus === "ended"
                   ? dict.referralsEndedTitle
                   : dict.referralsUnavailableTitle}
-            </p>
-            <p className="text-[var(--dsn-text)]">
+            </AlertTitle>
+            <AlertDescription className="text-[var(--dsn-text)]">
               {programStatus === "paused"
                 ? dict.referralsPausedDesc
                 : programStatus === "ended"
                   ? dict.referralsEndedDesc
                   : dict.referralsUnavailableDesc}
-            </p>
+            </AlertDescription>
           </div>
-        </div>
+        </Alert>
       )}
 
       {errorMsg && (
-        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">
-          {errorMsg}
-        </div>
+        <Alert variant="error">
+          <AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
       )}
 
       {/* Tarjeta Hero: Tu Enlace de Referido + QR Compartible + 3 Pasos */}
-      <section className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 md:p-6 shadow-xs space-y-6">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-center">
-          <div className="space-y-4 lg:col-span-8">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-base font-bold text-[var(--dsn-text)]">
-                {dict.referralsLinkCardTitle}
-              </h2>
-              {data.program && (
-                <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                  <span className="inline-flex items-center gap-1 rounded-full border border-[var(--dsn-accent)]/30 bg-[var(--dsn-accent)]/10 px-2.5 py-0.5 font-semibold text-[var(--dsn-accent)]">
-                    <Sparkles className="h-3 w-3" />
-                    <span>
-                      {dict.referralsRewardRuleLabel}: {rewardRuleFormatted}
-                    </span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-2.5 py-0.5 font-medium text-[var(--dsn-text-secondary)]">
-                    <Clock className="h-3 w-3" />
-                    <span>
-                      {dict.referralsValidityLabel}: {data.program.creditValidityDays}{" "}
-                      {dict.referralsDaysSuffix}
-                    </span>
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {data.code && data.referralLink ? (
-              <div className="space-y-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <input
-                    id="tenant-referral-link-input"
-                    type="text"
-                    readOnly
-                    aria-label={dict.referralsLinkCardTitle}
-                    value={data.referralLink}
-                    className="min-h-[44px] flex-1 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3.5 py-2 text-xs font-mono text-[var(--dsn-text)] select-all focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={handleCopyLink}
-                      className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-opacity hover:opacity-90"
-                    >
-                      {copiedLink ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                      <span>{copiedLink ? dict.referralsLinkCopied : dict.referralsCopyLink}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleCopyCode}
-                      className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] transition-colors hover:bg-[var(--dsn-surface-secondary)]"
-                    >
-                      {copiedCode ? (
-                        <Check className="h-4 w-4 text-emerald-500" />
-                      ) : (
-                        <Copy className="h-4 w-4 text-[var(--dsn-accent)]" />
-                      )}
-                      <span>{copiedCode ? dict.referralsCodeCopied : dict.referralsCopyCode}</span>
-                    </button>
+      <Card asChild className="space-y-6 rounded-2xl p-5 shadow-xs md:p-6">
+        <section>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-center">
+            <div className="space-y-4 lg:col-span-8">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-base font-bold text-[var(--dsn-text)]">
+                  {dict.referralsLinkCardTitle}
+                </h2>
+                {data.program && (
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <Badge variant="accent">
+                      <Sparkles className="h-3 w-3" />
+                      <span>
+                        {dict.referralsRewardRuleLabel}: {rewardRuleFormatted}
+                      </span>
+                    </Badge>
+                    <Badge variant="outline">
+                      <Clock className="h-3 w-3" />
+                      <span>
+                        {dict.referralsValidityLabel}: {data.program.creditValidityDays}{" "}
+                        {dict.referralsDaysSuffix}
+                      </span>
+                    </Badge>
                   </div>
-                </div>
+                )}
+              </div>
+
+              {data.code && data.referralLink ? (
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Input
+                      id="tenant-referral-link-input"
+                      type="text"
+                      readOnly
+                      aria-label={dict.referralsLinkCardTitle}
+                      value={data.referralLink}
+                      className="min-h-[44px] flex-1 select-all rounded-xl font-mono text-xs"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        onClick={handleCopyLink}
+                        className="min-h-[44px] rounded-xl"
+                      >
+                        {copiedLink ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                        <span>{copiedLink ? dict.referralsLinkCopied : dict.referralsCopyLink}</span>
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleCopyCode}
+                        className="min-h-[44px] rounded-xl"
+                      >
+                        {copiedCode ? (
+                          <Check className="h-4 w-4 text-emerald-500" />
+                        ) : (
+                          <Copy className="h-4 w-4 text-[var(--dsn-accent)]" />
+                        )}
+                        <span>{copiedCode ? dict.referralsCodeCopied : dict.referralsCopyCode}</span>
+                      </Button>
+                    </div>
+                  </div>
 
                 <div className="flex items-center gap-2 text-xs text-[var(--dsn-text-secondary)]">
                   <span>{dict.referralsYourCodeLabel}:</span>
@@ -435,89 +434,98 @@ export function TenantReferralsView({
                   className="h-36 w-36 object-contain"
                 />
               </div>
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={handleDownloadQr}
-                className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] transition-colors hover:bg-[var(--dsn-surface-secondary)]"
+                className="min-h-[44px] rounded-xl"
               >
                 <Download className="h-4 w-4 text-[var(--dsn-accent)]" />
                 <span>{dict.referralsDownloadQr}</span>
-              </button>
+              </Button>
             </div>
           )}
-        </div>
-      </section>
+          </div>
+        </section>
+      </Card>
 
       {/* 4 KPIs Mobile First */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <article className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-xs space-y-2">
-          <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
-            <span className="font-medium">{dict.referralsKpiTotal}</span>
-            <Users className="h-4 w-4 text-[var(--dsn-accent)]" />
-          </div>
-          <p className="font-mono text-2xl font-bold text-[var(--dsn-text)]">
-            {data.metrics.totalReferred}
-          </p>
-        </article>
+        <Card asChild className="space-y-2 rounded-2xl p-4 shadow-xs">
+          <article>
+            <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
+              <span className="font-medium">{dict.referralsKpiTotal}</span>
+              <Users className="h-4 w-4 text-[var(--dsn-accent)]" />
+            </div>
+            <p className="font-mono text-2xl font-bold text-[var(--dsn-text)]">
+              {data.metrics.totalReferred}
+            </p>
+          </article>
+        </Card>
 
-        <article className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-xs space-y-2">
-          <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
-            <span className="font-medium">{dict.referralsKpiPending}</span>
-            <Clock className="h-4 w-4 text-amber-500" />
-          </div>
-          <p className="font-mono text-2xl font-bold text-amber-500">
-            {data.metrics.pendingCount}
-          </p>
-        </article>
+        <Card asChild className="space-y-2 rounded-2xl p-4 shadow-xs">
+          <article>
+            <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
+              <span className="font-medium">{dict.referralsKpiPending}</span>
+              <Clock className="h-4 w-4 text-amber-500" />
+            </div>
+            <p className="font-mono text-2xl font-bold text-amber-500">
+              {data.metrics.pendingCount}
+            </p>
+          </article>
+        </Card>
 
-        <article className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-xs space-y-2">
-          <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
-            <span className="font-medium">{dict.referralsKpiRewarded}</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          </div>
-          <p className="font-mono text-2xl font-bold text-emerald-500">
-            {data.metrics.rewardedCount}
-          </p>
-        </article>
+        <Card asChild className="space-y-2 rounded-2xl p-4 shadow-xs">
+          <article>
+            <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
+              <span className="font-medium">{dict.referralsKpiRewarded}</span>
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            </div>
+            <p className="font-mono text-2xl font-bold text-emerald-500">
+              {data.metrics.rewardedCount}
+            </p>
+          </article>
+        </Card>
 
-        <article className="rounded-2xl border border-emerald-500/35 bg-emerald-500/5 p-4 shadow-xs space-y-2">
-          <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
-            <span className="font-medium">{dict.referralsKpiAvailable}</span>
-            <Coins className="h-4 w-4 text-emerald-500" />
-          </div>
-          <p
-            data-testid="tenant-available-credit-kpi"
-            className="font-mono text-2xl font-bold text-emerald-500"
-          >
-            {formatMoneyCents(data.metrics.availableCreditCents, primaryCurrency, locale)}
-          </p>
-        </article>
+        <Card asChild className="space-y-2 rounded-2xl border-emerald-500/35 bg-emerald-500/5 p-4 shadow-xs">
+          <article>
+            <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
+              <span className="font-medium">{dict.referralsKpiAvailable}</span>
+              <Coins className="h-4 w-4 text-emerald-500" />
+            </div>
+            <p
+              data-testid="tenant-available-credit-kpi"
+              className="font-mono text-2xl font-bold text-emerald-500"
+            >
+              {formatMoneyCents(data.metrics.availableCreditCents, primaryCurrency, locale)}
+            </p>
+          </article>
+        </Card>
       </section>
 
       {/* Tabla Estándar de Comercios Invitados */}
-      <section className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 md:p-6 shadow-xs space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-base font-bold text-[var(--dsn-text)]">
-            {dict.referralsInvitedTableTitle}
-          </h2>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label={dict.referralsColStatus}>
-            {filterButtons.map((btn) => (
-              <button
-                key={btn.key}
-                type="button"
-                disabled={loadingFilter}
-                onClick={() => handleFilterChange(btn.key)}
-                className={`min-h-[36px] rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
-                  statusFilter === btn.key
-                    ? "bg-[var(--dsn-accent)] text-white"
-                    : "border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                }`}
-              >
-                {btn.label}
-              </button>
-            ))}
+      <Card asChild className="space-y-4 rounded-2xl p-5 shadow-xs md:p-6">
+        <section>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-base font-bold text-[var(--dsn-text)]">
+              {dict.referralsInvitedTableTitle}
+            </h2>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={dict.referralsColStatus}>
+              {filterButtons.map((btn) => (
+                <Button
+                  key={btn.key}
+                  type="button"
+                  size="sm"
+                  variant={statusFilter === btn.key ? "primary" : "outline"}
+                  disabled={loadingFilter}
+                  onClick={() => handleFilterChange(btn.key)}
+                  className="min-h-[36px] text-xs font-medium"
+                >
+                  {btn.label}
+                </Button>
+              ))}
+            </div>
           </div>
-        </div>
 
         <WorkspaceDataTable<InvitedTableRow>
           testId="referrals-invited-table"
@@ -548,7 +556,8 @@ export function TenantReferralsView({
             title: dict.referralsEmptyInvited,
           }}
         />
-      </section>
+        </section>
+      </Card>
 
       {/* Créditos y Redenciones */}
       <section className="space-y-4">

@@ -3,14 +3,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  Loader2,
   MapPin,
   Plus,
   Search,
   ShoppingCart,
   Trash2,
   UserCheck,
-  X,
 } from "lucide-react";
 import type {
   CrmContactDetailDto,
@@ -22,6 +20,20 @@ import type {
   RepeatOrderResult,
   TenantPaymentChannelDto,
 } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
 import { GeoAddressFields, type GeoAddressFieldValues } from "@/components/geo-address-fields";
@@ -489,57 +501,52 @@ function OrderFormModalBody({
         : w.ordersFormCreateTitle;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-3 sm:p-5"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="order-form-modal-title"
+    <Dialog
+      open={true}
+      onOpenChange={(open) => {
+        if (!open && !saving) onClose();
+      }}
     >
-      <div className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-[var(--dsn-border)] px-5 py-4 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <ShoppingCart className="h-5 w-5 text-[var(--dsn-accent)]" />
-            <h2 id="order-form-modal-title" className="text-base sm:text-lg font-bold text-[var(--dsn-text)]">
-              {title}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saving}
-            className="rounded-lg p-1.5 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
-            aria-label={w.ordersDetailClose}
+      <DialogContent
+        className="flex max-h-[92vh] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0"
+        closeAriaLabel={w.ordersDetailClose}
+        aria-labelledby="order-form-modal-title"
+        disableEscapeKeyDown={saving}
+        disableInteractOutside={saving}
+      >
+        <DialogHeader className="shrink-0 flex-row items-center gap-2.5 space-y-0 border-b border-[var(--dsn-border)] px-5 py-4 pr-12">
+          <ShoppingCart className="h-5 w-5 text-[var(--dsn-accent)]" />
+          <DialogTitle
+            id="order-form-modal-title"
+            className="text-base font-bold text-[var(--dsn-text)] sm:text-lg"
           >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+            {title}
+          </DialogTitle>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-5">
+        <form onSubmit={handleSubmit} className="flex-1 space-y-5 overflow-y-auto p-5">
           {mode === "repeat" && repeatPayload && repeatPayload.warnings.length > 0 && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-200 space-y-1.5">
-              <div className="flex items-center gap-2 font-semibold">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                <span>{w.ordersFormRepeatWarningsTitle}</span>
-              </div>
-              <ul className="list-disc pl-5 space-y-0.5">
-                {repeatPayload.warnings.map((warn, i) => (
-                  <li key={i}>{warn}</li>
-                ))}
-              </ul>
-            </div>
+            <Alert variant="warning">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <AlertTitle>{w.ordersFormRepeatWarningsTitle}</AlertTitle>
+              <AlertDescription>
+                <ul className="list-disc space-y-0.5 pl-5">
+                  {repeatPayload.warnings.map((warn, i) => (
+                    <li key={i}>{warn}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
           )}
 
-          <section className="rounded-xl border border-[var(--dsn-border)] p-4 space-y-3">
+          <section className="space-y-3 rounded-xl border border-[var(--dsn-border)] p-4">
             <div className="relative">
-              <label
-                htmlFor="order-crm-contact-search"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-              >
+              <Label htmlFor="order-crm-contact-search" className="mb-1 block text-xs font-semibold">
                 {w.ordersFormContactSearchLabel}
-              </label>
+              </Label>
               <div className="relative">
-                <Search className="h-4 w-4 text-[var(--dsn-text-secondary)] absolute left-3 top-2.5" />
-                <input
+                <Search className="absolute top-2.5 left-3 h-4 w-4 text-[var(--dsn-text-secondary)]" />
+                <Input
                   id="order-crm-contact-search"
                   type="search"
                   value={contactQuery}
@@ -549,17 +556,17 @@ function OrderFormModalBody({
                     if (!next.trim()) setContactResults([]);
                   }}
                   placeholder={w.ordersFormContactSearchPlaceholder}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] pl-9 pr-3 py-2 text-sm text-[var(--dsn-text)]"
+                  className="pl-9 text-sm"
                 />
               </div>
               {contactResults.length > 0 && (
-                <div className="absolute z-20 mt-1 w-full rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-xl max-h-48 overflow-y-auto divide-y divide-[var(--dsn-border)]">
+                <div className="absolute z-20 mt-1 max-h-48 w-full divide-y divide-[var(--dsn-border)] overflow-y-auto rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-xl">
                   {contactResults.map((c) => (
                     <button
                       key={c.id}
                       type="button"
                       onClick={() => handleSelectContact(c)}
-                      className="w-full px-3 py-2 text-left text-xs hover:bg-[var(--dsn-surface-secondary)] flex items-center justify-between"
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-[var(--dsn-surface-secondary)]"
                     >
                       <span className="font-semibold text-[var(--dsn-text)]">{c.fullName}</span>
                       <span className="font-mono text-[var(--dsn-text-secondary)]">
@@ -580,7 +587,7 @@ function OrderFormModalBody({
                 {contactAddresses.length > 0 && (
                   <div className="flex items-center gap-2">
                     <MapPin className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                    <select
+                    <Select
                       aria-label={w.ordersFormSavedAddressLabel}
                       value={selectedAddressId}
                       onChange={(e) => {
@@ -589,7 +596,7 @@ function OrderFormModalBody({
                         const found = contactAddresses.find((a) => a.id === id);
                         if (found) applySavedAddress(found);
                       }}
-                      className="rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-1 text-xs text-[var(--dsn-text)]"
+                      className="h-auto w-auto px-2 py-1 text-xs"
                     >
                       <option value="">{w.ordersFormManualAddressOpt}</option>
                       {contactAddresses.map((addr) => (
@@ -597,26 +604,23 @@ function OrderFormModalBody({
                           {addr.label} · {addr.city} ({addr.addressLine})
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 )}
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
-                <label
-                  htmlFor="order-customer-name"
-                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                >
+                <Label htmlFor="order-customer-name" className="mb-1 block text-xs font-medium">
                   {w.ordersFormCustomerNameLabel}
-                </label>
-                <input
+                </Label>
+                <Input
                   id="order-customer-name"
                   required
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+                  className="text-sm"
                 />
               </div>
               <div>
@@ -631,54 +635,45 @@ function OrderFormModalBody({
                 />
               </div>
               <div>
-                <label
-                  htmlFor="order-customer-doc"
-                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                >
+                <Label htmlFor="order-customer-doc" className="mb-1 block text-xs font-medium">
                   {w.ordersFormCustomerDocLabel}
-                </label>
-                <input
+                </Label>
+                <Input
                   id="order-customer-doc"
                   value={customerDocument}
                   required={shippingMethod === "office"}
                   onChange={(e) => setCustomerDocument(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+                  className="text-sm"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label
-                  htmlFor="order-shipping-method"
-                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                >
+                <Label htmlFor="order-shipping-method" className="mb-1 block text-xs font-medium">
                   {w.ordersFormShippingMethodLabel}
-                </label>
-                <select
+                </Label>
+                <Select
                   id="order-shipping-method"
                   value={shippingMethod}
                   onChange={(e) => setShippingMethod(e.target.value as "home" | "office")}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+                  className="text-sm"
                 >
                   <option value="home">{w.ordersFormShippingHome}</option>
                   <option value="office">{w.ordersFormShippingOffice}</option>
-                </select>
+                </Select>
               </div>
               <div>
-                <label
-                  htmlFor="order-carrier-name"
-                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                >
+                <Label htmlFor="order-carrier-name" className="mb-1 block text-xs font-medium">
                   {w.ordersFormCarrierLabel}
-                </label>
-                <input
+                </Label>
+                <Input
                   id="order-carrier-name"
                   list="order-form-carriers-list"
                   value={carrierName}
                   onChange={(e) => setCarrierName(e.target.value)}
                   placeholder="Servientrega, Interrapidísimo..."
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+                  className="text-sm"
                 />
                 <datalist id="order-form-carriers-list">
                   {carriers.map((c) => (
@@ -696,22 +691,24 @@ function OrderFormModalBody({
             />
           </section>
 
-          <section className="rounded-xl border border-[var(--dsn-border)] p-4 space-y-3">
+          <section className="space-y-3 rounded-xl border border-[var(--dsn-border)] p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-xs font-bold text-[var(--dsn-text)]">{w.ordersFormItemsTitle}</h3>
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={handleAddManualItem}
-                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                className="h-7 min-h-0 px-2.5 text-xs"
               >
                 <Plus className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
                 {w.ordersFormAddManualItem}
-              </button>
+              </Button>
             </div>
 
             <div className="relative">
-              <Search className="h-4 w-4 text-[var(--dsn-text-secondary)] absolute left-3 top-2.5" />
-              <input
+              <Search className="absolute top-2.5 left-3 h-4 w-4 text-[var(--dsn-text-secondary)]" />
+              <Input
                 type="search"
                 aria-label={w.ordersFormAddProductSearch}
                 value={productQuery}
@@ -721,16 +718,16 @@ function OrderFormModalBody({
                   if (!next.trim()) setProductResults([]);
                 }}
                 placeholder={w.ordersFormAddProductSearch}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] pl-9 pr-3 py-2 text-sm text-[var(--dsn-text)]"
+                className="pl-9 text-sm"
               />
               {productResults.length > 0 && (
-                <div className="absolute z-20 mt-1 w-full rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-xl max-h-48 overflow-y-auto divide-y divide-[var(--dsn-border)]">
+                <div className="absolute z-20 mt-1 max-h-48 w-full divide-y divide-[var(--dsn-border)] overflow-y-auto rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-xl">
                   {productResults.map((p) => (
                     <button
                       key={p.id}
                       type="button"
                       onClick={() => handleAddCatalogProduct(p)}
-                      className="w-full px-3 py-2 text-left text-xs hover:bg-[var(--dsn-surface-secondary)] flex items-center justify-between gap-2"
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--dsn-surface-secondary)]"
                     >
                       <span className="font-semibold text-[var(--dsn-text)]">
                         {p.name}
@@ -753,11 +750,11 @@ function OrderFormModalBody({
               {items.map((item, idx) => (
                 <div
                   key={item.key}
-                  className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3 space-y-2"
+                  className="space-y-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3"
                 >
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                  <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-12">
                     <div className="sm:col-span-5">
-                      <input
+                      <Input
                         required
                         value={item.productName}
                         onChange={(e) =>
@@ -768,11 +765,11 @@ function OrderFormModalBody({
                           )
                         }
                         placeholder="Nombre del producto"
-                        className="w-full rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)]"
+                        className="h-8 px-2.5 py-1.5 text-xs"
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <input
+                      <Input
                         type="number"
                         min={1}
                         required
@@ -787,11 +784,11 @@ function OrderFormModalBody({
                             ),
                           )
                         }
-                        className="w-full rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs font-mono text-[var(--dsn-text)]"
+                        className="h-8 px-2.5 py-1.5 font-mono text-xs"
                       />
                     </div>
                     <div className="sm:col-span-3">
-                      <input
+                      <Input
                         type="number"
                         min={0}
                         required
@@ -812,10 +809,10 @@ function OrderFormModalBody({
                             ),
                           )
                         }
-                        className="w-full rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs font-mono text-[var(--dsn-text)]"
+                        className="h-8 px-2.5 py-1.5 font-mono text-xs"
                       />
                     </div>
-                    <div className="sm:col-span-2 flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-2 sm:col-span-2">
                       <span className="font-mono text-xs font-semibold text-[var(--dsn-text)]">
                         {formatOrderMoneyCents(
                           item.quantity * item.unitPriceCents,
@@ -823,14 +820,16 @@ function OrderFormModalBody({
                           locale,
                         )}
                       </span>
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon"
                         onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
-                        className="rounded-md p-1 text-rose-500 hover:bg-rose-500/10"
+                        className="h-7 w-7 text-rose-500 hover:bg-rose-500/10"
                         aria-label="Eliminar ítem"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      </Button>
                     </div>
                   </div>
 
@@ -842,7 +841,7 @@ function OrderFormModalBody({
                             {attr.name}
                             {attr.requiredForOrder ? " *" : ""}:
                           </span>
-                          <select
+                          <Select
                             value={item.selectedAttributes[attr.name] ?? ""}
                             required={Boolean(attr.requiredForOrder)}
                             onChange={(e) =>
@@ -860,14 +859,14 @@ function OrderFormModalBody({
                                 ),
                               )
                             }
-                            className="rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-1 text-xs text-[var(--dsn-text)]"
+                            className="h-auto w-auto px-2 py-1 text-xs"
                           >
                             {attr.values.map((v) => (
                               <option key={v} value={v}>
                                 {v}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         </div>
                       ))}
                     </div>
@@ -877,16 +876,13 @@ function OrderFormModalBody({
             </div>
           </section>
 
-          <section className="rounded-xl border border-[var(--dsn-border)] p-4 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <section className="space-y-3 rounded-xl border border-[var(--dsn-border)] p-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div>
-                <label
-                  htmlFor="order-payment-channel"
-                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                >
+                <Label htmlFor="order-payment-channel" className="mb-1 block text-xs font-medium">
                   {w.ordersFormPaymentChannelLabel}
-                </label>
-                <select
+                </Label>
+                <Select
                   id="order-payment-channel"
                   value={paymentChannelId}
                   onChange={(e) => {
@@ -895,7 +891,7 @@ function OrderFormModalBody({
                     const ch = paymentChannels.find((c) => c.id === id);
                     if (ch) setPaymentMethod(ch.displayName);
                   }}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+                  className="text-sm"
                 >
                   <option value="">{paymentMethod || "Manual / Contraentrega"}</option>
                   {paymentChannels.map((ch) => (
@@ -903,98 +899,83 @@ function OrderFormModalBody({
                       {ch.displayName}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div>
-                <label
-                  htmlFor="order-payment-status"
-                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                >
+                <Label htmlFor="order-payment-status" className="mb-1 block text-xs font-medium">
                   {w.ordersFormPaymentStatusLabel}
-                </label>
-                <select
+                </Label>
+                <Select
                   id="order-payment-status"
                   value={paymentStatus}
                   onChange={(e) => setPaymentStatus(e.target.value as "pending" | "paid")}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+                  className="text-sm"
                 >
                   <option value="pending">{w.ordersPaymentPending}</option>
                   <option value="paid">{w.ordersPaymentPaid}</option>
-                </select>
+                </Select>
               </div>
               <div>
-                <label
-                  htmlFor="order-shipping-cost"
-                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                >
+                <Label htmlFor="order-shipping-cost" className="mb-1 block text-xs font-medium">
                   {w.ordersFormShippingCostLabel}
-                </label>
-                <input
+                </Label>
+                <Input
                   id="order-shipping-cost"
                   type="number"
                   min={0}
                   value={shippingCop}
                   onChange={(e) => setShippingCop(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)]"
+                  className="font-mono text-sm"
                 />
               </div>
               <div>
-                <label
-                  htmlFor="order-discount-cost"
-                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                >
+                <Label htmlFor="order-discount-cost" className="mb-1 block text-xs font-medium">
                   {w.ordersFormDiscountLabel}
-                </label>
-                <input
+                </Label>
+                <Input
                   id="order-discount-cost"
                   type="number"
                   min={0}
                   value={discountCop}
                   onChange={(e) => setDiscountCop(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)]"
+                  className="font-mono text-sm"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {mode !== "edit" && (
                 <div>
-                  <label
-                    htmlFor="order-initial-status"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
+                  <Label htmlFor="order-initial-status" className="mb-1 block text-xs font-medium">
                     {w.ordersFormInitialStatusLabel}
-                  </label>
-                  <select
+                  </Label>
+                  <Select
                     id="order-initial-status"
                     value={initialStatus}
                     onChange={(e) =>
                       setInitialStatus(e.target.value as "pending_confirmation" | "confirmed")
                     }
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+                    className="text-sm"
                   >
                     <option value="pending_confirmation">{w.ordersStatusPendingConfirmation}</option>
                     <option value="confirmed">{w.ordersStatusConfirmed}</option>
-                  </select>
+                  </Select>
                 </div>
               )}
               <div className={mode === "edit" ? "sm:col-span-3" : "sm:col-span-2"}>
-                <label
-                  htmlFor="order-notes"
-                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                >
+                <Label htmlFor="order-notes" className="mb-1 block text-xs font-medium">
                   {w.ordersFormNotesLabel}
-                </label>
-                <input
+                </Label>
+                <Input
                   id="order-notes"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+                  className="text-sm"
                 />
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-4 pt-2 border-t border-[var(--dsn-border)] text-xs">
+            <div className="flex flex-wrap items-center justify-end gap-4 border-t border-[var(--dsn-border)] pt-2 text-xs">
               <span className="text-[var(--dsn-text-secondary)]">
                 {w.ordersDetailSubtotal}:{" "}
                 <strong className="font-mono text-[var(--dsn-text)]">
@@ -1011,31 +992,26 @@ function OrderFormModalBody({
           </section>
 
           {errorMsg && (
-            <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-600 dark:text-rose-300">
-              {errorMsg}
-            </div>
+            <Alert variant="error">
+              <AlertDescription>{errorMsg}</AlertDescription>
+            </Alert>
           )}
 
-          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[var(--dsn-border)]">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-            >
+          <DialogFooter className="border-t border-[var(--dsn-border)] pt-2">
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               {w.crmCancelCta}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-95 disabled:opacity-50"
+              loading={saving}
+              loadingText={mode === "edit" ? w.ordersFormSaveEdit : w.ordersFormSaveCreate}
             >
-              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {mode === "edit" ? w.ordersFormSaveEdit : w.ordersFormSaveCreate}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

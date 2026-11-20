@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { adminSchema } from "./namespace";
 import { clients } from "./clients";
 import { users } from "./users";
+import { mediaCatalog } from "./chatwoot-media-onboarding";
 import { auditColumns } from "../shared/audit-columns";
 
 /**
@@ -179,6 +180,12 @@ export const organizationInvitations = adminSchema.table(
   },
   (table) => [
     uniqueIndex("organization_invitations_token_unique").on(table.tokenHash),
+    uniqueIndex("organization_invitations_pending_org_email_unique")
+      .on(table.organizationId, sql`lower(${table.email})`)
+      .where(sql`status = 'pending'`),
+    uniqueIndex("organization_invitations_pending_org_client_unique")
+      .on(table.organizationId, table.targetClientId)
+      .where(sql`status = 'pending' AND target_client_id IS NOT NULL`),
     index("organization_invitations_target_client_idx").on(table.targetClientId, table.status),
     check(
       "organization_invitations_role_check",
@@ -419,12 +426,74 @@ export const feedPosts = adminSchema.table(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     body: text("body").notNull(),
+    bodyFormat: varchar("body_format", { length: 16 }).notNull().default("plain"), // 'plain' | 'html'
+    mediaId: uuid("media_id").references(() => mediaCatalog.id, { onDelete: "set null" }),
+    videoEmbedUrl: text("video_embed_url"),
+    isPinned: boolean("is_pinned").notNull().default(false),
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    pinnedByUserId: uuid("pinned_by_user_id").references(() => users.id, { onDelete: "set null" }),
     status: varchar("status", { length: 20 }).notNull().default("pending_review"), // 'pending_review' | 'published' | 'rejected' | 'hidden'
     publishedAt: timestamp("published_at", { withTimezone: true }),
     ...auditColumns(),
   },
   (table) => [
     index("feed_posts_org_status_idx").on(table.organizationId, table.status),
+    uniqueIndex("feed_posts_one_pinned_per_org_unique")
+      .on(table.organizationId)
+      .where(sql`is_pinned = true`),
+    check("feed_posts_body_format_check", sql.raw("body_format IN ('plain', 'html')")),
+  ],
+);
+
+/**
+ * Respuestas de miembros en una publicación del muro comunitario (`admin.feed_post_replies`, SPEC-15-D13).
+ *
+ * Admite texto y emojis; se elimina en cascada al borrarse manualmente o por retención la publicación raíz.
+ */
+export const feedPostReplies = adminSchema.table(
+  "feed_post_replies",
+  {
+    id: uuid("id").primaryKey().default(sql`uuidv7()`),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => feedPosts.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    authorClientId: uuid("author_client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "restrict" }),
+    authorUserId: uuid("author_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    body: text("body").notNull(),
+    ...auditColumns(),
+  },
+  (table) => [
+    index("feed_post_replies_post_created_idx").on(table.postId, table.createdAt),
+  ],
+);
+
+/**
+ * Parametrización global SaaS de retención del muro comunitario (`admin.community_platform_settings`, SPEC-15-D14).
+ */
+export const communityPlatformSettings = adminSchema.table(
+  "community_platform_settings",
+  {
+    id: varchar("id", { length: 32 }).primaryKey().default("default"),
+    feedRetentionDays: integer("feed_retention_days").default(90),
+    lastRetentionPurgeAt: timestamp("last_retention_purge_at", { withTimezone: true }),
+    lastRetentionPurgedCount: integer("last_retention_purged_count").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  () => [
+    check(
+      "community_platform_settings_retention_days_check",
+      sql.raw("feed_retention_days IS NULL OR feed_retention_days >= 1"),
+    ),
   ],
 );
 
@@ -464,5 +533,7 @@ export type ProductAdoption = typeof productAdoptions.$inferSelect;
 export type CloneSyncPolicy = typeof cloneSyncPolicies.$inferSelect;
 export type SyncRun = typeof syncRuns.$inferSelect;
 export type FeedPost = typeof feedPosts.$inferSelect;
+export type FeedPostReply = typeof feedPostReplies.$inferSelect;
+export type CommunityPlatformSettings = typeof communityPlatformSettings.$inferSelect;
 export type FeedModerationEvent = typeof feedModerationEvents.$inferSelect;
 export type ClientSharingProfile = typeof clientSharingProfiles.$inferSelect;

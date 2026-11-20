@@ -3,6 +3,7 @@
 import React from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, Layers, Loader2, Sparkles } from "lucide-react";
 import type { TenantOnboardingStateDto } from "@mocter/domain";
+import { Badge, Button } from "@mocter/ui";
 import { formatStorageBytes } from "@/components/catalog-quota-banner";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
@@ -75,28 +76,22 @@ export function StepPlan({
           role="group"
           className="inline-flex self-start rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-1"
         >
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant={cycle === "monthly" ? "primary" : "ghost"}
             onClick={() => onChangeCycle("monthly")}
-            className={`min-h-[36px] rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-              cycle === "monthly"
-                ? "bg-[var(--dsn-accent)] text-[var(--dsn-accent-fg)] shadow-xs"
-                : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
           >
             {dict.step2CycleMonthly}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
+            variant={cycle === "annual" ? "primary" : "ghost"}
             onClick={() => onChangeCycle("annual")}
-            className={`min-h-[36px] rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-              cycle === "annual"
-                ? "bg-[var(--dsn-accent)] text-[var(--dsn-accent-fg)] shadow-xs"
-                : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
           >
             {dict.step2CycleAnnual}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -146,10 +141,10 @@ export function StepPlan({
                 </div>
 
                 {plan.isPopular && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[var(--dsn-accent)]/15 px-2.5 py-0.5 text-[11px] font-semibold text-[var(--dsn-accent)]">
-                    <Sparkles className="h-3 w-3" />
+                  <Badge variant="accent" className="text-[11px] font-semibold">
+                    <Sparkles className="h-3 w-3" aria-hidden="true" />
                     <span>{dict.step2PopularTag}</span>
-                  </span>
+                  </Badge>
                 )}
 
                 {localizedDesc && (
@@ -212,33 +207,30 @@ export function StepPlan({
       </div>
 
       <div className="flex flex-col-reverse gap-3 border-t border-[var(--dsn-border)] pt-4 sm:flex-row sm:justify-between">
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="lg"
           disabled={loading}
           onClick={onBack}
-          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-5 py-2.5 text-sm font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors"
+          className="rounded-xl bg-[var(--dsn-surface-secondary)]"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           <span>{dict.backCta}</span>
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="submit"
-          disabled={loading || !selectedPlanCode}
-          className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl bg-[var(--dsn-accent)] px-6 py-2.5 text-sm font-bold text-[var(--dsn-accent-fg)] shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50"
+          variant="primary"
+          size="lg"
+          disabled={!selectedPlanCode}
+          loading={loading}
+          loadingText={dict.savingLabel}
+          className="min-h-[46px] rounded-xl px-6 font-bold"
         >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>{dict.savingLabel}</span>
-            </>
-          ) : (
-            <>
-              <span>{dict.step2SubmitCta}</span>
-              <ArrowRight className="h-4 w-4" />
-            </>
-          )}
-        </button>
+          <span>{dict.step2SubmitCta}</span>
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        </Button>
       </div>
     </form>
   );

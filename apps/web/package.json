@@ -13,6 +13,7 @@
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",
     "@mocter/domain": "workspace:*",
+    "@mocter/ui": "workspace:*",
     "@scalar/api-reference-react": "^0.9.81",
     "@t3-oss/env-nextjs": "^0.13.11",
     "@tailwindcss/postcss": "^4.1.0",

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Bell,
@@ -23,6 +23,7 @@ import type {
   TenantNotificationPreferenceDto,
   TenantNotificationsResponseDto,
 } from "@mocter/domain";
+import { Alert, AlertDescription, Badge, Button, Card, Checkbox, Input, Label } from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import {
   WorkspaceDataTable,
@@ -108,6 +109,14 @@ export function TenantNotificationsView({
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(
     null,
   );
+  const lastBroadcastedUnreadRef = useRef(initialData.unreadCount);
+
+  useEffect(() => {
+    if (lastBroadcastedUnreadRef.current !== data.unreadCount) {
+      lastBroadcastedUnreadRef.current = data.unreadCount;
+      broadcastUnreadCount(data.unreadCount);
+    }
+  }, [data.unreadCount]);
 
   const [draftPrefs, setDraftPrefs] = useState<Record<string, EditablePreferenceRow>>(() => {
     const initial: Record<string, EditablePreferenceRow> = {};
@@ -142,7 +151,6 @@ export function TenantNotificationsView({
       setPage(nextPage);
       setPageSize(nextData.limit || nextLimit);
       setUnreadOnly(nextUnreadOnly);
-      broadcastUnreadCount(nextData.unreadCount);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setFeedback({ type: "error", message: msg });
@@ -170,7 +178,6 @@ export function TenantNotificationsView({
         );
         const wasUnread = prev.notifications.some((n) => n.id === id && !n.readAt);
         const nextUnread = wasUnread ? Math.max(0, prev.unreadCount - 1) : prev.unreadCount;
-        broadcastUnreadCount(nextUnread);
         return {
           ...prev,
           unreadCount: nextUnread,
@@ -209,7 +216,6 @@ export function TenantNotificationsView({
           ? []
           : prev.notifications.map((n) => ({ ...n, readAt: n.readAt ?? nowIso })),
       }));
-      broadcastUnreadCount(0);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setFeedback({ type: "error", message: msg });
@@ -411,10 +417,10 @@ export function TenantNotificationsView({
                 {dict.notificationsPageTitle}
               </h1>
               {data.unreadCount > 0 && (
-                <span className="inline-flex items-center rounded-full bg-[var(--dsn-accent)]/15 px-2.5 py-0.5 text-xs font-semibold text-[var(--dsn-accent)]">
+                <Badge variant="accent">
                   {data.unreadCount > 99 ? "99+" : data.unreadCount}{" "}
                   {dict.notificationsUnreadBadgeLabel}
-                </span>
+                </Badge>
               )}
             </div>
             <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-0.5">
@@ -424,11 +430,12 @@ export function TenantNotificationsView({
         </div>
 
         {activeTab === "inbox" && data.unreadCount > 0 && (
-          <button
+          <Button
             type="button"
+            variant="outline"
             disabled={markingAll}
             onClick={() => void handleMarkAllRead()}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] transition-colors hover:bg-[var(--dsn-surface-secondary)] disabled:opacity-50"
+            className="min-h-[44px]"
           >
             {markingAll ? (
               <Loader2 className="h-4 w-4 animate-spin text-[var(--dsn-accent)]" />
@@ -436,29 +443,20 @@ export function TenantNotificationsView({
               <CheckCheck className="h-4 w-4 text-[var(--dsn-accent)]" />
             )}
             <span>{dict.notificationsMarkAllRead}</span>
-          </button>
+          </Button>
         )}
       </header>
 
       {/* Feedback Banner */}
       {feedback && (
-        <div
-          role="status"
-          className={`flex items-center justify-between rounded-xl border p-4 text-xs font-medium ${
-            feedback.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
-              : "bg-rose-500/10 border-rose-500/20 text-rose-500"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {feedback.type === "success" ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-            ) : (
-              <AlertCircle className="h-4 w-4 shrink-0" />
-            )}
-            <span>{feedback.message}</span>
-          </div>
-        </div>
+        <Alert role="status" variant={feedback.type === "success" ? "success" : "error"}>
+          {feedback.type === "success" ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+          ) : (
+            <AlertCircle className="h-4 w-4 shrink-0" />
+          )}
+          <AlertDescription className="font-medium">{feedback.message}</AlertDescription>
+        </Alert>
       )}
 
       {/* Pestañas Mobile First */}
@@ -466,32 +464,34 @@ export function TenantNotificationsView({
         aria-label={dict.notificationsPageTitle}
         className="flex flex-wrap items-center gap-2 border-b border-[var(--dsn-border)] pb-2"
       >
-        <button
+        <Button
           type="button"
+          variant={activeTab === "inbox" ? "secondary" : "ghost"}
           onClick={() => setActiveTab("inbox")}
-          className={`inline-flex min-h-[44px] items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
+          className={`min-h-[44px] text-sm ${
             activeTab === "inbox"
-              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-              : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
+              ? "border border-[var(--dsn-accent)]/30 bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)]"
+              : "text-[var(--dsn-text-secondary)]"
           }`}
         >
           <Inbox className="h-4 w-4" />
           <span>{dict.notificationsTabInbox}</span>
-        </button>
+        </Button>
 
         {data.canManagePreferences && (
-          <button
+          <Button
             type="button"
+            variant={activeTab === "preferences" ? "secondary" : "ghost"}
             onClick={() => setActiveTab("preferences")}
-            className={`inline-flex min-h-[44px] items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
+            className={`min-h-[44px] text-sm ${
               activeTab === "preferences"
-                ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-                : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
+                ? "border border-[var(--dsn-accent)]/30 bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)]"
+                : "text-[var(--dsn-text-secondary)]"
             }`}
           >
             <SlidersHorizontal className="h-4 w-4" />
             <span>{dict.notificationsTabPreferences}</span>
-          </button>
+          </Button>
         )}
       </nav>
 
@@ -537,28 +537,22 @@ export function TenantNotificationsView({
             }}
             toolbarLeft={
               <div className="flex flex-wrap items-center gap-2">
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant={!unreadOnly ? "primary" : "outline"}
                   onClick={() => void fetchInboxPage(1, false, pageSize)}
-                  className={`min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
-                    !unreadOnly
-                      ? "bg-[var(--dsn-accent)] text-white border-[var(--dsn-accent)]"
-                      : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                  }`}
                 >
                   {dict.notificationsAllMessages}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  size="sm"
+                  variant={unreadOnly ? "primary" : "outline"}
                   onClick={() => void fetchInboxPage(1, true, pageSize)}
-                  className={`min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
-                    unreadOnly
-                      ? "bg-[var(--dsn-accent)] text-white border-[var(--dsn-accent)]"
-                      : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                  }`}
                 >
                   {dict.notificationsUnreadOnly}
-                </button>
+                </Button>
               </div>
             }
             renderMobileCard={(item) => {
@@ -613,11 +607,12 @@ export function TenantNotificationsView({
                         </Link>
                       )}
                       {isUnread && (
-                        <button
+                        <Button
                           type="button"
+                          size="sm"
                           disabled={markingId === item.id}
                           onClick={() => void handleMarkRead(item.id)}
-                          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] disabled:opacity-50"
+                          className="min-h-[36px]"
                         >
                           {markingId === item.id ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -625,7 +620,7 @@ export function TenantNotificationsView({
                             <CheckCircle2 className="h-3.5 w-3.5" />
                           )}
                           <span>{dict.notificationsMarkRead}</span>
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -678,17 +673,15 @@ export function TenantNotificationsView({
                       <p className="text-xs text-[var(--dsn-text-secondary)]">{pref.description}</p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-5 shrink-0">
-                      <label className="inline-flex items-center gap-2 text-xs font-medium text-[var(--dsn-text)] cursor-pointer">
-                        <input
-                          type="checkbox"
+                    <div className="flex shrink-0 flex-wrap items-center gap-5">
+                      <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-[var(--dsn-text)]">
+                        <Checkbox
                           checked={draft.inAppEnabled}
-                          onChange={(e) =>
+                          onCheckedChange={(checked) =>
                             updateDraftPreference(pref.eventKey, {
-                              inAppEnabled: e.target.checked,
+                              inAppEnabled: checked === true,
                             })
                           }
-                          className="h-4 w-4 rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                         />
                         <span>{dict.notificationsPrefPlatformLabel}</span>
                       </label>
@@ -696,20 +689,18 @@ export function TenantNotificationsView({
                       <label
                         className={`inline-flex items-center gap-2 text-xs font-medium ${
                           pref.tenantConfigurable
-                            ? "text-[var(--dsn-text)] cursor-pointer"
-                            : "text-[var(--dsn-text-secondary)] cursor-not-allowed opacity-75"
+                            ? "cursor-pointer text-[var(--dsn-text)]"
+                            : "cursor-not-allowed text-[var(--dsn-text-secondary)] opacity-75"
                         }`}
                       >
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           disabled={!pref.tenantConfigurable}
                           checked={pref.tenantConfigurable ? draft.emailEnabled : true}
-                          onChange={(e) =>
+                          onCheckedChange={(checked) =>
                             updateDraftPreference(pref.eventKey, {
-                              emailEnabled: e.target.checked,
+                              emailEnabled: checked === true,
                             })
                           }
-                          className="h-4 w-4 rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                         />
                         <span>{dict.notificationsPrefEmailLabel}</span>
                       </label>
@@ -717,16 +708,16 @@ export function TenantNotificationsView({
                   </div>
 
                   {pref.tenantConfigurable && (
-                    <div className="pt-2 border-t border-[var(--dsn-border)]/60">
-                      <label
+                    <div className="border-t border-[var(--dsn-border)]/60 pt-2">
+                      <Label
                         htmlFor={`pref-recipient-${pref.eventKey}`}
-                        className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
+                        className="mb-1 block text-xs font-semibold"
                       >
                         {dict.notificationsPrefRecipientLabel}
-                      </label>
+                      </Label>
                       <div className="relative max-w-md">
-                        <Mail className="h-4 w-4 text-[var(--dsn-text-secondary)] absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input
+                        <Mail className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[var(--dsn-text-secondary)]" />
+                        <Input
                           id={`pref-recipient-${pref.eventKey}`}
                           type="email"
                           placeholder={dict.notificationsPrefRecipientPlaceholder}
@@ -736,7 +727,7 @@ export function TenantNotificationsView({
                               customRecipientEmail: e.target.value,
                             })
                           }
-                          className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] pl-9 pr-3 py-2 text-xs font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                          className="h-9 py-2 pr-3 pl-9 font-mono text-xs"
                         />
                       </div>
                     </div>
@@ -747,20 +738,16 @@ export function TenantNotificationsView({
           </div>
 
           <div className="flex justify-end pt-2">
-            <button
+            <Button
               type="submit"
               disabled={savingPrefs}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-5 py-2 text-xs font-semibold text-white transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95 disabled:opacity-50"
+              loading={savingPrefs}
+              loadingText={dict.notificationsPrefSavingCta}
+              className="min-h-[44px] px-5"
             >
-              {savingPrefs ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              <span>
-                {savingPrefs ? dict.notificationsPrefSavingCta : dict.notificationsPrefSaveCta}
-              </span>
-            </button>
+              <Save className="h-4 w-4" />
+              <span>{dict.notificationsPrefSaveCta}</span>
+            </Button>
           </div>
         </form>
       )}

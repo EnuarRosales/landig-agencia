@@ -9,7 +9,8 @@
     "./schema": "./src/db/schemas/index.ts",
     "./validation": "./src/validation.ts",
     "./db": "./src/db/index.ts",
-    "./geo": "./src/geo/index.ts"
+    "./geo": "./src/geo/index.ts",
+    "./community-html": "./src/utils/community-html.ts"
   },
   "scripts": {
     "build": "tsc",

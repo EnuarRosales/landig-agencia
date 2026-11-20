@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Sparkles, RefreshCw, AlertCircle, Check, X } from "lucide-react";
+import { Alert, AlertDescription, Button, Label, Textarea } from "@mocter/ui";
 
 export interface AiEnhanceRequestResult {
   ok: boolean;
@@ -179,22 +180,14 @@ export function AiEnhanceTextarea({
   return (
     <div className="flex flex-col gap-2 w-full">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex items-center gap-1">
-          <label
-            htmlFor={id}
-            className="text-xs font-semibold text-[var(--dsn-text)]"
-          >
-            {label}
-          </label>
-          {required && (
-            <span aria-hidden="true" className="text-xs font-semibold text-rose-500">
-              *
-            </span>
-          )}
-        </div>
+        <Label htmlFor={id} required={required} className="font-semibold">
+          {label}
+        </Label>
 
-        <button
+        <Button
           type="button"
+          variant={hasInferenceAccess ? "ai" : "secondary"}
+          size="sm"
           onClick={handleEnhance}
           disabled={disabled || loading || !hasInferenceAccess}
           title={
@@ -204,13 +197,9 @@ export function AiEnhanceTextarea({
                 : "Requires an active AI provider"
               : undefined
           }
-          className={`inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-            !hasInferenceAccess
-              ? "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)] opacity-60 cursor-not-allowed"
-              : "border-[var(--dsn-accent)]/40 bg-[var(--dsn-accent)]/12 text-[var(--dsn-accent)] hover:bg-[var(--dsn-accent)]/20 cursor-pointer"
-          }`}
+          className="text-[11px]"
         >
-          <Sparkles className={`h-3.5 w-3.5 ${loading ? "animate-pulse" : ""}`} />
+          <Sparkles className={`h-3.5 w-3.5 ${loading ? "animate-pulse" : ""}`} aria-hidden="true" />
           <span>
             {loading
               ? isEs
@@ -220,7 +209,7 @@ export function AiEnhanceTextarea({
                 ? "Mejorar con AI"
                 : "Improve With AI"}
           </span>
-        </button>
+        </Button>
       </div>
 
       {inputHint && (
@@ -229,7 +218,7 @@ export function AiEnhanceTextarea({
         </p>
       )}
 
-      <textarea
+      <Textarea
         id={id}
         name={name}
         rows={rows}
@@ -238,17 +227,14 @@ export function AiEnhanceTextarea({
         disabled={disabled}
         required={required}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/60 focus:border-[var(--dsn-accent)] focus:outline-hidden focus:ring-1 focus:ring-[var(--dsn-accent)] disabled:opacity-50 leading-relaxed"
+        className="text-xs leading-relaxed"
       />
 
       {errorMessage && (
-        <div
-          role="alert"
-          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400"
-        >
+        <Alert variant="warning" role="alert" className="flex-wrap items-center justify-between py-2">
           <div className="flex items-center gap-2">
-            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-            <span>{errorMessage}</span>
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <AlertDescription>{errorMessage}</AlertDescription>
           </div>
           {errorCode === "AI_BYOK_REQUIRED" && (
             <Link
@@ -258,54 +244,47 @@ export function AiEnhanceTextarea({
               {isEs ? "Configurar Proveedor AI" : "Configure AI Provider"}
             </Link>
           )}
-        </div>
+        </Alert>
       )}
 
       {suggestion !== null && (
         <div className="mt-1 rounded-xl border border-[var(--dsn-accent)]/40 bg-[var(--dsn-accent)]/5 p-3 flex flex-col gap-2">
           <div className="flex items-center justify-between text-xs font-semibold text-[var(--dsn-text)]">
             <span className="inline-flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+              <Sparkles className="h-3.5 w-3.5 text-[var(--dsn-accent)]" aria-hidden="true" />
               {isEs
                 ? "Propuesta Sugerida por AI (Editable antes de Aceptar)"
                 : "AI Suggested Proposal (Editable Before Accepting)"}
             </span>
           </div>
 
-          <textarea
+          <Textarea
             rows={rows}
             aria-label={isEs ? "Vista Previa de Sugerencia AI" : "AI Suggestion Preview"}
             value={editedSuggestion}
             onChange={(e) => setEditedSuggestion(e.target.value)}
-            className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden leading-relaxed"
+            className="bg-[var(--dsn-surface)] text-xs leading-relaxed"
           />
 
           <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={handleEnhance}
               disabled={loading}
-              className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] disabled:opacity-50"
             >
-              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
               <span>{isEs ? "Generar Otra Opción" : "Try Another Option"}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleDiscard}
-              className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-xs font-medium text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-            >
-              <X className="h-3 w-3" />
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={handleDiscard}>
+              <X className="h-3 w-3" aria-hidden="true" />
               <span>{isEs ? "Descartar" : "Discard"}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleAccept}
-              className="inline-flex min-h-[36px] items-center gap-1 rounded-lg bg-[var(--dsn-accent)] px-3 py-1 text-xs font-semibold text-white hover:opacity-90 transition-opacity shadow-xs"
-            >
-              <Check className="h-3.5 w-3.5" />
+            </Button>
+            <Button type="button" variant="primary" size="sm" onClick={handleAccept}>
+              <Check className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{isEs ? "Aceptar Sugerencia" : "Accept Suggestion"}</span>
-            </button>
+            </Button>
           </div>
         </div>
       )}

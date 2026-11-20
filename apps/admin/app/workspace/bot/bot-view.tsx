@@ -10,6 +10,7 @@ import type {
 } from "@mocter/domain";
 import { workspaceFetch } from "@/lib/workspace-client";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
+import { Alert, AlertDescription, Badge, Button } from "@mocter/ui";
 import { FormSaveBar } from "@/components/ui/form-save-bar";
 import {
   applyRecommendedClientGeneralPromptTemplate,
@@ -515,10 +516,10 @@ export function BotView({
     <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
       <header className="flex flex-col justify-between gap-4 border-b border-[var(--dsn-border)] pb-5 sm:flex-row sm:items-center">
         <div className="space-y-1">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-[var(--dsn-accent)]/10 px-2.5 py-0.5 text-[11px] font-medium text-[var(--dsn-accent)]">
+          <Badge variant="accent" className="gap-1.5 text-[11px] font-medium">
             <Bot className="h-3.5 w-3.5" />
             <span>{dict.botBadge}</span>
-          </div>
+          </Badge>
           <h1 className="text-xl font-bold tracking-tight text-[var(--dsn-text)] md:text-2xl">
             {dict.botTitle}
           </h1>
@@ -528,53 +529,47 @@ export function BotView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <Link
-            href="/workspace/ai"
-            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] transition-colors hover:border-[var(--dsn-accent)]"
-          >
-            <KeyRound className="h-4 w-4 text-[var(--dsn-accent)]" />
-            <span>{dict.botProvidersCta}</span>
-          </Link>
+          <Button asChild variant="outline">
+            <Link href="/workspace/ai">
+              <KeyRound className="h-4 w-4 text-[var(--dsn-accent)]" />
+              <span>{dict.botProvidersCta}</span>
+            </Link>
+          </Button>
 
           {!readOnly && (
-            <button
+            <Button
               type="button"
               onClick={() => handleSave()}
               disabled={saving}
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
+              loading={saving}
+              loadingText={dict.botSavingCta}
             >
               <Save className="h-4 w-4" />
-              <span>{saving ? dict.botSavingCta : dict.botSaveCta}</span>
-            </button>
+              <span>{dict.botSaveCta}</span>
+            </Button>
           )}
         </div>
       </header>
 
       {readOnly && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
-          <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-          <p className="font-medium">{dict.botReadOnlyNotice}</p>
-        </div>
+        <Alert variant="warning">
+          <Lock className="h-4 w-4 shrink-0" />
+          <AlertDescription className="font-medium">{dict.botReadOnlyNotice}</AlertDescription>
+        </Alert>
       )}
 
       {success && (
-        <div
-          role="status"
-          className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-500"
-        >
+        <Alert role="status" variant="success">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>{dict.botSaveSuccess}</span>
-        </div>
+          <AlertDescription>{dict.botSaveSuccess}</AlertDescription>
+        </Alert>
       )}
 
       {error && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-400"
-        >
+        <Alert role="alert" variant="error">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>{error}</span>
-        </div>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
       {/* Pestañas Mobile First */}
@@ -585,18 +580,16 @@ export function BotView({
         {tabs.map((tab) => {
           const active = activeTab === tab.id;
           return (
-            <button
+            <Button
               key={tab.id}
               type="button"
+              size="sm"
+              variant={active ? "primary" : "outline"}
               onClick={() => setActiveTab(tab.id)}
-              className={`shrink-0 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
-                active
-                  ? "bg-[var(--dsn-accent)] text-white"
-                  : "border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-              }`}
+              className="shrink-0"
             >
               {tab.label}
-            </button>
+            </Button>
           );
         })}
       </nav>

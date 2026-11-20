@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { Alert, AlertDescription, Button } from "@mocter/ui";
 import type { Plan } from "@mocter/domain";
 
 export interface UpgradePlanViewProps {
@@ -125,39 +126,35 @@ export function UpgradePlanView({
         </div>
 
         {/* Aviso de Prorrateo */}
-        <div className="mt-4 p-3.5 rounded-xl border border-primary/20 bg-primary/5 text-xs text-primary flex items-start gap-2">
+        <Alert variant="info" className="mt-4 flex items-start gap-2 rounded-xl text-xs">
           <span className="text-base leading-none">ℹ️</span>
-          <span>{t.prorationNotice}</span>
-        </div>
+          <AlertDescription className="text-inherit">{t.prorationNotice}</AlertDescription>
+        </Alert>
       </section>
 
       {/* Conmutador de Ciclo (Mensual / Anual) */}
       <div className="flex justify-center items-center gap-3">
-        <button
+        <Button
           type="button"
+          variant={billingCycle === "monthly" ? "primary" : "outline"}
+          size="sm"
           onClick={() => setBillingCycle("monthly")}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-            billingCycle === "monthly"
-              ? "bg-primary text-primary-fg shadow-sm"
-              : "bg-surface border border-stroke text-muted hover:text-txt"
-          }`}
+          className="text-xs font-semibold"
         >
           {t.monthly}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant={billingCycle === "annual" ? "primary" : "outline"}
+          size="sm"
           onClick={() => setBillingCycle("annual")}
-          className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-            billingCycle === "annual"
-              ? "bg-primary text-primary-fg shadow-sm"
-              : "bg-surface border border-stroke text-muted hover:text-txt"
-          }`}
+          className="gap-1.5 text-xs font-semibold"
         >
           <span>{t.annual}</span>
           <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded text-[10px]">
             {t.saveBadge}
           </span>
-        </button>
+        </Button>
       </div>
 
       {/* Grid de Planes para Upgrade */}
@@ -217,23 +214,26 @@ export function UpgradePlanView({
 
                 <div>
                   {isCurrent ? (
-                    <button
+                    <Button
+                      type="button"
+                      variant="outline"
                       disabled
-                      className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold bg-surface border border-stroke text-muted cursor-not-allowed"
+                      className="w-full rounded-xl text-xs font-semibold"
                     >
                       {t.currentPlan}
-                    </button>
+                    </Button>
                   ) : (
-                    <button
+                    <Button
                       type="button"
+                      variant="primary"
+                      loading={isProcessing && selectedPlanCode === plan.code}
+                      loadingText="Procesando..."
                       disabled={isProcessing}
                       onClick={() => handleInitiateUpgrade(plan)}
-                      className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold bg-primary text-primary-fg hover:opacity-90 active:scale-[0.98] transition-all shadow-md disabled:opacity-50"
+                      className="w-full rounded-xl text-xs font-semibold shadow-md"
                     >
-                      {isProcessing && selectedPlanCode === plan.code
-                        ? "Procesando..."
-                        : t.upgradePlan}
-                    </button>
+                      {t.upgradePlan}
+                    </Button>
                   )}
                 </div>
               </div>
@@ -244,9 +244,9 @@ export function UpgradePlanView({
 
       {/* Mensaje de retroalimentación */}
       {feedbackMessage && (
-        <div className="p-4 rounded-xl border border-primary/30 bg-surface/90 text-sm text-txt text-center shadow-md">
-          {feedbackMessage}
-        </div>
+        <Alert variant="info" className="rounded-xl p-4 text-center text-sm shadow-md">
+          <AlertDescription className="text-inherit">{feedbackMessage}</AlertDescription>
+        </Alert>
       )}
     </div>
   );

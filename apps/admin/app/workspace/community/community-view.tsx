@@ -15,6 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import type { TenantCommunitiesOverviewDto } from "@mocter/domain";
+import { Alert, AlertDescription, Badge, Button, Card } from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { CommunityFeedTab } from "./community-feed-tab";
 import { CommunityClonesTab } from "./community-clones-tab";
@@ -29,6 +30,7 @@ interface CommunityViewProps {
   isOwner: boolean;
   locale: AdminLocale;
   initialTab?: string;
+  currentClientId?: string;
 }
 
 type CommunityTabKey = "feed" | "clones" | "wall" | "network" | "leader";
@@ -42,6 +44,7 @@ export function CommunityView({
   isOwner,
   locale,
   initialTab,
+  currentClientId,
 }: CommunityViewProps) {
   const dict = getAdminDictionary(locale).community;
 
@@ -94,21 +97,20 @@ export function CommunityView({
   if (!capabilityEnabled) {
     return (
       <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
-        <div className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-8 md:p-12 text-center space-y-4 max-w-2xl mx-auto">
+        <Card className="mx-auto max-w-2xl space-y-4 rounded-2xl p-8 text-center md:p-12">
           <div className="mx-auto w-fit rounded-2xl bg-[var(--dsn-accent)]/10 p-4 text-[var(--dsn-accent)]">
             <Lock className="h-8 w-8" />
           </div>
           <h1 className="text-xl font-bold text-[var(--dsn-text)]">{dict.upgradeTitle}</h1>
           <p className="text-sm text-[var(--dsn-text-secondary)]">{dict.upgradeDesc}</p>
           <div className="pt-2">
-            <Link
-              href="/workspace/billing"
-              className="inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-5 py-2.5 text-xs font-semibold text-white hover:opacity-90"
-            >
-              <span>{dict.upgradeCta}</span>
-            </Link>
+            <Button asChild>
+              <Link href="/workspace/billing">
+                <span>{dict.upgradeCta}</span>
+              </Link>
+            </Button>
           </div>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -146,10 +148,10 @@ export function CommunityView({
               <span>{dict.pageTitle}</span>
             </h1>
             {safeOverview.leaderAuthorization.status === "approved" && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--dsn-accent)]/15 px-2.5 py-0.5 text-xs font-semibold text-[var(--dsn-accent)]">
+              <Badge variant="accent">
                 <Crown className="h-3.5 w-3.5" />
                 <span>{locale === "en" ? "Verified Leader" : "Líder Verificado"}</span>
-              </span>
+              </Badge>
             )}
           </div>
           <p className="mt-1 text-xs md:text-sm text-[var(--dsn-text-secondary)]">
@@ -157,38 +159,31 @@ export function CommunityView({
           </p>
         </div>
 
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={() => void reloadOverview()}
           disabled={refreshing}
-          className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors disabled:opacity-50"
         >
           <RefreshCw
             className={`h-4 w-4 text-[var(--dsn-accent)] ${refreshing ? "animate-spin" : ""}`}
           />
           <span>{locale === "en" ? "Refresh" : "Actualizar"}</span>
-        </button>
+        </Button>
       </header>
 
       {!isOwner && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs font-medium text-amber-800 dark:text-amber-200 flex items-center gap-2">
+        <Alert variant="warning">
           <ShieldAlert className="h-4 w-4 shrink-0" />
-          <span>{dict.agentNotice}</span>
-        </div>
+          <AlertDescription className="font-medium">{dict.agentNotice}</AlertDescription>
+        </Alert>
       )}
 
       {toast && (
-        <div
-          role="status"
-          className={`rounded-xl border px-4 py-3 text-xs font-medium flex items-center gap-2 ${
-            toast.type === "ok"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-              : "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300"
-          }`}
-        >
+        <Alert role="status" variant={toast.type === "ok" ? "success" : "error"}>
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>{toast.message}</span>
-        </div>
+          <AlertDescription className="font-medium">{toast.message}</AlertDescription>
+        </Alert>
       )}
 
       {/* Navegación por pestañas Mobile First */}
@@ -196,75 +191,85 @@ export function CommunityView({
         aria-label={dict.pageTitle}
         className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-[var(--dsn-border)]"
       >
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setActiveTab("feed")}
-          className={`inline-flex items-center gap-1.5 rounded-t-lg px-3.5 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors ${
+          className={`min-h-0 rounded-none rounded-t-lg border-b-2 px-3.5 py-2.5 whitespace-nowrap ${
             activeTab === "feed"
-              ? "border-[var(--dsn-accent)] text-[var(--dsn-accent)] bg-[var(--dsn-accent)]/5"
+              ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/5 text-[var(--dsn-accent)]"
               : "border-transparent text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
           }`}
         >
           <Package className="h-3.5 w-3.5" />
           <span>{dict.tabFeed}</span>
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setActiveTab("clones")}
-          className={`inline-flex items-center gap-1.5 rounded-t-lg px-3.5 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors ${
+          className={`min-h-0 rounded-none rounded-t-lg border-b-2 px-3.5 py-2.5 whitespace-nowrap ${
             activeTab === "clones"
-              ? "border-[var(--dsn-accent)] text-[var(--dsn-accent)] bg-[var(--dsn-accent)]/5"
+              ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/5 text-[var(--dsn-accent)]"
               : "border-transparent text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
           }`}
         >
           <GitCompare className="h-3.5 w-3.5" />
           <span>{dict.tabClones}</span>
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setActiveTab("wall")}
-          className={`inline-flex items-center gap-1.5 rounded-t-lg px-3.5 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors ${
+          className={`min-h-0 rounded-none rounded-t-lg border-b-2 px-3.5 py-2.5 whitespace-nowrap ${
             activeTab === "wall"
-              ? "border-[var(--dsn-accent)] text-[var(--dsn-accent)] bg-[var(--dsn-accent)]/5"
+              ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/5 text-[var(--dsn-accent)]"
               : "border-transparent text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
           }`}
         >
           <MessageSquare className="h-3.5 w-3.5" />
           <span>{dict.tabWall}</span>
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setActiveTab("network")}
-          className={`inline-flex items-center gap-1.5 rounded-t-lg px-3.5 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors ${
+          className={`min-h-0 rounded-none rounded-t-lg border-b-2 px-3.5 py-2.5 whitespace-nowrap ${
             activeTab === "network"
-              ? "border-[var(--dsn-accent)] text-[var(--dsn-accent)] bg-[var(--dsn-accent)]/5"
+              ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/5 text-[var(--dsn-accent)]"
               : "border-transparent text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
           }`}
         >
           <Users className="h-3.5 w-3.5" />
           <span>{dict.tabNetwork}</span>
           {pendingActionCount > 0 && (
-            <span className="rounded-full bg-[var(--dsn-accent)] px-1.5 py-0.2 text-[10px] font-bold text-white">
+            <Badge className="px-1.5 py-0.2 text-[10px] font-bold">
               {pendingActionCount}
-            </span>
+            </Badge>
           )}
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setActiveTab("leader")}
-          className={`inline-flex items-center gap-1.5 rounded-t-lg px-3.5 py-2.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors ${
+          className={`min-h-0 rounded-none rounded-t-lg border-b-2 px-3.5 py-2.5 whitespace-nowrap ${
             activeTab === "leader"
-              ? "border-[var(--dsn-accent)] text-[var(--dsn-accent)] bg-[var(--dsn-accent)]/5"
+              ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/5 text-[var(--dsn-accent)]"
               : "border-transparent text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
           }`}
         >
           <Crown className="h-3.5 w-3.5" />
           <span>{dict.tabLeader}</span>
-        </button>
+        </Button>
       </nav>
 
       {/* Contenido de pestaña activa */}
@@ -294,6 +299,7 @@ export function CommunityView({
           communities={safeOverview.myCommunities}
           locale={locale}
           isOwner={isOwner}
+          currentClientId={currentClientId}
           onSuccessToast={showSuccess}
           onErrorToast={showError}
         />

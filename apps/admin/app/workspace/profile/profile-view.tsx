@@ -24,6 +24,22 @@ import type {
   TenantPaymentChannelDto,
   TenantProfileDto,
 } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from "@mocter/ui";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import { FormSaveBar } from "@/components/ui/form-save-bar";
 import { GeoAddressFields } from "@/components/geo-address-fields";
@@ -640,10 +656,10 @@ export function ProfileView({
       {/* Encabezado */}
       <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-[var(--dsn-accent)]/10 px-2.5 py-0.5 text-[11px] font-medium text-[var(--dsn-accent)]">
+          <Badge variant="accent" className="gap-1.5 text-[11px] font-medium">
             <Building2 className="h-3.5 w-3.5" />
             <span>{dict.profileBadge}</span>
-          </div>
+          </Badge>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
             {dict.profileTitle}
           </h1>
@@ -651,47 +667,40 @@ export function ProfileView({
         </div>
 
         {!readOnly && (
-          <button
+          <Button
             type="button"
             onClick={() => void handleSaveProfile()}
             disabled={savingProfile}
-            className="inline-flex min-h-[40px] shrink-0 items-center justify-center rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-[var(--dsn-accent-hover)] disabled:opacity-50 cursor-pointer"
+            loading={savingProfile}
+            loadingText={dict.profileSaving}
+            className="shrink-0"
           >
-            {savingProfile ? dict.profileSaving : dict.profileSaveChanges}
-          </button>
+            {dict.profileSaveChanges}
+          </Button>
         )}
       </header>
 
       {/* Banner de solo lectura para tenant_agent */}
       {readOnly && (
-        <div
-          data-testid="profile-readonly-banner"
-          className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-800 dark:text-amber-300"
-        >
-          <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-          <p className="font-medium">{dict.profileReadOnlyNotice}</p>
-        </div>
+        <Alert data-testid="profile-readonly-banner" variant="warning">
+          <Lock className="h-4 w-4 shrink-0" />
+          <AlertDescription className="font-medium">{dict.profileReadOnlyNotice}</AlertDescription>
+        </Alert>
       )}
 
       {/* Alertas globales */}
       {profileFeedback && (
-        <div
-          role="status"
-          className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs font-medium text-emerald-700 dark:text-emerald-300"
-        >
+        <Alert role="status" variant="success">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>{profileFeedback}</span>
-        </div>
+          <AlertDescription className="font-medium">{profileFeedback}</AlertDescription>
+        </Alert>
       )}
 
       {profileError && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs font-medium text-rose-700 dark:text-rose-300"
-        >
+        <Alert role="alert" variant="error">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>{profileError}</span>
-        </div>
+          <AlertDescription className="font-medium">{profileError}</AlertDescription>
+        </Alert>
       )}
 
       {/* Formulario principal de Perfil, Localización y Redes */}
@@ -750,15 +759,16 @@ export function ProfileView({
                 </label>
 
                 {profile.logoMediaId && (
-                  <button
+                  <Button
                     type="button"
+                    variant="destructive"
+                    size="sm"
                     disabled={removingLogo || uploadingLogo}
                     onClick={() => setRemoveLogoModalOpen(true)}
-                    className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-[var(--dsn-error)]/30 bg-[var(--dsn-error)]/10 px-3 py-2 text-xs font-semibold text-[var(--dsn-error)] hover:bg-[var(--dsn-error)]/20 transition-colors cursor-pointer"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     <span>{dict.profileLogoRemoveCta}</span>
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -766,30 +776,23 @@ export function ProfileView({
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label
-                htmlFor="profile-display-name"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
+              <Label htmlFor="profile-display-name" className="mb-1.5 block text-xs font-semibold">
                 {dict.profileDisplayNameLabel}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="profile-display-name"
                 type="text"
                 required
                 disabled={readOnly}
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
               />
             </div>
 
             <div>
-              <label
-                htmlFor="profile-slug"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
+              <Label htmlFor="profile-slug" className="mb-1.5 block text-xs font-semibold">
                 {dict.profileSlugLabel}
-              </label>
+              </Label>
               <div className="flex items-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-sm text-[var(--dsn-text-secondary)]">
                 <span className="font-mono text-xs select-all">mocter.co/{profile.slug}</span>
                 <input
@@ -808,38 +811,33 @@ export function ProfileView({
             </div>
 
             <div>
-              <label
+              <Label
                 htmlFor="profile-commercial-email"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
+                className="mb-1.5 block text-xs font-semibold"
               >
                 {dict.profileCommercialEmailLabel}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="profile-commercial-email"
                 type="email"
                 disabled={readOnly}
                 value={commercialEmail}
                 onChange={(e) => setCommercialEmail(e.target.value)}
                 placeholder="ventas@tutienda.com"
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
               />
             </div>
 
             <div>
-              <label
-                htmlFor="profile-contact-email"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
+              <Label htmlFor="profile-contact-email" className="mb-1.5 block text-xs font-semibold">
                 {dict.profileContactEmailLabel}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="profile-contact-email"
                 type="email"
                 required
                 disabled={readOnly}
                 value={contactEmail}
                 onChange={(e) => setContactEmail(e.target.value)}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
               />
             </div>
 
@@ -856,55 +854,43 @@ export function ProfileView({
             </div>
 
             <div>
-              <label
-                htmlFor="profile-website"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
+              <Label htmlFor="profile-website" className="mb-1.5 block text-xs font-semibold">
                 {dict.profileWebsiteLabel}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="profile-website"
                 type="url"
                 disabled={readOnly}
                 value={websiteUrl}
                 onChange={(e) => setWebsiteUrl(e.target.value)}
                 placeholder="https://tutienda.com"
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
               />
             </div>
 
             <div>
-              <label
-                htmlFor="profile-tax-id"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
+              <Label htmlFor="profile-tax-id" className="mb-1.5 block text-xs font-semibold">
                 {dict.profileTaxIdLabel}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="profile-tax-id"
                 type="text"
                 disabled={readOnly}
                 value={taxId}
                 onChange={(e) => setTaxId(e.target.value)}
                 placeholder="900123456-1"
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
               />
             </div>
 
             <div>
-              <label
-                htmlFor="profile-industry"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
+              <Label htmlFor="profile-industry" className="mb-1.5 block text-xs font-semibold">
                 {dict.profileIndustryLabel}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="profile-industry"
                 type="text"
                 disabled={readOnly}
                 value={industry}
                 onChange={(e) => setIndustry(e.target.value)}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
               />
             </div>
           </div>
@@ -926,77 +912,49 @@ export function ProfileView({
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
-              <label
-                htmlFor="profile-locale"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
+              <Label htmlFor="profile-locale" className="mb-1.5 block text-xs font-semibold">
                 {dict.profileLocaleLabel}
-              </label>
-              <select
+              </Label>
+              <Select
                 id="profile-locale"
                 disabled={readOnly}
                 value={localeValue}
                 onChange={(e) => setLocaleValue(e.target.value === "en" ? "en" : "es")}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
               >
-                <option value="es" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
-                  {dict.profileLocaleEs}
-                </option>
-                <option value="en" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
-                  {dict.profileLocaleEn}
-                </option>
-              </select>
+                <option value="es">{dict.profileLocaleEs}</option>
+                <option value="en">{dict.profileLocaleEn}</option>
+              </Select>
             </div>
 
             <div>
-              <label
-                htmlFor="profile-currency"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
+              <Label htmlFor="profile-currency" className="mb-1.5 block text-xs font-semibold">
                 {dict.profileCurrencyLabel}
-              </label>
-              <select
+              </Label>
+              <Select
                 id="profile-currency"
                 disabled={readOnly}
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
               >
-                <option value="COP" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
-                  COP — Peso Colombiano
-                </option>
-                <option value="USD" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
-                  USD — US Dollar
-                </option>
-                <option value="MXN" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
-                  MXN — Peso Mexicano
-                </option>
-                <option value="ARS" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
-                  ARS — Peso Argentino
-                </option>
-                <option value="CLP" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
-                  CLP — Peso Chileno
-                </option>
-                <option value="PEN" className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]">
-                  PEN — Sol Peruano
-                </option>
-              </select>
+                <option value="COP">COP — Peso Colombiano</option>
+                <option value="USD">USD — US Dollar</option>
+                <option value="MXN">MXN — Peso Mexicano</option>
+                <option value="ARS">ARS — Peso Argentino</option>
+                <option value="CLP">CLP — Peso Chileno</option>
+                <option value="PEN">PEN — Sol Peruano</option>
+              </Select>
             </div>
 
             <div>
-              <label
-                htmlFor="profile-timezone"
-                className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-              >
+              <Label htmlFor="profile-timezone" className="mb-1.5 block text-xs font-semibold">
                 {dict.profileTimezoneLabel}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="profile-timezone"
                 type="text"
                 disabled={readOnly}
                 value={timezone}
                 onChange={(e) => setTimezone(e.target.value)}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
               />
             </div>
 
@@ -1182,14 +1140,14 @@ export function ProfileView({
           </div>
 
           {!readOnly && (
-            <button
+            <Button
               type="button"
               onClick={openCreateChannelModal}
-              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-[var(--dsn-accent-fg)] shadow-xs transition-colors hover:bg-[var(--dsn-accent-hover)] cursor-pointer self-start sm:self-auto"
+              className="self-start sm:self-auto"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>{dict.profilePaymentsAddCta}</span>
-            </button>
+            </Button>
           )}
         </div>
 
@@ -1199,30 +1157,24 @@ export function ProfileView({
             <Info className="mt-0.5 h-4 w-4 text-[var(--dsn-accent)] shrink-0" />
             <p>{dict.profilePaymentsDisclaimer}</p>
           </div>
-          <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-800 dark:text-amber-300">
-            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>{dict.profilePaymentsSecurityWarning}</p>
-          </div>
+          <Alert variant="warning" className="px-3.5 py-2.5 text-xs">
+            <ShieldAlert className="h-4 w-4 shrink-0" />
+            <AlertDescription>{dict.profilePaymentsSecurityWarning}</AlertDescription>
+          </Alert>
         </div>
 
         {channelError && (
-          <div
-            role="alert"
-            className="flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs font-medium text-rose-700 dark:text-rose-300"
-          >
+          <Alert role="alert" variant="error">
             <AlertCircle className="h-4 w-4 shrink-0" />
-            <span>{channelError}</span>
-          </div>
+            <AlertDescription className="font-medium">{channelError}</AlertDescription>
+          </Alert>
         )}
 
         {channelFeedback && (
-          <div
-            role="status"
-            className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs font-medium text-emerald-700 dark:text-emerald-300"
-          >
+          <Alert role="status" variant="success">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <span>{channelFeedback}</span>
-          </div>
+            <AlertDescription className="font-medium">{channelFeedback}</AlertDescription>
+          </Alert>
         )}
 
         {/* Banner por conflicto 409 de canal utilizado en pedidos históricos */}
@@ -1239,13 +1191,15 @@ export function ProfileView({
               </div>
             </div>
             {!readOnly && conflictUsedChannel.isActive && (
-              <button
+              <Button
                 type="button"
+                variant="warning"
+                size="sm"
                 onClick={() => handleToggleChannelActive(conflictUsedChannel)}
-                className="shrink-0 rounded-lg bg-[var(--dsn-warning)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-accent-fg)] hover:opacity-90 transition-opacity cursor-pointer"
+                className="shrink-0"
               >
                 {dict.profilePaymentsDeactivateCta}
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -1353,200 +1307,165 @@ export function ProfileView({
       </section>
 
       {/* Modal de creación / edición de canal de pago */}
-      {channelModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
+      <Dialog
+        open={channelModalOpen}
+        onOpenChange={(open) => {
+          if (!open && !savingChannel) setChannelModalOpen(false);
+        }}
+      >
+        <DialogContent
+          className="w-full max-w-lg rounded-2xl p-5"
+          closeAriaLabel={dict.profilePaymentsCancelCta}
           aria-labelledby="channel-modal-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+          disableEscapeKeyDown={savingChannel}
+          disableInteractOutside={savingChannel}
         >
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3">
-              <h3
-                id="channel-modal-title"
-                className="text-base font-bold text-[var(--dsn-text)]"
-              >
-                {channelForm.id
-                  ? dict.profilePaymentsModalEditTitle
-                  : dict.profilePaymentsModalCreateTitle}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setChannelModalOpen(false)}
-                aria-label={dict.profilePaymentsCancelCta}
-                className="rounded-lg p-1 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3 pr-8">
+            <DialogTitle id="channel-modal-title" className="text-base font-bold text-[var(--dsn-text)]">
+              {channelForm.id
+                ? dict.profilePaymentsModalEditTitle
+                : dict.profilePaymentsModalCreateTitle}
+            </DialogTitle>
+          </DialogHeader>
 
-            {channelError && (
-              <div
-                role="alert"
-                className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-600 dark:text-rose-300"
-              >
-                {channelError}
-              </div>
-            )}
+          {channelError && (
+            <Alert role="alert" variant="error">
+              <AlertDescription>{channelError}</AlertDescription>
+            </Alert>
+          )}
 
-            <form onSubmit={handleSaveChannel} className="space-y-3.5">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="channel-code"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    {dict.profilePaymentsFieldCodeLabel}
-                  </label>
-                  <select
-                    id="channel-code"
-                    value={channelForm.channelCode}
-                    onChange={(e) => {
-                      const nextCode = e.target.value as TenantPaymentChannelCode;
-                      setChannelForm((prev) => {
-                        const prevDefault = getChannelCodeLabel(prev.channelCode, activeLocale);
-                        const shouldSyncDisplayName =
-                          !prev.id &&
-                          (prev.displayName.trim() === "" ||
-                            prev.displayName === prevDefault);
-                        return {
-                          ...prev,
-                          channelCode: nextCode,
-                          displayName: shouldSyncDisplayName
-                            ? getChannelCodeLabel(nextCode, activeLocale)
-                            : prev.displayName,
-                        };
-                      });
-                    }}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  >
-                    {PAYMENT_CHANNEL_CODES.map((code) => (
-                      <option
-                        key={code}
-                        value={code}
-                        className="bg-[var(--dsn-surface)] text-[var(--dsn-text)]"
-                      >
-                        {getChannelCodeLabel(code, activeLocale)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="channel-display-name"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    {dict.profilePaymentsFieldNameLabel}
-                  </label>
-                  <input
-                    id="channel-display-name"
-                    type="text"
-                    required
-                    value={channelForm.displayName}
-                    onChange={(e) =>
-                      setChannelForm((prev) => ({ ...prev, displayName: e.target.value }))
-                    }
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="channel-identifier"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    {dict.profilePaymentsFieldIdentifierLabel}
-                  </label>
-                  <input
-                    id="channel-identifier"
-                    type="text"
-                    value={channelForm.accountIdentifier}
-                    onChange={(e) =>
-                      setChannelForm((prev) => ({
+          <form onSubmit={handleSaveChannel} className="space-y-3.5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="channel-code" className="mb-1 block text-xs font-semibold">
+                  {dict.profilePaymentsFieldCodeLabel}
+                </Label>
+                <Select
+                  id="channel-code"
+                  value={channelForm.channelCode}
+                  onChange={(e) => {
+                    const nextCode = e.target.value as TenantPaymentChannelCode;
+                    setChannelForm((prev) => {
+                      const prevDefault = getChannelCodeLabel(prev.channelCode, activeLocale);
+                      const shouldSyncDisplayName =
+                        !prev.id &&
+                        (prev.displayName.trim() === "" ||
+                          prev.displayName === prevDefault);
+                      return {
                         ...prev,
-                        accountIdentifier: e.target.value,
-                      }))
-                    }
-                    placeholder="300 000 0000"
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)]"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="channel-holder"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    {dict.profilePaymentsFieldHolderLabel}
-                  </label>
-                  <input
-                    id="channel-holder"
-                    type="text"
-                    value={channelForm.accountHolderName}
-                    onChange={(e) =>
-                      setChannelForm((prev) => ({
-                        ...prev,
-                        accountHolderName: e.target.value,
-                      }))
-                    }
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)]"
-                  />
-                </div>
+                        channelCode: nextCode,
+                        displayName: shouldSyncDisplayName
+                          ? getChannelCodeLabel(nextCode, activeLocale)
+                          : prev.displayName,
+                      };
+                    });
+                  }}
+                >
+                  {PAYMENT_CHANNEL_CODES.map((code) => (
+                    <option key={code} value={code}>
+                      {getChannelCodeLabel(code, activeLocale)}
+                    </option>
+                  ))}
+                </Select>
               </div>
 
               <div>
-                <label
-                  htmlFor="channel-instructions"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                >
-                  {dict.profilePaymentsFieldInstructionsLabel}
-                </label>
-                <textarea
-                  id="channel-instructions"
-                  rows={3}
-                  value={channelForm.instructions}
+                <Label htmlFor="channel-display-name" className="mb-1 block text-xs font-semibold">
+                  {dict.profilePaymentsFieldNameLabel}
+                </Label>
+                <Input
+                  id="channel-display-name"
+                  type="text"
+                  required
+                  value={channelForm.displayName}
                   onChange={(e) =>
-                    setChannelForm((prev) => ({ ...prev, instructions: e.target.value }))
+                    setChannelForm((prev) => ({ ...prev, displayName: e.target.value }))
                   }
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)]"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="channel-identifier" className="mb-1 block text-xs font-semibold">
+                  {dict.profilePaymentsFieldIdentifierLabel}
+                </Label>
+                <Input
+                  id="channel-identifier"
+                  type="text"
+                  value={channelForm.accountIdentifier}
+                  onChange={(e) =>
+                    setChannelForm((prev) => ({
+                      ...prev,
+                      accountIdentifier: e.target.value,
+                    }))
+                  }
+                  placeholder="300 000 0000"
                 />
               </div>
 
-              <label className="flex items-center gap-2 text-xs font-semibold text-[var(--dsn-text)] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={channelForm.isActive}
+              <div>
+                <Label htmlFor="channel-holder" className="mb-1 block text-xs font-semibold">
+                  {dict.profilePaymentsFieldHolderLabel}
+                </Label>
+                <Input
+                  id="channel-holder"
+                  type="text"
+                  value={channelForm.accountHolderName}
                   onChange={(e) =>
-                    setChannelForm((prev) => ({ ...prev, isActive: e.target.checked }))
+                    setChannelForm((prev) => ({
+                      ...prev,
+                      accountHolderName: e.target.value,
+                    }))
                   }
-                  className="h-4 w-4 rounded border-[var(--dsn-border)]"
                 />
-                <span>{dict.profilePaymentsFieldActiveLabel}</span>
-              </label>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setChannelModalOpen(false)}
-                  className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors cursor-pointer"
-                >
-                  {dict.profilePaymentsCancelCta}
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingChannel}
-                  className="inline-flex min-h-[38px] items-center justify-center rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-[var(--dsn-accent-fg)] shadow-xs transition-colors hover:bg-[var(--dsn-accent-hover)] cursor-pointer disabled:opacity-50"
-                >
-                  {savingChannel ? dict.profileSaving : dict.profilePaymentsSaveCta}
-                </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+
+            <div>
+              <Label htmlFor="channel-instructions" className="mb-1 block text-xs font-semibold">
+                {dict.profilePaymentsFieldInstructionsLabel}
+              </Label>
+              <Textarea
+                id="channel-instructions"
+                rows={3}
+                value={channelForm.instructions}
+                onChange={(e) =>
+                  setChannelForm((prev) => ({ ...prev, instructions: e.target.value }))
+                }
+              />
+            </div>
+
+            <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--dsn-text)]">
+              <Checkbox
+                checked={channelForm.isActive}
+                onCheckedChange={(checked) =>
+                  setChannelForm((prev) => ({ ...prev, isActive: checked === true }))
+                }
+              />
+              <span>{dict.profilePaymentsFieldActiveLabel}</span>
+            </label>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setChannelModalOpen(false)}
+              >
+                {dict.profilePaymentsCancelCta}
+              </Button>
+              <Button
+                type="submit"
+                disabled={savingChannel}
+                loading={savingChannel}
+                loadingText={dict.profileSaving}
+              >
+                {dict.profilePaymentsSaveCta}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de confirmación para retirar logotipo comercial */}
       <ConfirmationModal

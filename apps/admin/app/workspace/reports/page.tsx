@@ -2,6 +2,7 @@ import { cookies, headers } from "next/headers";
 import { resolveAuthenticatedPortalContext } from "@mocter/domain";
 import { BarChart3, Lock } from "lucide-react";
 import Link from "next/link";
+import { Button, Card } from "@mocter/ui";
 import { getAdminDictionary } from "@/lib/i18n";
 import { resolvePortalPageLocale } from "@/lib/resolve-page-locale";
 
@@ -36,7 +37,7 @@ export default async function WorkspaceReportsPage() {
   if (!hasCapability) {
     return (
       <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
-        <div className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-12 text-center max-w-lg mx-auto shadow-xs">
+        <Card className="rounded-2xl p-12 text-center max-w-lg mx-auto">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400 mx-auto mb-4 border border-amber-500/20">
             <Lock className="h-6 w-6" />
           </div>
@@ -47,14 +48,13 @@ export default async function WorkspaceReportsPage() {
             {dict.reportsUnavailableDesc}
           </p>
           <div className="mt-6">
-            <Link
-              href="/workspace/billing"
-              className="inline-flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity"
-            >
-              <span>{dict.reportsViewPlansCta}</span>
-            </Link>
+            <Button asChild variant="primary" className="text-xs">
+              <Link href="/workspace/billing">
+                <span>{dict.reportsViewPlansCta}</span>
+              </Link>
+            </Button>
           </div>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -69,11 +69,11 @@ export default async function WorkspaceReportsPage() {
           </h1>
         </div>
       </header>
-      <div className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xs">
+      <Card className="rounded-2xl p-6">
         <p className="text-xs text-[var(--dsn-text-secondary)]">
           {dict.reportsReadyDesc}
         </p>
-      </div>
+      </Card>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, count, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, ilike, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { clients } from "../db/schemas/admin/clients";
 import { plans } from "../db/schemas/admin/plans";
@@ -7,6 +7,7 @@ import { users } from "../db/schemas/admin/users";
 import {
   clientSharingProfiles,
   communityLeaderAuthorizations,
+  communityPlatformSettings,
   feedPosts,
   organizationInvitations,
   organizationJoinRequests,
@@ -20,7 +21,11 @@ import {
 } from "../db/schemas/admin/communities-and-cloning";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
-import { getNotificationDispatcherService } from "./notification-dispatcher.service";
+import {
+  buildAdminPortalUrl,
+  getNotificationDispatcherService,
+} from "./notification-dispatcher.service";
+import type { CommunityWallRetentionSettingsDto } from "./community-feed.service";
 
 export type CommunityVisibility = "private_invite" | "request_to_join";
 export type CommunitySharePolicy = "leaders_only" | "collaborative";
@@ -71,6 +76,7 @@ export interface CommunityInvitationDto {
   role: "member" | "co_leader";
   email: string;
   targetClientId: string | null;
+  targetClientName?: string | null;
   inviterName: string;
   status: string;
   expiresAt: string;
@@ -183,6 +189,7 @@ export interface AdminCommunitiesOverviewDto {
     planName: string;
     leaderStatus: LeaderAuthorizationStatus;
   }>;
+  retentionSettings?: CommunityWallRetentionSettingsDto;
 }
 
 /**
@@ -309,6 +316,22 @@ export interface ICommunitiesGovernanceRepository {
     status: string;
     expiresAt: Date;
   } | null>;
+  findPendingInvitationsForTarget?(params: {
+    organizationId: string;
+    email: string;
+    targetClientId: string | null;
+  }): Promise<
+    Array<{
+      id: string;
+      organizationId: string;
+      email: string;
+      targetClientId: string | null;
+      role: "member" | "co_leader";
+      status: string;
+      expiresAt: Date;
+      createdAt: Date;
+    }>
+  >;
   updateInvitationStatus?(
     invitationId: string,
     status: "accepted" | "rejected" | "revoked" | "expired",
@@ -941,6 +964,58 @@ export class DrizzleCommunitiesGovernanceRepository implements ICommunitiesGover
     };
   }
 
+  async findPendingInvitationsForTarget(params: {
+    organizationId: string;
+    email: string;
+    targetClientId: string | null;
+  }): Promise<
+    Array<{
+      id: string;
+      organizationId: string;
+      email: string;
+      targetClientId: string | null;
+      role: "member" | "co_leader";
+      status: string;
+      expiresAt: Date;
+      createdAt: Date;
+    }>
+  > {
+    const db = this.dbProvider();
+    const normalizedEmail = params.email.trim().toLowerCase();
+    const targetCondition = params.targetClientId
+      ? or(
+          sql`lower(${organizationInvitations.email}) = ${normalizedEmail}`,
+          eq(organizationInvitations.targetClientId, params.targetClientId),
+        )
+      : sql`lower(${organizationInvitations.email}) = ${normalizedEmail}`;
+
+    const rows = await db
+      .select({
+        id: organizationInvitations.id,
+        organizationId: organizationInvitations.organizationId,
+        email: organizationInvitations.email,
+        targetClientId: organizationInvitations.targetClientId,
+        role: organizationInvitations.role,
+        status: organizationInvitations.status,
+        expiresAt: organizationInvitations.expiresAt,
+        createdAt: organizationInvitations.createdAt,
+      })
+      .from(organizationInvitations)
+      .where(
+        and(
+          eq(organizationInvitations.organizationId, params.organizationId),
+          eq(organizationInvitations.status, "pending"),
+          targetCondition,
+        ),
+      )
+      .orderBy(desc(organizationInvitations.createdAt));
+
+    return rows.map((row: any) => ({
+      ...row,
+      role: row.role === "co_leader" ? "co_leader" : "member",
+    }));
+  }
+
   async updateInvitationStatus(
     invitationId: string,
     status: "accepted" | "rejected" | "revoked" | "expired",
@@ -1068,6 +1143,7 @@ export class DrizzleCommunitiesGovernanceRepository implements ICommunitiesGover
                   .select()
                   .from(organizationInvitations)
                   .where(inArray(organizationInvitations.organizationId, myOrgIds))
+                  .orderBy(desc(organizationInvitations.createdAt))
               : Promise.resolve([]),
           ])
         : [[], [], [], [], [], []];
@@ -1077,6 +1153,9 @@ export class DrizzleCommunitiesGovernanceRepository implements ICommunitiesGover
     for (const m of allMembers) clientIdsToLoad.add(m.clientId);
     for (const r of allJoinReqs) clientIdsToLoad.add(r.clientId);
     for (const p of allPromos) clientIdsToLoad.add(p.targetClientId);
+    for (const inv of allInvitations) {
+      if (inv.targetClientId) clientIdsToLoad.add(inv.targetClientId);
+    }
 
     const clientIdsArr = Array.from(clientIdsToLoad);
     const [clientRows, sharingProfilesRows] =
@@ -1125,8 +1204,9 @@ export class DrizzleCommunitiesGovernanceRepository implements ICommunitiesGover
         (p: any) => p.organizationId === org.id && p.status === "pending",
       );
       const orgInvites = allInvitations.filter(
-        (inv: any) => inv.organizationId === org.id && inv.status === "pending",
+        (inv: any) => inv.organizationId === org.id,
       );
+      const nowMs = Date.now();
 
       return {
         id: org.id,
@@ -1184,19 +1264,28 @@ export class DrizzleCommunitiesGovernanceRepository implements ICommunitiesGover
             })
           : [],
         invitations: isLeader
-          ? orgInvites.map((inv: any) => ({
-              id: inv.id,
-              organizationId: inv.organizationId,
-              organizationName: org.name,
-              organizationSlug: org.slug,
-              role: inv.role === "co_leader" ? "co_leader" : "member",
-              email: inv.email,
-              targetClientId: inv.targetClientId ?? null,
-              inviterName: clientMap.get(org.originatorClientId)?.displayName || org.name,
-              status: inv.status,
-              expiresAt: inv.expiresAt.toISOString(),
-              createdAt: inv.createdAt.toISOString(),
-            }))
+          ? orgInvites.map((inv: any) => {
+              const expDate = new Date(inv.expiresAt);
+              const normalizedStatus =
+                inv.status === "pending" && expDate.getTime() <= nowMs ? "expired" : inv.status;
+              const targetClient = inv.targetClientId
+                ? clientMap.get(inv.targetClientId)
+                : undefined;
+              return {
+                id: inv.id,
+                organizationId: inv.organizationId,
+                organizationName: org.name,
+                organizationSlug: org.slug,
+                role: inv.role === "co_leader" ? "co_leader" : "member",
+                email: inv.email,
+                targetClientId: inv.targetClientId ?? null,
+                targetClientName: targetClient?.displayName ?? null,
+                inviterName: clientMap.get(org.originatorClientId)?.displayName || org.name,
+                status: normalizedStatus,
+                expiresAt: expDate.toISOString(),
+                createdAt: new Date(inv.createdAt).toISOString(),
+              };
+            })
           : [],
         promotions: isLeader
           ? orgPromos.map((p: any) => ({
@@ -1252,16 +1341,18 @@ export class DrizzleCommunitiesGovernanceRepository implements ICommunitiesGover
       .filter((e): e is string => Boolean(e))
       .map((e) => e.trim().toLowerCase());
 
+    const nowDate = new Date();
     const incomingInvRows = await db
       .select()
       .from(organizationInvitations)
       .where(
         and(
           eq(organizationInvitations.status, "pending"),
+          gt(organizationInvitations.expiresAt, nowDate),
           matchEmails.length > 0
             ? or(
                 eq(organizationInvitations.targetClientId, clientId),
-                inArray(organizationInvitations.email, matchEmails),
+                inArray(sql`lower(${organizationInvitations.email})`, matchEmails),
               )
             : eq(organizationInvitations.targetClientId, clientId),
         ),
@@ -1278,8 +1369,14 @@ export class DrizzleCommunitiesGovernanceRepository implements ICommunitiesGover
     const invOrgMap = new Map<string, Organization>(invOrgs.map((o: Organization) => [o.id, o]));
 
     const now = Date.now();
+    const seenIncomingOrgs = new Set<string>();
     const pendingInvitations: CommunityInvitationDto[] = incomingInvRows
-      .filter((inv: any) => new Date(inv.expiresAt).getTime() > now)
+      .filter((inv: any) => {
+        if (new Date(inv.expiresAt).getTime() <= now) return false;
+        if (seenIncomingOrgs.has(inv.organizationId)) return false;
+        seenIncomingOrgs.add(inv.organizationId);
+        return true;
+      })
       .map((inv: any) => {
         const org = invOrgMap.get(inv.organizationId);
         return {
@@ -1343,7 +1440,7 @@ export class DrizzleCommunitiesGovernanceRepository implements ICommunitiesGover
   async getAdminCommunitiesOverviewData(): Promise<AdminCommunitiesOverviewDto> {
     const db = getDb();
 
-    const [authRows, orgRows, clientRows, planRows, memberRows, shareRows] = await Promise.all([
+    const [authRows, orgRows, clientRows, planRows, memberRows, shareRows, retentionRows] = await Promise.all([
       db
         .select()
         .from(communityLeaderAuthorizations)
@@ -1374,6 +1471,11 @@ export class DrizzleCommunitiesGovernanceRepository implements ICommunitiesGover
           status: productShares.status,
         })
         .from(productShares),
+      db
+        .select()
+        .from(communityPlatformSettings)
+        .where(eq(communityPlatformSettings.id, "default"))
+        .limit(1),
     ]);
 
     const planMap = new Map<string, string>();
@@ -1444,10 +1546,30 @@ export class DrizzleCommunitiesGovernanceRepository implements ICommunitiesGover
       leaderStatus: (authByClient.get(c.id)?.status as LeaderAuthorizationStatus) ?? "none",
     }));
 
+    const retentionRow = retentionRows[0];
+    const feedRetentionDays = retentionRow ? (retentionRow.feedRetentionDays ?? null) : 90;
+    let eligibleToPurgeCount = 0;
+    if (feedRetentionDays !== null && feedRetentionDays >= 1) {
+      const cutoffDate = new Date(Date.now() - feedRetentionDays * 86_400_000);
+      const [cnt] = await db
+        .select({ count: count() })
+        .from(feedPosts)
+        .where(lt(feedPosts.createdAt, cutoffDate));
+      eligibleToPurgeCount = Number(cnt?.count ?? 0);
+    }
+
     return {
       authorizations,
       organizations: organizationsSummary,
       tenants,
+      retentionSettings: {
+        feedRetentionDays,
+        lastRetentionPurgeAt: retentionRow?.lastRetentionPurgeAt
+          ? retentionRow.lastRetentionPurgeAt.toISOString()
+          : null,
+        lastRetentionPurgedCount: retentionRow?.lastRetentionPurgedCount ?? 0,
+        eligibleToPurgeCount,
+      },
     };
   }
 }
@@ -1614,7 +1736,7 @@ export class CommunitiesGovernanceService {
           status_label: statusLabels[auth.status] || auth.status,
           max_communities: quotaText,
           review_notes: auth.reviewNotes || "",
-          community_url: "/workspace/community",
+          community_url: buildAdminPortalUrl("/workspace/community"),
         },
         idempotencyKey: `leader-status:${clientId}:${auth.updatedAt.getTime()}`,
         inAppPayload: {
@@ -1822,7 +1944,8 @@ export class CommunitiesGovernanceService {
   }
 
   /**
-   * Invita a otro comercio por slug o correo electrónico a unirse a la comunidad (`SPEC-15`).
+   * Invita a otro comercio por slug o correo electrónico a unirse a la comunidad (`SPEC-15`, `RN-SPEC-15-13`).
+   * Si existe una invitación pendiente vigente (`expiresAt > now`), la conserva intacta sin generar duplicados.
    */
   async inviteTenant(params: {
     organizationId: string;
@@ -1830,7 +1953,16 @@ export class CommunitiesGovernanceService {
     inviterUserId: string;
     targetClientSlugOrEmail: string;
     role?: "member" | "co_leader";
-  }): Promise<Result<{ invitationId: string; targetClientId: string | null; inviteCode: string }>> {
+    baseUrl?: string;
+  }): Promise<
+    Result<{
+      invitationId: string;
+      targetClientId: string | null;
+      inviteCode: string;
+      reusedExisting: boolean;
+      expiresAt: string;
+    }>
+  > {
     try {
       const org = await this.repo.findOrganizationById(params.organizationId);
       if (!org || org.status !== "active") {
@@ -1870,9 +2002,39 @@ export class CommunitiesGovernanceService {
         );
       }
 
+      const nowMs = Date.now();
+      if (this.repo.findPendingInvitationsForTarget) {
+        const existingPending = await this.repo.findPendingInvitationsForTarget({
+          organizationId: org.id,
+          email: targetEmail,
+          targetClientId: matchedClient?.id ?? null,
+        });
+
+        let activeExisting: (typeof existingPending)[number] | null = null;
+        for (const item of existingPending) {
+          if (new Date(item.expiresAt).getTime() <= nowMs) {
+            if (this.repo.updateInvitationStatus) {
+              await this.repo.updateInvitationStatus(item.id, "expired", params.inviterUserId);
+            }
+          } else if (!activeExisting) {
+            activeExisting = item;
+          }
+        }
+
+        if (activeExisting) {
+          return ok({
+            invitationId: activeExisting.id,
+            targetClientId: activeExisting.targetClientId ?? matchedClient?.id ?? null,
+            inviteCode: org.inviteCode,
+            reusedExisting: true,
+            expiresAt: new Date(activeExisting.expiresAt).toISOString(),
+          });
+        }
+      }
+
       const rawToken = randomBytes(24).toString("hex");
       const tokenHash = createHash("sha256").update(rawToken).digest("hex");
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const expiresAt = new Date(nowMs + 7 * 24 * 60 * 60 * 1000);
       const role = params.role ?? "member";
 
       const inv = await this.repo.createInvitation({
@@ -1886,13 +2048,15 @@ export class CommunitiesGovernanceService {
       });
 
       if (matchedClient) {
-        void this.notifyInvitation(matchedClient.id, org, role, inv.id);
+        void this.notifyInvitation(matchedClient.id, org, role, inv.id, params.baseUrl);
       }
 
       return ok({
         invitationId: inv.id,
         targetClientId: matchedClient?.id ?? null,
         inviteCode: org.inviteCode,
+        reusedExisting: false,
+        expiresAt: expiresAt.toISOString(),
       });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -1901,11 +2065,144 @@ export class CommunitiesGovernanceService {
     }
   }
 
+  /**
+   * Cancela (revoca) una invitación pendiente enviada por el líder de la comunidad (`RN-SPEC-15-13`).
+   */
+  async revokeInvitation(params: {
+    invitationId: string;
+    actorClientId: string;
+    actorUserId: string;
+  }): Promise<Result<{ invitationId: string; status: "revoked" }>> {
+    try {
+      if (!this.repo.findInvitationById || !this.repo.updateInvitationStatus) {
+        return err("Repositorio no soporta invitaciones.", "NOT_SUPPORTED");
+      }
+
+      const inv = await this.repo.findInvitationById(params.invitationId);
+      if (!inv) {
+        return err("Invitación no encontrada.", "INVITATION_NOT_FOUND");
+      }
+
+      const org = await this.repo.findOrganizationById(inv.organizationId);
+      if (!org || org.status !== "active") {
+        return err("Comunidad no encontrada o suspendida.", "ORGANIZATION_NOT_FOUND");
+      }
+      if (org.originatorClientId !== params.actorClientId) {
+        return err(
+          "Solo el comercio creador puede cancelar invitaciones enviadas.",
+          "UNAUTHORIZED_ORIGINATOR_ONLY",
+        );
+      }
+
+      if (inv.status !== "pending") {
+        return err(
+          "Solo es posible cancelar invitaciones que sigan pendientes.",
+          "INVITATION_NOT_PENDING",
+        );
+      }
+
+      await this.repo.updateInvitationStatus(inv.id, "revoked", params.actorUserId);
+      appLogger.info("[CommunitiesGovernance] Invitación cancelada por el líder", {
+        invitationId: inv.id,
+        organizationId: inv.organizationId,
+        actorClientId: params.actorClientId,
+      });
+
+      return ok({ invitationId: inv.id, status: "revoked" });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return err(msg, "REVOKE_INVITATION_ERROR");
+    }
+  }
+
+  /**
+   * Reenvía la notificación (`community.invited`) de una invitación pendiente vigente (`RN-SPEC-15-13`).
+   */
+  async resendInvitationNotification(params: {
+    invitationId: string;
+    actorClientId: string;
+    actorUserId: string;
+    baseUrl?: string;
+  }): Promise<Result<{ invitationId: string; resentAt: string }>> {
+    try {
+      if (!this.repo.findInvitationById || !this.repo.updateInvitationStatus) {
+        return err("Repositorio no soporta invitaciones.", "NOT_SUPPORTED");
+      }
+
+      const inv = await this.repo.findInvitationById(params.invitationId);
+      if (!inv) {
+        return err("Invitación no encontrada.", "INVITATION_NOT_FOUND");
+      }
+
+      const org = await this.repo.findOrganizationById(inv.organizationId);
+      if (!org || org.status !== "active") {
+        return err("Comunidad no encontrada o suspendida.", "ORGANIZATION_NOT_FOUND");
+      }
+      if (org.originatorClientId !== params.actorClientId) {
+        return err(
+          "Solo el comercio creador puede reenviar notificaciones de invitación.",
+          "UNAUTHORIZED_ORIGINATOR_ONLY",
+        );
+      }
+
+      if (inv.status !== "pending") {
+        return err(
+          "Solo es posible reenviar notificaciones de invitaciones pendientes.",
+          "INVITATION_NOT_PENDING",
+        );
+      }
+
+      if (inv.expiresAt.getTime() <= Date.now()) {
+        await this.repo.updateInvitationStatus(inv.id, "expired", params.actorUserId);
+        return err(
+          "Esta invitación ya caducó. Envía una nueva invitación al comercio.",
+          "INVITATION_EXPIRED",
+        );
+      }
+
+      let resolvedClientId = inv.targetClientId;
+      if (!resolvedClientId && this.repo.findClientBySlugOrEmail) {
+        const clientMatch = await this.repo.findClientBySlugOrEmail(inv.email);
+        resolvedClientId = clientMatch?.id ?? null;
+      }
+
+      if (!resolvedClientId) {
+        return err(
+          "El comercio invitado aún no está vinculado a una tienda activa en la plataforma para recibir notificaciones.",
+          "TARGET_TENANT_NOT_FOUND",
+        );
+      }
+
+      const resentAt = new Date().toISOString();
+      await this.notifyInvitation(
+        resolvedClientId,
+        org,
+        inv.role,
+        inv.id,
+        params.baseUrl,
+        `community-invite:${inv.id}:resend:${Date.now()}`,
+      );
+
+      appLogger.info("[CommunitiesGovernance] Notificación de invitación reenviada", {
+        invitationId: inv.id,
+        organizationId: inv.organizationId,
+        targetClientId: resolvedClientId,
+      });
+
+      return ok({ invitationId: inv.id, resentAt });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return err(msg, "RESEND_INVITATION_ERROR");
+    }
+  }
+
   private async notifyInvitation(
     targetClientId: string,
     org: Organization,
     role: "member" | "co_leader",
     invitationId: string,
+    baseUrl?: string,
+    idempotencyKey?: string,
   ): Promise<void> {
     try {
       const [targetInfo, orgInfo] = await Promise.all([
@@ -1921,9 +2218,9 @@ export class CommunitiesGovernanceService {
           community_name: org.name,
           inviter_name: orgInfo?.displayName || org.name,
           role_label: role === "co_leader" ? "Co-Líder" : "Miembro",
-          invite_url: "/workspace/community",
+          invite_url: buildAdminPortalUrl("/workspace/community", baseUrl),
         },
-        idempotencyKey: `community-invite:${invitationId}`,
+        idempotencyKey: idempotencyKey ?? `community-invite:${invitationId}`,
         inAppPayload: {
           title: `Invitación a la comunidad ${org.name}`,
           body: `${orgInfo?.displayName || org.name} te invitó a unirte a su red comercial.`,
@@ -2145,7 +2442,7 @@ export class CommunitiesGovernanceService {
         variables: {
           user_name: info?.displayName || "Comercio",
           community_name: org.name,
-          community_url: "/workspace/community",
+          community_url: buildAdminPortalUrl("/workspace/community"),
         },
         idempotencyKey: `join-accepted:${requestId}`,
         inAppPayload: {
@@ -2213,7 +2510,7 @@ export class CommunitiesGovernanceService {
           user_name: info?.displayName || "Comercio",
           community_name: org.name,
           role: "Co-Líder (Pendiente de Aceptación)",
-          community_url: "/workspace/community",
+          community_url: buildAdminPortalUrl("/workspace/community"),
         },
         idempotencyKey: `promo-proposed:${promotionId}`,
         inAppPayload: {

@@ -11,6 +11,15 @@ import {
   UserPlus,
 } from "lucide-react";
 import type { TeamInvitationPublicPreviewDto } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Card,
+  Input,
+  Label,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 interface InviteAcceptViewProps {
@@ -95,7 +104,7 @@ export function InviteAcceptView({
     const isExpired = preview.reason === "expired";
     return (
       <div className="min-h-dvh flex items-center justify-center p-4 bg-[var(--dsn-background)]">
-        <div className="w-full max-w-md rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xl space-y-4 text-center">
+        <Card className="w-full max-w-md rounded-2xl p-6 shadow-xl space-y-4 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 border border-amber-500/20">
             {isExpired ? (
               <Clock className="h-6 w-6 text-amber-500" />
@@ -117,7 +126,7 @@ export function InviteAcceptView({
               {preview.emailHint ? ` · ${preview.emailHint}` : ""}
             </div>
           )}
-        </div>
+        </Card>
       </div>
     );
   }
@@ -125,7 +134,7 @@ export function InviteAcceptView({
   if (preview.hasActiveMembershipConflict) {
     return (
       <div className="min-h-dvh flex items-center justify-center p-4 bg-[var(--dsn-background)]">
-        <div className="w-full max-w-md rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xl space-y-4 text-center">
+        <Card className="w-full max-w-md rounded-2xl p-6 shadow-xl space-y-4 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-500/10 border border-rose-500/20">
             <AlertTriangle className="h-6 w-6 text-rose-500" />
           </div>
@@ -135,19 +144,19 @@ export function InviteAcceptView({
           <p className="text-sm text-[var(--dsn-text-secondary)] leading-relaxed">
             {w.inviteConflictDesc}
           </p>
-        </div>
+        </Card>
       </div>
     );
   }
 
   return (
     <div className="min-h-dvh flex items-center justify-center p-4 bg-[var(--dsn-background)]">
-      <div className="w-full max-w-md rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 md:p-7 shadow-xl space-y-5">
+      <Card className="w-full max-w-md rounded-2xl p-6 md:p-7 shadow-xl space-y-5">
         <div className="space-y-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 px-2.5 py-1 text-xs font-medium text-[var(--dsn-accent)] border border-cyan-500/20">
+          <Badge variant="accent" className="gap-1.5 px-2.5 py-1">
             <UserPlus className="h-3.5 w-3.5" />
-            {w.inviteBadge}
-          </span>
+            <span>{w.inviteBadge}</span>
+          </Badge>
           <h1 className="text-xl font-bold tracking-tight text-[var(--dsn-text)]">
             {w.inviteTitle} {preview.tenantName}
           </h1>
@@ -170,37 +179,36 @@ export function InviteAcceptView({
         </div>
 
         {preview.existingAccount && (
-          <div className="flex items-start gap-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3 text-xs text-[var(--dsn-text)]">
-            <ShieldCheck className="h-4 w-4 shrink-0 text-[var(--dsn-accent)] mt-0.5" />
-            <p className="leading-relaxed">{w.inviteExistingNotice}</p>
-          </div>
+          <Alert variant="info">
+            <ShieldCheck className="h-4 w-4" />
+            <AlertDescription className="text-xs leading-relaxed">
+              {w.inviteExistingNotice}
+            </AlertDescription>
+          </Alert>
         )}
 
         {error && (
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400"
-          >
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-            <span>{error}</span>
-          </div>
+          <Alert variant="destructive" role="alert">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="text-xs">{error}</AlertDescription>
+          </Alert>
         )}
 
         {accepted ? (
-          <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-400">
-            <CheckCircle2 className="h-5 w-5 shrink-0" />
-            <span>{w.inviteAcceptingCta}</span>
-          </div>
+          <Alert variant="success">
+            <CheckCircle2 className="h-5 w-5" />
+            <AlertDescription className="text-sm">{w.inviteAcceptingCta}</AlertDescription>
+          </Alert>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <label
+              <Label
                 htmlFor="invite-display-name"
                 className="block text-xs font-medium text-[var(--dsn-text)]"
               >
                 {w.inviteFieldDisplayName}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="invite-display-name"
                 type="text"
                 required={!preview.existingAccount}
@@ -208,40 +216,40 @@ export function InviteAcceptView({
                 maxLength={160}
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:outline-none focus:ring-2 focus:ring-[var(--dsn-accent)]"
+                className="min-h-[44px] bg-[var(--dsn-background)] text-sm"
               />
             </div>
 
             {preview.existingAccount ? (
               <div className="space-y-1.5">
-                <label
+                <Label
                   htmlFor="invite-current-password"
                   className="block text-xs font-medium text-[var(--dsn-text)]"
                 >
                   {w.inviteFieldCurrentPassword}
-                </label>
+                </Label>
                 <div className="relative">
                   <Lock className="h-4 w-4 text-[var(--dsn-text-secondary)] absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
+                  <Input
                     id="invite-current-password"
                     type="password"
                     required
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] pl-9 pr-3 py-2 text-sm text-[var(--dsn-text)] focus:outline-none focus:ring-2 focus:ring-[var(--dsn-accent)]"
+                    className="min-h-[44px] bg-[var(--dsn-background)] pl-9 text-sm"
                   />
                 </div>
               </div>
             ) : (
               <>
                 <div className="space-y-1.5">
-                  <label
+                  <Label
                     htmlFor="invite-password"
                     className="block text-xs font-medium text-[var(--dsn-text)]"
                   >
                     {w.inviteFieldPassword}
-                  </label>
-                  <input
+                  </Label>
+                  <Input
                     id="invite-password"
                     type="password"
                     required
@@ -249,7 +257,7 @@ export function InviteAcceptView({
                     maxLength={128}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:outline-none focus:ring-2 focus:ring-[var(--dsn-accent)]"
+                    className="min-h-[44px] bg-[var(--dsn-background)] text-sm"
                   />
                   <p className="text-[11px] text-[var(--dsn-text-secondary)]">
                     {w.invitePasswordRules}
@@ -257,13 +265,13 @@ export function InviteAcceptView({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label
+                  <Label
                     htmlFor="invite-confirm-password"
                     className="block text-xs font-medium text-[var(--dsn-text)]"
                   >
                     {w.inviteFieldConfirmPassword}
-                  </label>
-                  <input
+                  </Label>
+                  <Input
                     id="invite-confirm-password"
                     type="password"
                     required
@@ -271,22 +279,25 @@ export function InviteAcceptView({
                     maxLength={128}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:outline-none focus:ring-2 focus:ring-[var(--dsn-accent)]"
+                    className="min-h-[44px] bg-[var(--dsn-background)] text-sm"
                   />
                 </div>
               </>
             )}
 
-            <button
+            <Button
               type="submit"
+              variant="primary"
               disabled={submitting}
-              className="w-full min-h-[44px] rounded-lg bg-[var(--dsn-accent)] px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+              loading={submitting}
+              loadingText={w.inviteAcceptingCta}
+              className="w-full min-h-[44px] text-sm"
             >
-              {submitting ? w.inviteAcceptingCta : w.inviteAcceptCta}
-            </button>
+              <span>{w.inviteAcceptCta}</span>
+            </Button>
           </form>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

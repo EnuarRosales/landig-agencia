@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Plus, Trash2, Truck } from "lucide-react";
+import { Button, Card, Checkbox, Input, Label, Textarea } from "@mocter/ui";
 import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import type { getAdminDictionary } from "@/lib/i18n";
@@ -92,7 +93,7 @@ export function BotPoliciesTab({
   return (
     <div className="space-y-6">
       {/* Cobertura y Políticas de Envío */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 md:p-6 shadow-xs space-y-5">
+      <Card className="space-y-5 p-5 shadow-xs md:p-6">
         <div className="flex items-center gap-2 border-b border-[var(--dsn-border)] pb-3">
           <Truck className="h-4 w-4 text-[var(--dsn-accent)]" />
           <h2 className="text-sm font-bold text-[var(--dsn-text)]">
@@ -105,28 +106,23 @@ export function BotPoliciesTab({
             <span className="text-xs font-semibold text-[var(--dsn-text)]">
               {dict.botShippingFreeLabel}
             </span>
-            <input
-              type="checkbox"
+            <Checkbox
               disabled={readOnly}
               checked={Boolean(shippingPolicy.freeShipping)}
-              onChange={(e) =>
+              onCheckedChange={(checked) =>
                 onShippingPolicyChange({
                   ...shippingPolicy,
-                  freeShipping: e.target.checked,
+                  freeShipping: checked === true,
                 })
               }
-              className="h-4 w-4 accent-[var(--dsn-accent)]"
             />
           </label>
 
           <div>
-            <label
-              htmlFor="bot-shipping-cost"
-              className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-            >
+            <Label htmlFor="bot-shipping-cost" className="mb-1.5 block text-xs font-semibold">
               {dict.botShippingCostLabel} ({currency})
-            </label>
-            <input
+            </Label>
+            <Input
               id="bot-shipping-cost"
               type="number"
               min={0}
@@ -139,7 +135,6 @@ export function BotPoliciesTab({
                   defaultCostCents: Math.round(numeric * 100),
                 });
               }}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
             />
           </div>
         </div>
@@ -168,14 +163,10 @@ export function BotPoliciesTab({
               {dict.botShippingRulesTitle}
             </h3>
             {!readOnly && (
-              <button
-                type="button"
-                onClick={handleAddRule}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors"
-              >
+              <Button type="button" variant="outline" size="sm" onClick={handleAddRule}>
                 <Plus className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
                 <span>{dict.botShippingRulesAddCta}</span>
-              </button>
+              </Button>
             )}
           </div>
 
@@ -186,7 +177,7 @@ export function BotPoliciesTab({
                   key={idx}
                   className="grid grid-cols-1 gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/15 p-3 sm:grid-cols-12"
                 >
-                  <input
+                  <Input
                     type="text"
                     disabled={readOnly}
                     value={rule.regionCode || ""}
@@ -196,9 +187,9 @@ export function BotPoliciesTab({
                       })
                     }
                     placeholder={dict.botShippingRuleRegionPlaceholder}
-                    className="sm:col-span-3 rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)]"
+                    className="h-8 px-2.5 py-1.5 text-xs sm:col-span-3"
                   />
-                  <input
+                  <Input
                     type="text"
                     disabled={readOnly}
                     value={rule.city || ""}
@@ -206,25 +197,27 @@ export function BotPoliciesTab({
                       handleUpdateRule(idx, { city: e.target.value.trim() || null })
                     }
                     placeholder={dict.botShippingRuleCityPlaceholder}
-                    className="sm:col-span-4 rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)]"
+                    className="h-8 px-2.5 py-1.5 text-xs sm:col-span-4"
                   />
-                  <input
+                  <Input
                     type="text"
                     disabled={readOnly}
                     value={rule.days}
                     onChange={(e) => handleUpdateRule(idx, { days: e.target.value })}
                     placeholder={dict.botShippingRuleDaysPlaceholder}
-                    className="sm:col-span-4 rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)]"
+                    className="h-8 px-2.5 py-1.5 text-xs sm:col-span-4"
                   />
                   {!readOnly && (
                     <div className="flex items-center justify-end sm:col-span-1">
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon"
                         onClick={() => handleRemoveRule(idx)}
-                        className="rounded p-1.5 text-rose-400 hover:bg-rose-500/10"
+                        className="h-7 w-7 text-rose-400 hover:bg-rose-500/10"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -232,10 +225,10 @@ export function BotPoliciesTab({
             </div>
           )}
         </div>
-      </section>
+      </Card>
 
       {/* Garantías y Devoluciones */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 md:p-6 shadow-xs space-y-4">
+      <Card className="space-y-4 p-5 shadow-xs md:p-6">
         <AiEnhanceTextarea
           id="bot-warranty-policy"
           fieldKey="policy.warranty"
@@ -259,24 +252,20 @@ export function BotPoliciesTab({
           onChange={onReturnsPolicyChange}
           context={promptContext}
         />
-      </section>
+      </Card>
 
       {/* Preguntas Frecuentes */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 md:p-6 shadow-xs">
+      <Card className="p-5 shadow-xs md:p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--dsn-border)] pb-3">
           <div>
             <h2 className="text-sm font-bold text-[var(--dsn-text)]">{dict.botFaqsTitle}</h2>
             <p className="text-xs text-[var(--dsn-text-secondary)]">{dict.botFaqsSubtitle}</p>
           </div>
           {!readOnly && (
-            <button
-              type="button"
-              onClick={handleAddFaq}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] transition-colors hover:border-[var(--dsn-accent)]"
-            >
+            <Button type="button" variant="outline" size="sm" onClick={handleAddFaq}>
               <Plus className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
               <span>{dict.botFaqsAddCta}</span>
-            </button>
+            </Button>
           )}
         </div>
 
@@ -292,35 +281,37 @@ export function BotPoliciesTab({
                 className="space-y-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/20 p-3"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <input
+                  <Input
                     type="text"
                     disabled={readOnly}
                     value={faq.question}
                     onChange={(e) => handleUpdateFaq(index, "question", e.target.value)}
-                    className="w-full rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden disabled:opacity-60"
+                    className="h-8 px-2.5 py-1.5 text-xs"
                   />
                   {!readOnly && (
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon"
                       onClick={() => setFaqDeleteIdx(index)}
-                      className="rounded-md p-1.5 text-rose-400 transition-colors hover:bg-rose-500/10"
+                      className="h-7 w-7 text-rose-400 hover:bg-rose-500/10"
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </Button>
                   )}
                 </div>
-                <textarea
+                <Textarea
                   rows={2}
                   disabled={readOnly}
                   value={faq.answer}
                   onChange={(e) => handleUpdateFaq(index, "answer", e.target.value)}
-                  className="w-full rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden disabled:opacity-60"
+                  className="text-xs"
                 />
               </div>
             ))}
           </div>
         )}
-      </section>
+      </Card>
 
       <ConfirmationModal
         isOpen={faqDeleteIdx !== null}

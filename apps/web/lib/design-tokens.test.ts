@@ -2,10 +2,17 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const globalsCss = readFileSync(
+const uiTokensCss = readFileSync(
+  resolve(__dirname, "../../../packages/ui/src/styles/tokens.css"),
+  "utf8",
+);
+
+const webGlobalsCss = readFileSync(
   resolve(__dirname, "../app/globals.css"),
   "utf8",
 );
+
+const globalsCss = `${uiTokensCss}\n${webGlobalsCss}`;
 
 const localeLayoutTsx = readFileSync(
   resolve(__dirname, "../app/[locale]/layout.tsx"),

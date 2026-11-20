@@ -16,9 +16,21 @@ import type {
   SupportedLlmProviderCode,
   TenantAiSettingsOverviewDto,
 } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  ConfirmationModal,
+  FormSaveBar,
+  Input,
+  Label,
+  Select,
+} from "@mocter/ui";
 import { workspaceFetch } from "@/lib/workspace-client";
-import { ConfirmationModal } from "@/components/confirmation-modal";
-import { FormSaveBar } from "@/components/ui/form-save-bar";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 export interface AiSettingsViewProps {
@@ -420,51 +432,50 @@ export function AiSettingsView({
 
   if (!isOwner) {
     return (
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto">
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 flex items-start gap-3">
-          <ShieldCheck className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-          <div>
-            <h1 className="text-base font-bold text-[var(--dsn-text)]">
-              {dict.aiSettingsTitle}
-            </h1>
-            <p className="text-xs text-[var(--dsn-text-secondary)] mt-1">
-              {dict.aiSettingsOwnerOnly}
-            </p>
-          </div>
-        </div>
+      <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
+        <Alert variant="warning" className="p-6">
+          <ShieldCheck className="h-5 w-5" />
+          <AlertTitle className="text-base font-bold text-[var(--dsn-text)]">
+            {dict.aiSettingsTitle}
+          </AlertTitle>
+          <AlertDescription className="text-xs text-[var(--dsn-text-secondary)]">
+            {dict.aiSettingsOwnerOnly}
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
 
-  const modeBadge =
+  const modeBadge: {
+    label: string;
+    variant: "success" | "accent" | "warning";
+  } =
     overview?.effectiveMode === "byok"
       ? {
           label: dict.aiSettingsModeByok,
-          classes: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+          variant: "success",
         }
       : overview?.effectiveMode === "platform_trial"
         ? {
             label: dict.aiSettingsModeTrial,
-            classes: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30",
+            variant: "accent",
           }
         : {
             label: dict.aiSettingsModeRequired,
-            classes: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+            variant: "warning",
           };
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[var(--dsn-border)] pb-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
               {dict.aiSettingsTitle}
             </h1>
-            <span
-              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${modeBadge.classes}`}
-            >
+            <Badge variant={modeBadge.variant} className="text-[11px]">
               {modeBadge.label}
-            </span>
+            </Badge>
           </div>
           <p className="text-xs sm:text-sm text-[var(--dsn-text-secondary)] mt-1">
             {dict.aiSettingsSubtitle}
@@ -472,64 +483,59 @@ export function AiSettingsView({
         </div>
 
         {isOwner && (
-          <button
+          <Button
             type="button"
+            variant="primary"
             onClick={() => void handleSaveSettings()}
             disabled={saving}
-            className="inline-flex min-h-[40px] shrink-0 items-center justify-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
+            loading={saving}
+            loadingText={dict.saveBarSavingCta}
+            className="min-h-[40px] shrink-0 text-xs"
           >
             <Save className="h-4 w-4" />
-            <span>{saving ? dict.saveBarSavingCta : dict.saveBarSaveCta}</span>
-          </button>
+            <span>{dict.saveBarSaveCta}</span>
+          </Button>
         )}
       </header>
 
       {overview?.effectiveMode === "platform_trial" && (
-        <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4 flex items-start gap-3">
-          <Sparkles className="h-5 w-5 text-indigo-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-[var(--dsn-text)] space-y-1">
-            <p className="font-semibold">
-              {isEn
-                ? "Your store is operating with included AI access during the trial period."
-                : "Tu comercio está operando con acceso AI incluido durante el periodo de prueba."}
-            </p>
-            <p className="text-[var(--dsn-text-secondary)]" suppressHydrationWarning>
-              {overview.trialEndsAt
-                ? isEn
-                  ? `Estimated trial period end: ${new Date(overview.trialEndsAt).toLocaleDateString("en-US", { timeZone: "America/Bogota" })}. You can connect your own API Key anytime to take direct control.`
-                  : `Vigencia estimada del periodo de prueba: ${new Date(overview.trialEndsAt).toLocaleDateString("es-CO", { timeZone: "America/Bogota" })}. Puedes conectar tu propia API Key en cualquier momento para tomar el control directo.`
-                : isEn
-                  ? "You can connect your own API Key at any time to operate without trial limits."
-                  : "Puedes conectar tu propia API Key en cualquier momento para operar sin límites de prueba."}
-            </p>
-          </div>
-        </div>
+        <Alert variant="info">
+          <Sparkles className="h-4 w-4" />
+          <AlertTitle className="text-xs">
+            {isEn
+              ? "Your store is operating with included AI access during the trial period."
+              : "Tu comercio está operando con acceso AI incluido durante el periodo de prueba."}
+          </AlertTitle>
+          <AlertDescription className="text-xs" suppressHydrationWarning>
+            {overview.trialEndsAt
+              ? isEn
+                ? `Estimated trial period end: ${new Date(overview.trialEndsAt).toLocaleDateString("en-US", { timeZone: "America/Bogota" })}. You can connect your own API Key anytime to take direct control.`
+                : `Vigencia estimada del periodo de prueba: ${new Date(overview.trialEndsAt).toLocaleDateString("es-CO", { timeZone: "America/Bogota" })}. Puedes conectar tu propia API Key en cualquier momento para tomar el control directo.`
+              : isEn
+                ? "You can connect your own API Key at any time to operate without trial limits."
+                : "Puedes conectar tu propia API Key en cualquier momento para operar sin límites de prueba."}
+          </AlertDescription>
+        </Alert>
       )}
 
       {feedback && (
-        <div
-          role="status"
-          className={`flex items-center gap-2 rounded-xl border p-3.5 text-xs font-medium ${
-            feedback.type === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-              : "border-rose-500/30 bg-rose-500/10 text-rose-400"
-          }`}
-        >
+        <Alert variant={feedback.type === "success" ? "success" : "destructive"} role="status">
           {feedback.type === "success" ? (
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <CheckCircle2 className="h-4 w-4" />
           ) : (
-            <AlertCircle className="h-4 w-4 shrink-0" />
+            <AlertCircle className="h-4 w-4" />
           )}
-          <span>{feedback.message}</span>
-        </div>
+          <AlertDescription className="text-xs font-medium">{feedback.message}</AlertDescription>
+        </Alert>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Formulario BYOK Mobile First */}
-        <form
-          onSubmit={handleSaveSettings}
-          className="lg:col-span-2 rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 sm:p-6 shadow-xs space-y-5"
-        >
+        <Card asChild>
+          <form
+            onSubmit={handleSaveSettings}
+            className="lg:col-span-2 rounded-2xl p-5 sm:p-6 space-y-5"
+          >
           <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3">
             <div className="flex items-center gap-2.5">
               {selectedProviderMeta ? (
@@ -560,40 +566,40 @@ export function AiSettingsView({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label
+              <Label
                 htmlFor="byok-provider-select"
                 className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
               >
                 {dict.aiSettingsProviderLabel}
-              </label>
-              <select
+              </Label>
+              <Select
                 id="byok-provider-select"
                 value={providerCode}
                 onChange={(e) =>
                   handleProviderChange(e.target.value as SupportedLlmProviderCode)
                 }
-                className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                className="min-h-[44px] text-xs"
               >
                 {(overview?.catalog ?? []).map((p) => (
                   <option key={p.id} value={p.code}>
                     {p.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>
-              <label
+              <Label
                 htmlFor="byok-model-select"
                 className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
               >
                 {dict.aiSettingsModelLabel}
-              </label>
-              <select
+              </Label>
+              <Select
                 id="byok-model-select"
                 value={modelId}
                 onChange={(e) => handleModelChange(e.target.value)}
-                className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                className="min-h-[44px] text-xs"
               >
                 {(selectedProviderMeta?.models ?? []).map((m) => (
                   <option key={m.id} value={m.id}>
@@ -601,18 +607,18 @@ export function AiSettingsView({
                     {m.isDefault ? ` — ${dict.aiSettingsDefaultModelTag}` : ""}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
 
           <div>
-            <label
+            <Label
               htmlFor="byok-priority-select"
               className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
             >
               {dict.aiSettingsPriorityLabel}
-            </label>
-            <select
+            </Label>
+            <Select
               id="byok-priority-select"
               value={priorityRole}
               onChange={(e) =>
@@ -620,22 +626,22 @@ export function AiSettingsView({
                   e.target.value as "primary" | "secondary" | "standby",
                 )
               }
-              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+              className="min-h-[44px] text-xs"
             >
               <option value="primary">{dict.aiSettingsPriorityPrimary}</option>
               <option value="secondary">{dict.aiSettingsPrioritySecondary}</option>
               <option value="standby">{dict.aiSettingsPriorityStandby}</option>
-            </select>
+            </Select>
           </div>
 
           <div>
-            <label
+            <Label
               htmlFor="byok-api-key-input"
               className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
             >
               {dict.aiSettingsKeyLabel}
-            </label>
-            <input
+            </Label>
+            <Input
               id="byok-api-key-input"
               type="password"
               autoComplete="new-password"
@@ -650,7 +656,7 @@ export function AiSettingsView({
                     ? "Paste your private key here (e.g. sk-..., AIza..., sk-ant-...)"
                     : "Pega aquí tu clave privada (ej. sk-..., AIza..., sk-ant-...)"
               }
-              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/60 px-3 text-xs font-mono text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/60 focus:border-[var(--dsn-accent)] focus:outline-hidden"
+              className="min-h-[44px] font-mono text-xs"
             />
             <p className="mt-1 text-[11px] text-[var(--dsn-text-secondary)]">
               {isEn
@@ -661,13 +667,13 @@ export function AiSettingsView({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label
+              <Label
                 htmlFor="byok-temperature-input"
                 className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
               >
                 {dict.aiSettingsTempLabel} (0.0 – 2.0)
-              </label>
-              <input
+              </Label>
+              <Input
                 id="byok-temperature-input"
                 type="number"
                 step="0.01"
@@ -675,18 +681,18 @@ export function AiSettingsView({
                 max="2"
                 value={temperature}
                 onChange={(e) => setTemperature(e.target.value)}
-                className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/60 px-3 text-xs font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                className="min-h-[44px] font-mono text-xs"
               />
             </div>
 
             <div>
-              <label
+              <Label
                 htmlFor="byok-max-tokens-input"
                 className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
               >
                 {dict.aiSettingsTokensLabel}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="byok-max-tokens-input"
                 type="number"
                 min="64"
@@ -694,36 +700,31 @@ export function AiSettingsView({
                 step="1"
                 value={maxTokens}
                 onChange={(e) => setMaxTokens(e.target.value)}
-                className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/60 px-3 text-xs font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                className="min-h-[44px] font-mono text-xs"
               />
             </div>
           </div>
 
           <label className="flex items-center gap-2.5 text-xs font-medium text-[var(--dsn-text)] cursor-pointer">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={verifyImmediately}
-              onChange={(e) => setVerifyImmediately(e.target.checked)}
-              className="h-4 w-4 rounded border-[var(--dsn-border)] accent-[var(--dsn-accent)]"
+              onCheckedChange={(checked) => setVerifyImmediately(checked === true)}
             />
             <span>{dict.aiSettingsVerifyOnSaveLabel}</span>
           </label>
 
           <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-[var(--dsn-border)]">
-            <button
+            <Button
               type="submit"
+              variant="primary"
               disabled={saving}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+              loading={saving}
+              loadingText={isEn ? "Validating And Saving..." : "Validando y Guardando..."}
+              className="min-h-[44px] text-xs"
             >
               <Save className="h-4 w-4" />
-              <span>
-                {saving
-                  ? isEn
-                    ? "Validating And Saving..."
-                    : "Validando y Guardando..."
-                  : dict.aiSettingsSaveAction}
-              </span>
-            </button>
+              <span>{dict.aiSettingsSaveAction}</span>
+            </Button>
           </div>
 
           {isOwner && (
@@ -738,10 +739,12 @@ export function AiSettingsView({
               submitType="button"
             />
           )}
-        </form>
+          </form>
+        </Card>
 
         {/* Estado Actual y Llaves Guardadas */}
-        <aside className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 sm:p-6 shadow-xs space-y-4">
+        <Card asChild>
+          <aside className="rounded-2xl p-5 sm:p-6 space-y-4">
           <div className="flex items-center gap-2 border-b border-[var(--dsn-border)] pb-3">
             <ShieldCheck className="h-4 w-4 text-emerald-400" />
             <h2 className="text-sm font-bold text-[var(--dsn-text)]">
@@ -774,27 +777,25 @@ export function AiSettingsView({
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                      <Badge
+                        variant={
                           item.priorityRole === "primary"
-                            ? "bg-indigo-500/15 text-indigo-400 border-indigo-500/30"
+                            ? "accent"
                             : item.priorityRole === "secondary"
-                              ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                              : "bg-zinc-500/15 text-zinc-400 border-zinc-500/30"
-                        }`}
+                              ? "warning"
+                              : "outline"
+                        }
+                        className="text-[10px]"
                       >
                         {item.priorityRole === "primary"
                           ? dict.aiSettingsPriorityPrimary
                           : item.priorityRole === "secondary"
                             ? dict.aiSettingsPrioritySecondary
                             : dict.aiSettingsPriorityStandby}
-                      </span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                          item.status === "active"
-                            ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                            : "bg-rose-500/15 text-rose-400 border border-rose-500/30"
-                        }`}
+                      </Badge>
+                      <Badge
+                        variant={item.status === "active" ? "success" : "destructive"}
+                        className="text-[10px]"
                       >
                         {item.status === "active"
                           ? isEn
@@ -803,7 +804,7 @@ export function AiSettingsView({
                           : isEn
                             ? "Invalid"
                             : "Inválida"}
-                      </span>
+                      </Badge>
                     </div>
                   </div>
 
@@ -831,57 +832,66 @@ export function AiSettingsView({
 
                   <div className="flex flex-wrap gap-2 pt-1">
                     {item.status === "active" && item.priorityRole !== "primary" && (
-                      <button
+                      <Button
                         type="button"
+                        variant="outline"
+                        size="sm"
                         onClick={() =>
                           handleQuickPriorityChange(item.providerCode, "primary")
                         }
                         disabled={saving}
-                        className="inline-flex min-h-[38px] items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-semibold text-indigo-400 hover:bg-indigo-500/20 disabled:opacity-50"
+                        className="min-h-[38px] text-[11px] border-indigo-500/30 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20"
                       >
                         <span>{dict.aiSettingsMakePrimaryAction}</span>
-                      </button>
+                      </Button>
                     )}
                     {item.status === "active" && item.priorityRole !== "secondary" && (
-                      <button
+                      <Button
                         type="button"
+                        variant="warning"
+                        size="sm"
                         onClick={() =>
                           handleQuickPriorityChange(item.providerCode, "secondary")
                         }
                         disabled={saving}
-                        className="inline-flex min-h-[38px] items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-400 hover:bg-amber-500/20 disabled:opacity-50"
+                        className="min-h-[38px] text-[11px]"
                       >
                         <span>{dict.aiSettingsMakeSecondaryAction}</span>
-                      </button>
+                      </Button>
                     )}
-                    <button
+                    <Button
                       type="button"
+                      variant="secondary"
+                      size="sm"
                       onClick={() => handleVerifyConnection(item.providerCode)}
                       disabled={verifying}
-                      className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] disabled:opacity-50"
+                      className="min-h-[38px] text-[11px]"
                     >
                       <RefreshCw
                         className={`h-3 w-3 ${verifying ? "animate-spin" : ""}`}
                       />
                       <span>{dict.aiSettingsTestAction}</span>
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="destructive"
+                      size="sm"
                       onClick={() => {
                         setProviderToRevoke(item.providerCode);
                         setRevokeModalOpen(true);
                       }}
-                      className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold text-rose-400 hover:bg-rose-500/20"
+                      className="min-h-[38px] text-[11px]"
                     >
                       <Trash2 className="h-3 w-3" />
                       <span>{dict.aiSettingsRevokeAction}</span>
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </aside>
+          </aside>
+        </Card>
       </div>
 
       <ConfirmationModal

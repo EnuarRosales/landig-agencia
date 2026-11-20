@@ -22,6 +22,7 @@ import type {
   RepeatOrderResult,
   WorkspaceOrderDto,
 } from "@mocter/domain";
+import { Badge, Button, Card, Input, Label, Select } from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
 import {
@@ -291,80 +292,77 @@ export function OrdersView({
 
   return (
     <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--dsn-border)] pb-5">
+      <header className="flex flex-col justify-between gap-4 border-b border-[var(--dsn-border)] pb-5 sm:flex-row sm:items-center">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
+            <h1 className="text-xl font-bold tracking-tight text-[var(--dsn-text)] md:text-2xl">
               {w.ordersTitle}
             </h1>
-            <span className="rounded-full bg-[var(--dsn-accent)]/10 px-2.5 py-0.5 text-xs font-medium text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/25">
-              {w.ordersBadge}
-            </span>
+            <Badge variant="accent">{w.ordersBadge}</Badge>
           </div>
-          <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">
+          <p className="mt-1 text-xs text-[var(--dsn-text-secondary)] md:text-sm">
             {w.ordersSubtitle}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={() => fetchOrders()}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 text-[var(--dsn-accent)] ${loading ? "animate-spin" : ""}`} />
             {w.ordersRefreshCta}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => setFormModal({ open: true, mode: "create" })}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-95"
           >
             <Plus className="h-4 w-4" />
             {w.ordersNewCta}
-          </button>
+          </Button>
         </div>
       </header>
 
       {/* Métricas rápidas */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <span>{w.ordersKpiPending}</span>
             <Clock className="h-4 w-4 text-purple-500" />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono text-[var(--dsn-text)]">
+          <div className="mt-2 font-mono text-2xl font-bold text-[var(--dsn-text)]">
             {data.summary.pending}
           </div>
-        </div>
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+        </Card>
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <span>{w.ordersKpiPreparing}</span>
             <Package className="h-4 w-4 text-indigo-500" />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono text-[var(--dsn-text)]">
+          <div className="mt-2 font-mono text-2xl font-bold text-[var(--dsn-text)]">
             {data.summary.preparingAndGuide}
           </div>
-        </div>
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+        </Card>
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <span>{w.ordersKpiTransit}</span>
             <Truck className="h-4 w-4 text-cyan-500" />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono text-[var(--dsn-text)]">
+          <div className="mt-2 font-mono text-2xl font-bold text-[var(--dsn-text)]">
             {data.summary.inTransitAndIssue}
           </div>
-        </div>
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+        </Card>
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <span>{w.ordersKpiDelivered}</span>
             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono text-[var(--dsn-text)]">
+          <div className="mt-2 font-mono text-2xl font-bold text-[var(--dsn-text)]">
             {data.summary.delivered}
           </div>
-        </div>
+        </Card>
       </section>
 
       {/* Listado Estandarizado de Pedidos (<WorkspaceDataTable />) */}
@@ -412,7 +410,7 @@ export function OrdersView({
         onRetry={() => void fetchOrders()}
         filterSlot={
           <div className="flex flex-wrap items-center gap-2">
-            <select
+            <Select
               aria-label={w.ordersColStatus}
               value={statusFilter}
               onChange={(e) => {
@@ -421,7 +419,7 @@ export function OrdersView({
                 setPage(1);
                 void fetchOrders({ status: next, page: 1 });
               }}
-              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
+              className="w-auto min-h-[40px] text-xs"
             >
               <option value="all">{w.ordersFilterStatusAll}</option>
               {ALL_ORDER_STATUSES.map((st) => (
@@ -429,9 +427,9 @@ export function OrdersView({
                   {getOrderStatusLabel(st, locale)}
                 </option>
               ))}
-            </select>
+            </Select>
 
-            <input
+            <Input
               type="text"
               aria-label={w.ordersFilterCarrierPlaceholder}
               placeholder={w.ordersFilterCarrierPlaceholder}
@@ -442,10 +440,10 @@ export function OrdersView({
                 setPage(1);
                 void fetchOrders({ carrier: next, page: 1 });
               }}
-              className="min-h-[40px] w-36 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
+              className="w-36 min-h-[40px] text-xs"
             />
 
-            <select
+            <Select
               aria-label={locale === "en" ? "Sort orders" : "Ordenar pedidos"}
               value={sort}
               onChange={(e) => {
@@ -454,18 +452,18 @@ export function OrdersView({
                 setPage(1);
                 void fetchOrders({ sort: next, page: 1 });
               }}
-              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
+              className="w-auto min-h-[40px] text-xs"
             >
               <option value="created_at:desc">{w.ordersSortNewest}</option>
               <option value="created_at:asc">{w.ordersSortOldest}</option>
               <option value="total_cents:desc">{w.ordersSortTotalDesc}</option>
               <option value="total_cents:asc">{w.ordersSortTotalAsc}</option>
-            </select>
+            </Select>
 
-            <label htmlFor="orders-date-from" className="text-[11px] text-[var(--dsn-text-secondary)]">
+            <Label htmlFor="orders-date-from" className="text-[11px] font-normal text-[var(--dsn-text-secondary)]">
               {w.ordersFilterDateFrom}
-            </label>
-            <input
+            </Label>
+            <Input
               id="orders-date-from"
               type="date"
               value={dateFrom}
@@ -475,13 +473,13 @@ export function OrdersView({
                 setPage(1);
                 void fetchOrders({ dateFrom: next, page: 1 });
               }}
-              className="min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1 text-xs text-[var(--dsn-text)]"
+              className="w-auto min-h-[38px] text-xs"
             />
 
-            <label htmlFor="orders-date-to" className="text-[11px] text-[var(--dsn-text-secondary)]">
+            <Label htmlFor="orders-date-to" className="text-[11px] font-normal text-[var(--dsn-text-secondary)]">
               {w.ordersFilterDateTo}
-            </label>
-            <input
+            </Label>
+            <Input
               id="orders-date-to"
               type="date"
               value={dateTo}
@@ -491,23 +489,19 @@ export function OrdersView({
                 setPage(1);
                 void fetchOrders({ dateTo: next, page: 1 });
               }}
-              className="min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1 text-xs text-[var(--dsn-text)]"
+              className="w-auto min-h-[38px] text-xs"
             />
           </div>
         }
         emptyState={{
-          icon: <ShoppingCart className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto" />,
+          icon: <ShoppingCart className="mx-auto h-10 w-10 text-[var(--dsn-text-secondary)]/50" />,
           title: w.ordersEmptyTitle,
           description: hasActiveFilters ? w.ordersEmptyFilteredDesc : w.ordersEmptyDesc,
           action: !hasActiveFilters ? (
-            <button
-              type="button"
-              onClick={() => setFormModal({ open: true, mode: "create" })}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white"
-            >
+            <Button type="button" onClick={() => setFormModal({ open: true, mode: "create" })}>
               <Plus className="h-4 w-4" />
               {w.ordersNewCta}
-            </button>
+            </Button>
           ) : undefined,
         }}
         renderMobileCard={(o) => (
@@ -539,50 +533,60 @@ export function OrdersView({
               </div>
             </div>
             <div className="flex flex-wrap gap-1.5 pt-1">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setDetailOrderId(o.id)}
-                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
+                className="h-7 min-h-0 px-2.5 text-[11px]"
               >
                 <Eye className="h-3 w-3 text-[var(--dsn-accent)]" />
                 {w.ordersActionView}
-              </button>
+              </Button>
               {o.canEditDetails && (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => handleOpenEdit(o)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
+                  className="h-7 min-h-0 px-2.5 text-[11px]"
                 >
                   <Edit3 className="h-3 w-3 text-[var(--dsn-accent)]" />
                   {w.ordersActionEdit}
-                </button>
+                </Button>
               )}
               {o.allowedNextStatuses.length > 0 && (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setTransitionModal({ open: true, order: o })}
-                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
+                  className="h-7 min-h-0 px-2.5 text-[11px]"
                 >
                   <RefreshCw className="h-3 w-3 text-[var(--dsn-accent)]" />
                   {w.ordersActionTransition}
-                </button>
+                </Button>
               )}
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setGuideOrder(o)}
-                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
+                className="h-7 min-h-0 px-2.5 text-[11px]"
               >
                 <Printer className="h-3 w-3 text-[var(--dsn-accent)]" />
                 {w.ordersActionGuide}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => handleRepeatOrder(o)}
-                className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)]"
+                className="h-7 min-h-0 px-2.5 text-[11px]"
               >
                 <Repeat className="h-3 w-3 text-[var(--dsn-accent)]" />
                 {w.ordersActionRepeat}
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -675,55 +679,65 @@ export function OrdersView({
               align: "right",
               renderCell: (o) => (
                 <div className="inline-flex items-center justify-end gap-1">
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="icon"
                     title={w.ordersActionView}
                     aria-label={`${w.ordersActionView} ${o.orderNumber}`}
                     onClick={() => setDetailOrderId(o.id)}
-                    className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
+                    className="h-7 w-7 min-h-0"
                   >
                     <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                  </button>
+                  </Button>
                   {o.canEditDetails && (
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="icon"
                       title={w.ordersActionEdit}
                       aria-label={`${w.ordersActionEdit} ${o.orderNumber}`}
                       onClick={() => handleOpenEdit(o)}
-                      className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
+                      className="h-7 w-7 min-h-0"
                     >
                       <Edit3 className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                    </button>
+                    </Button>
                   )}
                   {o.allowedNextStatuses.length > 0 && (
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="icon"
                       title={w.ordersActionTransition}
                       aria-label={`${w.ordersActionTransition} ${o.orderNumber}`}
                       onClick={() => setTransitionModal({ open: true, order: o })}
-                      className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
+                      className="h-7 w-7 min-h-0"
                     >
                       <RefreshCw className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                    </button>
+                    </Button>
                   )}
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="icon"
                     title={w.ordersActionGuide}
                     aria-label={`${w.ordersActionGuide} ${o.orderNumber}`}
                     onClick={() => setGuideOrder(o)}
-                    className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
+                    className="h-7 w-7 min-h-0"
                   >
                     <Printer className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="icon"
                     title={w.ordersActionRepeat}
                     aria-label={`${w.ordersActionRepeat} ${o.orderNumber}`}
                     onClick={() => handleRepeatOrder(o)}
-                    className="rounded-lg border border-[var(--dsn-border)] p-1.5 hover:bg-[var(--dsn-surface-secondary)]"
+                    className="h-7 w-7 min-h-0"
                   >
                     <Repeat className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                  </button>
+                  </Button>
                 </div>
               ),
             },

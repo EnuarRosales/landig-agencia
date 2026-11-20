@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useLocale } from "next-intl";
+import { Button, Switch } from "@mocter/ui";
 
 interface CookieCategory {
   id: "essential" | "support" | "analytics";
@@ -124,20 +125,24 @@ export function CookiePreferences() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="sm"
             onClick={acceptAll}
-            className="cursor-pointer rounded-full bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:opacity-90"
+            className="min-h-[36px] rounded-full bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:opacity-90"
           >
             {isEs ? "Aceptar todas" : "Accept all"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={rejectOptional}
-            className="cursor-pointer rounded-full border border-stroke bg-bg2 px-4 py-2 text-xs font-semibold text-muted transition hover:text-txt"
+            className="min-h-[36px] rounded-full border-stroke bg-bg2 px-4 py-2 text-xs font-semibold text-muted hover:text-txt"
           >
             {isEs ? "Solo esenciales" : "Essentials only"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -180,24 +185,16 @@ export function CookiePreferences() {
               </div>
 
               <div className="flex items-center self-end sm:self-center">
-                <label className="relative inline-flex cursor-pointer items-center">
-                  <input
-                    type="checkbox"
-                    className="peer sr-only"
-                    checked={isChecked}
-                    disabled={cat.required}
-                    onChange={() => {
-                      if (!cat.required) {
-                        handleToggle(cat.id as "support" | "analytics");
-                      }
-                    }}
-                  />
-                  <div
-                    className={`peer h-6 w-11 rounded-full bg-stroke transition-colors after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-a1 peer-checked:after:translate-x-full peer-focus:outline-none ${
-                      cat.required ? "cursor-not-allowed opacity-60" : ""
-                    }`}
-                  />
-                </label>
+                <Switch
+                  checked={isChecked}
+                  disabled={cat.required}
+                  aria-label={cat.title}
+                  onCheckedChange={() => {
+                    if (!cat.required) {
+                      handleToggle(cat.id as "support" | "analytics");
+                    }
+                  }}
+                />
               </div>
             </div>
           );
@@ -219,13 +216,15 @@ export function CookiePreferences() {
               {isEs ? "Preferencias guardadas" : "Preferences saved"}
             </span>
           )}
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="sm"
             onClick={() => savePreferences()}
-            className="cursor-pointer rounded-full bg-txt px-5 py-2.5 text-xs font-semibold text-bg transition hover:opacity-90"
+            className="min-h-[38px] rounded-full bg-txt px-5 py-2.5 text-xs font-semibold text-bg hover:bg-txt hover:opacity-90"
           >
             {isEs ? "Guardar cambios" : "Save changes"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

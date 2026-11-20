@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle } from "lucide-react";
+import { Alert, AlertDescription, Button, Input, Label } from "@mocter/ui";
 import { clientLog } from "@/lib/logger/client";
 import { serializeError } from "@/lib/logger/serialize-error";
 
@@ -142,25 +143,23 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
       {errorMessage && (
-        <div
+        <Alert
           role="alert"
-          className="rounded-xl border border-red-500/40 bg-red-950/40 p-3.5 text-xs text-red-200 backdrop-blur-md animate-in fade-in"
+          variant="destructive"
+          className="rounded-xl border-red-500/40 bg-red-950/40 p-3.5 text-xs text-red-200 backdrop-blur-md animate-in fade-in"
         >
           <div className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
-            <span>{errorMessage}</span>
+            <AlertDescription className="text-inherit">{errorMessage}</AlertDescription>
           </div>
-        </div>
+        </Alert>
       )}
 
       <div>
-        <label
-          htmlFor="email"
-          className="mb-1.5 block text-xs font-medium text-muted"
-        >
+        <Label htmlFor="email" className="mb-1.5 block text-xs font-medium text-muted">
           {t.emailLabel}
-        </label>
-        <input
+        </Label>
+        <Input
           id="email"
           name="email"
           type="email"
@@ -170,18 +169,15 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
           onChange={(e) => setEmail(e.target.value)}
           placeholder={t.emailPlaceholder}
           disabled={isSubmitting}
-          className="w-full rounded-xl border border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1 disabled:opacity-50"
+          className="min-h-[42px] rounded-xl border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 focus:border-a1 focus:ring-1 focus:ring-a1"
         />
       </div>
 
       <div>
-        <label
-          htmlFor="password"
-          className="mb-1.5 block text-xs font-medium text-muted"
-        >
+        <Label htmlFor="password" className="mb-1.5 block text-xs font-medium text-muted">
           {t.passwordLabel}
-        </label>
-        <input
+        </Label>
+        <Input
           id="password"
           name="password"
           type="password"
@@ -191,24 +187,19 @@ export function LoginForm({ locale, returnTo, t }: LoginFormProps) {
           onChange={(e) => setPassword(e.target.value)}
           placeholder={t.passwordPlaceholder}
           disabled={isSubmitting}
-          className="w-full rounded-xl border border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1 disabled:opacity-50"
+          className="min-h-[42px] rounded-xl border-stroke bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 focus:border-a1 focus:ring-1 focus:ring-a1"
         />
       </div>
 
-      <button
+      <Button
         type="submit"
-        disabled={isSubmitting}
-        className="mt-2 flex w-full cursor-pointer items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] py-3 text-sm font-semibold text-white shadow-lg shadow-a1/25 transition-all hover:opacity-95 hover:shadow-a1/40 disabled:cursor-not-allowed disabled:opacity-50"
+        variant="primary"
+        loading={isSubmitting}
+        loadingText={t.submitting}
+        className="mt-2 min-h-[44px] w-full rounded-xl bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] py-3 text-sm font-semibold text-white shadow-lg shadow-a1/25 hover:opacity-95 hover:shadow-a1/40"
       >
-        {isSubmitting ? (
-          <span className="flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin text-white" />
-            <span>{t.submitting}</span>
-          </span>
-        ) : (
-          t.submit
-        )}
-      </button>
+        {t.submit}
+      </Button>
     </form>
   );
 }

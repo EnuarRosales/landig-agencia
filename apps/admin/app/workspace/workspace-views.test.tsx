@@ -1223,7 +1223,7 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
         fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
         expect(confirmSpy).not.toHaveBeenCalled();
 
-        const dialogs = screen.getAllByRole("dialog");
+        const dialogs = screen.getAllByRole("dialog", { hidden: true });
         expect(dialogs.length).toBe(2);
         const discardModal = dialogs[1];
         expect(within(discardModal).getAllByText("Cambios sin Guardar").length).toBeGreaterThanOrEqual(1);
@@ -1235,7 +1235,7 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
         );
 
         fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
-        const reopenModal = screen.getAllByRole("dialog")[1];
+        const reopenModal = screen.getAllByRole("dialog", { hidden: true })[1];
         fireEvent.click(within(reopenModal).getByRole("button", { name: "Descartar Cambios" }));
         expect(screen.queryByRole("dialog")).toBeNull();
       } finally {
@@ -1625,8 +1625,8 @@ describe("Workspace UI Views & Components (Mobile First & DSN-001)", () => {
       );
 
       fireEvent.click(screen.getByRole("button", { name: /Registrar Contacto/i }));
-      const initialAddressCheckbox = screen.getByLabelText(/Agregar Dirección de Envío Inicial/i) as HTMLInputElement;
-      expect(initialAddressCheckbox.checked).toBe(false);
+      const initialAddressCheckbox = screen.getByLabelText(/Agregar Dirección de Envío Inicial/i);
+      expect(initialAddressCheckbox.getAttribute("aria-checked")).toBe("false");
       fireEvent.click(screen.getAllByRole("button", { name: /^Cancelar$/i })[0]!);
 
       const deleteBtns = screen.getAllByRole("button", { name: /Eliminar Carlos Ruiz/i });

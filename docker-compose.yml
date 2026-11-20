@@ -109,6 +109,7 @@ services:
       - web-node-modules:/app/apps/web/node_modules
       - web-next:/app/apps/web/.next
       - domain-node-modules:/app/packages/domain/node_modules
+      - ui-node-modules:/app/packages/ui/node_modules
     depends_on:
       pg-portal:
         condition: service_healthy
@@ -172,6 +173,7 @@ services:
       - admin-next:/app/apps/admin/.next
       - admin-web-node-modules:/app/apps/web/node_modules
       - admin-domain-node-modules:/app/packages/domain/node_modules
+      - admin-ui-node-modules:/app/packages/ui/node_modules
     depends_on:
       pg-portal:
         condition: service_healthy
@@ -187,11 +189,13 @@ volumes:
   web-node-modules:
   web-next:
   domain-node-modules:
+  ui-node-modules:
   admin-root-node-modules:
   admin-node-modules:
   admin-next:
   admin-web-node-modules:
   admin-domain-node-modules:
+  admin-ui-node-modules:
 
 networks:
   default:

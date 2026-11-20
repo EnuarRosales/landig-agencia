@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { Button } from "@mocter/ui";
 
 export interface ChatwootEmbeddedViewProps {
   clientId: string;
@@ -57,13 +58,15 @@ export function ChatwootEmbeddedView({ clientId, t }: ChatwootEmbeddedViewProps)
           <p className="text-xs text-white/60 font-mono hidden sm:block">{t.subtitle}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={handleRetry}
-            className="px-3 py-1.5 text-xs font-mono font-medium rounded border border-white/20 bg-white/5 hover:bg-white/10 text-white transition-colors focus:outline-none focus:ring-1 focus:ring-primary"
+            className="h-auto rounded border-white/20 bg-white/5 px-3 py-1.5 font-mono text-xs font-medium text-white hover:bg-white/10"
           >
             {t.reconnectButton}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -106,13 +109,15 @@ export function ChatwootEmbeddedView({ clientId, t }: ChatwootEmbeddedViewProps)
             </div>
             <h2 className="text-base font-mono font-bold text-white mb-2">{t.errorTitle}</h2>
             <p className="text-xs font-mono text-white/60 max-w-md mb-6">{t.errorMessage}</p>
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               onClick={handleRetry}
-              className="px-4 py-2 text-xs font-mono font-semibold rounded bg-primary text-primary-foreground hover:brightness-110 transition-all shadow-sm"
+              className="font-mono text-xs font-semibold shadow-sm"
             >
               {t.retryButton}
-            </button>
+            </Button>
           </div>
         )}
 

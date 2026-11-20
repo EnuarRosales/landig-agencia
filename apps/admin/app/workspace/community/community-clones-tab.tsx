@@ -10,12 +10,21 @@ import {
   RefreshCw,
   ShieldCheck,
   Unlink,
-  X,
 } from "lucide-react";
 import type {
   AdoptionDiffResultDto,
   MyAdoptionItemDto,
 } from "@mocter/domain";
+import {
+  Button,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import {
@@ -386,23 +395,23 @@ export function CommunityClonesTab({
         }}
         filterSlot={
           <div className="flex items-center gap-3">
-            <label className="inline-flex items-center gap-1.5 text-xs text-[var(--dsn-text)] cursor-pointer">
-              <input
-                type="checkbox"
+            <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-[var(--dsn-text)]">
+              <Checkbox
                 checked={onlyOutdated}
-                onChange={(e) => setOnlyOutdated(e.target.checked)}
-                className="accent-[var(--dsn-accent)]"
+                onCheckedChange={(checked) => setOnlyOutdated(checked === true)}
               />
               <span>{dict.updateAvailableBadge}</span>
             </label>
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="icon"
               onClick={() => void loadAdoptions()}
               aria-label={dict.updateAvailableBadge}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-2 text-[var(--dsn-accent)]"
+              className="h-8 w-8"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            </button>
+              <RefreshCw className={`h-3.5 w-3.5 text-[var(--dsn-accent)] ${loading ? "animate-spin" : ""}`} />
+            </Button>
           </div>
         }
         emptyState={{
@@ -521,161 +530,155 @@ export function CommunityClonesTab({
       />
 
       {/* Modal Comparador de Diff y Sincronización */}
-      {diffData && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+      <Dialog
+        open={Boolean(diffData)}
+        onOpenChange={(open) => {
+          if (!open && !syncingDiff) setDiffData(null);
+        }}
+      >
+        <DialogContent
+          className="max-h-[90vh] w-full max-w-2xl overflow-y-auto p-5"
+          closeAriaLabel={locale === "en" ? "Cancel" : "Cancelar"}
+          disableEscapeKeyDown={syncingDiff}
+          disableInteractOutside={syncingDiff}
         >
-          <div className="w-full max-w-2xl rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
+          {diffData && (
+            <>
+              <DialogHeader className="pr-8">
+                <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
                   {dict.diffModalTitle}
-                </h3>
-                <p className="text-xs text-[var(--dsn-text-secondary)]">
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
                   {diffData.cloneName} (v{diffData.adoptedVersion} → v{diffData.latestVersion})
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => !syncingDiff && setDiffData(null)}
-                className="rounded-lg p-1 text-[var(--dsn-text-secondary)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+                </DialogDescription>
+              </DialogHeader>
 
-            {/* Panel de Valores Protegidos */}
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 font-medium text-emerald-800 dark:text-emerald-200">
-                <Lock className="h-4 w-4" />
-                <span>
-                  {dict.diffProtectedBadge}:{" "}
-                  {formatCommunityMoney(diffData.protectedSnapshot.memberPriceCents, "COP", locale)} ·
-                  Stock: {diffData.protectedSnapshot.memberStockQuantity ?? "∞"}
-                </span>
-              </div>
-            </div>
-
-            <form onSubmit={handleConfirmSelectiveSync} className="space-y-3">
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                {diffData.fields
-                  .filter((f) => f.kind === "safe")
-                  .map((field) => {
-                    const checked = selectedSyncAttrs.includes(field.attribute);
-                    return (
-                      <label
-                        key={field.attribute}
-                        className={`block rounded-xl border p-3 text-xs cursor-pointer transition-colors ${
-                          field.differsFromCurrentClone
-                            ? "border-[var(--dsn-accent)]/40 bg-[var(--dsn-accent)]/5"
-                            : "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 opacity-75"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <span className="inline-flex items-center gap-2 font-semibold text-[var(--dsn-text)]">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e) =>
-                                setSelectedSyncAttrs((prev) =>
-                                  e.target.checked
-                                    ? [...prev, field.attribute]
-                                    : prev.filter((k) => k !== field.attribute),
-                                )
-                              }
-                              className="accent-[var(--dsn-accent)]"
-                            />
-                            <span>{renderAttrLabel(field.attribute)}</span>
-                          </span>
-                          {field.differsFromCurrentClone && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--dsn-accent)]">
-                              <ArrowRightLeft className="h-3 w-3" />
-                              {locale === "en" ? "Changed" : "Modificado"}
-                            </span>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-[var(--dsn-text-secondary)]">
-                          <div className="rounded-lg bg-[var(--dsn-surface)] p-2 border border-[var(--dsn-border)]">
-                            <span className="font-medium block mb-0.5">
-                              {dict.diffCurrentColumn}
-                            </span>
-                            <span className="line-clamp-2">{renderDiffPreview(field.currentValue)}</span>
-                          </div>
-                          <div className="rounded-lg bg-[var(--dsn-surface)] p-2 border border-[var(--dsn-border)]">
-                            <span className="font-medium block mb-0.5">
-                              {dict.diffIncomingColumn}
-                            </span>
-                            <span className="line-clamp-2">{renderDiffPreview(field.incomingValue)}</span>
-                          </div>
-                        </div>
-                      </label>
-                    );
-                  })}
-              </div>
-
-              <div className="space-y-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-3 text-xs">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={applySuggestedPrice}
-                    onChange={(e) => setApplySuggestedPrice(e.target.checked)}
-                    className="accent-[var(--dsn-accent)]"
-                  />
+              {/* Panel de Valores Protegidos */}
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs">
+                <div className="flex items-center gap-2 font-medium text-emerald-800 dark:text-emerald-200">
+                  <Lock className="h-4 w-4" />
                   <span>
-                    {dict.diffApplySuggestedPrice} (
-                    {formatCommunityMoney(
-                      diffData.protectedSnapshot.incomingSuggestedPriceCents,
-                      "COP",
-                      locale,
-                    )}
-                    )
+                    {dict.diffProtectedBadge}:{" "}
+                    {formatCommunityMoney(diffData.protectedSnapshot.memberPriceCents, "COP", locale)} ·
+                    Stock: {diffData.protectedSnapshot.memberStockQuantity ?? "∞"}
                   </span>
-                </label>
+                </div>
+              </div>
 
-                {diffData.protectedSnapshot.incomingWholesaleCostCents !== null && (
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={applyWholesaleCost}
-                      onChange={(e) => setApplyWholesaleCost(e.target.checked)}
-                      className="accent-[var(--dsn-accent)]"
+              <form onSubmit={handleConfirmSelectiveSync} className="space-y-3">
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {diffData.fields
+                    .filter((f) => f.kind === "safe")
+                    .map((field) => {
+                      const checked = selectedSyncAttrs.includes(field.attribute);
+                      return (
+                        <label
+                          key={field.attribute}
+                          className={`block cursor-pointer rounded-xl border p-3 text-xs transition-colors ${
+                            field.differsFromCurrentClone
+                              ? "border-[var(--dsn-accent)]/40 bg-[var(--dsn-accent)]/5"
+                              : "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 opacity-75"
+                          }`}
+                        >
+                          <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <span className="inline-flex items-center gap-2 font-semibold text-[var(--dsn-text)]">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(isChecked) =>
+                                  setSelectedSyncAttrs((prev) =>
+                                    isChecked === true
+                                      ? [...prev, field.attribute]
+                                      : prev.filter((k) => k !== field.attribute),
+                                  )
+                                }
+                              />
+                              <span>{renderAttrLabel(field.attribute)}</span>
+                            </span>
+                            {field.differsFromCurrentClone && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--dsn-accent)]">
+                                <ArrowRightLeft className="h-3 w-3" />
+                                {locale === "en" ? "Changed" : "Modificado"}
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 text-[11px] text-[var(--dsn-text-secondary)] sm:grid-cols-2">
+                            <div className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-2">
+                              <span className="mb-0.5 block font-medium">
+                                {dict.diffCurrentColumn}
+                              </span>
+                              <span className="line-clamp-2">{renderDiffPreview(field.currentValue)}</span>
+                            </div>
+                            <div className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-2">
+                              <span className="mb-0.5 block font-medium">
+                                {dict.diffIncomingColumn}
+                              </span>
+                              <span className="line-clamp-2">{renderDiffPreview(field.incomingValue)}</span>
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                </div>
+
+                <div className="space-y-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-3 text-xs">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <Checkbox
+                      checked={applySuggestedPrice}
+                      onCheckedChange={(checked) => setApplySuggestedPrice(checked === true)}
                     />
                     <span>
-                      {dict.diffApplyWholesaleCost} (
+                      {dict.diffApplySuggestedPrice} (
                       {formatCommunityMoney(
-                        diffData.protectedSnapshot.incomingWholesaleCostCents,
+                        diffData.protectedSnapshot.incomingSuggestedPriceCents,
                         "COP",
                         locale,
                       )}
                       )
                     </span>
                   </label>
-                )}
-              </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  disabled={syncingDiff}
-                  onClick={() => setDiffData(null)}
-                  className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)]"
-                >
-                  {locale === "en" ? "Cancel" : "Cancelar"}
-                </button>
-                <button
-                  type="submit"
-                  disabled={syncingDiff}
-                  className="rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {dict.diffApplyCta}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                  {diffData.protectedSnapshot.incomingWholesaleCostCents !== null && (
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <Checkbox
+                        checked={applyWholesaleCost}
+                        onCheckedChange={(checked) => setApplyWholesaleCost(checked === true)}
+                      />
+                      <span>
+                        {dict.diffApplyWholesaleCost} (
+                        {formatCommunityMoney(
+                          diffData.protectedSnapshot.incomingWholesaleCostCents,
+                          "COP",
+                          locale,
+                        )}
+                        )
+                      </span>
+                    </label>
+                  )}
+                </div>
+
+                <DialogFooter className="pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={syncingDiff}
+                    onClick={() => setDiffData(null)}
+                  >
+                    {locale === "en" ? "Cancel" : "Cancelar"}
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={syncingDiff}
+                    loading={syncingDiff}
+                    loadingText={dict.diffApplyCta}
+                  >
+                    {dict.diffApplyCta}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Confirmación Desvincular */}
       <ConfirmationModal

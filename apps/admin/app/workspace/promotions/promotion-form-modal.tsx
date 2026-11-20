@@ -8,7 +8,6 @@ import {
   Plus,
   Search,
   Tag,
-  X,
 } from "lucide-react";
 import type {
   ProductListItemDto,
@@ -17,6 +16,21 @@ import type {
   PromotionListItemDto,
   PromotionScopeType,
 } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+} from "@mocter/ui";
 import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
@@ -263,56 +277,46 @@ function PromotionFormModalContent({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="promotion-form-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-xs"
+    <Dialog
+      open={true}
+      onOpenChange={(open) => {
+        if (!open && !submitting) onClose();
+      }}
     >
-      <div className="flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl">
-        <div className="flex items-center justify-between gap-3 border-b border-[var(--dsn-border)] px-5 py-4">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)]">
-              <Tag className="h-4 w-4" />
-            </span>
-            <h2
-              id="promotion-form-modal-title"
-              className="text-base md:text-lg font-bold text-[var(--dsn-text)]"
-            >
-              {mode === "create" ? dict.promotionsModalCreateTitle : dict.promotionsModalEditTitle}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={dict.promotionsCancel}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--dsn-border)] text-[var(--dsn-text-secondary)] hover:border-[var(--dsn-accent)] hover:text-[var(--dsn-text)] transition-colors"
+      <DialogContent
+        className="flex max-h-[92dvh] w-full max-w-3xl flex-col gap-0 overflow-hidden p-0"
+        closeAriaLabel={dict.promotionsCancel}
+        aria-labelledby="promotion-form-modal-title"
+        disableEscapeKeyDown={submitting}
+        disableInteractOutside={submitting}
+      >
+        <DialogHeader className="flex-row items-center gap-2.5 space-y-0 border-b border-[var(--dsn-border)] px-5 py-4 pr-12">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)]">
+            <Tag className="h-4 w-4" />
+          </span>
+          <DialogTitle
+            id="promotion-form-modal-title"
+            className="text-base font-bold text-[var(--dsn-text)] md:text-lg"
           >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+            {mode === "create" ? dict.promotionsModalCreateTitle : dict.promotionsModalEditTitle}
+          </DialogTitle>
+        </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
             {errorMessage && (
-              <div
-                role="alert"
-                className="flex items-start gap-2.5 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3.5 text-xs text-rose-700 dark:text-rose-200"
-              >
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
+              <Alert role="alert" variant="error">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <AlertDescription>{errorMessage}</AlertDescription>
+              </Alert>
             )}
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="md:col-span-2">
-                <label
-                  htmlFor="promo-name"
-                  className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-                >
+                <Label htmlFor="promo-name" className="mb-1.5 block text-xs font-semibold">
                   {dict.promotionsFieldName} *
-                </label>
-                <input
+                </Label>
+                <Input
                   id="promo-name"
                   type="text"
                   required
@@ -321,7 +325,7 @@ function PromotionFormModalContent({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder={dict.promotionsFieldNamePlaceholder}
-                  className="w-full min-h-[42px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3.5 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  className="min-h-[42px]"
                 />
               </div>
 
@@ -347,43 +351,37 @@ function PromotionFormModalContent({
               </div>
 
               <div>
-                <label
-                  htmlFor="promo-scope"
-                  className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-                >
+                <Label htmlFor="promo-scope" className="mb-1.5 block text-xs font-semibold">
                   {dict.promotionsFieldScope} *
-                </label>
-                <select
+                </Label>
+                <Select
                   id="promo-scope"
                   value={scopeType}
                   onChange={(e) => handleScopeChange(e.target.value as PromotionScopeType)}
-                  className="w-full min-h-[42px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  className="min-h-[42px]"
                 >
                   <option value="all_catalog">{dict.promotionsScopeAllCatalog}</option>
                   <option value="category">{dict.promotionsScopeCategory}</option>
                   <option value="product">{dict.promotionsScopeProduct}</option>
-                </select>
+                </Select>
               </div>
 
               <div>
-                <label
-                  htmlFor="promo-discount-type"
-                  className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-                >
+                <Label htmlFor="promo-discount-type" className="mb-1.5 block text-xs font-semibold">
                   {dict.promotionsFieldDiscountType} *
-                </label>
-                <select
+                </Label>
+                <Select
                   id="promo-discount-type"
                   value={discountType}
                   onChange={(e) => setDiscountType(e.target.value as PromotionDiscountType)}
-                  className="w-full min-h-[42px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  className="min-h-[42px]"
                 >
                   <option value="percentage">{dict.promotionsDiscountPercentage}</option>
                   <option value="fixed_amount">{dict.promotionsDiscountFixedAmount}</option>
                   {scopeType === "product" && (
                     <option value="fixed_price">{dict.promotionsDiscountFixedPrice}</option>
                   )}
-                </select>
+                </Select>
                 {scopeType !== "product" && (
                   <p className="mt-1 text-[11px] text-[var(--dsn-text-secondary)]">
                     {dict.promotionsFieldFixedPriceScopeNote}
@@ -392,14 +390,11 @@ function PromotionFormModalContent({
               </div>
 
               <div>
-                <label
-                  htmlFor="promo-discount-value"
-                  className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-                >
+                <Label htmlFor="promo-discount-value" className="mb-1.5 block text-xs font-semibold">
                   {dict.promotionsFieldDiscountValue}{" "}
                   {discountType === "percentage" ? "(%)" : `(${currency})`} *
-                </label>
-                <input
+                </Label>
+                <Input
                   id="promo-discount-value"
                   type="number"
                   required
@@ -408,7 +403,7 @@ function PromotionFormModalContent({
                   step={discountType === "percentage" ? 1 : "any"}
                   value={discountInput}
                   onChange={(e) => setDiscountInput(e.target.value)}
-                  className="w-full min-h-[42px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3.5 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  className="min-h-[42px]"
                 />
                 {discountType === "percentage" && (
                   <p className="mt-1 text-[11px] text-[var(--dsn-text-secondary)]">
@@ -418,13 +413,10 @@ function PromotionFormModalContent({
               </div>
 
               <div>
-                <label
-                  htmlFor="promo-max-units"
-                  className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-                >
+                <Label htmlFor="promo-max-units" className="mb-1.5 block text-xs font-semibold">
                   {dict.promotionsFieldMaxUnits}
-                </label>
-                <input
+                </Label>
+                <Input
                   id="promo-max-units"
                   type="number"
                   min={1}
@@ -432,7 +424,7 @@ function PromotionFormModalContent({
                   value={maxUnitsInput}
                   onChange={(e) => setMaxUnitsInput(e.target.value)}
                   placeholder="Ej. 25"
-                  className="w-full min-h-[42px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3.5 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  className="min-h-[42px]"
                 />
                 <p className="mt-1 text-[11px] text-[var(--dsn-text-secondary)]">
                   {dict.promotionsFieldMaxUnitsHint}
@@ -440,35 +432,29 @@ function PromotionFormModalContent({
               </div>
 
               <div>
-                <label
-                  htmlFor="promo-starts-at"
-                  className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-                >
+                <Label htmlFor="promo-starts-at" className="mb-1.5 block text-xs font-semibold">
                   {dict.promotionsFieldStartsAt} *
-                </label>
-                <input
+                </Label>
+                <Input
                   id="promo-starts-at"
                   type="datetime-local"
                   required
                   value={startsAtLocal}
                   onChange={(e) => setStartsAtLocal(e.target.value)}
-                  className="w-full min-h-[42px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  className="min-h-[42px]"
                 />
               </div>
 
               <div>
-                <label
-                  htmlFor="promo-ends-at"
-                  className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-                >
+                <Label htmlFor="promo-ends-at" className="mb-1.5 block text-xs font-semibold">
                   {dict.promotionsFieldEndsAt}
-                </label>
-                <input
+                </Label>
+                <Input
                   id="promo-ends-at"
                   type="datetime-local"
                   value={endsAtLocal}
                   onChange={(e) => setEndsAtLocal(e.target.value)}
-                  className="w-full min-h-[42px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  className="min-h-[42px]"
                 />
                 <p className="mt-1 text-[11px] text-[var(--dsn-text-secondary)]">
                   {dict.promotionsFieldEndsAtHint}
@@ -494,25 +480,27 @@ function PromotionFormModalContent({
                         (c) => c.trim().toLowerCase() === cat.toLowerCase(),
                       );
                       return (
-                        <button
+                        <Button
                           key={cat}
                           type="button"
+                          variant={active ? "secondary" : "outline"}
+                          size="sm"
                           onClick={() => toggleCategory(cat)}
-                          className={`inline-flex min-h-[34px] items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                          className={`min-h-[34px] rounded-full px-3 py-1 text-xs font-medium ${
                             active
                               ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)]"
-                              : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:border-[var(--dsn-accent)]"
+                              : ""
                           }`}
                         >
                           <span>{cat}</span>
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
                 )}
 
                 <div className="flex gap-2">
-                  <input
+                  <Input
                     type="text"
                     value={customCategoryInput}
                     onChange={(e) => setCustomCategoryInput(e.target.value)}
@@ -523,16 +511,18 @@ function PromotionFormModalContent({
                       }
                     }}
                     placeholder={dict.promotionsFieldCustomCategoryPlaceholder}
-                    className="flex-1 min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                    className="min-h-[38px] flex-1 px-3 py-1.5 text-xs"
                   />
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={handleAddCustomCategory}
-                    className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)]"
+                    className="min-h-[38px]"
                   >
                     <Plus className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
                     <span>{dict.promotionsFieldAddCategory}</span>
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
@@ -544,13 +534,13 @@ function PromotionFormModalContent({
                     {dict.promotionsFieldProducts} * ({selectedProductIds.length})
                   </div>
                   <div className="relative w-full sm:w-64">
-                    <Search className="pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5 text-[var(--dsn-text-secondary)]" />
-                    <input
+                    <Search className="pointer-events-none absolute top-2.5 left-2.5 h-3.5 w-3.5 text-[var(--dsn-text-secondary)]" />
+                    <Input
                       type="text"
                       value={productSearch}
                       onChange={(e) => setProductSearch(e.target.value)}
                       placeholder={dict.promotionsFieldProductsSearch}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] py-1.5 pl-8 pr-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                      className="h-8 py-1.5 pr-3 pl-8 text-xs"
                     />
                   </div>
                 </div>
@@ -567,12 +557,10 @@ function PromotionFormModalContent({
                             : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] hover:border-[var(--dsn-accent)]/60"
                         }`}
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <input
-                            type="checkbox"
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Checkbox
                             checked={checked}
-                            onChange={() => toggleProduct(prod.id)}
-                            className="h-4 w-4 accent-[var(--dsn-accent)]"
+                            onCheckedChange={() => toggleProduct(prod.id)}
                           />
                           <div className="min-w-0">
                             <div className="truncate font-semibold text-[var(--dsn-text)]">
@@ -595,11 +583,9 @@ function PromotionFormModalContent({
             )}
 
             <label className="flex cursor-pointer items-center gap-2.5 text-xs font-semibold text-[var(--dsn-text)]">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                className="h-4 w-4 accent-[var(--dsn-accent)]"
+                onCheckedChange={(checked) => setIsActive(checked === true)}
               />
               <span>{dict.promotionsFieldIsActive}</span>
             </label>
@@ -616,36 +602,36 @@ function PromotionFormModalContent({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
-                  <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-emerald-700 dark:text-emerald-300">
+                  <Badge variant="success">
                     {liveSimulation.healthyMarginProductsCount} {dict.promotionsMarginHealthy}
-                  </span>
-                  <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-amber-700 dark:text-amber-300">
+                  </Badge>
+                  <Badge variant="warning">
                     {liveSimulation.tightMarginProductsCount} {dict.promotionsMarginTight}
-                  </span>
-                  <span className="rounded-full bg-rose-500/15 px-2.5 py-0.5 text-rose-700 dark:text-rose-300">
+                  </Badge>
+                  <Badge variant="destructive">
                     {liveSimulation.lossProductsCount} {dict.promotionsMarginLoss}
-                  </span>
+                  </Badge>
                 </div>
               </div>
 
               {liveSimulation.excludedProductsCount > 0 && (
-                <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-200">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>
+                <Alert variant="warning" className="p-2.5 text-xs">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <AlertDescription>
                     <strong>{liveSimulation.excludedProductsCount}</strong>{" "}
                     {dict.promotionsPreviewExcludedWarning}
-                  </span>
-                </div>
+                  </AlertDescription>
+                </Alert>
               )}
 
               {liveSimulation.lossProductsCount > 0 && (
-                <div className="flex items-start gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 p-2.5 text-xs text-rose-700 dark:text-rose-200">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>
+                <Alert variant="error" className="p-2.5 text-xs">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <AlertDescription>
                     <strong>{liveSimulation.lossProductsCount}</strong>{" "}
                     {dict.promotionsPreviewLossWarning}
-                  </span>
-                </div>
+                  </AlertDescription>
+                </Alert>
               )}
 
               {liveSimulation.products.length === 0 ? (
@@ -683,17 +669,17 @@ function PromotionFormModalContent({
                           </td>
                           <td className="px-3 py-2 text-right font-mono">
                             {row.marginPct !== null ? (
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${
+                              <Badge
+                                variant={
                                   row.marginLevel === "loss"
-                                    ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+                                    ? "destructive"
                                     : row.marginLevel === "tight"
-                                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                                      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                                }`}
+                                      ? "warning"
+                                      : "success"
+                                }
                               >
                                 {row.marginPct.toFixed(1)}%
-                              </span>
+                              </Badge>
                             ) : (
                               "—"
                             )}
@@ -707,26 +693,22 @@ function PromotionFormModalContent({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--dsn-border)] px-5 py-3.5">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors disabled:opacity-50"
-            >
+          <DialogFooter className="border-t border-[var(--dsn-border)] px-5 py-3.5">
+            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
               {dict.promotionsCancel}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={submitting}
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50"
+              loading={submitting}
+              loadingText={dict.promotionsSaving}
             >
               <CheckCircle2 className="h-4 w-4" />
-              <span>{submitting ? dict.promotionsSaving : dict.promotionsSave}</span>
-            </button>
-          </div>
+              <span>{dict.promotionsSave}</span>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

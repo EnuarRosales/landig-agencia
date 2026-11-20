@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Mail, ArrowLeft } from "lucide-react";
+import { Button } from "@mocter/ui";
 import type { Plan } from "@mocter/domain";
 import { RegisterForm, type RegisterFormTranslations } from "./register-form";
 
@@ -93,27 +94,30 @@ export function RegisterView({
           )}
 
           {/* Botón adicional para registro con Correo y Contraseña */}
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={() => setShowEmailForm(true)}
-            className="group flex min-h-[48px] w-full cursor-pointer touch-manipulation items-center justify-center gap-3 rounded-xl border border-stroke bg-bg2/80 px-4 py-3 text-sm font-semibold text-txt shadow-xs transition-all hover:border-a1/60 hover:bg-a1/10 hover:shadow-md active:scale-98"
+            className="group min-h-[48px] w-full gap-3 rounded-xl border-stroke bg-bg2/80 px-4 py-3 text-sm font-semibold text-txt shadow-xs hover:border-a1/60 hover:bg-a1/10 hover:shadow-md active:scale-98"
           >
             <Mail className="h-5 w-5 shrink-0 text-muted transition-colors group-hover:text-a2" />
             <span>{tOauth.emailButton || "Correo Electrónico"}</span>
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="space-y-4">
           {/* Botón de regreso a las opciones de registro */}
           {hasProviders && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setShowEmailForm(false)}
-              className="inline-flex cursor-pointer touch-manipulation items-center gap-1.5 text-xs font-semibold text-muted transition-colors hover:text-a2"
+              className="h-auto gap-1.5 px-1 py-0.5 text-xs font-semibold text-muted hover:bg-transparent hover:text-a2"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               <span>{tOauth.backToOptions || "Volver a opciones de registro"}</span>
-            </button>
+            </Button>
           )}
 
           <RegisterForm

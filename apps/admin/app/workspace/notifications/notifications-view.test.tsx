@@ -103,4 +103,49 @@ describe("SPEC-14 · TenantNotificationsView (/workspace/notifications)", () => 
     expect(screen.queryByRole("button", { name: "Preferencias de Alertas" })).toBeNull();
     expect(screen.getAllByText("Stock mínimo alcanzado: Camisa").length).toBeGreaterThanOrEqual(1);
   });
+
+  it("sincroniza el contador de no leídas con el shell padre post-commit sin disparar setState-in-render", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    function MockShellParent() {
+      const [badgeCount, setBadgeCount] = React.useState(baseData.unreadCount);
+      React.useEffect(() => {
+        function onUpdated(e: Event) {
+          const detail = (e as CustomEvent<{ unreadCount?: number }>).detail;
+          if (typeof detail?.unreadCount === "number") {
+            setBadgeCount(detail.unreadCount);
+          }
+        }
+        window.addEventListener("mocter:notifications-updated", onUpdated);
+        return () => window.removeEventListener("mocter:notifications-updated", onUpdated);
+      }, []);
+
+      return (
+        <div>
+          <span data-testid="shell-unread-count">{badgeCount}</span>
+          <TenantNotificationsView initialData={baseData} locale="es" />
+        </div>
+      );
+    }
+
+    render(<MockShellParent />);
+    expect(screen.getByTestId("shell-unread-count").textContent).toBe("1");
+
+    const markReadBtns = screen.getAllByRole("button", { name: /Marcar como Leída/i });
+    fireEvent.click(markReadBtns[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("shell-unread-count").textContent).toBe("0");
+    });
+
+    const reactRenderErrors = consoleErrorSpy.mock.calls.filter((args) =>
+      args.some((arg) => String(arg).includes("Cannot update a component")),
+    );
+    expect(reactRenderErrors).toHaveLength(0);
+  });
 });

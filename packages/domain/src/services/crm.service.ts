@@ -835,7 +835,16 @@ export class CrmService {
       });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      appLogger.error("Error al listar contactos CRM", { cellId, clientId, error: msg });
+      const isCellUnavailable = error instanceof Error && error.name === "CellPoolError";
+      if (isCellUnavailable) {
+        appLogger.warn("Celda no disponible al listar contactos CRM", {
+          cellId,
+          clientId,
+          error: msg,
+        });
+      } else {
+        appLogger.error("Error al listar contactos CRM", error, { cellId, clientId });
+      }
       return err(msg || "Error interno al listar contactos", "DB_ERROR");
     }
   }

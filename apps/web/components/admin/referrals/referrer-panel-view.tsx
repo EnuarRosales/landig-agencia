@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { Button, Input, Label } from "@mocter/ui";
 
 export interface ReferralItem {
   id: string;
@@ -133,24 +134,25 @@ export function ReferrerPanelView({
           </div>
 
           <div className="flex-1 max-w-lg">
-            <label htmlFor="invitationLinkInput" className="sr-only">
+            <Label htmlFor="invitationLinkInput" className="sr-only">
               {t("copyLink")}
-            </label>
+            </Label>
             <div className="flex items-center gap-2">
-              <input
+              <Input
                 id="invitationLinkInput"
                 type="text"
                 readOnly
                 value={referralLink}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono select-all focus:outline-none focus:ring-2 focus:ring-primary"
+                className="font-mono text-sm select-all"
               />
-              <button
+              <Button
                 type="button"
+                variant="primary"
                 onClick={handleCopyLink}
-                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="whitespace-nowrap text-sm"
               >
                 {copied ? t("linkCopied") : t("copyLink")}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

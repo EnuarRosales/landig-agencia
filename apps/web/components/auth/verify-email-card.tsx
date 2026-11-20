@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Alert, AlertDescription, Button } from "@mocter/ui";
 
 interface VerifyEmailTranslations {
   title: string;
@@ -120,19 +121,21 @@ export function VerifyEmailCard({ locale, token, t }: VerifyEmailCardProps) {
       <p className="mt-2 text-sm text-muted">{t.subtitle}</p>
 
       {errorMessage && (
-        <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
-          {errorMessage}
-        </div>
+        <Alert variant="destructive" className="mt-4 rounded-xl p-3 text-xs">
+          <AlertDescription className="text-inherit">{errorMessage}</AlertDescription>
+        </Alert>
       )}
 
-      <button
+      <Button
         type="button"
-        disabled={isSubmitting}
+        variant="primary"
+        loading={isSubmitting}
+        loadingText={t.confirming}
         onClick={handleConfirm}
-        className="mt-6 flex w-full cursor-pointer items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] py-3 text-sm font-semibold text-white shadow-lg shadow-a1/25 transition-all hover:opacity-95 hover:shadow-a1/40 disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-6 min-h-[44px] w-full rounded-xl bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] py-3 text-sm font-semibold text-white shadow-lg shadow-a1/25 hover:opacity-95 hover:shadow-a1/40"
       >
-        {isSubmitting ? t.confirming : t.confirmButton}
-      </button>
+        {t.confirmButton}
+      </Button>
 
       <div className="mt-6 border-t border-stroke/60 pt-4 text-center">
         <Link

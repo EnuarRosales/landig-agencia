@@ -11,6 +11,57 @@ import {
 
 const paramSchema = z.object({ shareId: z.string().uuid("Identificador de publicación inválido.") });
 
+const mediaModeQuerySchema = z.enum(["all_compatible", "cover_only", "none"]);
+
+/**
+ * `GET /api/tenant/community/shares/[shareId]/adopt` — Pre-evalúa capacidades del plan del inquilino
+ * (`products`, `storage_bytes`, multimedia por producto) antes de incorporar el producto al catálogo (`RN-SPEC-15-04`).
+ */
+export const GET = handle(
+  async (
+    req: NextRequest,
+    context: { params: Promise<{ shareId: string }> },
+  ): Promise<NextResponse> => {
+    const requestId = resolveCommunityRequestId(req);
+    const session = await requireCommunitySession(req, requestId, { requireOwner: true });
+    if (!session.ok) return session.response;
+
+    const params = await context.params;
+    const p = paramSchema.safeParse(params);
+    if (!p.success) {
+      return communityProblemJson(
+        req,
+        requestId,
+        400,
+        "Validation Error",
+        "Identificador inválido.",
+        "validation-error",
+        "VALIDATION_ERROR",
+      );
+    }
+
+    const rawMode = req.nextUrl.searchParams.get("includeMediaMode") ?? "all_compatible";
+    const modeParsed = mediaModeQuerySchema.safeParse(rawMode);
+    const includeMediaMode = modeParsed.success ? modeParsed.data : "all_compatible";
+
+    const service = getProductCloningService();
+    const res = await service.checkAdoptionEligibility({
+      shareId: p.data.shareId,
+      adopterClientId: session.clientId,
+      includeMediaMode,
+    });
+
+    if (!res.ok) {
+      return domainFailureToProblem(req, requestId, res.code, res.error, res.issues);
+    }
+
+    return NextResponse.json(
+      { ok: true, data: res.data },
+      { status: 200, headers: { "x-request-id": requestId } },
+    );
+  },
+);
+
 const adoptBodySchema = z.object({
   customSalePriceCents: z.number().int().min(0).nullable().optional(),
   customCostPriceCents: z.number().int().min(0).nullable().optional(),
@@ -63,7 +114,7 @@ export const POST = handle(
     });
 
     if (!res.ok) {
-      return domainFailureToProblem(req, requestId, res.code, res.error);
+      return domainFailureToProblem(req, requestId, res.code, res.error, res.issues);
     }
 
     return NextResponse.json(

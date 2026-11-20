@@ -26,9 +26,12 @@ import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { formatStorageBytes } from "@/components/catalog-quota-banner";
 import { BillingCheckoutPanel } from "@/components/billing-checkout-panel";
 import {
+  Badge,
+  Button,
+  Card,
   WorkspaceDataTable,
   type WorkspaceTableColumn,
-} from "@/components/ui/workspace-data-table";
+} from "@mocter/ui";
 
 interface BillingViewProps {
   initialBilling: WorkspaceBillingDto | null;
@@ -97,49 +100,51 @@ export function PlanQuotaProgressCard({
       : "bg-emerald-500";
 
   return (
-    <article className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-xs space-y-2.5">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h3 className="text-xs font-semibold text-[var(--dsn-text)]">{quota.label}</h3>
-          {quota.source === "override" && (
-            <span className="mt-1 inline-flex items-center rounded-full bg-[var(--dsn-accent)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--dsn-accent)]">
-              {dict.billingOverrideTag}
+    <Card asChild>
+      <article className="p-4 space-y-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h3 className="text-xs font-semibold text-[var(--dsn-text)]">{quota.label}</h3>
+            {quota.source === "override" && (
+              <Badge variant="accent" className="mt-1 text-[10px]">
+                {dict.billingOverrideTag}
+              </Badge>
+            )}
+          </div>
+
+          {isUnlimited ? (
+            <Badge variant="success" className="gap-1 text-[11px]">
+              <InfinityIcon className="h-3 w-3" />
+              <span>{dict.billingUnlimited}</span>
+            </Badge>
+          ) : isExcluded ? (
+            <Badge variant="outline" className="text-[11px]">
+              {dict.billingNotIncluded}
+            </Badge>
+          ) : (
+            <span className="text-[11px] font-mono font-semibold text-[var(--dsn-text-secondary)]">
+              {percent}%
             </span>
           )}
         </div>
 
-        {isUnlimited ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-            <InfinityIcon className="h-3 w-3" />
-            <span>{dict.billingUnlimited}</span>
+        <div className="flex items-baseline justify-between text-xs">
+          <span className="font-mono font-bold text-[var(--dsn-text)]">{usedText}</span>
+          <span className="font-mono text-[11px] text-[var(--dsn-text-secondary)]">
+            / {limitText} {quota.dimension === "storage_bytes" || isUnlimited || isExcluded ? "" : quota.unit}
           </span>
-        ) : isExcluded ? (
-          <span className="inline-flex items-center rounded-full bg-[var(--dsn-surface-secondary)] px-2 py-0.5 text-[11px] font-medium text-[var(--dsn-text-secondary)]">
-            {dict.billingNotIncluded}
-          </span>
-        ) : (
-          <span className="text-[11px] font-mono font-semibold text-[var(--dsn-text-secondary)]">
-            {percent}%
-          </span>
-        )}
-      </div>
+        </div>
 
-      <div className="flex items-baseline justify-between text-xs">
-        <span className="font-mono font-bold text-[var(--dsn-text)]">{usedText}</span>
-        <span className="font-mono text-[11px] text-[var(--dsn-text-secondary)]">
-          / {limitText} {quota.dimension === "storage_bytes" || isUnlimited || isExcluded ? "" : quota.unit}
-        </span>
-      </div>
-
-      <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--dsn-surface-secondary)]">
-        <div
-          className={`h-full rounded-full transition-all ${
-            isUnlimited ? "w-full bg-emerald-500/40" : isExcluded ? "w-0" : barColor
-          }`}
-          style={isUnlimited || isExcluded ? undefined : { width: `${percent}%` }}
-        />
-      </div>
-    </article>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--dsn-surface-secondary)]">
+          <div
+            className={`h-full rounded-full transition-all ${
+              isUnlimited ? "w-full bg-emerald-500/40" : isExcluded ? "w-0" : barColor
+            }`}
+            style={isUnlimited || isExcluded ? undefined : { width: `${percent}%` }}
+          />
+        </div>
+      </article>
+    </Card>
   );
 }
 
@@ -304,11 +309,11 @@ export function BillingView({ initialBilling, locale = "es", isOwner = true }: B
   if (!billing) {
     return (
       <div className="w-full p-4 md:px-8 md:py-6">
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-12 text-center shadow-xs">
+        <Card className="flex flex-col items-center justify-center rounded-2xl p-12 text-center">
           <CreditCard className="mb-3 h-10 w-10 text-[var(--dsn-text-secondary)]/40" />
           <p className="text-sm font-semibold text-[var(--dsn-text)]">{dict.billingNoInfoTitle}</p>
           <p className="mt-1 text-xs text-[var(--dsn-text-secondary)]">{dict.billingNoInfoDesc}</p>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -335,10 +340,10 @@ export function BillingView({ initialBilling, locale = "es", isOwner = true }: B
     <div className="w-full space-y-6 p-4 md:px-8 md:py-6 animate-in fade-in duration-300">
       <header className="flex flex-col gap-4 border-b border-[var(--dsn-border)] pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-xs font-semibold text-indigo-500 dark:text-indigo-400">
+          <Badge variant="accent" className="gap-1.5">
             <CreditCard className="h-3.5 w-3.5" />
-            {dict.billingBadge}
-          </span>
+            <span>{dict.billingBadge}</span>
+          </Badge>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
             {dict.billingTitle}
           </h1>
@@ -346,73 +351,70 @@ export function BillingView({ initialBilling, locale = "es", isOwner = true }: B
         </div>
 
         {hasCheckoutOptions ? (
-          <a
-            href="#plan-checkout-section"
-            className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
-          >
-            <span>{dict.billingUpgradeCta}</span>
-            <ArrowUpRight className="h-3.5 w-3.5" />
-          </a>
+          <Button asChild variant="secondary" className="min-h-[40px] text-xs">
+            <a href="#plan-checkout-section">
+              <span>{dict.billingUpgradeCta}</span>
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </a>
+          </Button>
         ) : (
-          <Link
-            href="/workspace"
-            className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
-          >
-            <span>{dict.billingUpgradeCta}</span>
-            <ArrowUpRight className="h-3.5 w-3.5" />
-          </Link>
+          <Button asChild variant="secondary" className="min-h-[40px] text-xs">
+            <Link href="/workspace">
+              <span>{dict.billingUpgradeCta}</span>
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
         )}
       </header>
 
       {/* Tarjeta Principal del Plan */}
-      <section className="relative overflow-hidden rounded-2xl border border-[var(--dsn-accent)]/30 bg-gradient-to-br from-[var(--dsn-surface)] to-[var(--dsn-surface-secondary)]/50 p-6 shadow-xs">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--dsn-accent)] text-white shadow-md">
-              <Zap className="h-6 w-6" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-bold text-[var(--dsn-text)]">{billing.plan.name}</h2>
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                    isExpired
-                      ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                      : isTrial
-                        ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                        : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                  }`}
-                >
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  {isExpired
-                    ? dict.billingStatusExpired
-                    : isTrial
-                      ? dict.billingStatusTrial
-                      : dict.billingStatusActive}
-                </span>
+      <Card asChild>
+        <section className="relative overflow-hidden rounded-2xl border-[var(--dsn-accent)]/30 bg-gradient-to-br from-[var(--dsn-surface)] to-[var(--dsn-surface-secondary)]/50 p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--dsn-accent)] text-white shadow-md">
+                <Zap className="h-6 w-6" />
               </div>
-              {billing.plan.description && (
-                <p className="mt-1 text-xs text-[var(--dsn-text-secondary)]">
-                  {billing.plan.description}
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-xl font-bold text-[var(--dsn-text)]">{billing.plan.name}</h2>
+                  <Badge
+                    variant={isExpired ? "destructive" : isTrial ? "warning" : "success"}
+                    className="gap-1"
+                  >
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <span>
+                      {isExpired
+                        ? dict.billingStatusExpired
+                        : isTrial
+                          ? dict.billingStatusTrial
+                          : dict.billingStatusActive}
+                    </span>
+                  </Badge>
+                </div>
+                {billing.plan.description && (
+                  <p className="mt-1 text-xs text-[var(--dsn-text-secondary)]">
+                    {billing.plan.description}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="text-left sm:text-right">
+              <p className="font-mono text-xl font-bold text-[var(--dsn-text)]">
+                {billing.plan.priceMonthlyCents === 0
+                  ? dict.billingFreeLabel
+                  : formatCurrencyCents(billing.plan.priceMonthlyCents, billing.plan.currency)}
+              </p>
+              {billing.plan.priceMonthlyCents > 0 && (
+                <p className="text-[11px] text-[var(--dsn-text-secondary)]">
+                  {dict.billingPerMonthLabel}
                 </p>
               )}
             </div>
           </div>
-
-          <div className="text-left sm:text-right">
-            <p className="font-mono text-xl font-bold text-[var(--dsn-text)]">
-              {billing.plan.priceMonthlyCents === 0
-                ? dict.billingFreeLabel
-                : formatCurrencyCents(billing.plan.priceMonthlyCents, billing.plan.currency)}
-            </p>
-            {billing.plan.priceMonthlyCents > 0 && (
-              <p className="text-[11px] text-[var(--dsn-text-secondary)]">
-                {dict.billingPerMonthLabel}
-              </p>
-            )}
-          </div>
-        </div>
-      </section>
+        </section>
+      </Card>
 
       {/* Cuotas Operativas del Espacio */}
       <section className="space-y-3">
@@ -542,33 +544,36 @@ export function BillingView({ initialBilling, locale = "es", isOwner = true }: B
                 sortable: true,
                 sortValue: (inv) => inv.status,
                 renderCell: (inv) => {
-                  const statusMap: Record<string, { label: string; cls: string }> = {
+                  const statusMap: Record<
+                    string,
+                    { label: string; variant: "success" | "warning" | "outline" | "destructive" }
+                  > = {
                     paid: {
                       label: dict.billingInvoicesStatusPaid,
-                      cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+                      variant: "success",
                     },
                     issued: {
                       label: dict.billingInvoicesStatusIssued,
-                      cls: "border-amber-500/30 bg-amber-500/10 text-amber-400",
+                      variant: "warning",
                     },
                     draft: {
                       label: dict.billingInvoicesStatusDraft,
-                      cls: "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]",
+                      variant: "outline",
                     },
                     past_due: {
                       label: dict.billingInvoicesStatusPastDue,
-                      cls: "border-rose-500/30 bg-rose-500/10 text-rose-400",
+                      variant: "destructive",
                     },
                     void: {
                       label: dict.billingInvoicesStatusVoid,
-                      cls: "border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]",
+                      variant: "outline",
                     },
                   };
                   const st = statusMap[inv.status] ?? statusMap.draft;
                   return (
-                    <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>
+                    <Badge variant={st.variant} className="text-[11px]">
                       {st.label}
-                    </span>
+                    </Badge>
                   );
                 },
               },

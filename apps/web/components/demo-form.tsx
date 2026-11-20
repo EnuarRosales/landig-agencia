@@ -2,6 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { useActionState } from "react";
+import { Button, Input, Label, Textarea } from "@mocter/ui";
 import { submitDemoRequest } from "@/app/actions/demo-request";
 import { demoRequestInitialState } from "@/app/actions/types";
 import { PhoneE164Input } from "@/components/phone-e164-input";
@@ -35,12 +36,13 @@ export function DemoForm() {
         </p>
         <p className="max-w-[420px] text-muted">{t("successText")}</p>
         <form action={formAction}>
-          <button
+          <Button
             type="submit"
-            className="rounded-full border border-stroke px-5 py-2 text-[14px] font-semibold text-txt transition-colors hover:border-a2"
+            variant="outline"
+            className="rounded-full border-stroke px-5 py-2 text-[14px] font-semibold text-txt hover:border-a2"
           >
             {t("successAgain")}
-          </button>
+          </Button>
         </form>
       </div>
     );
@@ -56,40 +58,34 @@ export function DemoForm() {
       <form action={formAction} className="flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
-            <label htmlFor="lead-name" className="mb-1 block text-[14px] font-medium">
+            <Label htmlFor="lead-name" className="mb-1 block text-[14px] font-medium text-txt">
               {t("name")}
-            </label>
-            <input
+            </Label>
+            <Input
               id="lead-name"
               name="name"
               type="text"
               required
               autoComplete="name"
               placeholder={t("namePlaceholder")}
-              aria-invalid={Boolean(fieldErrors.name)}
-              className={
-                fieldClasses +
-                (fieldErrors.name ? " border-hot" : "")
-              }
+              error={Boolean(fieldErrors.name)}
+              className={fieldClasses}
             />
             <FieldError message={fieldErrors.name ? t("errRequired") : undefined} />
           </div>
           <div>
-            <label htmlFor="lead-email" className="mb-1 block text-[14px] font-medium">
+            <Label htmlFor="lead-email" className="mb-1 block text-[14px] font-medium text-txt">
               {t("email")}
-            </label>
-            <input
+            </Label>
+            <Input
               id="lead-email"
               name="email"
               type="email"
               required
               autoComplete="email"
               placeholder={t("emailPlaceholder")}
-              aria-invalid={Boolean(fieldErrors.email)}
-              className={
-                fieldClasses +
-                (fieldErrors.email ? " border-hot" : "")
-              }
+              error={Boolean(fieldErrors.email)}
+              className={fieldClasses}
             />
             <FieldError
               message={
@@ -121,10 +117,10 @@ export function DemoForm() {
         </div>
 
         <div>
-          <label htmlFor="lead-message" className="mb-1 block text-[14px] font-medium">
+          <Label htmlFor="lead-message" className="mb-1 block text-[14px] font-medium text-txt">
             {t("message")}
-          </label>
-          <textarea
+          </Label>
+          <Textarea
             id="lead-message"
             name="message"
             rows={3}
@@ -141,13 +137,15 @@ export function DemoForm() {
         ) : null}
 
         <div className="flex justify-end">
-          <button
+          <Button
             type="submit"
-            disabled={pending}
-            className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] px-7 py-3 text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(47,107,255,0.4)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(47,107,255,0.6)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+            variant="primary"
+            loading={pending}
+            loadingText={t("sending")}
+            className="rounded-full bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] px-7 py-3 text-[15px] font-semibold text-white shadow-[0_8px_30px_rgba(47,107,255,0.4)] hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(47,107,255,0.6)]"
           >
-            {pending ? t("sending") : t("submit")}
-          </button>
+            {t("submit")}
+          </Button>
         </div>
       </form>
     </div>

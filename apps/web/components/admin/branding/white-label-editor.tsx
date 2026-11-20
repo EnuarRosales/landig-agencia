@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { Button, Checkbox, Input, Label, Select } from "@mocter/ui";
 import { validateContrast } from "@/lib/contrast";
 
 export interface WhiteLabelEditorProps {
@@ -192,25 +193,25 @@ export function WhiteLabelEditor({
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-mono text-white/80 mb-1.5">{t.brandNameLabel}</label>
-              <input
+              <Label className="mb-1.5 block text-xs font-mono text-white/80">{t.brandNameLabel}</Label>
+              <Input
                 type="text"
                 value={brandName}
                 onChange={(e) => setBrandName(e.target.value)}
                 disabled={!canEditFullBrand}
                 placeholder="Mi Empresa SAS"
-                className="w-full px-3 py-2 text-xs font-mono rounded bg-white/5 border border-white/10 text-white focus:outline-none focus:border-primary"
+                className="min-h-[34px] rounded bg-white/5 border-white/10 px-3 py-2 font-mono text-xs text-white"
               />
             </div>
             <div>
-              <label className="block text-xs font-mono text-white/80 mb-1.5">{t.logoUrlLabel}</label>
-              <input
+              <Label className="mb-1.5 block text-xs font-mono text-white/80">{t.logoUrlLabel}</Label>
+              <Input
                 type="url"
                 value={logoUrl}
                 onChange={(e) => setLogoUrl(e.target.value)}
                 disabled={!canEditFullBrand}
                 placeholder="https://empresa.com/logo.svg"
-                className="w-full px-3 py-2 text-xs font-mono rounded bg-white/5 border border-white/10 text-white focus:outline-none focus:border-primary"
+                className="min-h-[34px] rounded bg-white/5 border-white/10 px-3 py-2 font-mono text-xs text-white"
               />
             </div>
           </div>
@@ -227,7 +228,7 @@ export function WhiteLabelEditor({
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-mono text-white/80 mb-1.5">{t.primaryColorLabel}</label>
+              <Label className="mb-1.5 block text-xs font-mono text-white/80">{t.primaryColorLabel}</Label>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
@@ -235,17 +236,17 @@ export function WhiteLabelEditor({
                   onChange={(e) => setPrimaryColor(e.target.value)}
                   className="w-10 h-8 rounded border border-white/20 bg-transparent cursor-pointer"
                 />
-                <input
+                <Input
                   type="text"
                   value={primaryColor}
                   onChange={(e) => setPrimaryColor(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs font-mono rounded bg-white/5 border border-white/10 text-white"
+                  className="min-h-[32px] rounded bg-white/5 border-white/10 px-3 py-1.5 font-mono text-xs text-white"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-mono text-white/80 mb-1.5">{t.primaryTextColorLabel}</label>
+              <Label className="mb-1.5 block text-xs font-mono text-white/80">{t.primaryTextColorLabel}</Label>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
@@ -253,17 +254,17 @@ export function WhiteLabelEditor({
                   onChange={(e) => setPrimaryTextColor(e.target.value)}
                   className="w-10 h-8 rounded border border-white/20 bg-transparent cursor-pointer"
                 />
-                <input
+                <Input
                   type="text"
                   value={primaryTextColor}
                   onChange={(e) => setPrimaryTextColor(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs font-mono rounded bg-white/5 border border-white/10 text-white"
+                  className="min-h-[32px] rounded bg-white/5 border-white/10 px-3 py-1.5 font-mono text-xs text-white"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-mono text-white/80 mb-1.5">{t.accentColorLabel}</label>
+              <Label className="mb-1.5 block text-xs font-mono text-white/80">{t.accentColorLabel}</Label>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
@@ -271,11 +272,11 @@ export function WhiteLabelEditor({
                   onChange={(e) => setAccentColor(e.target.value)}
                   className="w-10 h-8 rounded border border-white/20 bg-transparent cursor-pointer"
                 />
-                <input
+                <Input
                   type="text"
                   value={accentColor}
                   onChange={(e) => setAccentColor(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs font-mono rounded bg-white/5 border border-white/10 text-white"
+                  className="min-h-[32px] rounded bg-white/5 border-white/10 px-3 py-1.5 font-mono text-xs text-white"
                 />
               </div>
             </div>
@@ -328,54 +329,55 @@ export function WhiteLabelEditor({
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-mono text-white/80 mb-1.5">{t.customDomainLabel}</label>
-              <input
+              <Label className="mb-1.5 block text-xs font-mono text-white/80">{t.customDomainLabel}</Label>
+              <Input
                 type="text"
                 value={customDomain}
                 onChange={(e) => setCustomDomain(e.target.value)}
                 disabled={!canEditFullBrand}
                 placeholder="portal.miempresa.com"
-                className="w-full px-3 py-2 text-xs font-mono rounded bg-white/5 border border-white/10 text-white focus:outline-none focus:border-primary"
+                className="min-h-[34px] rounded bg-white/5 border-white/10 px-3 py-2 font-mono text-xs text-white"
               />
             </div>
             <div>
-              <label className="block text-xs font-mono text-white/80 mb-1.5">{t.customFontLabel}</label>
-              <select
+              <Label className="mb-1.5 block text-xs font-mono text-white/80">{t.customFontLabel}</Label>
+              <Select
                 value={customFont}
                 onChange={(e) => setCustomFont(e.target.value)}
                 disabled={!canEditFullBrand}
-                className="w-full px-3 py-2 text-xs font-mono rounded bg-[#090d16] border border-white/10 text-white focus:outline-none focus:border-primary"
+                className="min-h-[34px] rounded bg-[#090d16] border-white/10 px-3 py-2 font-mono text-xs text-white"
               >
                 <option value="Inter">Inter (Estándar)</option>
                 <option value="Space Grotesk">Space Grotesk (HUD)</option>
                 <option value="Chakra Petch">Chakra Petch (Cyber)</option>
-              </select>
+              </Select>
             </div>
           </div>
 
           <div className="mt-4 flex items-center gap-2">
-            <input
-              type="checkbox"
+            <Checkbox
               id="removeMocter"
               checked={removeMocterBranding}
-              onChange={(e) => setRemoveMocterBranding(e.target.checked)}
+              onCheckedChange={(checked) => setRemoveMocterBranding(checked === true)}
               disabled={!canEditFullBrand}
-              className="rounded bg-white/5 border-white/20 text-primary focus:ring-0"
             />
-            <label htmlFor="removeMocter" className="text-xs font-mono text-white/80 cursor-pointer">
+            <Label htmlFor="removeMocter" className="cursor-pointer font-mono text-xs font-normal text-white/80">
               {t.removeBrandingLabel}
-            </label>
+            </Label>
           </div>
         </section>
 
         <div className="flex justify-end pt-4">
-          <button
+          <Button
             type="submit"
+            variant="primary"
+            loading={isSaving}
+            loadingText={t.saving}
             disabled={isSaving || !contrastResult.valid}
-            className="px-6 py-2.5 text-xs font-mono font-bold rounded bg-primary text-primary-foreground hover:brightness-110 disabled:opacity-50 transition-all shadow-md"
+            className="px-6 font-mono text-xs font-bold shadow-md"
           >
-            {isSaving ? t.saving : t.saveButton}
-          </button>
+            {t.saveButton}
+          </Button>
         </div>
       </form>
     </div>

@@ -7,13 +7,23 @@ import {
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
-  Loader2,
   Copy,
   Check,
   Lock,
   QrCode,
 } from "lucide-react";
 import type { PaymentGatewayPublicView, SupportedPaymentGatewayId } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  Input,
+  Label,
+  Select,
+} from "@mocter/ui";
 
 interface GatewaysConfigFormProps {
   initialGateways: PaymentGatewayPublicView[];
@@ -196,9 +206,9 @@ export function GatewaysConfigForm({ initialGateways }: GatewaysConfigFormProps)
           const currentFeedback = feedback?.id === g.id ? feedback : null;
 
           return (
-            <div
+            <Card
               key={g.id}
-              className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xs flex flex-col justify-between"
+              className="rounded-2xl p-6 flex flex-col justify-between"
             >
               <div>
                 <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--dsn-border)] pb-4 mb-5">
@@ -225,72 +235,65 @@ export function GatewaysConfigForm({ initialGateways }: GatewaysConfigFormProps)
                   </div>
 
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-mono font-semibold ${
-                        g.isEnabled
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : "bg-zinc-500/10 text-zinc-400 border border-zinc-500/20"
-                      }`}
+                    <Badge
+                      variant={g.isEnabled ? "success" : "outline"}
+                      className="font-mono text-[10px]"
                     >
                       {g.isEnabled ? "Habilitado" : "Deshabilitado"}
-                    </span>
+                    </Badge>
                     {isBreB ? (
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-mono font-semibold bg-cyan-500/10 text-[var(--dsn-accent)] border border-cyan-500/20">
+                      <Badge variant="accent" className="font-mono text-[10px]">
                         Solo CO / COP
-                      </span>
+                      </Badge>
                     ) : (
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-mono font-semibold ${
-                          g.environment === "production"
-                            ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
-                            : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                        }`}
+                      <Badge
+                        variant={g.environment === "production" ? "purple" : "warning"}
+                        className="font-mono text-[10px]"
                       >
                         {g.environment === "production" ? "Producción" : "Sandbox"}
-                      </span>
+                      </Badge>
                     )}
                   </div>
                 </div>
 
                 {currentFeedback && (
-                  <div
-                    className={`mb-5 flex items-center gap-2 rounded-xl p-3 text-xs border ${
-                      currentFeedback.type === "success"
-                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                        : "bg-red-500/10 border-red-500/30 text-red-400"
-                    }`}
+                  <Alert
+                    variant={currentFeedback.type === "success" ? "success" : "destructive"}
+                    className="mb-5"
                   >
                     {currentFeedback.type === "success" ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <CheckCircle2 className="h-4 w-4" />
                     ) : (
-                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <AlertCircle className="h-4 w-4" />
                     )}
-                    <span>{currentFeedback.message}</span>
-                  </div>
+                    <AlertDescription className="text-xs">
+                      {currentFeedback.message}
+                    </AlertDescription>
+                  </Alert>
                 )}
 
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[var(--dsn-surface-secondary)]/40 p-4 rounded-xl border border-[var(--dsn-border)]">
                     <div>
-                      <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5">
+                      <Label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5">
                         Estado Operativo
-                      </label>
+                      </Label>
                       <label className="flex items-center gap-2 cursor-pointer text-xs text-[var(--dsn-text)] mt-1">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={form.isEnabled}
-                          onChange={(e) => handleInputChange(g.id, "isEnabled", e.target.checked)}
-                          className="h-4 w-4 rounded border-[var(--dsn-border)] text-[var(--dsn-accent)] focus:ring-[var(--dsn-accent)]"
+                          onCheckedChange={(checked) =>
+                            handleInputChange(g.id, "isEnabled", checked === true)
+                          }
                         />
                         <span>Habilitar En El Checkout</span>
                       </label>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5">
+                      <Label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5">
                         Entorno De Operación
-                      </label>
-                      <select
+                      </Label>
+                      <Select
                         value={form.environment}
                         onChange={(e) =>
                           handleInputChange(
@@ -299,92 +302,92 @@ export function GatewaysConfigForm({ initialGateways }: GatewaysConfigFormProps)
                             e.target.value === "production" ? "production" : "sandbox",
                           )
                         }
-                        className="w-full min-h-[38px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                        className="min-h-[38px] bg-[var(--dsn-surface)] text-xs"
                       >
                         <option value="sandbox">Sandbox (Pruebas)</option>
                         <option value="production">Producción (Real)</option>
-                      </select>
+                      </Select>
                     </div>
                   </div>
 
                   {isBreB ? (
                     <>
                       <div>
-                        <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
+                        <Label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
                           Tipo De Llave Bre-B
-                        </label>
-                        <select
+                        </Label>
+                        <Select
                           value={form.breBKeyType}
                           onChange={(e) => handleInputChange(g.id, "breBKeyType", e.target.value)}
-                          className="w-full min-h-[42px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                          className="min-h-[42px] text-xs"
                         >
                           {BRE_B_KEY_TYPE_OPTIONS.map((opt) => (
                             <option key={opt.value} value={opt.value}>
                               {opt.label}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
+                        <Label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
                           Valor De Llave Bre-B
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           type="text"
                           placeholder="Ej. pagos@mocter.co o 3001234567"
                           value={form.breBKeyValue}
                           onChange={(e) => handleInputChange(g.id, "breBKeyValue", e.target.value)}
-                          className="w-full min-h-[42px] font-mono rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                          className="min-h-[42px] font-mono text-xs"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
+                        <Label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
                           Nombre Del Titular Receptor
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           type="text"
                           placeholder="Ej. MOCTER SAS"
                           value={form.breBRecipientName}
                           onChange={(e) =>
                             handleInputChange(g.id, "breBRecipientName", e.target.value)
                           }
-                          className="w-full min-h-[42px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                          className="min-h-[42px] text-xs"
                         />
                       </div>
                     </>
                   ) : (
                     <>
                       <div>
-                        <label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
+                        <Label className="block text-xs font-semibold text-[var(--dsn-text)] mb-1">
                           {isWompi
                             ? "Llave Pública Wompi (Public Key)"
                             : "Llave Publicable Stripe (Publishable Key)"}
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           type="text"
                           placeholder={isWompi ? "pub_test_..." : "pk_test_..."}
                           value={form.publicKey}
                           onChange={(e) => handleInputChange(g.id, "publicKey", e.target.value)}
-                          className="w-full min-h-[42px] font-mono rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                          className="min-h-[42px] font-mono text-xs"
                         />
                       </div>
 
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <label className="block text-xs font-semibold text-[var(--dsn-text)]">
+                          <Label className="block text-xs font-semibold text-[var(--dsn-text)]">
                             {isWompi
                               ? "Llave Privada Wompi (Private Key)"
                               : "Llave Secreta Stripe (Secret Key)"}
-                          </label>
+                          </Label>
                           {g.hasSecretKey && (
                             <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
                               <Lock className="h-3 w-3" /> Cifrada En Base De Datos
                             </span>
                           )}
                         </div>
-                        <input
+                        <Input
                           type="password"
                           placeholder={
                             g.hasSecretKey
@@ -395,24 +398,24 @@ export function GatewaysConfigForm({ initialGateways }: GatewaysConfigFormProps)
                           }
                           value={form.secretKey}
                           onChange={(e) => handleInputChange(g.id, "secretKey", e.target.value)}
-                          className="w-full min-h-[42px] font-mono rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                          className="min-h-[42px] font-mono text-xs"
                         />
                       </div>
 
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <label className="block text-xs font-semibold text-[var(--dsn-text)]">
+                          <Label className="block text-xs font-semibold text-[var(--dsn-text)]">
                             {isWompi
                               ? "Secreto de Eventos Wompi (Checksum Secret)"
                               : "Secreto de Firma Webhook Stripe (whsec_...)"}
-                          </label>
+                          </Label>
                           {g.hasWebhookSecret && (
                             <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
                               <ShieldCheck className="h-3 w-3" /> Cifrado con AES-256-GCM
                             </span>
                           )}
                         </div>
-                        <input
+                        <Input
                           type="password"
                           placeholder={
                             g.hasWebhookSecret
@@ -423,26 +426,28 @@ export function GatewaysConfigForm({ initialGateways }: GatewaysConfigFormProps)
                           }
                           value={form.webhookSecret}
                           onChange={(e) => handleInputChange(g.id, "webhookSecret", e.target.value)}
-                          className="w-full min-h-[42px] font-mono rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                          className="min-h-[42px] font-mono text-xs"
                         />
                       </div>
                     </>
                   )}
 
                   <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/60 p-3">
-                    <label className="block text-[11px] font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                    <Label className="block text-[11px] font-semibold text-[var(--dsn-text-secondary)] mb-1">
                       {isBreB
                         ? "Ruta de Recepción de Comprobantes Bre-B"
                         : `URL Canónica para el Webhook de ${isWompi ? "Wompi" : "Stripe"}`}
-                    </label>
+                    </Label>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs text-[var(--dsn-accent)] truncate select-all">
                         {g.webhookUrl}
                       </span>
-                      <button
+                      <Button
                         type="button"
+                        variant="secondary"
+                        size="sm"
                         onClick={() => handleCopyWebhook(g.id, g.webhookUrl)}
-                        className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] shrink-0 px-2 py-1 rounded bg-[var(--dsn-surface)] border border-[var(--dsn-border)]"
+                        className="ml-auto h-auto min-h-0 px-2 py-1 text-[11px] shrink-0"
                       >
                         {copiedId === g.id ? (
                           <>
@@ -455,34 +460,30 @@ export function GatewaysConfigForm({ initialGateways }: GatewaysConfigFormProps)
                             <span>Copiar</span>
                           </>
                         )}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="mt-6 pt-4 border-t border-[var(--dsn-border)]">
-                <button
+                <Button
                   type="button"
+                  variant="primary"
                   disabled={isLoading}
+                  loading={isLoading}
+                  loadingText="Guardando Configuración..."
                   onClick={() => handleSaveGateway(g.id)}
-                  className="w-full min-h-[44px] flex items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,var(--dsn-accent),#0ea5e9)] px-4 py-3 text-xs font-bold text-white shadow-md hover:opacity-95 transition-all disabled:opacity-50"
+                  className="w-full min-h-[44px] rounded-xl font-bold text-xs shadow-md"
                 >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Guardando Configuración...</span>
-                    </>
-                  ) : (
-                    <span>
-                      {isBreB
-                        ? "Guardar Configuración de Bre-B"
-                        : `Guardar Configuración de ${isWompi ? "Wompi" : "Stripe"}`}
-                    </span>
-                  )}
-                </button>
+                  <span>
+                    {isBreB
+                      ? "Guardar Configuración de Bre-B"
+                      : `Guardar Configuración de ${isWompi ? "Wompi" : "Stripe"}`}
+                  </span>
+                </Button>
               </div>
-            </div>
+            </Card>
           );
         })}
       </div>

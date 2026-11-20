@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  X,
   Lock,
   Sparkles,
   Package,
@@ -21,6 +20,24 @@ import {
   Info,
 } from "lucide-react";
 import type { Plan } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  Switch,
+  Textarea,
+} from "@mocter/ui";
 
 interface PlanModalDialogProps {
   isOpen: boolean;
@@ -562,492 +579,472 @@ function PlanModalDialogContent({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="relative w-full max-w-5xl xl:max-w-6xl rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl my-8 flex flex-col max-h-[90vh]">
-        {/* Encabezado */}
-        <div className="flex items-center justify-between pb-4 border-b border-[var(--dsn-border)] shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/10 text-[var(--dsn-accent)]">
-              <Layers className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-[var(--dsn-text)]">
-                {isEdit ? "Editar Plan Comercial" : "Registrar Nuevo Plan Comercial"}
-              </h2>
-              <p className="text-xs text-[var(--dsn-text-secondary)]">
-                Configuración integral de condiciones comerciales, cuotas finitas/ilimitadas y capacidades
-              </p>
-            </div>
+    <>
+      {/* Encabezado */}
+      <DialogHeader className="pb-4 border-b border-[var(--dsn-border)] shrink-0 pr-8">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--dsn-accent)]/10 text-[var(--dsn-accent)]">
+            <Layers className="h-5 w-5" />
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)] transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div>
+            <DialogTitle className="text-base font-semibold text-[var(--dsn-text)]">
+              {isEdit ? "Editar Plan Comercial" : "Registrar Nuevo Plan Comercial"}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
+              Configuración integral de condiciones comerciales, cuotas finitas/ilimitadas y capacidades
+            </DialogDescription>
+          </div>
         </div>
+      </DialogHeader>
 
-        {/* Barra de pestañas (S6) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto py-3 border-b border-[var(--dsn-border)] shrink-0 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          <button
-            type="button"
-            onClick={() => setActiveTab("commercial")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
-              activeTab === "commercial"
-                ? "bg-[var(--dsn-accent)] text-white shadow-sm"
-                : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
-          >
-            <FileText className="h-3.5 w-3.5" />
-            <span>1. Información Comercial</span>
-          </button>
+      {/* Barra de pestañas (S6) */}
+      <div className="flex items-center gap-1.5 overflow-x-auto py-3 border-b border-[var(--dsn-border)] shrink-0 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <Button
+          type="button"
+          variant={activeTab === "commercial" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("commercial")}
+          className="shrink-0 whitespace-nowrap"
+        >
+          <FileText className="h-3.5 w-3.5" />
+          <span>1. Información Comercial</span>
+        </Button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("catalog")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
-              activeTab === "catalog"
-                ? "bg-[var(--dsn-accent)] text-white shadow-sm"
-                : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
-          >
-            <Package className="h-3.5 w-3.5" />
-            <span>2. Catálogo Y Archivos</span>
-          </button>
+        <Button
+          type="button"
+          variant={activeTab === "catalog" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("catalog")}
+          className="shrink-0 whitespace-nowrap"
+        >
+          <Package className="h-3.5 w-3.5" />
+          <span>2. Catálogo Y Archivos</span>
+        </Button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("tenant")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
-              activeTab === "tenant"
-                ? "bg-[var(--dsn-accent)] text-white shadow-sm"
-                : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
-          >
-            <Users className="h-3.5 w-3.5" />
-            <span>3. Recursos Del Inquilino</span>
-          </button>
+        <Button
+          type="button"
+          variant={activeTab === "tenant" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("tenant")}
+          className="shrink-0 whitespace-nowrap"
+        >
+          <Users className="h-3.5 w-3.5" />
+          <span>3. Recursos Del Inquilino</span>
+        </Button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("chatwoot")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
-              activeTab === "chatwoot"
-                ? "bg-[var(--dsn-accent)] text-white shadow-sm"
-                : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-            <span>4. Atención Y Canales</span>
-          </button>
+        <Button
+          type="button"
+          variant={activeTab === "chatwoot" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("chatwoot")}
+          className="shrink-0 whitespace-nowrap"
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+          <span>4. Atención Y Canales</span>
+        </Button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("capabilities")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
-              activeTab === "capabilities"
-                ? "bg-[var(--dsn-accent)] text-white shadow-sm"
-                : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>5. Capacidades Opcionales</span>
-            {selectedCapabilitiesCount > 0 && (
-              <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.2 text-[10px] font-semibold">
-                {selectedCapabilitiesCount}
-              </span>
-            )}
-          </button>
+        <Button
+          type="button"
+          variant={activeTab === "capabilities" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("capabilities")}
+          className="shrink-0 whitespace-nowrap"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          <span>5. Capacidades Opcionales</span>
+          {selectedCapabilitiesCount > 0 && (
+            <Badge variant="outline" className="ml-1 border-white/25 bg-white/20 text-white text-[10px] px-1.5 py-0">
+              {selectedCapabilitiesCount}
+            </Badge>
+          )}
+        </Button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("summary")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap ${
-              activeTab === "summary"
-                ? "bg-[var(--dsn-accent)] text-white shadow-sm"
-                : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
-          >
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            <span>6. Resumen</span>
-          </button>
+        <Button
+          type="button"
+          variant={activeTab === "summary" ? "primary" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("summary")}
+          className="shrink-0 whitespace-nowrap"
+        >
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          <span>6. Resumen</span>
+        </Button>
+      </div>
+
+      {/* Mensajes de error o éxito */}
+      {error && (
+        <Alert variant="destructive" className="mt-4 shrink-0">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="text-xs">{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {success && (
+        <Alert variant="success" className="mt-4 shrink-0">
+          <CheckCircle2 className="h-4 w-4" />
+          <AlertDescription className="text-xs">
+            {isEdit
+              ? "Plan comercial y condiciones actualizadas exitosamente."
+              : "Plan comercial registrado exitosamente."}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {fetchingDetails && (
+        <div className="flex items-center justify-center p-8 text-xs text-[var(--dsn-text-secondary)] gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-[var(--dsn-accent)]" />
+          <span>Cargando detalle del plan comercial...</span>
         </div>
+      )}
 
-        {/* Mensajes de error o éxito */}
-        {error && (
-          <div className="mt-4 flex items-center gap-2 rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 p-3 text-xs text-rose-800 dark:text-rose-300">
-            <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {success && (
-          <div className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 p-3 text-xs text-emerald-800 dark:text-emerald-300">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-            <span>
-              {isEdit
-                ? "Plan comercial y condiciones actualizadas exitosamente."
-                : "Plan comercial registrado exitosamente."}
-            </span>
-          </div>
-        )}
-
-        {fetchingDetails && (
-          <div className="flex items-center justify-center p-8 text-xs text-[var(--dsn-text-secondary)] gap-2">
-            <Loader2 className="h-4 w-4 animate-spin text-[var(--dsn-accent)]" />
-            <span>Cargando detalle del plan comercial...</span>
-          </div>
-        )}
-
-        {/* Contenedor scrolleable del formulario */}
-        {!fetchingDetails && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (activeTab === "summary") {
-                handleSubmit(e);
-              }
-            }}
-            className="flex-1 overflow-y-auto py-4 space-y-6"
-          >
-            {/* PESTAÑA 1: Información Comercial */}
-            {activeTab === "commercial" && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="plan-code" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Código Identificador Slug
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="plan-code"
-                        type="text"
-                        required
-                        disabled={isEdit}
-                        placeholder="ej. custom-enterprise-vip"
-                        value={formData.code}
-                        onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                        className={`w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono ${
-                          isEdit ? "opacity-60 cursor-not-allowed pr-8" : ""
-                        }`}
-                      />
-                      {isEdit && <Lock className="absolute right-2.5 top-3.5 h-4 w-4 text-[var(--dsn-text-secondary)]" />}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="plan-currency" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Moneda De Facturación
-                    </label>
-                    <select
-                      id="plan-currency"
-                      value={formData.currency}
-                      onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
-                    >
-                      <option value="COP">COP · Peso Colombiano</option>
-                      <option value="USD">USD · Dólar Estadounidense</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="plan-name-es" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Nombre Del Plan (Español)
-                    </label>
-                    <input
-                      id="plan-name-es"
+      {/* Contenedor scrolleable del formulario */}
+      {!fetchingDetails && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (activeTab === "summary") {
+              handleSubmit(e);
+            }
+          }}
+          className="flex-1 overflow-y-auto py-4 space-y-6"
+        >
+          {/* PESTAÑA 1: Información Comercial */}
+          {activeTab === "commercial" && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="plan-code" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    Código Identificador Slug
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="plan-code"
                       type="text"
                       required
-                      placeholder="ej. Crecimiento"
-                      value={formData.nameEs}
-                      onChange={(e) => setFormData({ ...formData, nameEs: e.target.value })}
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                      disabled={isEdit}
+                      placeholder="ej. custom-enterprise-vip"
+                      value={formData.code}
+                      onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                      className={`min-h-[44px] text-xs font-mono ${
+                        isEdit ? "opacity-60 cursor-not-allowed pr-8" : ""
+                      }`}
                     />
-                  </div>
-
-                  <div>
-                    <label htmlFor="plan-name-en" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Nombre Del Plan (Inglés)
-                    </label>
-                    <input
-                      id="plan-name-en"
-                      type="text"
-                      placeholder="ej. Growth"
-                      value={formData.nameEn}
-                      onChange={(e) => setFormData({ ...formData, nameEn: e.target.value })}
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                    />
+                    {isEdit && <Lock className="absolute right-2.5 top-3.5 h-4 w-4 text-[var(--dsn-text-secondary)]" />}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="plan-desc-es" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Descripción Comercial (Español)
-                    </label>
-                    <textarea
-                      id="plan-desc-es"
-                      rows={2}
-                      placeholder="Descripción comercial para la landing page en español..."
-                      value={formData.descriptionEs}
-                      onChange={(e) => setFormData({ ...formData, descriptionEs: e.target.value })}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                    />
-                  </div>
+                <div>
+                  <Label htmlFor="plan-currency" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    Moneda De Facturación
+                  </Label>
+                  <Select
+                    id="plan-currency"
+                    value={formData.currency}
+                    onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                    className="min-h-[44px] text-xs font-mono"
+                  >
+                    <option value="COP">COP · Peso Colombiano</option>
+                    <option value="USD">USD · Dólar Estadounidense</option>
+                  </Select>
+                </div>
+              </div>
 
-                  <div>
-                    <label htmlFor="plan-desc-en" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Descripción Comercial (Inglés)
-                    </label>
-                    <textarea
-                      id="plan-desc-en"
-                      rows={2}
-                      placeholder="Commercial description for English landing page..."
-                      value={formData.descriptionEn}
-                      onChange={(e) => setFormData({ ...formData, descriptionEn: e.target.value })}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                    />
-                  </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="plan-name-es" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    Nombre Del Plan (Español)
+                  </Label>
+                  <Input
+                    id="plan-name-es"
+                    type="text"
+                    required
+                    placeholder="ej. Crecimiento"
+                    value={formData.nameEs}
+                    onChange={(e) => setFormData({ ...formData, nameEs: e.target.value })}
+                    className="min-h-[44px] text-xs"
+                  />
                 </div>
 
-                <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4 space-y-4">
-                  <h3 className="text-xs font-semibold text-[var(--dsn-text)]">
-                    Precios Colombia (COP) Y Ciclos Habilitados
-                  </h3>
+                <div>
+                  <Label htmlFor="plan-name-en" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    Nombre Del Plan (Inglés)
+                  </Label>
+                  <Input
+                    id="plan-name-en"
+                    type="text"
+                    placeholder="ej. Growth"
+                    value={formData.nameEn}
+                    onChange={(e) => setFormData({ ...formData, nameEn: e.target.value })}
+                    className="min-h-[44px] text-xs"
+                  />
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div>
-                      <label htmlFor="plan-price-monthly" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Precio Ciclo Mensual (COP)
-                      </label>
-                      <input
-                        id="plan-price-monthly"
-                        type="number"
-                        min="0"
-                        step="1000"
-                        required
-                        value={formData.priceMonthlyCop}
-                        onChange={(e) => {
-                          const monthly = Number(e.target.value);
-                          const annual = Math.round(monthly * 12 * (1 - formData.annualDiscountPct / 100));
-                          setFormData({ ...formData, priceMonthlyCop: monthly, priceAnnualCop: annual });
-                        }}
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="plan-annual-discount" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Descuento Anual (%)
-                      </label>
-                      <input
-                        id="plan-annual-discount"
-                        type="number"
-                        min="0"
-                        max="99"
-                        step="1"
-                        required
-                        value={formData.annualDiscountPct}
-                        onChange={(e) => {
-                          const pct = Number(e.target.value);
-                          const annual = Math.round(formData.priceMonthlyCop * 12 * (1 - pct / 100));
-                          setFormData({ ...formData, annualDiscountPct: pct, priceAnnualCop: annual });
-                        }}
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="plan-price-annual" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Precio Ciclo Anual (COP)
-                      </label>
-                      <input
-                        id="plan-price-annual"
-                        type="number"
-                        min="0"
-                        step="1000"
-                        required
-                        value={formData.priceAnnualCop}
-                        onChange={(e) => {
-                          const annual = Number(e.target.value);
-                          const pct = computeAnnualDiscount(formData.priceMonthlyCop, annual);
-                          setFormData({ ...formData, priceAnnualCop: annual, annualDiscountPct: pct });
-                        }}
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="border-t border-[var(--dsn-border)]/60 pt-4 space-y-3">
-                    <h4 className="text-xs font-semibold text-[var(--dsn-text)]">
-                      Precios Internacional (USD)
-                    </h4>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div>
-                        <label htmlFor="plan-price-monthly-usd" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                          Precio Mensual Internacional (USD)
-                        </label>
-                        <input
-                          id="plan-price-monthly-usd"
-                          type="number"
-                          min="0"
-                          step="1"
-                          required
-                          value={formData.priceMonthlyUsd}
-                          onChange={(e) => {
-                            const monthlyUsd = Number(e.target.value);
-                            const annualUsd = Math.round(monthlyUsd * 12 * (1 - formData.annualDiscountPct / 100));
-                            setFormData({ ...formData, priceMonthlyUsd: monthlyUsd, priceAnnualUsd: annualUsd });
-                          }}
-                          className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
-                        />
-                      </div>
-
-                      <div>
-                        <label htmlFor="plan-price-annual-usd" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                          Precio Anual Internacional (USD)
-                        </label>
-                        <input
-                          id="plan-price-annual-usd"
-                          type="number"
-                          min="0"
-                          step="1"
-                          required
-                          value={formData.priceAnnualUsd}
-                          onChange={(e) => {
-                            const annualUsd = Number(e.target.value);
-                            setFormData({ ...formData, priceAnnualUsd: annualUsd });
-                          }}
-                          className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-6 pt-2">
-                    <label className="flex items-center gap-2 text-xs text-[var(--dsn-text)] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.cycleMonthly}
-                        onChange={(e) => setFormData({ ...formData, cycleMonthly: e.target.checked })}
-                        className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)] focus:ring-[var(--dsn-accent)]"
-                      />
-                      <span>Habilitar Ciclo Mensual</span>
-                    </label>
-
-                    <label className="flex items-center gap-2 text-xs text-[var(--dsn-text)] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.cycleAnnual}
-                        onChange={(e) => setFormData({ ...formData, cycleAnnual: e.target.checked })}
-                        className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)] focus:ring-[var(--dsn-accent)]"
-                      />
-                      <span>Habilitar Ciclo Anual</span>
-                    </label>
-                  </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="plan-desc-es" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    Descripción Comercial (Español)
+                  </Label>
+                  <Textarea
+                    id="plan-desc-es"
+                    rows={2}
+                    placeholder="Descripción comercial para la landing page en español..."
+                    value={formData.descriptionEs}
+                    onChange={(e) => setFormData({ ...formData, descriptionEs: e.target.value })}
+                    className="text-xs"
+                  />
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="plan-desc-en" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    Descripción Comercial (Inglés)
+                  </Label>
+                  <Textarea
+                    id="plan-desc-en"
+                    rows={2}
+                    placeholder="Commercial description for English landing page..."
+                    value={formData.descriptionEn}
+                    onChange={(e) => setFormData({ ...formData, descriptionEn: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4 space-y-4">
+                <h3 className="text-xs font-semibold text-[var(--dsn-text)]">
+                  Precios Colombia (COP) Y Ciclos Habilitados
+                </h3>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <div>
-                    <label htmlFor="plan-trial" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Días De Prueba Gratuita
-                    </label>
-                    <input
-                      id="plan-trial"
+                    <Label htmlFor="plan-price-monthly" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                      Precio Ciclo Mensual (COP)
+                    </Label>
+                    <Input
+                      id="plan-price-monthly"
                       type="number"
                       min="0"
-                      value={formData.trialDays}
-                      onChange={(e) => setFormData({ ...formData, trialDays: Number(e.target.value) })}
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
+                      step="1000"
+                      required
+                      value={formData.priceMonthlyCop}
+                      onChange={(e) => {
+                        const monthly = Number(e.target.value);
+                        const annual = Math.round(monthly * 12 * (1 - formData.annualDiscountPct / 100));
+                        setFormData({ ...formData, priceMonthlyCop: monthly, priceAnnualCop: annual });
+                      }}
+                      className="min-h-[44px] text-xs font-mono"
                     />
                   </div>
 
                   <div>
-                    <label htmlFor="plan-status" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Estado Del Plan
-                    </label>
-                    <select
-                      id="plan-status"
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                    >
-                      <option value="active">Activo (Disponible Para Asignar)</option>
-                      <option value="draft">Borrador (Oculto)</option>
-                      <option value="retired">Retirado (Solo Clientes Existentes)</option>
-                    </select>
+                    <Label htmlFor="plan-annual-discount" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                      Descuento Anual (%)
+                    </Label>
+                    <Input
+                      id="plan-annual-discount"
+                      type="number"
+                      min="0"
+                      max="99"
+                      step="1"
+                      required
+                      value={formData.annualDiscountPct}
+                      onChange={(e) => {
+                        const pct = Number(e.target.value);
+                        const annual = Math.round(formData.priceMonthlyCop * 12 * (1 - pct / 100));
+                        setFormData({ ...formData, annualDiscountPct: pct, priceAnnualCop: annual });
+                      }}
+                      className="min-h-[44px] text-xs font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="plan-price-annual" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                      Precio Ciclo Anual (COP)
+                    </Label>
+                    <Input
+                      id="plan-price-annual"
+                      type="number"
+                      min="0"
+                      step="1000"
+                      required
+                      value={formData.priceAnnualCop}
+                      onChange={(e) => {
+                        const annual = Number(e.target.value);
+                        const pct = computeAnnualDiscount(formData.priceMonthlyCop, annual);
+                        setFormData({ ...formData, priceAnnualCop: annual, annualDiscountPct: pct });
+                      }}
+                      className="min-h-[44px] text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-[var(--dsn-border)]/60 pt-4 space-y-3">
+                  <h4 className="text-xs font-semibold text-[var(--dsn-text)]">
+                    Precios Internacional (USD)
+                  </h4>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <Label htmlFor="plan-price-monthly-usd" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                        Precio Mensual Internacional (USD)
+                      </Label>
+                      <Input
+                        id="plan-price-monthly-usd"
+                        type="number"
+                        min="0"
+                        step="1"
+                        required
+                        value={formData.priceMonthlyUsd}
+                        onChange={(e) => {
+                          const monthlyUsd = Number(e.target.value);
+                          const annualUsd = Math.round(monthlyUsd * 12 * (1 - formData.annualDiscountPct / 100));
+                          setFormData({ ...formData, priceMonthlyUsd: monthlyUsd, priceAnnualUsd: annualUsd });
+                        }}
+                        className="min-h-[44px] text-xs font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="plan-price-annual-usd" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                        Precio Anual Internacional (USD)
+                      </Label>
+                      <Input
+                        id="plan-price-annual-usd"
+                        type="number"
+                        min="0"
+                        step="1"
+                        required
+                        value={formData.priceAnnualUsd}
+                        onChange={(e) => {
+                          const annualUsd = Number(e.target.value);
+                          setFormData({ ...formData, priceAnnualUsd: annualUsd });
+                        }}
+                        className="min-h-[44px] text-xs font-mono"
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap gap-6 pt-2">
                   <label className="flex items-center gap-2 text-xs text-[var(--dsn-text)] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.isPublic}
-                      onChange={(e) => setFormData({ ...formData, isPublic: e.target.checked })}
-                      className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)] focus:ring-[var(--dsn-accent)]"
+                    <Checkbox
+                      checked={formData.cycleMonthly}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, cycleMonthly: checked === true })
+                      }
                     />
-                    <span>Público En Landing Page</span>
+                    <span>Habilitar Ciclo Mensual</span>
                   </label>
 
                   <label className="flex items-center gap-2 text-xs text-[var(--dsn-text)] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={formData.isPopular}
-                      onChange={(e) => setFormData({ ...formData, isPopular: e.target.checked })}
-                      className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)] focus:ring-[var(--dsn-accent)]"
+                    <Checkbox
+                      checked={formData.cycleAnnual}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, cycleAnnual: checked === true })
+                      }
                     />
-                    <span>Destacar Como Popular</span>
+                    <span>Habilitar Ciclo Anual</span>
                   </label>
                 </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="plan-features" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Características De Marketing (Español)
-                    </label>
-                    <textarea
-                      id="plan-features"
-                      rows={2}
-                      placeholder="Atención con IA, Canal WhatsApp Cloud, Soporte estándar"
-                      value={formData.featuresRaw}
-                      onChange={(e) => setFormData({ ...formData, featuresRaw: e.target.value })}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="plan-features-en" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Características De Marketing (Inglés)
-                    </label>
-                    <textarea
-                      id="plan-features-en"
-                      rows={2}
-                      placeholder="AI-powered assistance, WhatsApp Cloud channel, Standard support"
-                      value={formData.featuresEnRaw}
-                      onChange={(e) => setFormData({ ...formData, featuresEnRaw: e.target.value })}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                    />
-                  </div>
-                </div>
-                <p className="text-[10px] text-[var(--dsn-text-secondary)] mt-1">
-                  Las características de marketing son descriptivas y se presentan como viñetas en las tarjetas de la landing page.
-                </p>
               </div>
-            )}
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="plan-trial" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    Días De Prueba Gratuita
+                  </Label>
+                  <Input
+                    id="plan-trial"
+                    type="number"
+                    min="0"
+                    value={formData.trialDays}
+                    onChange={(e) => setFormData({ ...formData, trialDays: Number(e.target.value) })}
+                    className="min-h-[44px] text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="plan-status" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    Estado Del Plan
+                  </Label>
+                  <Select
+                    id="plan-status"
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    className="min-h-[44px] text-xs"
+                  >
+                    <option value="active">Activo (Disponible Para Asignar)</option>
+                    <option value="draft">Borrador (Oculto)</option>
+                    <option value="retired">Retirado (Solo Clientes Existentes)</option>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-6 pt-2">
+                <label className="flex items-center gap-2 text-xs text-[var(--dsn-text)] cursor-pointer">
+                  <Checkbox
+                    checked={formData.isPublic}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, isPublic: checked === true })
+                    }
+                  />
+                  <span>Público En Landing Page</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-xs text-[var(--dsn-text)] cursor-pointer">
+                  <Checkbox
+                    checked={formData.isPopular}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, isPopular: checked === true })
+                    }
+                  />
+                  <span>Destacar Como Popular</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="plan-features" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    Características De Marketing (Español)
+                  </Label>
+                  <Textarea
+                    id="plan-features"
+                    rows={2}
+                    placeholder="Atención con IA, Canal WhatsApp Cloud, Soporte estándar"
+                    value={formData.featuresRaw}
+                    onChange={(e) => setFormData({ ...formData, featuresRaw: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="plan-features-en" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    Características De Marketing (Inglés)
+                  </Label>
+                  <Textarea
+                    id="plan-features-en"
+                    rows={2}
+                    placeholder="AI-powered assistance, WhatsApp Cloud channel, Standard support"
+                    value={formData.featuresEnRaw}
+                    onChange={(e) => setFormData({ ...formData, featuresEnRaw: e.target.value })}
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-[var(--dsn-text-secondary)] mt-1">
+                Las características de marketing son descriptivas y se presentan como viñetas en las tarjetas de la landing page.
+              </p>
+            </div>
+          )}
 
             {/* PESTAÑA 2: Catálogo Y Archivos */}
             {activeTab === "catalog" && (
               <div className="space-y-4">
-                <div className="rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 p-3 text-xs text-blue-900 dark:text-blue-300 flex items-start gap-2">
-                  <Info className="h-4 w-4 shrink-0 mt-0.5" />
-                  <span>
+                <Alert variant="info">
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
                     Configura cuotas finitas o marca como ilimitado. Cuota 0 prohíbe operaciones del recurso y nunca equivale a ilimitado.
-                  </span>
-                </div>
+                  </AlertDescription>
+                </Alert>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {/* Productos */}
@@ -1055,29 +1052,27 @@ function PlanModalDialogContent({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-[var(--dsn-text)]">Total De Productos</span>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={catalogLimits.products.mode === "UNLIMITED"}
-                          onChange={(e) =>
+                          onCheckedChange={(checked) =>
                             setCatalogLimits({
                               ...catalogLimits,
                               products: {
-                                mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                value: e.target.checked ? 0 : catalogLimits.products.value || 500,
+                                mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                value: checked === true ? 0 : catalogLimits.products.value || 500,
                               },
                             })
                           }
-                          className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                         />
                         <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                       </label>
                     </div>
                     {catalogLimits.products.mode === "LIMITED" ? (
                       <div>
-                        <label htmlFor="limit-products" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                        <Label htmlFor="limit-products" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                           Cantidad Máxima De Productos
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           id="limit-products"
                           type="number"
                           min="0"
@@ -1088,7 +1083,7 @@ function PlanModalDialogContent({
                               products: { ...catalogLimits.products, value: Number(e.target.value) },
                             })
                           }
-                          className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                          className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                         />
                       </div>
                     ) : (
@@ -1103,29 +1098,27 @@ function PlanModalDialogContent({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-[var(--dsn-text)]">Imágenes Por Producto</span>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={catalogLimits.images_per_product.mode === "UNLIMITED"}
-                          onChange={(e) =>
+                          onCheckedChange={(checked) =>
                             setCatalogLimits({
                               ...catalogLimits,
                               images_per_product: {
-                                mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                value: e.target.checked ? 0 : catalogLimits.images_per_product.value || 10,
+                                mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                value: checked === true ? 0 : catalogLimits.images_per_product.value || 10,
                               },
                             })
                           }
-                          className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                         />
                         <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                       </label>
                     </div>
                     {catalogLimits.images_per_product.mode === "LIMITED" ? (
                       <div>
-                        <label htmlFor="limit-images" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                        <Label htmlFor="limit-images" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                           Máximo De Imágenes Asociadas
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           id="limit-images"
                           type="number"
                           min="0"
@@ -1139,7 +1132,7 @@ function PlanModalDialogContent({
                               },
                             })
                           }
-                          className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                          className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                         />
                       </div>
                     ) : (
@@ -1154,29 +1147,27 @@ function PlanModalDialogContent({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-[var(--dsn-text)]">Videos Por Producto</span>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={catalogLimits.videos_per_product.mode === "UNLIMITED"}
-                          onChange={(e) =>
+                          onCheckedChange={(checked) =>
                             setCatalogLimits({
                               ...catalogLimits,
                               videos_per_product: {
-                                mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                value: e.target.checked ? 0 : catalogLimits.videos_per_product.value || 1,
+                                mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                value: checked === true ? 0 : catalogLimits.videos_per_product.value || 1,
                               },
                             })
                           }
-                          className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                         />
                         <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                       </label>
                     </div>
                     {catalogLimits.videos_per_product.mode === "LIMITED" ? (
                       <div>
-                        <label htmlFor="limit-videos" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                        <Label htmlFor="limit-videos" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                           Máximo De Videos (0 = Sin Videos)
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           id="limit-videos"
                           type="number"
                           min="0"
@@ -1190,7 +1181,7 @@ function PlanModalDialogContent({
                               },
                             })
                           }
-                          className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                          className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                         />
                       </div>
                     ) : (
@@ -1205,29 +1196,27 @@ function PlanModalDialogContent({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-[var(--dsn-text)]">Pistas De Audio Por Producto</span>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={catalogLimits.audios_per_product.mode === "UNLIMITED"}
-                          onChange={(e) =>
+                          onCheckedChange={(checked) =>
                             setCatalogLimits({
                               ...catalogLimits,
                               audios_per_product: {
-                                mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                value: e.target.checked ? 0 : catalogLimits.audios_per_product.value || 1,
+                                mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                value: checked === true ? 0 : catalogLimits.audios_per_product.value || 1,
                               },
                             })
                           }
-                          className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                         />
                         <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                       </label>
                     </div>
                     {catalogLimits.audios_per_product.mode === "LIMITED" ? (
                       <div>
-                        <label htmlFor="limit-audios" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                        <Label htmlFor="limit-audios" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                           Máximo De Pistas De Audio (0 = Sin Audio)
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           id="limit-audios"
                           type="number"
                           min="0"
@@ -1241,7 +1230,7 @@ function PlanModalDialogContent({
                               },
                             })
                           }
-                          className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                          className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                         />
                       </div>
                     ) : (
@@ -1256,29 +1245,27 @@ function PlanModalDialogContent({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-[var(--dsn-text)]">Archivos PDF Por Producto</span>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={catalogLimits.pdfs_per_product.mode === "UNLIMITED"}
-                          onChange={(e) =>
+                          onCheckedChange={(checked) =>
                             setCatalogLimits({
                               ...catalogLimits,
                               pdfs_per_product: {
-                                mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                value: e.target.checked ? 0 : catalogLimits.pdfs_per_product.value || 2,
+                                mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                value: checked === true ? 0 : catalogLimits.pdfs_per_product.value || 2,
                               },
                             })
                           }
-                          className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                         />
                         <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                       </label>
                     </div>
                     {catalogLimits.pdfs_per_product.mode === "LIMITED" ? (
                       <div>
-                        <label htmlFor="limit-pdfs" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                        <Label htmlFor="limit-pdfs" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                           Máximo De Documentos PDF
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           id="limit-pdfs"
                           type="number"
                           min="0"
@@ -1292,7 +1279,7 @@ function PlanModalDialogContent({
                               },
                             })
                           }
-                          className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                          className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                         />
                       </div>
                     ) : (
@@ -1314,29 +1301,27 @@ function PlanModalDialogContent({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-[var(--dsn-text)]">Total De Contactos</span>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={tenantLimits.contacts.mode === "UNLIMITED"}
-                          onChange={(e) =>
+                          onCheckedChange={(checked) =>
                             setTenantLimits({
                               ...tenantLimits,
                               contacts: {
-                                mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                value: e.target.checked ? 0 : tenantLimits.contacts.value || 1000,
+                                mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                value: checked === true ? 0 : tenantLimits.contacts.value || 1000,
                               },
                             })
                           }
-                          className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                         />
                         <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                       </label>
                     </div>
                     {tenantLimits.contacts.mode === "LIMITED" ? (
                       <div>
-                        <label htmlFor="limit-contacts" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                        <Label htmlFor="limit-contacts" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                           Contactos Únicos
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           id="limit-contacts"
                           type="number"
                           min="0"
@@ -1347,7 +1332,7 @@ function PlanModalDialogContent({
                               contacts: { ...tenantLimits.contacts, value: Number(e.target.value) },
                             })
                           }
-                          className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                          className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                         />
                       </div>
                     ) : (
@@ -1362,29 +1347,27 @@ function PlanModalDialogContent({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-[var(--dsn-text)]">Usuarios Del Inquilino</span>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={tenantLimits.tenant_users.mode === "UNLIMITED"}
-                          onChange={(e) =>
+                          onCheckedChange={(checked) =>
                             setTenantLimits({
                               ...tenantLimits,
                               tenant_users: {
-                                mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                value: e.target.checked ? 0 : tenantLimits.tenant_users.value || 5,
+                                mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                value: checked === true ? 0 : tenantLimits.tenant_users.value || 5,
                               },
                             })
                           }
-                          className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                         />
                         <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                       </label>
                     </div>
                     {tenantLimits.tenant_users.mode === "LIMITED" ? (
                       <div>
-                        <label htmlFor="limit-users" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                        <Label htmlFor="limit-users" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                           Miembros Con Acceso
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           id="limit-users"
                           type="number"
                           min="1"
@@ -1398,7 +1381,7 @@ function PlanModalDialogContent({
                               },
                             })
                           }
-                          className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                          className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                         />
                       </div>
                     ) : (
@@ -1413,29 +1396,27 @@ function PlanModalDialogContent({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-[var(--dsn-text)]">Almacenamiento (MB)</span>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={tenantLimits.storage_bytes.mode === "UNLIMITED"}
-                          onChange={(e) =>
+                          onCheckedChange={(checked) =>
                             setTenantLimits({
                               ...tenantLimits,
                               storage_bytes: {
-                                mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                value: e.target.checked ? 0 : tenantLimits.storage_bytes.value || 500,
+                                mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                value: checked === true ? 0 : tenantLimits.storage_bytes.value || 500,
                               },
                             })
                           }
-                          className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                         />
                         <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                       </label>
                     </div>
                     {tenantLimits.storage_bytes.mode === "LIMITED" ? (
                       <div>
-                        <label htmlFor="limit-storage" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                        <Label htmlFor="limit-storage" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                           Capacidad En MB
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           id="limit-storage"
                           type="number"
                           min="1"
@@ -1449,7 +1430,7 @@ function PlanModalDialogContent({
                               },
                             })
                           }
-                          className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                          className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                         />
                       </div>
                     ) : (
@@ -1464,29 +1445,27 @@ function PlanModalDialogContent({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-[var(--dsn-text)]">Retención De Conversaciones (Días)</span>
                       <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                        <input
-                          type="checkbox"
+                        <Checkbox
                           checked={tenantLimits.chat_retention_days.mode === "UNLIMITED"}
-                          onChange={(e) =>
+                          onCheckedChange={(checked) =>
                             setTenantLimits({
                               ...tenantLimits,
                               chat_retention_days: {
-                                mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                value: e.target.checked ? 0 : tenantLimits.chat_retention_days.value || 30,
+                                mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                value: checked === true ? 0 : tenantLimits.chat_retention_days.value || 30,
                               },
                             })
                           }
-                          className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                         />
                         <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                       </label>
                     </div>
                     {tenantLimits.chat_retention_days.mode === "LIMITED" ? (
                       <div>
-                        <label htmlFor="limit-chat-retention" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                        <Label htmlFor="limit-chat-retention" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                           Días De Retención (Mínimo 30)
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           id="limit-chat-retention"
                           type="number"
                           min="30"
@@ -1500,7 +1479,7 @@ function PlanModalDialogContent({
                               },
                             })
                           }
-                          className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                          className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                         />
                         <p className="mt-1 text-[10px] text-[var(--dsn-text-muted)]">
                           Normativa legal: mínimo 30 días de conservación de mensajes.
@@ -1519,7 +1498,7 @@ function PlanModalDialogContent({
             {/* PESTAÑA 4: Atención Y Canales */}
             {activeTab === "chatwoot" && (
               <div className="space-y-5">
-                <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4 flex items-center justify-between">
+                <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4 flex items-center justify-between gap-4">
                   <div className="space-y-0.5">
                     <span className="text-xs font-semibold text-[var(--dsn-text)]">
                       Habilitar Atención Integrada
@@ -1528,25 +1507,21 @@ function PlanModalDialogContent({
                       Aprovisiona y sincroniza automáticamente una cuenta de atención omnicanal para el inquilino.
                     </p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={chatwootEnabled}
-                      onChange={(e) => setChatwootEnabled(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-[var(--dsn-border)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--dsn-accent)]"></div>
-                  </label>
+                  <Switch
+                    checked={chatwootEnabled}
+                    onCheckedChange={setChatwootEnabled}
+                    aria-label="Habilitar Atención Integrada"
+                  />
                 </div>
 
                 {chatwootEnabled && (
                   <div className="space-y-4 animate-in fade-in duration-200">
-                    <div className="rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-3 text-xs text-amber-900 dark:text-amber-300 flex items-start gap-2">
-                      <Info className="h-4 w-4 shrink-0 mt-0.5" />
-                      <span>
+                    <Alert variant="warning">
+                      <Info className="h-4 w-4" />
+                      <AlertDescription className="text-xs">
                         Chatwoot Community v4.19.1 no bloquea envíos por cuota de correo saliente ni restringe agentes o bandejas en la edición libre. Los valores se parametrizan en el proveedor como referencia comercial.
-                      </span>
-                    </div>
+                      </AlertDescription>
+                    </Alert>
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       {/* Agentes */}
@@ -1554,29 +1529,27 @@ function PlanModalDialogContent({
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-semibold text-[var(--dsn-text)]">Agentes De Atención</span>
                           <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={chatwootLimits.chatwoot_agents.mode === "UNLIMITED"}
-                              onChange={(e) =>
+                              onCheckedChange={(checked) =>
                                 setChatwootLimits({
                                   ...chatwootLimits,
                                   chatwoot_agents: {
-                                    mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                    value: e.target.checked ? 0 : chatwootLimits.chatwoot_agents.value || 2,
+                                    mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                    value: checked === true ? 0 : chatwootLimits.chatwoot_agents.value || 2,
                                   },
                                 })
                               }
-                              className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                             />
                             <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                           </label>
                         </div>
                         {chatwootLimits.chatwoot_agents.mode === "LIMITED" ? (
                           <div>
-                            <label htmlFor="limit-agents" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                            <Label htmlFor="limit-agents" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                               Operadores Humanos
-                            </label>
-                            <input
+                            </Label>
+                            <Input
                               id="limit-agents"
                               type="number"
                               min="1"
@@ -1590,7 +1563,7 @@ function PlanModalDialogContent({
                                   },
                                 })
                               }
-                              className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                              className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                             />
                           </div>
                         ) : (
@@ -1605,29 +1578,27 @@ function PlanModalDialogContent({
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-semibold text-[var(--dsn-text)]">Bandejas De Entrada</span>
                           <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={chatwootLimits.chatwoot_inboxes.mode === "UNLIMITED"}
-                              onChange={(e) =>
+                              onCheckedChange={(checked) =>
                                 setChatwootLimits({
                                   ...chatwootLimits,
                                   chatwoot_inboxes: {
-                                    mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                    value: e.target.checked ? 0 : chatwootLimits.chatwoot_inboxes.value || 5,
+                                    mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                    value: checked === true ? 0 : chatwootLimits.chatwoot_inboxes.value || 5,
                                   },
                                 })
                               }
-                              className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                             />
                             <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                           </label>
                         </div>
                         {chatwootLimits.chatwoot_inboxes.mode === "LIMITED" ? (
                           <div>
-                            <label htmlFor="limit-inboxes" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                            <Label htmlFor="limit-inboxes" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                               Total De Bandejas
-                            </label>
-                            <input
+                            </Label>
+                            <Input
                               id="limit-inboxes"
                               type="number"
                               min="1"
@@ -1641,7 +1612,7 @@ function PlanModalDialogContent({
                                   },
                                 })
                               }
-                              className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                              className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                             />
                           </div>
                         ) : (
@@ -1656,29 +1627,27 @@ function PlanModalDialogContent({
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-semibold text-[var(--dsn-text)]">Correos Salientes</span>
                           <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               checked={chatwootLimits.chatwoot_outbound_emails.mode === "UNLIMITED"}
-                              onChange={(e) =>
+                              onCheckedChange={(checked) =>
                                 setChatwootLimits({
                                   ...chatwootLimits,
                                   chatwoot_outbound_emails: {
-                                    mode: e.target.checked ? "UNLIMITED" : "LIMITED",
-                                    value: e.target.checked ? 0 : chatwootLimits.chatwoot_outbound_emails.value || 1000,
+                                    mode: checked === true ? "UNLIMITED" : "LIMITED",
+                                    value: checked === true ? 0 : chatwootLimits.chatwoot_outbound_emails.value || 1000,
                                   },
                                 })
                               }
-                              className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                             />
                             <span className="text-[var(--dsn-text-secondary)]">Ilimitado</span>
                           </label>
                         </div>
                         {chatwootLimits.chatwoot_outbound_emails.mode === "LIMITED" ? (
                           <div>
-                            <label htmlFor="limit-emails" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
+                            <Label htmlFor="limit-emails" className="block text-[11px] text-[var(--dsn-text-secondary)] mb-1">
                               Cuota De Correos
-                            </label>
-                            <input
+                            </Label>
+                            <Input
                               id="limit-emails"
                               type="number"
                               min="0"
@@ -1692,7 +1661,7 @@ function PlanModalDialogContent({
                                   },
                                 })
                               }
-                              className="w-full min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 text-xs text-[var(--dsn-text)] font-mono"
+                              className="min-h-[40px] bg-[var(--dsn-surface)] text-xs font-mono"
                             />
                           </div>
                         ) : (
@@ -1713,51 +1682,49 @@ function PlanModalDialogContent({
                 <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-3.5 space-y-2">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                      <label
+                      <Label
                         htmlFor="plan-white-label-mode"
                         className="text-xs font-semibold text-[var(--dsn-text)] block"
                       >
                         Nivel de Marca Blanca de Plataforma
-                      </label>
+                      </Label>
                       <p className="text-[11px] text-[var(--dsn-text-secondary)]">
                         Define el alcance de personalización visual habilitado en el Backoffice del comercio.
                       </p>
                     </div>
-                    <select
+                    <Select
                       id="plan-white-label-mode"
                       value={whiteLabelMode}
                       onChange={(e) =>
                         setWhiteLabelMode(e.target.value as "none" | "paleta" | "completa")
                       }
-                      className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs font-medium text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none min-w-[210px]"
+                      className="bg-[var(--dsn-surface)] text-xs font-medium min-w-[210px] w-auto"
                     >
                       <option value="none">Sin Marca Blanca (Solo Logo Básico)</option>
                       <option value="paleta">Paleta de Colores (WCAG 2.2 AA)</option>
                       <option value="completa">Marca Blanca Completa (Enterprise)</option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-3.5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                      <label
+                      <Label
                         htmlFor="plan-community-feed-enabled"
                         className="text-xs font-semibold text-[var(--dsn-text)] block"
                       >
                         Acceso a Comunidades y Catálogo Compartido
-                      </label>
+                      </Label>
                       <p className="text-[11px] text-[var(--dsn-text-secondary)]">
                         Habilita a los comercios de este plan para unirse a comunidades, clonar productos y colaborar en red.
                       </p>
                     </div>
                     <label className="inline-flex items-center gap-2 cursor-pointer">
-                      <input
+                      <Checkbox
                         id="plan-community-feed-enabled"
-                        type="checkbox"
                         checked={communityFeedEnabled}
-                        onChange={(e) => setCommunityFeedEnabled(e.target.checked)}
-                        className="h-4 w-4 rounded border-[var(--dsn-border)] accent-[var(--dsn-accent)]"
+                        onCheckedChange={(checked) => setCommunityFeedEnabled(checked === true)}
                       />
                       <span className="text-xs font-medium text-[var(--dsn-text)]">
                         {communityFeedEnabled ? "Habilitado" : "Deshabilitado"}
@@ -1768,27 +1735,27 @@ function PlanModalDialogContent({
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-2 border-b border-[var(--dsn-border)]">
                   <div className="relative flex-1">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--dsn-text-secondary)]" />
-                    <input
+                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--dsn-text-secondary)]" />
+                    <Input
                       type="text"
                       placeholder="Buscar capacidades por nombre o código..."
                       value={capSearchTerm}
                       onChange={(e) => setCapSearchTerm(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] pl-9 pr-3 py-2 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                      className="pl-9 text-xs"
                     />
                   </div>
 
                   <div className="flex items-center gap-2">
                     <Filter className="h-3.5 w-3.5 text-[var(--dsn-text-secondary)]" />
-                    <select
+                    <Select
                       value={capFilter}
                       onChange={(e) => setCapFilter(e.target.value as "all" | "enabled" | "disabled")}
-                      className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)] focus:outline-none"
+                      className="text-xs w-auto min-h-[36px]"
                     >
                       <option value="all">Todas ({capabilityCatalog.length})</option>
                       <option value="enabled">Habilitadas ({selectedCapabilitiesCount})</option>
                       <option value="disabled">Deshabilitadas ({capabilityCatalog.length - selectedCapabilitiesCount})</option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
 
@@ -1828,14 +1795,14 @@ function PlanModalDialogContent({
                                       {item.name?.es || item.code}
                                     </span>
                                     {item.ownership === "mocter" && (
-                                      <span className="rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.2 text-[10px] font-semibold">
+                                      <Badge variant="accent" className="px-1.5 py-0 text-[10px]">
                                         Mocter
-                                      </span>
+                                      </Badge>
                                     )}
                                     {isSpecial && (
-                                      <span className="rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.2 text-[10px] font-semibold">
+                                      <Badge variant="warning" className="px-1.5 py-0 text-[10px]">
                                         Restringida
-                                      </span>
+                                      </Badge>
                                     )}
                                   </div>
                                   <p className="text-[11px] text-[var(--dsn-text-secondary)] line-clamp-2">
@@ -1858,12 +1825,12 @@ function PlanModalDialogContent({
                                   )}
                                 </div>
 
-                                <input
-                                  type="checkbox"
+                                <Checkbox
                                   disabled={isSpecial}
                                   checked={isEnabled}
-                                  onChange={() => {}}
-                                  className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)] mt-0.5"
+                                  onClick={(e) => e.stopPropagation()}
+                                  onCheckedChange={() => !isSpecial && handleToggleCapability(item.code)}
+                                  className="mt-0.5 shrink-0"
                                 />
                               </div>
                             );
@@ -2039,12 +2006,9 @@ function PlanModalDialogContent({
                           .map(([code]) => {
                             const cap = capabilityCatalog.find((c) => c.code === code);
                             return (
-                              <span
-                                key={code}
-                                className="rounded-md bg-[var(--dsn-accent)]/10 text-[var(--dsn-accent)] px-2 py-0.5 text-[11px] font-medium"
-                              >
+                              <Badge key={code} variant="accent" className="rounded-md px-2 py-0.5 text-[11px]">
                                 {cap?.name?.es || code}
-                              </span>
+                              </Badge>
                             );
                           })
                       )}
@@ -2055,11 +2019,12 @@ function PlanModalDialogContent({
             )}
 
             {/* Botones de navegación y acción */}
-            <div className="flex items-center justify-between pt-4 border-t border-[var(--dsn-border)]">
+            <DialogFooter className="flex items-center justify-between sm:justify-between pt-4 border-t border-[var(--dsn-border)]">
               <div>
                 {activeTab !== "commercial" && (
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
                     onClick={() => {
                       if (activeTab === "summary") setActiveTab("capabilities");
                       else if (activeTab === "capabilities") setActiveTab("chatwoot");
@@ -2067,19 +2032,20 @@ function PlanModalDialogContent({
                       else if (activeTab === "tenant") setActiveTab("catalog");
                       else if (activeTab === "catalog") setActiveTab("commercial");
                     }}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--dsn-border)] text-xs text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)] transition-colors"
+                    className="text-xs"
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
                     <span>Anterior</span>
-                  </button>
+                  </Button>
                 )}
               </div>
 
               <div className="flex items-center gap-3">
                 {activeTab !== "summary" ? (
-                  <button
+                  <Button
                     key="wizard-next-btn"
                     type="button"
+                    variant="secondary"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -2089,41 +2055,34 @@ function PlanModalDialogContent({
                       else if (activeTab === "chatwoot") setActiveTab("capabilities");
                       else if (activeTab === "capabilities") setActiveTab("summary");
                     }}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--dsn-surface-secondary)] text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-border)] transition-colors"
+                    className="text-xs font-medium"
                   >
                     <span>Siguiente</span>
                     <ArrowRight className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 ) : (
-                  <button
+                  <Button
                     key="wizard-submit-btn"
                     type="button"
+                    variant="primary"
                     onClick={(e) => {
                       e.preventDefault();
                       handleSubmit(e);
                     }}
                     disabled={loading}
-                    className="flex items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-5 py-2 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50 transition-all shadow-sm"
+                    loading={loading}
+                    loadingText="Guardando Plan..."
+                    className="text-xs font-medium"
                   >
-                    {loading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Guardando Plan...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="h-4 w-4" />
-                        <span>{isEdit ? "Actualizar Plan Comercial" : "Guardar Plan Comercial"}</span>
-                      </>
-                    )}
-                  </button>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>{isEdit ? "Actualizar Plan Comercial" : "Guardar Plan Comercial"}</span>
+                  </Button>
                 )}
               </div>
-            </div>
+            </DialogFooter>
           </form>
         )}
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -2140,14 +2099,23 @@ export function PlanModalDialog({
   plan,
   onSuccess,
 }: PlanModalDialogProps) {
-  if (!isOpen) return null;
-
   return (
-    <PlanModalDialogContent
-      key={plan?.id ?? "new"}
-      onClose={onClose}
-      plan={plan}
-      onSuccess={onSuccess}
-    />
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-w-5xl xl:max-w-6xl p-6 flex flex-col max-h-[90vh]">
+        {isOpen && (
+          <PlanModalDialogContent
+            key={plan?.id ?? "new"}
+            onClose={onClose}
+            plan={plan}
+            onSuccess={onSuccess}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

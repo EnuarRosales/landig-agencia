@@ -6,7 +6,6 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
-  X,
   Copy,
   Check,
   PowerOff,
@@ -17,7 +16,21 @@ import {
   GitBranch,
 } from "lucide-react";
 import type { AdminCellDto, CellHostDto } from "@mocter/domain";
-import { ConfirmationModal } from "@/components/confirmation-modal";
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  ConfirmationModal,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+} from "@mocter/ui";
 import { adminFetch } from "@/lib/api-client";
 
 interface CellActionsProps {
@@ -308,24 +321,28 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
     <>
       <div className="flex items-center gap-1.5 justify-end">
         {/* Botón Ver Manifiesto */}
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={handleLoadManifest}
           disabled={loadingAction !== null}
           title="Ver Manifiesto y Archivos de Despliegue"
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)] transition-colors border border-[var(--dsn-border)]"
+          className="h-auto min-h-0 rounded-md px-2 py-1 text-[11px]"
         >
           <FileCode2 className="h-3.5 w-3.5" />
           <span>Manifiesto</span>
-        </button>
+        </Button>
 
         {/* Botón Verificar Conexión / Reverificar */}
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={handleExecuteHandshake}
           disabled={loadingAction !== null}
           title={cell.status === "active" ? "Reverificar Conexión (Probes BD y HTTP)" : "Verificar Conexión (Probes BD y HTTP)"}
-          className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all border ${
+          className={`h-auto min-h-0 rounded-md px-2.5 py-1 text-[11px] ${
             cell.status === "active"
               ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border-[var(--dsn-accent)]/30 hover:bg-[var(--dsn-accent)]/25"
               : "bg-amber-500/15 text-amber-500 border-amber-500/30 hover:bg-amber-500/25 animate-pulse"
@@ -333,651 +350,628 @@ export function CellActions({ cell, hosts = [], apiUrl, onRefresh }: CellActions
         >
           <RefreshCw className={`h-3 w-3 ${loadingAction === "handshake" ? "animate-spin" : ""}`} />
           <span>{cell.status === "active" ? "Reverificar" : "Verificar Conexión"}</span>
-        </button>
+        </Button>
 
         {/* Botón Drenar (si está activa) */}
         {cell.status === "active" && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={handleOpenDrainModal}
             disabled={loadingAction !== null}
             title="Drenar Célula (no admitir más inquilinos)"
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/30 transition-colors border border-transparent"
+            className="h-auto min-h-0 rounded-md px-2 py-1 text-[11px] text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
           >
             <PowerOff className="h-3 w-3" />
             <span>Drenar</span>
-          </button>
+          </Button>
         )}
 
         {/* Botón Migrar Esquema */}
         {["active", "maintenance", "verifying"].includes(cell.status) && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => {
               setMigrateError(null);
               setMigrateModalOpen(true);
             }}
             disabled={loadingAction !== null}
             title="Ejecutar Migraciones Pendientes de Esquema"
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/30 transition-colors border border-[var(--dsn-border)]"
+            className="h-auto min-h-0 rounded-md px-2 py-1 text-[11px] text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/30"
           >
             <GitBranch className="h-3 w-3" />
             <span>Migrar</span>
-          </button>
+          </Button>
         )}
 
         {/* Botón Editar */}
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="sm"
           onClick={handleOpenEditModal}
           disabled={loadingAction !== null}
           title="Editar Configuración de la Célula"
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)] transition-colors border border-[var(--dsn-border)]"
+          className="h-auto min-h-0 rounded-md px-2 py-1 text-[11px]"
         >
           <Pencil className="h-3 w-3" />
           <span>Editar</span>
-        </button>
+        </Button>
 
         {/* Botón Eliminar */}
-        <button
+        <Button
           type="button"
+          variant="destructive"
+          size="sm"
           onClick={() => {
             setDeleteError(null);
             setDeleteModalOpen(true);
           }}
           disabled={loadingAction !== null}
           title="Eliminar Célula de Datos"
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/30 transition-colors border border-[var(--dsn-border)]"
+          className="h-auto min-h-0 rounded-md px-2 py-1 text-[11px]"
         >
           <Trash2 className="h-3 w-3" />
           <span>Eliminar</span>
-        </button>
+        </Button>
       </div>
 
       {/* Modal de Manifiesto */}
-      {manifestModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in text-left"
-        >
-          <div className="relative w-full max-w-3xl rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl p-6 max-h-[90vh] flex flex-col text-left">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-4 mb-4">
-              <div>
-                <h3 className="text-base font-bold text-[var(--dsn-text)] flex items-center gap-2">
-                  <FileCode2 className="h-5 w-5 text-[var(--dsn-accent)]" />
-                  Manifiesto De Despliegue · {cell.code}
-                </h3>
-                {manifestData && (
-                  <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
-                    Directorio: <code className="font-mono text-[var(--dsn-accent)]">{manifestData.workingDir}</code> · Usuario: <code className="font-mono">{manifestData.deployUser}</code>
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setManifestModalOpen(false);
-                  setManifestError(null);
-                }}
-                className="rounded-lg p-1 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)] min-h-[44px] min-w-[44px] flex items-center justify-center"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <Dialog
+        open={manifestModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setManifestModalOpen(false);
+            setManifestError(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl p-6 max-h-[90vh] flex flex-col text-left">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-4 mb-4 pr-8">
+            <DialogTitle className="text-base font-bold text-[var(--dsn-text)] flex items-center gap-2">
+              <FileCode2 className="h-5 w-5 text-[var(--dsn-accent)]" />
+              <span>Manifiesto De Despliegue · {cell.code}</span>
+            </DialogTitle>
+            {manifestData && (
+              <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
+                Directorio: <code className="font-mono text-[var(--dsn-accent)]">{manifestData.workingDir}</code> · Usuario: <code className="font-mono">{manifestData.deployUser}</code>
+              </DialogDescription>
+            )}
+          </DialogHeader>
 
-            {manifestError ? (
-              <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-4 text-xs text-rose-300">
+          {manifestError ? (
+            <Alert variant="destructive" className="text-xs">
+              <AlertDescription className="text-xs">
                 <p className="font-semibold mb-1">Error al cargar el manifiesto de la célula:</p>
                 <p className="font-mono">{manifestError}</p>
-              </div>
-            ) : !manifestData ? (
-              <div className="flex items-center justify-center py-12 gap-3 text-xs text-[var(--dsn-text-secondary)]">
-                <Loader2 className="h-5 w-5 animate-spin text-[var(--dsn-accent)]" />
-                <span>Generando manifiesto y secretos criptográficos...</span>
-              </div>
-            ) : (
-              <>
-                {/* Selector de pestañas */}
-                <div className="flex gap-2 border-b border-[var(--dsn-border)] pb-2 mb-4">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("compose")}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                      activeTab === "compose"
-                        ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-                        : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
-                    }`}
-                  >
-                    docker-compose.cell.yml
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("env")}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                      activeTab === "env"
-                        ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-                        : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
-                    }`}
-                  >
-                    .env.cell
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("instructions")}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                      activeTab === "instructions"
-                        ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-                        : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
-                    }`}
-                  >
-                    Instrucciones En Host
-                  </button>
-                </div>
-
-                {/* Contenido de la pestaña */}
-                <div className="flex-1 overflow-y-auto space-y-4">
-                  {activeTab === "compose" && (
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(manifestData.dockerComposeContent, "compose")}
-                        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded bg-[var(--dsn-surface)]/90 px-2.5 py-1 text-xs font-semibold border border-[var(--dsn-border)] shadow-xs hover:text-[var(--dsn-accent)]"
-                      >
-                        {copied === "compose" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                        <span>{copied === "compose" ? "Copiado" : "Copiar"}</span>
-                      </button>
-                      <pre className="p-4 rounded-lg bg-[var(--dsn-surface-secondary)] border border-[var(--dsn-border)] font-mono text-xs overflow-x-auto text-[var(--dsn-text)] leading-relaxed">
-                        {manifestData.dockerComposeContent}
-                      </pre>
-                    </div>
-                  )}
-
-                  {activeTab === "env" && (
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(manifestData.envContent, "env")}
-                        className="absolute top-2 right-2 inline-flex items-center gap-1 rounded bg-[var(--dsn-surface)]/90 px-2.5 py-1 text-xs font-semibold border border-[var(--dsn-border)] shadow-xs hover:text-[var(--dsn-accent)]"
-                      >
-                        {copied === "env" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                        <span>{copied === "env" ? "Copiado" : "Copiar"}</span>
-                      </button>
-                      <pre className="p-4 rounded-lg bg-[var(--dsn-surface-secondary)] border border-[var(--dsn-border)] font-mono text-xs overflow-x-auto text-[var(--dsn-text)] leading-relaxed">
-                        {manifestData.envContent}
-                      </pre>
-                    </div>
-                  )}
-
-                  {activeTab === "instructions" && (
-                    <div className="space-y-3 p-2">
-                      <h4 className="text-xs font-bold text-[var(--dsn-text)]">
-                        Pasos De Ejecución En Producción (Usuario deploy:1000):
-                      </h4>
-                      <ol className="list-decimal list-inside space-y-2 text-xs text-[var(--dsn-text-secondary)]">
-                        {manifestData.instructions.map((step: string, idx: number) => (
-                          <li key={idx} className="leading-relaxed">
-                            <span className="text-[var(--dsn-text)]">{step}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-
-            <div className="flex justify-end pt-4 border-t border-[var(--dsn-border)] mt-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setManifestModalOpen(false);
-                  setManifestError(null);
-                }}
-                className="rounded-lg bg-[var(--dsn-surface-secondary)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-border)] min-h-[44px]"
-              >
-                Cerrar
-              </button>
+              </AlertDescription>
+            </Alert>
+          ) : !manifestData ? (
+            <div className="flex items-center justify-center py-12 gap-3 text-xs text-[var(--dsn-text-secondary)]">
+              <Loader2 className="h-5 w-5 animate-spin text-[var(--dsn-accent)]" />
+              <span>Generando manifiesto y secretos criptográficos...</span>
             </div>
-          </div>
-        </div>
-      )}
+          ) : (
+            <>
+              {/* Selector de pestañas */}
+              <div className="flex gap-2 border-b border-[var(--dsn-border)] pb-2 mb-4">
+                <Button
+                  type="button"
+                  variant={activeTab === "compose" ? "ai" : "ghost"}
+                  size="sm"
+                  onClick={() => setActiveTab("compose")}
+                >
+                  docker-compose.cell.yml
+                </Button>
+                <Button
+                  type="button"
+                  variant={activeTab === "env" ? "ai" : "ghost"}
+                  size="sm"
+                  onClick={() => setActiveTab("env")}
+                >
+                  .env.cell
+                </Button>
+                <Button
+                  type="button"
+                  variant={activeTab === "instructions" ? "ai" : "ghost"}
+                  size="sm"
+                  onClick={() => setActiveTab("instructions")}
+                >
+                  Instrucciones En Host
+                </Button>
+              </div>
+
+              {/* Contenido de la pestaña */}
+              <div className="flex-1 overflow-y-auto space-y-4">
+                {activeTab === "compose" && (
+                  <div className="relative">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => copyToClipboard(manifestData.dockerComposeContent, "compose")}
+                      className="absolute top-2 right-2 h-auto min-h-0 px-2.5 py-1 text-xs"
+                    >
+                      {copied === "compose" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                      <span>{copied === "compose" ? "Copiado" : "Copiar"}</span>
+                    </Button>
+                    <pre className="p-4 rounded-lg bg-[var(--dsn-surface-secondary)] border border-[var(--dsn-border)] font-mono text-xs overflow-x-auto text-[var(--dsn-text)] leading-relaxed">
+                      {manifestData.dockerComposeContent}
+                    </pre>
+                  </div>
+                )}
+
+                {activeTab === "env" && (
+                  <div className="relative">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => copyToClipboard(manifestData.envContent, "env")}
+                      className="absolute top-2 right-2 h-auto min-h-0 px-2.5 py-1 text-xs"
+                    >
+                      {copied === "env" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                      <span>{copied === "env" ? "Copiado" : "Copiar"}</span>
+                    </Button>
+                    <pre className="p-4 rounded-lg bg-[var(--dsn-surface-secondary)] border border-[var(--dsn-border)] font-mono text-xs overflow-x-auto text-[var(--dsn-text)] leading-relaxed">
+                      {manifestData.envContent}
+                    </pre>
+                  </div>
+                )}
+
+                {activeTab === "instructions" && (
+                  <div className="space-y-3 p-2">
+                    <h4 className="text-xs font-bold text-[var(--dsn-text)]">
+                      Pasos De Ejecución En Producción (Usuario deploy:1000):
+                    </h4>
+                    <ol className="list-decimal list-inside space-y-2 text-xs text-[var(--dsn-text-secondary)]">
+                      {manifestData.instructions.map((step: string, idx: number) => (
+                        <li key={idx} className="leading-relaxed">
+                          <span className="text-[var(--dsn-text)]">{step}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          <DialogFooter className="pt-4 border-t border-[var(--dsn-border)] mt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setManifestModalOpen(false);
+                setManifestError(null);
+              }}
+              className="min-h-[44px] text-xs"
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Resultado de Verificación De Conexión */}
-      {handshakeModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in text-left"
-        >
-          <div className="relative w-full max-w-lg rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl p-6 flex flex-col text-left">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-4 mb-4">
-              <div className="flex items-center gap-2">
-                {handshakeResult?.ok ? (
-                  <CheckCircle2 className="h-6 w-6 text-emerald-400" />
-                ) : (
-                  <AlertTriangle className="h-6 w-6 text-rose-400" />
-                )}
-                <div>
-                  <h3 className="text-sm font-bold text-[var(--dsn-text)]">
-                    {handshakeResult?.ok ? "Verificación de Conexión Exitosa" : "Fallo de Verificación de Conexión"}
-                  </h3>
-                  <p className="text-xs text-[var(--dsn-text-secondary)]">
-                    Célula: {cell.code} ({cell.topologyType})
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setHandshakeModalOpen(false)}
-                className="rounded-lg p-1 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)] min-h-[44px] min-w-[44px] flex items-center justify-center"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 py-2 text-xs">
-              {errorMsg ? (
-                <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-rose-300">
-                  {errorMsg}
-                </div>
+      <Dialog open={handshakeModalOpen} onOpenChange={setHandshakeModalOpen}>
+        <DialogContent className="max-w-lg p-6 flex flex-col text-left">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-4 mb-4 pr-8">
+            <div className="flex items-center gap-2">
+              {handshakeResult?.ok ? (
+                <CheckCircle2 className="h-6 w-6 text-emerald-400" />
               ) : (
-                <>
-                  <div className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-[var(--dsn-text)]">1. Probe Base De Datos (PgBouncer):</span>
-                      <span className={`font-mono text-[11px] font-bold ${handshakeResult?.diagnostic?.db?.ok ? "text-emerald-400" : "text-rose-400"}`}>
-                        {handshakeResult?.diagnostic?.db?.ok ? `OK (${handshakeResult.diagnostic.db.latencyMs}ms)` : "FALLÓ"}
-                      </span>
-                    </div>
-                    {handshakeResult?.diagnostic?.db?.error && (
-                      <p className="text-[11px] text-rose-300 font-mono pl-3 border-l-2 border-rose-500/40">
-                        {handshakeResult.diagnostic.db.error}
-                      </p>
-                    )}
-
-                    <div className="flex items-center justify-between pt-2 border-t border-[var(--dsn-border)]">
-                      <span className="font-semibold text-[var(--dsn-text)]">2. Probe Aplicación HTTP (/api/health):</span>
-                      <span className={`font-mono text-[11px] font-bold ${handshakeResult?.diagnostic?.http?.ok ? "text-emerald-400" : "text-rose-400"}`}>
-                        {handshakeResult?.diagnostic?.http?.ok ? `OK (${handshakeResult.diagnostic.http.latencyMs}ms)` : "FALLÓ"}
-                      </span>
-                    </div>
-                    {handshakeResult?.diagnostic?.http?.error && (
-                      <p className="text-[11px] text-rose-300 font-mono pl-3 border-l-2 border-rose-500/40">
-                        {handshakeResult.diagnostic.http.error}
-                      </p>
-                    )}
-                  </div>
-
-                  <p className="text-[11px] text-[var(--dsn-text-secondary)] leading-relaxed">
-                    {handshakeResult?.ok
-                      ? `La célula fue activada correctamente y se encuentra disponible para la asignación de inquilinos en el Router Global.`
-                      : `La célula permanece en estado "error_connection". Corrige los problemas de red o certificados antes de reintentar.`}
-                  </p>
-                </>
+                <AlertTriangle className="h-6 w-6 text-rose-400" />
               )}
+              <div>
+                <DialogTitle className="text-sm font-bold text-[var(--dsn-text)]">
+                  {handshakeResult?.ok ? "Verificación de Conexión Exitosa" : "Fallo de Verificación de Conexión"}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
+                  Célula: {cell.code} ({cell.topologyType})
+                </DialogDescription>
+              </div>
             </div>
+          </DialogHeader>
 
-            <div className="flex justify-end pt-4 border-t border-[var(--dsn-border)] mt-4">
-              <button
-                type="button"
-                onClick={() => setHandshakeModalOpen(false)}
-                className="rounded-lg bg-[var(--dsn-surface-secondary)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-border)] min-h-[44px]"
-              >
-                Aceptar
-              </button>
-            </div>
+          <div className="space-y-3 py-2 text-xs">
+            {errorMsg ? (
+              <Alert variant="destructive">
+                <AlertDescription className="text-xs">{errorMsg}</AlertDescription>
+              </Alert>
+            ) : (
+              <>
+                <div className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-[var(--dsn-text)]">1. Probe Base De Datos (PgBouncer):</span>
+                    <span className={`font-mono text-[11px] font-bold ${handshakeResult?.diagnostic?.db?.ok ? "text-emerald-400" : "text-rose-400"}`}>
+                      {handshakeResult?.diagnostic?.db?.ok ? `OK (${handshakeResult.diagnostic.db.latencyMs}ms)` : "FALLÓ"}
+                    </span>
+                  </div>
+                  {handshakeResult?.diagnostic?.db?.error && (
+                    <p className="text-[11px] text-rose-300 font-mono pl-3 border-l-2 border-rose-500/40">
+                      {handshakeResult.diagnostic.db.error}
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-between pt-2 border-t border-[var(--dsn-border)]">
+                    <span className="font-semibold text-[var(--dsn-text)]">2. Probe Aplicación HTTP (/api/health):</span>
+                    <span className={`font-mono text-[11px] font-bold ${handshakeResult?.diagnostic?.http?.ok ? "text-emerald-400" : "text-rose-400"}`}>
+                      {handshakeResult?.diagnostic?.http?.ok ? `OK (${handshakeResult.diagnostic.http.latencyMs}ms)` : "FALLÓ"}
+                    </span>
+                  </div>
+                  {handshakeResult?.diagnostic?.http?.error && (
+                    <p className="text-[11px] text-rose-300 font-mono pl-3 border-l-2 border-rose-500/40">
+                      {handshakeResult.diagnostic.http.error}
+                    </p>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-[var(--dsn-text-secondary)] leading-relaxed">
+                  {handshakeResult?.ok
+                    ? `La célula fue activada correctamente y se encuentra disponible para la asignación de inquilinos en el Router Global.`
+                    : `La célula permanece en estado "error_connection". Corrige los problemas de red o certificados antes de reintentar.`}
+                </p>
+              </>
+            )}
           </div>
-        </div>
-      )}
+
+          <DialogFooter className="pt-4 border-t border-[var(--dsn-border)] mt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setHandshakeModalOpen(false)}
+              className="min-h-[44px] text-xs"
+            >
+              Aceptar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Edición de Célula */}
-      {editModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in text-left"
+      <Dialog
+        open={editModalOpen}
+        onOpenChange={(open) => {
+          if (!open && !editLoading) setEditModalOpen(false);
+        }}
+      >
+        <DialogContent
+          className="max-w-2xl p-6 max-h-[90vh] flex flex-col overflow-y-auto text-left"
+          disableEscapeKeyDown={editLoading}
+          disableInteractOutside={editLoading}
         >
-          <div className="relative w-full max-w-2xl rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl max-h-[90vh] flex flex-col overflow-y-auto text-left">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3 mb-4">
-              <div className="flex items-center gap-2">
-                <Pencil className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <div>
-                  <h2 className="text-base font-semibold text-[var(--dsn-text)]">
-                    Editar Célula De Datos · {cell.code}
-                  </h2>
-                  <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
-                    Modifica los parámetros de conexión, topología o límites de capacidad de la célula.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditModalOpen(false)}
-                className="text-xs text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)] min-h-[44px] px-2 flex items-center"
-              >
-                Cancelar
-              </button>
-            </div>
-
-            {editError && (
-              <div className="mb-4 flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/30 p-3 text-xs text-red-400">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{editError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSaveEdit} className="space-y-4">
-              {/* Fila 1: Código De La Célula | Nivel De Servicio */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="edit-cell-code"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Código De La Célula
-                  </label>
-                  <input
-                    id="edit-cell-code"
-                    type="text"
-                    disabled
-                    readOnly
-                    value={cell.code}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text-secondary)] opacity-70 cursor-not-allowed focus:outline-none font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-cell-tier"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Nivel De Servicio
-                  </label>
-                  <select
-                    id="edit-cell-tier"
-                    value={editFormData.tier}
-                    onChange={(e) => setEditFormData({ ...editFormData, tier: e.target.value as "standard" | "dedicated" })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  >
-                    <option value="standard">Estándar (Multi-Inquilino Compartido)</option>
-                    <option value="dedicated">Dedicado (Inquilino Enterprise VIP)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Fila 2: Topología De Despliegue | Host De Despliegue */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="edit-cell-topology"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Topología De Despliegue
-                  </label>
-                  <select
-                    id="edit-cell-topology"
-                    value={editFormData.topologyType}
-                    onChange={(e) =>
-                      setEditFormData({
-                        ...editFormData,
-                        topologyType: e.target.value as "remote_vps" | "local_compose",
-                      })
-                    }
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  >
-                    <option value="remote_vps">VPS Remoto (Host Dedicado)</option>
-                    <option value="local_compose">Docker Compose Local (Emulación)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-cell-host-id"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Host De Despliegue
-                  </label>
-                  <select
-                    id="edit-cell-host-id"
-                    value={editFormData.hostId}
-                    onChange={(e) => setEditFormData({ ...editFormData, hostId: e.target.value })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
-                  >
-                    <option value="">Sin Asignar (Borrador)</option>
-                    {hosts.map((h) => {
-                      const isCompatible =
-                        editFormData.topologyType === "local_compose"
-                          ? h.deploymentProfile === "local_development"
-                          : h.deploymentProfile !== "local_development";
-                      const isDisabled = (h.status !== "ready" && h.id !== cell.hostId) || !isCompatible;
-                      const compatibilitySuffix = !isCompatible ? " (Incompatible)" : "";
-                      return (
-                        <option key={h.id} value={h.id} disabled={isDisabled}>
-                          {h.code} · {h.deploymentProfile} {h.status !== "ready" ? `(${h.status})` : ""}{compatibilitySuffix}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3 mb-4 pr-8">
+            <div className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-[var(--dsn-accent)]" />
               <div>
-                <label
-                  htmlFor="edit-cell-app-url"
+                <DialogTitle className="text-base font-semibold text-[var(--dsn-text)]">
+                  Editar Célula De Datos · {cell.code}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
+                  Modifica los parámetros de conexión, topología o límites de capacidad de la célula.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {editError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-xs">{editError}</AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleSaveEdit} className="space-y-4">
+            {/* Fila 1: Código De La Célula | Nivel De Servicio */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label
+                  htmlFor="edit-cell-code"
                   className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
                 >
-                  URL De La Aplicación Celular
-                </label>
-                <input
-                  id="edit-cell-app-url"
+                  Código De La Célula
+                </Label>
+                <Input
+                  id="edit-cell-code"
                   type="text"
-                  required
-                  placeholder="ej. http://10.0.0.2:3004 o http://localhost:3004"
-                  value={editFormData.appUrl}
-                  onChange={(e) => setEditFormData({ ...editFormData, appUrl: e.target.value })}
-                  className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                  disabled
+                  readOnly
+                  value={cell.code}
+                  className="min-h-[44px] opacity-70 cursor-not-allowed font-mono text-xs"
                 />
               </div>
 
-              {/* Fila 3: Host De PgBouncer O PostgreSQL | Puerto De Conexión | Nombre De La Base De Datos */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div>
-                  <label
-                    htmlFor="edit-cell-host"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Host De PgBouncer O PostgreSQL
-                  </label>
-                  <input
-                    id="edit-cell-host"
-                    type="text"
-                    required
-                    placeholder="ej. pg-cell o 10.0.0.2"
-                    value={editFormData.pgbouncerHost}
-                    onChange={(e) => setEditFormData({ ...editFormData, pgbouncerHost: e.target.value })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-cell-port"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Puerto De Conexión
-                  </label>
-                  <input
-                    id="edit-cell-port"
-                    type="number"
-                    required
-                    value={editFormData.pgbouncerPort}
-                    onChange={(e) => setEditFormData({ ...editFormData, pgbouncerPort: Number(e.target.value) })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-cell-dbname"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Nombre De La Base De Datos
-                  </label>
-                  <input
-                    id="edit-cell-dbname"
-                    type="text"
-                    required
-                    placeholder="ej. mocter_cell_01"
-                    value={editFormData.databaseName}
-                    onChange={(e) => setEditFormData({ ...editFormData, databaseName: e.target.value })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Fila 4: Dirección IP Privada (Opcional) | Dirección IP Pública (Opcional) */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="edit-cell-private-ip"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Dirección IP Privada (Opcional)
-                  </label>
-                  <input
-                    id="edit-cell-private-ip"
-                    type="text"
-                    placeholder="ej. 10.0.0.2"
-                    value={editFormData.privateIp}
-                    onChange={(e) => setEditFormData({ ...editFormData, privateIp: e.target.value })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-cell-public-ip"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Dirección IP Pública (Opcional)
-                  </label>
-                  <input
-                    id="edit-cell-public-ip"
-                    type="text"
-                    placeholder="ej. 198.51.100.2"
-                    value={editFormData.publicIp}
-                    onChange={(e) => setEditFormData({ ...editFormData, publicIp: e.target.value })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Fila 5: Capacidad Máxima De Inquilinos | Región Geográfica De Despliegue */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="edit-cell-capacity"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Capacidad Máxima De Inquilinos
-                  </label>
-                  <input
-                    id="edit-cell-capacity"
-                    type="number"
-                    min={cell.currentClients || 1}
-                    max={500}
-                    required
-                    value={editFormData.maxClients}
-                    onChange={(e) => setEditFormData({ ...editFormData, maxClients: Number(e.target.value) })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-cell-region"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Región Geográfica De Despliegue
-                  </label>
-                  <input
-                    id="edit-cell-region"
-                    type="text"
-                    required
-                    placeholder="ej. us-east-1 o sa-east-1"
-                    value={editFormData.region}
-                    onChange={(e) => setEditFormData({ ...editFormData, region: e.target.value })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Fila 6: Directorio De Trabajo Canónico | Usuario De Despliegue */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="edit-cell-working-dir"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Directorio De Trabajo Canónico
-                  </label>
-                  <input
-                    id="edit-cell-working-dir"
-                    type="text"
-                    required
-                    value={editFormData.workingDir}
-                    onChange={(e) => setEditFormData({ ...editFormData, workingDir: e.target.value })}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="edit-cell-deploy-user"
-                    className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
-                  >
-                    Usuario De Despliegue
-                  </label>
-                  <input
-                    id="edit-cell-deploy-user"
-                    type="text"
-                    disabled
-                    readOnly
-                    value={editFormData.deployUser}
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 text-xs text-[var(--dsn-text-secondary)] opacity-70 cursor-not-allowed focus:outline-none font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4 border-t border-[var(--dsn-border)] mt-4">
-                <button
-                  type="button"
-                  onClick={() => setEditModalOpen(false)}
-                  disabled={editLoading}
-                  className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-border)] disabled:opacity-50 min-h-[44px]"
+              <div>
+                <Label
+                  htmlFor="edit-cell-tier"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={editLoading}
-                  className="flex items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 min-h-[44px]"
+                  Nivel De Servicio
+                </Label>
+                <Select
+                  id="edit-cell-tier"
+                  value={editFormData.tier}
+                  onChange={(e) => setEditFormData({ ...editFormData, tier: e.target.value as "standard" | "dedicated" })}
+                  className="min-h-[44px] text-xs"
                 >
-                  {editLoading ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Guardando Cambios...</span>
-                    </>
-                  ) : (
-                    <span>Guardar Cambios</span>
-                  )}
-                </button>
+                  <option value="standard">Estándar (Multi-Inquilino Compartido)</option>
+                  <option value="dedicated">Dedicado (Inquilino Enterprise VIP)</option>
+                </Select>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+
+            {/* Fila 2: Topología De Despliegue | Host De Despliegue */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label
+                  htmlFor="edit-cell-topology"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  Topología De Despliegue
+                </Label>
+                <Select
+                  id="edit-cell-topology"
+                  value={editFormData.topologyType}
+                  onChange={(e) =>
+                    setEditFormData({
+                      ...editFormData,
+                      topologyType: e.target.value as "remote_vps" | "local_compose",
+                    })
+                  }
+                  className="min-h-[44px] text-xs"
+                >
+                  <option value="remote_vps">VPS Remoto (Host Dedicado)</option>
+                  <option value="local_compose">Docker Compose Local (Emulación)</option>
+                </Select>
+              </div>
+
+              <div>
+                <Label
+                  htmlFor="edit-cell-host-id"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  Host De Despliegue
+                </Label>
+                <Select
+                  id="edit-cell-host-id"
+                  value={editFormData.hostId}
+                  onChange={(e) => setEditFormData({ ...editFormData, hostId: e.target.value })}
+                  className="min-h-[44px] text-xs font-mono"
+                >
+                  <option value="">Sin Asignar (Borrador)</option>
+                  {hosts.map((h) => {
+                    const isCompatible =
+                      editFormData.topologyType === "local_compose"
+                        ? h.deploymentProfile === "local_development"
+                        : h.deploymentProfile !== "local_development";
+                    const isDisabled = (h.status !== "ready" && h.id !== cell.hostId) || !isCompatible;
+                    const compatibilitySuffix = !isCompatible ? " (Incompatible)" : "";
+                    return (
+                      <option key={h.id} value={h.id} disabled={isDisabled}>
+                        {h.code} · {h.deploymentProfile} {h.status !== "ready" ? `(${h.status})` : ""}{compatibilitySuffix}
+                      </option>
+                    );
+                  })}
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label
+                htmlFor="edit-cell-app-url"
+                className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+              >
+                URL De La Aplicación Celular
+              </Label>
+              <Input
+                id="edit-cell-app-url"
+                type="text"
+                required
+                placeholder="ej. http://10.0.0.2:3004 o http://localhost:3004"
+                value={editFormData.appUrl}
+                onChange={(e) => setEditFormData({ ...editFormData, appUrl: e.target.value })}
+                className="min-h-[44px] text-xs"
+              />
+            </div>
+
+            {/* Fila 3: Host De PgBouncer O PostgreSQL | Puerto De Conexión | Nombre De La Base De Datos */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <Label
+                  htmlFor="edit-cell-host"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  Host De PgBouncer O PostgreSQL
+                </Label>
+                <Input
+                  id="edit-cell-host"
+                  type="text"
+                  required
+                  placeholder="ej. pg-cell o 10.0.0.2"
+                  value={editFormData.pgbouncerHost}
+                  onChange={(e) => setEditFormData({ ...editFormData, pgbouncerHost: e.target.value })}
+                  className="min-h-[44px] text-xs"
+                />
+              </div>
+
+              <div>
+                <Label
+                  htmlFor="edit-cell-port"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  Puerto De Conexión
+                </Label>
+                <Input
+                  id="edit-cell-port"
+                  type="number"
+                  required
+                  value={editFormData.pgbouncerPort}
+                  onChange={(e) => setEditFormData({ ...editFormData, pgbouncerPort: Number(e.target.value) })}
+                  className="min-h-[44px] text-xs"
+                />
+              </div>
+
+              <div>
+                <Label
+                  htmlFor="edit-cell-dbname"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  Nombre De La Base De Datos
+                </Label>
+                <Input
+                  id="edit-cell-dbname"
+                  type="text"
+                  required
+                  placeholder="ej. mocter_cell_01"
+                  value={editFormData.databaseName}
+                  onChange={(e) => setEditFormData({ ...editFormData, databaseName: e.target.value })}
+                  className="min-h-[44px] text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Fila 4: Dirección IP Privada (Opcional) | Dirección IP Pública (Opcional) */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label
+                  htmlFor="edit-cell-private-ip"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  Dirección IP Privada (Opcional)
+                </Label>
+                <Input
+                  id="edit-cell-private-ip"
+                  type="text"
+                  placeholder="ej. 10.0.0.2"
+                  value={editFormData.privateIp}
+                  onChange={(e) => setEditFormData({ ...editFormData, privateIp: e.target.value })}
+                  className="min-h-[44px] text-xs"
+                />
+              </div>
+
+              <div>
+                <Label
+                  htmlFor="edit-cell-public-ip"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  Dirección IP Pública (Opcional)
+                </Label>
+                <Input
+                  id="edit-cell-public-ip"
+                  type="text"
+                  placeholder="ej. 198.51.100.2"
+                  value={editFormData.publicIp}
+                  onChange={(e) => setEditFormData({ ...editFormData, publicIp: e.target.value })}
+                  className="min-h-[44px] text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Fila 5: Capacidad Máxima De Inquilinos | Región Geográfica De Despliegue */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label
+                  htmlFor="edit-cell-capacity"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  Capacidad Máxima De Inquilinos
+                </Label>
+                <Input
+                  id="edit-cell-capacity"
+                  type="number"
+                  min={cell.currentClients || 1}
+                  max={500}
+                  required
+                  value={editFormData.maxClients}
+                  onChange={(e) => setEditFormData({ ...editFormData, maxClients: Number(e.target.value) })}
+                  className="min-h-[44px] text-xs"
+                />
+              </div>
+
+              <div>
+                <Label
+                  htmlFor="edit-cell-region"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  Región Geográfica De Despliegue
+                </Label>
+                <Input
+                  id="edit-cell-region"
+                  type="text"
+                  required
+                  placeholder="ej. us-east-1 o sa-east-1"
+                  value={editFormData.region}
+                  onChange={(e) => setEditFormData({ ...editFormData, region: e.target.value })}
+                  className="min-h-[44px] text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Fila 6: Directorio De Trabajo Canónico | Usuario De Despliegue */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label
+                  htmlFor="edit-cell-working-dir"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  Directorio De Trabajo Canónico
+                </Label>
+                <Input
+                  id="edit-cell-working-dir"
+                  type="text"
+                  required
+                  value={editFormData.workingDir}
+                  onChange={(e) => setEditFormData({ ...editFormData, workingDir: e.target.value })}
+                  className="min-h-[44px] text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <Label
+                  htmlFor="edit-cell-deploy-user"
+                  className="block text-xs font-medium text-[var(--dsn-text)] mb-1"
+                >
+                  Usuario De Despliegue
+                </Label>
+                <Input
+                  id="edit-cell-deploy-user"
+                  type="text"
+                  disabled
+                  readOnly
+                  value={editFormData.deployUser}
+                  className="min-h-[44px] opacity-70 cursor-not-allowed text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="pt-4 border-t border-[var(--dsn-border)] mt-4">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setEditModalOpen(false)}
+                disabled={editLoading}
+                className="min-h-[44px] text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={editLoading}
+                loading={editLoading}
+                loadingText="Guardando Cambios..."
+                className="min-h-[44px] text-xs"
+              >
+                <span>Guardar Cambios</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Confirmación de Drenado (Regla 4.17) */}
       <ConfirmationModal

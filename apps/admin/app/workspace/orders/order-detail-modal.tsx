@@ -13,9 +13,20 @@ import {
   Repeat,
   Truck,
   User,
-  X,
 } from "lucide-react";
 import type { OrderDetailDto } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Select,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
 import {
@@ -86,15 +97,6 @@ export function OrderDetailModal({
     };
   }, [isOpen, orderId]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [isOpen, onClose]);
-
   if (!isOpen || !orderId) return null;
 
   const currentTimelineIdx = order
@@ -119,22 +121,26 @@ export function OrderDetailModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-3 sm:p-5"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="order-detail-modal-title"
+    <Dialog
+      open={true}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between border-b border-[var(--dsn-border)] px-5 py-4 shrink-0">
+      <DialogContent
+        className="flex max-h-[92vh] w-full max-w-4xl flex-col gap-0 overflow-hidden p-0"
+        closeAriaLabel={w.ordersDetailClose}
+        aria-labelledby="order-detail-modal-title"
+      >
+        <DialogHeader className="shrink-0 flex-row items-center justify-between space-y-0 border-b border-[var(--dsn-border)] px-5 py-4 pr-12">
           <div className="flex flex-wrap items-center gap-2.5">
             <Package className="h-5 w-5 text-[var(--dsn-accent)]" />
-            <h2
+            <DialogTitle
               id="order-detail-modal-title"
-              className="text-base sm:text-lg font-bold text-[var(--dsn-text)]"
+              className="text-base font-bold text-[var(--dsn-text)] sm:text-lg"
             >
               {w.ordersDetailTitle}
-            </h2>
+            </DialogTitle>
             {order && (
               <>
                 <span className="font-mono text-sm font-bold text-[var(--dsn-accent)]">
@@ -146,33 +152,25 @@ export function OrderDetailModal({
                   {getOrderStatusLabel(order.status, locale)}
                 </span>
                 {order.repeatedFromOrderId && (
-                  <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-medium text-indigo-500 dark:text-indigo-300">
+                  <Badge variant="outline" className="border-indigo-500/30 bg-indigo-500/10 text-indigo-500 dark:text-indigo-300">
                     {w.ordersDetailRepeatedBadge}
-                  </span>
+                  </Badge>
                 )}
               </>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
-            aria-label={w.ordersDetailClose}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        <div className="flex-1 space-y-5 overflow-y-auto p-5">
           {loading ? (
-            <div className="py-12 flex items-center justify-center gap-2 text-sm text-[var(--dsn-text-secondary)]">
+            <div className="flex items-center justify-center gap-2 py-12 text-sm text-[var(--dsn-text-secondary)]">
               <Loader2 className="h-5 w-5 animate-spin text-[var(--dsn-accent)]" />
               <span>{locale === "en" ? "Loading order details..." : "Cargando detalle del pedido..."}</span>
             </div>
           ) : errorMsg || !order ? (
-            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-600 dark:text-rose-300">
-              {errorMsg || "Pedido no disponible."}
-            </div>
+            <Alert variant="error">
+              <AlertDescription>{errorMsg || "Pedido no disponible."}</AlertDescription>
+            </Alert>
           ) : (
             <>
               <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-4 space-y-3">
@@ -282,18 +280,18 @@ export function OrderDetailModal({
                       >
                         {w.ordersColPayment}
                       </label>
-                      <select
+                      <Select
                         id="detail-payment-status"
                         value={order.paymentStatus}
                         disabled={updatingPayment}
                         onChange={(e) => handlePaymentChange(e.target.value)}
-                        className="rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-2 py-1 text-xs font-semibold text-[var(--dsn-text)]"
+                        className="h-auto px-2 py-1 text-xs font-semibold"
                       >
                         <option value="pending">{getPaymentStatusLabel("pending", locale)}</option>
                         <option value="paid">{getPaymentStatusLabel("paid", locale)}</option>
                         <option value="refunded">{getPaymentStatusLabel("refunded", locale)}</option>
                         <option value="failed">{getPaymentStatusLabel("failed", locale)}</option>
-                      </select>
+                      </Select>
                     </div>
                   </div>
                   <div className="border-t border-[var(--dsn-border)] pt-2 space-y-1">
@@ -421,50 +419,53 @@ export function OrderDetailModal({
         </div>
 
         {order && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--dsn-border)] px-5 py-3.5 bg-[var(--dsn-surface-secondary)]/30 shrink-0">
+          <DialogFooter className="shrink-0 flex-row flex-wrap items-center justify-between gap-2 border-t border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 px-5 py-3.5 sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => onPrintGuide(order)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
               >
                 <Printer className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
                 {w.ordersActionGuide}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => onRepeat(order)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
               >
                 <Repeat className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
                 {w.ordersActionRepeat}
-              </button>
+              </Button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {order.canEditDetails && (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => onEdit(order)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
                 >
                   <Edit3 className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
                   {w.ordersActionEdit}
-                </button>
+                </Button>
               )}
               {order.allowedNextStatuses.length > 0 && (
-                <button
+                <Button
                   type="button"
+                  size="sm"
                   onClick={() => onTransition(order)}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-3.5 py-1.5 text-xs font-semibold text-white hover:opacity-95"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                   {w.ordersActionTransition}
-                </button>
+                </Button>
               )}
             </div>
-          </div>
+          </DialogFooter>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

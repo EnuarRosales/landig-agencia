@@ -1,6 +1,17 @@
 "use client";
 
 import React, { useState } from "react";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Label,
+  Textarea,
+} from "@mocter/ui";
 
 export interface AiAssistButtonProps {
   fieldKey: string;
@@ -93,15 +104,19 @@ export function AiAssistButton({
 
   return (
     <div className="inline-flex flex-col items-start gap-1">
-      <button
+      <Button
         type="button"
+        variant="ai"
+        size="sm"
         onClick={handleClick}
+        loading={isLoading}
+        loadingText={t("improving")}
         disabled={isLoading || !hasCredentials}
-        className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        className="h-auto min-h-[30px] rounded-md px-3 py-1 text-xs font-semibold"
       >
         <span aria-hidden="true" className="text-sm">✨</span>
-        <span>{isLoading ? t("improving") : t("buttonText")}</span>
-      </button>
+        <span>{t("buttonText")}</span>
+      </Button>
 
       {warningMessage && (
         <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 max-w-sm">
@@ -110,71 +125,63 @@ export function AiAssistButton({
       )}
 
       {/* Comparison Modal */}
-      {isOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in-0"
-        >
-          <div className="w-full max-w-2xl rounded-xl border border-border bg-card p-6 shadow-xl space-y-5">
-            <div>
-              <h3 id="modal-title" className="text-lg font-bold">
-                {t("modalTitle")}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {t("modalSubtitle")}
-              </p>
-            </div>
+      <Dialog open={isOpen} onOpenChange={(open) => !open && handleDiscard()}>
+        <DialogContent className="max-w-2xl rounded-xl p-6 shadow-xl space-y-5">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">{t("modalTitle")}</DialogTitle>
+            <DialogDescription className="text-xs">{t("modalSubtitle")}</DialogDescription>
+          </DialogHeader>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Original Draft (Read only) */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-muted-foreground">
-                  {t("originalDraft")}
-                </label>
-                <div className="w-full h-36 p-3 rounded-lg border border-border bg-muted/30 text-sm overflow-y-auto font-sans select-text">
-                  {draft}
-                </div>
-              </div>
-
-              {/* AI Suggestion (Editable) */}
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="editable-ai-suggestion"
-                  className="block text-xs font-semibold text-primary"
-                >
-                  {t("aiSuggestion")}
-                </label>
-                <textarea
-                  id="editable-ai-suggestion"
-                  value={suggestion}
-                  onChange={(e) => setSuggestion(e.target.value)}
-                  className="w-full h-36 p-3 rounded-lg border border-primary/40 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary font-sans resize-none"
-                />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Original Draft (Read only) */}
+            <div className="space-y-1.5">
+              <Label className="block text-xs font-semibold text-[var(--dsn-text-secondary)]">
+                {t("originalDraft")}
+              </Label>
+              <div className="w-full h-36 p-3 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 text-sm overflow-y-auto font-sans select-text">
+                {draft}
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex justify-end gap-3 pt-3 border-t border-border">
-              <button
-                type="button"
-                onClick={handleDiscard}
-                className="px-4 py-2 text-xs font-semibold rounded-lg border border-border hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            {/* AI Suggestion (Editable) */}
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="editable-ai-suggestion"
+                className="block text-xs font-semibold text-[var(--dsn-accent)]"
               >
-                {t("discardButton")}
-              </button>
-              <button
-                type="button"
-                onClick={handleAccept}
-                className="px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                {t("acceptButton")}
-              </button>
+                {t("aiSuggestion")}
+              </Label>
+              <Textarea
+                id="editable-ai-suggestion"
+                value={suggestion}
+                onChange={(e) => setSuggestion(e.target.value)}
+                className="h-36 p-3 text-sm font-sans resize-none"
+              />
             </div>
           </div>
-        </div>
-      )}
+
+          <DialogFooter className="border-t border-[var(--dsn-border)] pt-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleDiscard}
+              className="text-xs font-semibold"
+            >
+              {t("discardButton")}
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={handleAccept}
+              className="text-xs font-semibold"
+            >
+              {t("acceptButton")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

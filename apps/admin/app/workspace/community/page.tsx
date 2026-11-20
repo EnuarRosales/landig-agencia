@@ -89,6 +89,7 @@ export default async function WorkspaceCommunityPage(props: {
       isOwner={isOwner}
       locale={locale}
       initialTab={(resolvedSearchParams as { tab?: string }).tab}
+      currentClientId={context?.activeClient?.id}
     />
   );
 }

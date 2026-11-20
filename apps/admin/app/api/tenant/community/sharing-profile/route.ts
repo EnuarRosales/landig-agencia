@@ -37,7 +37,7 @@ export const GET = handle(async (req: NextRequest): Promise<NextResponse> => {
 });
 
 /**
- * `PATCH /api/tenant/community/sharing-profile` — Configura qué datos del comercio son visibles para otros miembros (`SPEC-15`).
+ * `PUT` / `PATCH /api/tenant/community/sharing-profile` — Configura qué datos del comercio son visibles para otros miembros (`SPEC-15`).
  */
 export const PATCH = handle(async (req: NextRequest): Promise<NextResponse> => {
   const requestId = resolveCommunityRequestId(req);
@@ -74,3 +74,8 @@ export const PATCH = handle(async (req: NextRequest): Promise<NextResponse> => {
     { status: 200, headers: { "x-request-id": requestId } },
   );
 });
+
+/**
+ * Alias `PUT /api/tenant/community/sharing-profile` compatible con `design.md` y el formulario de privacidad.
+ */
+export const PUT = PATCH;

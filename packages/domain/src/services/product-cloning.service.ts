@@ -9,15 +9,20 @@ import type {
 } from "../db/schemas/admin/communities-and-cloning";
 import { calculateProductProfitability } from "../utils/pricing-margin";
 import { resolveProductMediaUrls } from "./tenant-products-catalog.helpers";
-import { getNotificationDispatcherService } from "./notification-dispatcher.service";
+import {
+  buildAdminPortalUrl,
+  getNotificationDispatcherService,
+} from "./notification-dispatcher.service";
 import {
   canonicalizeForDiff,
   computeProductSnapshotDiff,
   DrizzleSpec15ProductCloningStore,
+  formatPlanQuotaViolationsMessage,
   PROTECTED_ADOPTER_ATTRIBUTES,
   SAFE_AUTO_SYNC_ATTRIBUTES,
   type AdoptionDiffField,
   type AdoptionDiffResultDto,
+  type AdoptionPlanEligibilityDto,
   type AdoptShareInput,
   type AdoptShareResultDto,
   type CommunityFeedCatalogPage,
@@ -26,6 +31,8 @@ import {
   type ISpec15ProductCloningStore,
   type LeaderCandidateProductDto,
   type MyAdoptionItemDto,
+  type PlanQuotaDimension,
+  type PlanQuotaViolationDto,
   type ProductSnapshot,
   type PublishNewVersionFromProductInput,
   type PublishShareFromProductInput,
@@ -41,10 +48,12 @@ import {
 export {
   computeProductSnapshotDiff,
   DrizzleSpec15ProductCloningStore,
+  formatPlanQuotaViolationsMessage,
   PROTECTED_ADOPTER_ATTRIBUTES,
   SAFE_AUTO_SYNC_ATTRIBUTES,
   type AdoptionDiffField,
   type AdoptionDiffResultDto,
+  type AdoptionPlanEligibilityDto,
   type AdoptShareInput,
   type AdoptShareResultDto,
   type CommunityFeedCatalogPage,
@@ -53,6 +62,8 @@ export {
   type ISpec15ProductCloningStore,
   type LeaderCandidateProductDto,
   type MyAdoptionItemDto,
+  type PlanQuotaDimension,
+  type PlanQuotaViolationDto,
   type ProductSnapshot,
   type PublishNewVersionFromProductInput,
   type PublishShareFromProductInput,
@@ -739,7 +750,7 @@ export class ProductCloningAndCommunitiesService {
               community_name: shareContext.organizationName,
               version: String(nextVersionNumber),
               changelog: cleanChangelog ?? "Actualización de ficha técnica o medios.",
-              community_url: "/workspace/community",
+              community_url: buildAdminPortalUrl("/workspace/community"),
             },
             idempotencyKey: `share-version:${shareContext.share.id}:v${nextVersionNumber}:${adoption.adopterClientId}`,
             inAppPayload: {
@@ -1081,59 +1092,128 @@ export class ProductCloningAndCommunitiesService {
   }
 
   /**
+   * Valida precondiciones comunes de lectura/adopción de un share (existencia, aprobación, autoría, membresía y no duplicado).
+   */
+  private async validateAdoptSharePreconditions(params: {
+    shareId: string;
+    adopterClientId: string;
+  }): Promise<
+    Result<{
+      shareId: string;
+      shareVersion: number;
+      snapshot: ProductSnapshot;
+    }>
+  > {
+    const shareContext = await this.spec15Store.findShareWithLatestVersion(params.shareId);
+    if (
+      !shareContext ||
+      shareContext.share.status !== "active" ||
+      shareContext.share.moderationStatus !== "approved"
+    ) {
+      return err(
+        "El producto compartido no existe, no está aprobado o fue archivado.",
+        "SHARE_NOT_FOUND",
+      );
+    }
+
+    if (shareContext.share.sharerClientId === params.adopterClientId) {
+      return err(
+        "No puedes adoptar un producto compartido desde tu propio catálogo.",
+        "CANNOT_ADOPT_OWN_SHARE",
+      );
+    }
+
+    const orgCtx = await this.spec15Store.getOrganizationAndMembership(
+      shareContext.share.organizationId,
+      params.adopterClientId,
+    );
+    if (!orgCtx || orgCtx.org.status !== "active") {
+      return err("La comunidad del producto no está activa.", "ORGANIZATION_SUSPENDED");
+    }
+    if (!orgCtx.membership || orgCtx.membership.status !== "active") {
+      return err(
+        "Debes ser miembro activo de esta comunidad para adoptar sus productos.",
+        "COMMUNITY_MEMBERSHIP_REQUIRED",
+      );
+    }
+
+    const myAdoptions = await this.spec15Store.listAdoptionsForClient(params.adopterClientId);
+    const duplicate = myAdoptions.find(
+      (a) => a.shareId === params.shareId && a.linkActive,
+    );
+    if (duplicate) {
+      return err(
+        "Ya adoptaste este producto en tu catálogo.",
+        "ALREADY_ADOPTED_SHARE",
+      );
+    }
+
+    if (!shareContext.latestVersion) {
+      return err("La publicación no contiene una versión válida.", "VERSION_NOT_FOUND");
+    }
+
+    return ok({
+      shareId: shareContext.share.id,
+      shareVersion: shareContext.latestVersion.version,
+      snapshot: shareContext.latestVersion.snapshot as unknown as ProductSnapshot,
+    });
+  }
+
+  /**
+   * Evalúa de forma previa si el plan del comercio adoptante admite clonar el producto con el modo multimedia elegido (`RN-SPEC-15-04`).
+   */
+  async checkAdoptionEligibility(params: {
+    shareId: string;
+    adopterClientId: string;
+    includeMediaMode?: IncludeMediaMode;
+  }): Promise<Result<AdoptionPlanEligibilityDto>> {
+    try {
+      const pre = await this.validateAdoptSharePreconditions(params);
+      if (!pre.ok) return pre;
+
+      const mode = params.includeMediaMode ?? "all_compatible";
+      if (!this.spec15Store.evaluateAdoptionPlanEligibility) {
+        return ok({
+          allowed: true,
+          includeMediaMode: mode,
+          violations: [],
+          summary: {
+            productsUsed: 0,
+            productsNeeded: 1,
+            productsLimit: null,
+            storageUsedBytes: 0,
+            storageNeededBytes: 0,
+            storageLimitBytes: null,
+          },
+        });
+      }
+
+      const eligibility = await this.spec15Store.evaluateAdoptionPlanEligibility({
+        adopterClientId: params.adopterClientId,
+        snapshot: pre.data.snapshot,
+        includeMediaMode: mode,
+      });
+
+      return ok(eligibility);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      appLogger.error(`[ProductCloning] Error al evaluar elegibilidad del plan: ${msg}`, error);
+      return err(msg, "CHECK_ELIGIBILITY_ERROR");
+    }
+  }
+
+  /**
    * Clona un producto (simple o combo) hacia la celda del adoptante con copias físicas independientes en SeaweedFS (`SPEC-15-D06`, `SPEC-15-D10`).
    */
   async adoptShareToTenant(params: AdoptShareInput): Promise<Result<AdoptShareResultDto>> {
     try {
-      const shareContext = await this.spec15Store.findShareWithLatestVersion(params.shareId);
-      if (
-        !shareContext ||
-        shareContext.share.status !== "active" ||
-        shareContext.share.moderationStatus !== "approved"
-      ) {
-        return err(
-          "El producto compartido no existe, no está aprobado o fue archivado.",
-          "SHARE_NOT_FOUND",
-        );
-      }
+      const pre = await this.validateAdoptSharePreconditions({
+        shareId: params.shareId,
+        adopterClientId: params.adopterClientId,
+      });
+      if (!pre.ok) return pre;
 
-      if (shareContext.share.sharerClientId === params.adopterClientId) {
-        return err(
-          "No puedes adoptar un producto compartido desde tu propio catálogo.",
-          "CANNOT_ADOPT_OWN_SHARE",
-        );
-      }
-
-      const orgCtx = await this.spec15Store.getOrganizationAndMembership(
-        shareContext.share.organizationId,
-        params.adopterClientId,
-      );
-      if (!orgCtx || orgCtx.org.status !== "active") {
-        return err("La comunidad del producto no está activa.", "ORGANIZATION_SUSPENDED");
-      }
-      if (!orgCtx.membership || orgCtx.membership.status !== "active") {
-        return err(
-          "Debes ser miembro activo de esta comunidad para adoptar sus productos.",
-          "COMMUNITY_MEMBERSHIP_REQUIRED",
-        );
-      }
-
-      const myAdoptions = await this.spec15Store.listAdoptionsForClient(params.adopterClientId);
-      const duplicate = myAdoptions.find(
-        (a) => a.shareId === params.shareId && a.linkActive,
-      );
-      if (duplicate) {
-        return err(
-          "Ya adoptaste este producto en tu catálogo.",
-          "ALREADY_ADOPTED_SHARE",
-        );
-      }
-
-      if (!shareContext.latestVersion) {
-        return err("La publicación no contiene una versión válida.", "VERSION_NOT_FOUND");
-      }
-
-      const snapshot = shareContext.latestVersion.snapshot as unknown as ProductSnapshot;
+      const { shareId, shareVersion, snapshot } = pre.data;
       const customSalePriceCents =
         params.customSalePriceCents !== undefined && params.customSalePriceCents !== null
           ? Math.max(0, Math.round(params.customSalePriceCents))
@@ -1152,6 +1232,26 @@ export class ProductCloningAndCommunitiesService {
         );
       }
 
+      const includeMediaMode = params.includeMediaMode ?? "all_compatible";
+      if (this.spec15Store.evaluateAdoptionPlanEligibility) {
+        const eligibility = await this.spec15Store.evaluateAdoptionPlanEligibility({
+          adopterClientId: params.adopterClientId,
+          snapshot,
+          includeMediaMode,
+        });
+        if (!eligibility.allowed) {
+          const hasProductsViolation = eligibility.violations.some(
+            (v) => v.dimension === "products",
+          );
+          const code = hasProductsViolation ? "PRODUCT_QUOTA_EXCEEDED" : "PLAN_QUOTA_EXCEEDED";
+          return err(
+            formatPlanQuotaViolationsMessage(eligibility.violations, "es"),
+            code,
+            eligibility.violations,
+          );
+        }
+      }
+
       const safeAutoSync = (params.autoSyncAttributes ?? []).filter(
         (attr): attr is SafeAutoSyncAttribute =>
           (SAFE_AUTO_SYNC_ATTRIBUTES as readonly string[]).includes(attr),
@@ -1160,20 +1260,20 @@ export class ProductCloningAndCommunitiesService {
       const adopted = await this.spec15Store.adoptSnapshotToTenantCell({
         adopterClientId: params.adopterClientId,
         createdByUserId: params.createdByUserId,
-        shareId: shareContext.share.id,
-        shareVersion: shareContext.latestVersion.version,
+        shareId,
+        shareVersion,
         snapshot,
         customSalePriceCents,
         customCostPriceCents,
         initialStock: params.initialStock ?? null,
         initialStatus: params.initialStatus ?? "active",
-        includeMediaMode: params.includeMediaMode ?? "all_compatible",
+        includeMediaMode,
         retainLink: params.retainLink ?? true,
         autoSyncAttributes: safeAutoSync,
       });
 
       appLogger.info("[ProductCloning] Producto clonado de comunidad con medios aislados", {
-        shareId: shareContext.share.id,
+        shareId,
         adopterClientId: params.adopterClientId,
         cloneProductId: adopted.cloneProductId,
         copiedMediaCount: adopted.copiedMediaCount,
@@ -1183,10 +1283,39 @@ export class ProductCloningAndCommunitiesService {
       return ok(adopted);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
+      if (msg.startsWith("PLAN_QUOTA_EXCEEDED:")) {
+        try {
+          const violations = JSON.parse(
+            msg.slice("PLAN_QUOTA_EXCEEDED:".length),
+          ) as PlanQuotaViolationDto[];
+          const hasProducts = violations.some((v) => v.dimension === "products");
+          return err(
+            formatPlanQuotaViolationsMessage(violations, "es"),
+            hasProducts ? "PRODUCT_QUOTA_EXCEEDED" : "PLAN_QUOTA_EXCEEDED",
+            violations,
+          );
+        } catch {
+          return err(msg, "PLAN_QUOTA_EXCEEDED");
+        }
+      }
       if (msg.startsWith("PRODUCT_QUOTA_EXCEEDED:")) {
+        const parts = msg.split(":");
+        const currentUsed = Number(parts[1] ?? 0);
+        const requiredDelta = Number(parts[2] ?? 1);
+        const limitValue = Number(parts[3] ?? 0);
+        const violations: PlanQuotaViolationDto[] = [
+          {
+            dimension: "products",
+            currentUsed,
+            requiredDelta,
+            projectedTotal: currentUsed + requiredDelta,
+            limitValue,
+          },
+        ];
         return err(
-          "Tu catálogo alcanzó el límite máximo de productos permitido por tu plan para clonar este producto.",
+          formatPlanQuotaViolationsMessage(violations, "es"),
           "PRODUCT_QUOTA_EXCEEDED",
+          violations,
         );
       }
       appLogger.error(`[ProductCloning] Error al adoptar producto compartido: ${msg}`, error);

@@ -1,14 +1,15 @@
 "use client";
 
 import React, { useMemo } from "react";
+import { Input, Label, Select } from "@mocter/ui";
 import {
   getCountryAddressProfile,
   getCountrySubdivisions,
   getLocalizedCountryName,
-  listCountryOptions,
   type AdminAreaKind,
   type DependentLocalityKind,
 } from "@mocter/domain/geo";
+import { useCountryOptions } from "@/lib/use-country-options";
 
 export interface GeoAddressFieldValues {
   countryCode: string;
@@ -96,7 +97,7 @@ export function GeoAddressFields({
   const isEs = locale === "es";
   const countryCode = (values.countryCode || "CO").trim().toUpperCase();
 
-  const countryOptions = useMemo(() => listCountryOptions(locale), [locale]);
+  const countryOptions = useCountryOptions(locale, countryCode);
   const profile = useMemo(() => getCountryAddressProfile(countryCode), [countryCode]);
   const subdivisions = useMemo(() => getCountrySubdivisions(countryCode), [countryCode]);
 
@@ -116,14 +117,10 @@ export function GeoAddressFields({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* País */}
         <div>
-          <label
-            htmlFor={`${idPrefix}-country`}
-            className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor={`${idPrefix}-country`} required={requiredFields.country} className="mb-1.5 font-semibold">
             {isEs ? "País" : "Country"}
-            {requiredFields.country ? <span className="ml-0.5 text-rose-500">*</span> : null}
-          </label>
-          <select
+          </Label>
+          <Select
             id={`${idPrefix}-country`}
             disabled={disabled}
             required={requiredFields.country}
@@ -138,28 +135,24 @@ export function GeoAddressFields({
                 state: "",
               });
             }}
-            className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+            className="bg-[var(--dsn-background)] text-sm"
           >
             {countryOptions.map((opt) => (
               <option key={opt.countryCode} value={opt.countryCode}>
                 {opt.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {/* Subdivisión territorial ISO 3166-2 o texto */}
         <div>
-          <label
-            htmlFor={`${idPrefix}-state`}
-            className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor={`${idPrefix}-state`} required={requiredFields.state} className="mb-1.5 font-semibold">
             {adminAreaLabel}
-            {requiredFields.state ? <span className="ml-0.5 text-rose-500">*</span> : null}
-          </label>
+          </Label>
 
           {subdivisions.length > 0 ? (
-            <select
+            <Select
               id={`${idPrefix}-state`}
               disabled={disabled}
               required={requiredFields.state}
@@ -172,7 +165,7 @@ export function GeoAddressFields({
                   state: found ? found.name : "",
                 });
               }}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+              className="bg-[var(--dsn-background)] text-sm"
             >
               <option value="">
                 {isEs ? `Seleccionar ${adminAreaLabel.toLowerCase()}...` : `Select ${adminAreaLabel.toLowerCase()}...`}
@@ -182,9 +175,9 @@ export function GeoAddressFields({
                   {sub.name}
                 </option>
               ))}
-            </select>
+            </Select>
           ) : (
-            <input
+            <Input
               id={`${idPrefix}-state`}
               type="text"
               disabled={disabled}
@@ -196,21 +189,17 @@ export function GeoAddressFields({
                   state: e.target.value,
                 })
               }
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+              className="bg-[var(--dsn-background)] text-sm"
             />
           )}
         </div>
 
         {/* Ciudad */}
         <div>
-          <label
-            htmlFor={`${idPrefix}-city`}
-            className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-          >
+          <Label htmlFor={`${idPrefix}-city`} required={requiredFields.city} className="mb-1.5 font-semibold">
             {isEs ? "Ciudad" : "City"}
-            {requiredFields.city ? <span className="ml-0.5 text-rose-500">*</span> : null}
-          </label>
-          <input
+          </Label>
+          <Input
             id={`${idPrefix}-city`}
             type="text"
             disabled={disabled}
@@ -218,21 +207,17 @@ export function GeoAddressFields({
             value={values.city || ""}
             onChange={(e) => onChange({ city: e.target.value })}
             placeholder={isEs ? "Ej. Medellín, Bogotá, Buenos Aires" : "e.g. Miami, Madrid, Bogotá"}
-            className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+            className="bg-[var(--dsn-background)] text-sm"
           />
         </div>
 
         {/* Barrio / Colonia */}
         {showNeighborhood ? (
           <div>
-            <label
-              htmlFor={`${idPrefix}-neighborhood`}
-              className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-            >
+            <Label htmlFor={`${idPrefix}-neighborhood`} required={requiredFields.neighborhood} className="mb-1.5 font-semibold">
               {dependentLocalityLabel}
-              {requiredFields.neighborhood ? <span className="ml-0.5 text-rose-500">*</span> : null}
-            </label>
-            <input
+            </Label>
+            <Input
               id={`${idPrefix}-neighborhood`}
               type="text"
               disabled={disabled}
@@ -240,7 +225,7 @@ export function GeoAddressFields({
               value={values.neighborhood || ""}
               onChange={(e) => onChange({ neighborhood: e.target.value })}
               placeholder={isEs ? "Ej. El Poblado, Palermo, Roma Norte" : "e.g. Downtown, Soho"}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+              className="bg-[var(--dsn-background)] text-sm"
             />
           </div>
         ) : null}
@@ -248,14 +233,10 @@ export function GeoAddressFields({
         {/* Dirección Principal */}
         {showAddressLine ? (
           <div className={showNeighborhood ? "sm:col-span-2" : ""}>
-            <label
-              htmlFor={`${idPrefix}-address-line`}
-              className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-            >
+            <Label htmlFor={`${idPrefix}-address-line`} required={requiredFields.addressLine} className="mb-1.5 font-semibold">
               {isEs ? "Dirección Principal" : "Street Address"}
-              {requiredFields.addressLine ? <span className="ml-0.5 text-rose-500">*</span> : null}
-            </label>
-            <input
+            </Label>
+            <Input
               id={`${idPrefix}-address-line`}
               type="text"
               disabled={disabled}
@@ -263,7 +244,7 @@ export function GeoAddressFields({
               value={values.addressLine || ""}
               onChange={(e) => onChange({ addressLine: e.target.value })}
               placeholder={isEs ? "Ej. Calle 10 # 43-20 / Av. Santa Fe 1850" : "e.g. 123 Main St"}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+              className="bg-[var(--dsn-background)] text-sm"
             />
           </div>
         ) : null}
@@ -271,13 +252,10 @@ export function GeoAddressFields({
         {/* Complemento de Dirección */}
         {showComplement ? (
           <div>
-            <label
-              htmlFor={`${idPrefix}-complement`}
-              className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-            >
+            <Label htmlFor={`${idPrefix}-complement`} className="mb-1.5 font-semibold">
               {isEs ? "Complemento" : "Address Complement"}
-            </label>
-            <input
+            </Label>
+            <Input
               id={`${idPrefix}-complement`}
               type="text"
               disabled={disabled}
@@ -288,7 +266,7 @@ export function GeoAddressFields({
                   ? "Apto 402, Torre B, Conjunto Residencial..."
                   : "Apt 402, Suite 3B, Building..."
               }
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+              className="bg-[var(--dsn-background)] text-sm"
             />
           </div>
         ) : null}
@@ -296,16 +274,14 @@ export function GeoAddressFields({
         {/* Código Postal */}
         {showPostalCode ? (
           <div>
-            <label
+            <Label
               htmlFor={`${idPrefix}-postal`}
-              className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
+              required={Boolean(requiredFields.postalCode || profile.postalCodeRequired)}
+              className="mb-1.5 font-semibold"
             >
               {isEs ? "Código Postal" : "Postal Code"}
-              {requiredFields.postalCode || profile.postalCodeRequired ? (
-                <span className="ml-0.5 text-rose-500">*</span>
-              ) : null}
-            </label>
-            <input
+            </Label>
+            <Input
               id={`${idPrefix}-postal`}
               type="text"
               disabled={disabled}
@@ -313,7 +289,7 @@ export function GeoAddressFields({
               value={values.postalCode || ""}
               onChange={(e) => onChange({ postalCode: e.target.value })}
               placeholder={profile.postalCodeExample || "050021"}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+              className="bg-[var(--dsn-background)] text-sm"
             />
           </div>
         ) : null}
@@ -321,13 +297,10 @@ export function GeoAddressFields({
         {/* Referencias */}
         {showReferenceNotes ? (
           <div className="sm:col-span-2">
-            <label
-              htmlFor={`${idPrefix}-reference`}
-              className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-            >
+            <Label htmlFor={`${idPrefix}-reference`} className="mb-1.5 font-semibold">
               {isEs ? "Indicaciones Adicionales" : "Delivery Instructions"}
-            </label>
-            <input
+            </Label>
+            <Input
               id={`${idPrefix}-reference`}
               type="text"
               disabled={disabled}
@@ -338,7 +311,7 @@ export function GeoAddressFields({
                   ? "Portería 24h, portón verde, llamar al llegar..."
                   : "Gate code, leave at reception..."
               }
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+              className="bg-[var(--dsn-background)] text-sm"
             />
           </div>
         ) : null}

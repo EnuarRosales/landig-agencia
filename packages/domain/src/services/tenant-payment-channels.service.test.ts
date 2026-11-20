@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { CellPoolError } from "../db/cell-client";
 import type { CellTenantPaymentChannel } from "../db/schemas/tenant/orders";
+import { appLogger } from "../utils/logger";
 import {
   TenantPaymentChannelsService,
   type ITenantPaymentChannelsRepository,
@@ -194,5 +196,45 @@ describe("SPEC-05 · TenantPaymentChannelsService", () => {
       "owner@cafe.co",
     );
     expect(del.ok).toBe(true);
+  });
+
+  it("retorna CELL_UNAVAILABLE y registra warning sin lanzar excepción ni console.error cuando la celda no está disponible", async () => {
+    const warnSpy = vi.spyOn(appLogger, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(appLogger, "error").mockImplementation(() => {});
+    vi.spyOn(repo, "listByClient").mockRejectedValueOnce(
+      new CellPoolError('La celda cell-01 (501f) se encuentra en estado "error_connection".'),
+    );
+
+    const res = await service.listChannels("client-1");
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.code).toBe("CELL_UNAVAILABLE");
+    }
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it("retorna DB_ERROR y registra el error con la firma correcta cuando ocurre un fallo inesperado de persistencia", async () => {
+    const errorSpy = vi.spyOn(appLogger, "error").mockImplementation(() => {});
+    const dbError = new Error("Connection reset");
+    vi.spyOn(repo, "listByClient").mockRejectedValueOnce(dbError);
+
+    const res = await service.listChannels("client-1");
+
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.code).toBe("DB_ERROR");
+    }
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[TenantPaymentChannelsService.listChannels] Error inesperado",
+      dbError,
+      { clientId: "client-1" },
+    );
+
+    errorSpy.mockRestore();
   });
 });

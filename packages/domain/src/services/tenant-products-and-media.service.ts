@@ -38,13 +38,15 @@ import {
   MAX_UPLOAD_BYTES_BY_KIND,
   validateMediaMagicBytes,
 } from "../utils/media-magic-bytes";
-import { env } from "../utils/env";
 import { appLogger } from "../utils/logger";
 import { S3StorageService } from "./s3-storage.service";
 import {
   type TransactionalNotificationsAndLeadsService,
 } from "./notifications-and-leads.service";
-import { getNotificationDispatcherService } from "./notification-dispatcher.service";
+import {
+  buildAdminPortalUrl,
+  getNotificationDispatcherService,
+} from "./notification-dispatcher.service";
 import {
   evaluateProductStockAndMargin,
   MAX_PRODUCT_BOT_MASTER_PROMPT_CHARS,
@@ -3150,10 +3152,7 @@ export class TenantProductsAndMediaService {
       return ok({ triggered: false, reason: "NO_RECIPIENT_EMAIL" });
     }
 
-    const baseOrigin = (env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
-    const productAdminUrl = baseOrigin
-      ? `${baseOrigin}/workspace/products`
-      : "/workspace/products";
+    const productAdminUrl = buildAdminPortalUrl("/workspace/products");
     const idempotencyKey = `low-stock:${clientId}:${productId}:${Date.now()}`;
 
     const dispatch = async (): Promise<void> => {

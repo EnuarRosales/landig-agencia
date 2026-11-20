@@ -3,14 +3,11 @@
 import React, { useState } from "react";
 import {
   FileText,
-  Download,
   Calendar,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
   FileSpreadsheet,
 } from "lucide-react";
 import type { Invoice, PaymentReceipt } from "@mocter/domain";
+import { Badge, Button, Card, EmptyState, Select } from "@mocter/ui";
 
 interface ReceiptsTableProps {
   invoices: Invoice[];
@@ -28,7 +25,7 @@ export function ReceiptsTable({ invoices, receipts }: ReceiptsTableProps) {
   return (
     <div className="space-y-6">
       {/* Centro de Exportación Contable */}
-      <div className="rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+      <Card className="rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-4">
         <div>
           <h3 className="text-base font-bold text-[var(--dsn-text)]">
             Exportación Contable De Comprobantes Y Facturas
@@ -39,43 +36,45 @@ export function ReceiptsTable({ invoices, receipts }: ReceiptsTableProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <div className="flex items-center gap-1.5 bg-[var(--dsn-surface-secondary)] px-3 py-1.5 rounded-xl border border-[var(--dsn-border)]">
-            <Calendar className="h-4 w-4 text-[var(--dsn-text-secondary)]" />
-            <select
+          <div className="flex items-center gap-1.5 bg-[var(--dsn-surface-secondary)] px-3 py-1 rounded-xl border border-[var(--dsn-border)]">
+            <Calendar className="h-4 w-4 text-[var(--dsn-text-secondary)] shrink-0" />
+            <Select
               value={selectedPeriod}
               onChange={(e) => setSelectedPeriod(e.target.value)}
-              className="bg-transparent text-xs text-[var(--dsn-text)] font-medium focus:outline-none"
+              className="border-0 bg-transparent min-h-[30px] h-auto px-1 py-0 text-xs font-medium focus-visible:ring-0"
             >
               <option value="daily">Día En Curso</option>
               <option value="weekly">Semana En Curso</option>
               <option value="monthly">Mes Calendario Activo</option>
               <option value="quarterly">Trimestre Activo</option>
               <option value="annual">Año En Curso</option>
-            </select>
+            </Select>
           </div>
 
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={() => handleExport("xlsx")}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 px-3.5 py-2 text-xs font-bold hover:bg-emerald-600/30 transition-all"
+            className="rounded-xl bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/30 font-bold text-xs"
           >
             <FileSpreadsheet className="h-4 w-4" />
             <span>Descargar Excel (.xlsx)</span>
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            variant="ai"
             onClick={() => handleExport("pdf")}
-            className="inline-flex items-center gap-2 rounded-xl bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30 px-3.5 py-2 text-xs font-bold hover:bg-[var(--dsn-accent)]/30 transition-all"
+            className="rounded-xl font-bold text-xs"
           >
             <FileText className="h-4 w-4" />
             <span>Descargar PDF (.pdf)</span>
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {/* Tabla de Facturas Recientes */}
-      <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden shadow-xs">
+      <Card className="overflow-hidden">
         <div className="px-5 py-4 border-b border-[var(--dsn-border)] flex items-center justify-between">
           <h3 className="text-sm font-semibold text-[var(--dsn-text)]">
             Historial Reciente De Facturas Emitidas
@@ -86,13 +85,12 @@ export function ReceiptsTable({ invoices, receipts }: ReceiptsTableProps) {
         </div>
 
         {invoices.length === 0 ? (
-          <div className="p-12 text-center">
-            <FileText className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto mb-3" />
-            <h4 className="text-sm font-semibold text-[var(--dsn-text)]">No hay facturas emitidas aún</h4>
-            <p className="text-xs text-[var(--dsn-text-secondary)] mt-1">
-              Las facturas se generarán automáticamente al renovar o activar cada ciclo de suscripción.
-            </p>
-          </div>
+          <EmptyState
+            icon={<FileText className="h-10 w-10 text-[var(--dsn-text-secondary)]/50" />}
+            title="No hay facturas emitidas aún"
+            description="Las facturas se generarán automáticamente al renovar o activar cada ciclo de suscripción."
+            className="border-0 rounded-none py-12"
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -140,16 +138,17 @@ export function ReceiptsTable({ invoices, receipts }: ReceiptsTableProps) {
                         {total}
                       </td>
                       <td className="py-3.5 px-4">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-medium ${
+                        <Badge
+                          variant={
                             inv.status === "paid"
-                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                              ? "success"
                               : inv.status === "issued"
-                              ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
-                              : inv.status === "past_due"
-                              ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                              : "bg-zinc-500/10 text-zinc-400"
-                          }`}
+                                ? "accent"
+                                : inv.status === "past_due"
+                                  ? "warning"
+                                  : "outline"
+                          }
+                          className="font-mono text-[10px]"
                         >
                           {inv.status === "paid"
                             ? "Pagada"
@@ -160,7 +159,7 @@ export function ReceiptsTable({ invoices, receipts }: ReceiptsTableProps) {
                             : inv.status === "void"
                             ? "Anulada"
                             : inv.status}
-                        </span>
+                        </Badge>
                       </td>
                       <td className="py-3.5 px-4 font-mono text-[11px] text-[var(--dsn-text-secondary)]">
                         <span suppressHydrationWarning>
@@ -179,7 +178,7 @@ export function ReceiptsTable({ invoices, receipts }: ReceiptsTableProps) {
             </table>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

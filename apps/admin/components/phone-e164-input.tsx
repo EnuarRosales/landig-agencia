@@ -2,12 +2,13 @@
 
 import React, { useMemo, useState } from "react";
 import { CheckCircle2, AlertCircle } from "lucide-react";
+import { Input, Label, Select } from "@mocter/ui";
 import {
   getCountryAddressProfile,
-  listCountryOptions,
   normalizeAndValidatePhoneE164,
   splitPhoneForInput,
 } from "@mocter/domain/geo";
+import { useCountryOptions } from "@/lib/use-country-options";
 
 export interface PhoneE164ChangeMeta {
   isValid: boolean;
@@ -87,7 +88,7 @@ export function PhoneE164Input({
     }
   }
 
-  const countryOptions = useMemo(() => listCountryOptions(locale), [locale]);
+  const countryOptions = useCountryOptions(locale, selectedCountry);
   const callingCode = useMemo(
     () => getCountryAddressProfile(selectedCountry).callingCode,
     [selectedCountry],
@@ -200,20 +201,16 @@ export function PhoneE164Input({
 
   return (
     <div className="space-y-1.5">
-      <label
-        htmlFor={id}
-        className="block text-xs font-semibold text-[var(--dsn-text)]"
-      >
+      <Label htmlFor={id} required={required} className="font-semibold">
         {label}
-        {required ? <span className="ml-0.5 text-rose-500">*</span> : null}
-      </label>
+      </Label>
 
       {name ? (
         <input type="hidden" name={name} value={validation.e164 ?? value} />
       ) : null}
 
       <div className="flex flex-col gap-2 sm:flex-row">
-        <select
+        <Select
           id={`${id}-country`}
           aria-label={isEs ? "Código De País Del Teléfono" : "Phone Country Code"}
           data-testid={testIdPrefix ? `${testIdPrefix}-country` : `${id}-country`}
@@ -224,23 +221,25 @@ export function PhoneE164Input({
             setSelectedCountry(nextCountry);
             emitChange(nextCountry, nationalInput);
           }}
-          className="w-full sm:w-44 shrink-0 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-2.5 py-2 text-xs font-medium text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+          wrapperClassName="w-full sm:w-44 shrink-0"
+          className="bg-[var(--dsn-background)] px-2.5 text-xs font-medium"
         >
           {countryOptions.map((opt) => (
             <option key={opt.countryCode} value={opt.countryCode}>
-              {opt.name} (+{opt.callingCode})
+              {`${opt.name} (+${opt.callingCode})`}
             </option>
           ))}
-        </select>
+        </Select>
 
         <div className="relative flex-1">
-          <input
+          <Input
             id={id}
             type="tel"
             inputMode="tel"
             autoComplete={autoComplete}
             required={required}
             disabled={disabled}
+            error={Boolean(displayedError)}
             data-testid={testIdPrefix ? `${testIdPrefix}-national` : id}
             value={nationalInput}
             placeholder={placeholder || "3001234567"}
@@ -250,7 +249,7 @@ export function PhoneE164Input({
               emitChange(selectedCountry, raw);
             }}
             onBlur={() => setTouched(true)}
-            className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+            className="bg-[var(--dsn-background)] text-sm"
           />
         </div>
       </div>

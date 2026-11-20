@@ -25,7 +25,23 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { RbacOverviewDto, UserWithRolesDto } from "@mocter/domain";
-import { ConfirmationModal } from "@/components/confirmation-modal";
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  Card,
+  ConfirmationModal,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from "@mocter/ui";
 
 interface RbacViewProps {
   initialData: RbacOverviewDto;
@@ -326,13 +342,10 @@ export function RbacView({ initialData }: RbacViewProps) {
     <div className="space-y-6">
       {/* Banner de Feedback Accesible */}
       {feedback && (
-        <div
+        <Alert
           role="status"
-          className={`flex items-center justify-between rounded-xl p-4 text-xs font-medium border ${
-            feedback.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-              : "bg-red-500/10 border-red-500/20 text-red-400"
-          }`}
+          variant={feedback.type === "success" ? "success" : "destructive"}
+          className="flex items-center justify-between text-xs font-medium"
         >
           <div className="flex items-center gap-2">
             {feedback.type === "success" ? (
@@ -340,17 +353,19 @@ export function RbacView({ initialData }: RbacViewProps) {
             ) : (
               <AlertCircle className="h-4 w-4 shrink-0" />
             )}
-            <span>{feedback.message}</span>
+            <AlertDescription className="text-inherit">{feedback.message}</AlertDescription>
           </div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => setFeedback(null)}
-            className="text-inherit opacity-70 hover:opacity-100"
+            className="h-7 w-7 text-inherit opacity-70 hover:opacity-100"
             aria-label="Cerrar aviso"
           >
             <X className="h-4 w-4" />
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
 
       {/* Tarjetas KPI de Gobernanza Mobile First */}
@@ -461,13 +476,13 @@ export function RbacView({ initialData }: RbacViewProps) {
 
         {(activeTab === "platform_users" || activeTab === "tenant_users") && (
           <div className="relative min-w-[260px] flex-1 sm:max-w-xs">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--dsn-text-secondary)]" />
-            <input
+            <Search className="pointer-events-none absolute left-3 top-2.5 z-10 h-4 w-4 text-[var(--dsn-text-secondary)]" />
+            <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar por nombre o correo..."
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] pl-9 pr-3 py-1.5 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+              className="min-h-[36px] pl-9 py-1.5 text-xs"
             />
           </div>
         )}
@@ -693,17 +708,18 @@ export function RbacView({ initialData }: RbacViewProps) {
               </p>
             </div>
 
-            <button
+            <Button
               type="button"
+              variant="primary"
               onClick={() => {
                 setUserForm({ id: "", email: "", displayName: "", role: "platform_sales", status: "active" });
                 setUserModalOpen(true);
               }}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95 shadow-xs"
+              className="text-xs shadow-xs"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Registrar Nuevo Usuario</span>
-            </button>
+            </Button>
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)]">
@@ -869,24 +885,25 @@ export function RbacView({ initialData }: RbacViewProps) {
               </p>
             </div>
 
-            <button
+            <Button
               type="button"
+              variant="primary"
               onClick={() => {
                 setRoleForm({ id: "", key: "", name: "", description: "", scope: "platform", status: "active" });
                 setRoleModalOpen(true);
               }}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95 shadow-xs"
+              className="text-xs shadow-xs"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Crear Rol Personalizado</span>
-            </button>
+            </Button>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {data.roles.map((r) => (
-              <div
+              <Card
                 key={r.key}
-                className="flex flex-col justify-between rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-xs transition-all hover:border-[var(--dsn-accent)]/50"
+                className="flex flex-col justify-between p-5 shadow-xs transition-all hover:border-[var(--dsn-accent)]/50"
               >
                 <div>
                   <div className="flex items-center justify-between">
@@ -920,19 +937,21 @@ export function RbacView({ initialData }: RbacViewProps) {
                   <span className="text-[var(--dsn-text-secondary)] font-mono">
                     {r.assignedUsersCount} usuarios vinculados
                   </span>
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       setSelectedRoleKey(r.key);
                       setActiveTab("matrix");
                     }}
-                    className="inline-flex items-center gap-1 text-[var(--dsn-accent)] hover:underline font-semibold"
+                    className="h-auto px-1.5 py-1 text-xs font-semibold text-[var(--dsn-accent)]"
                   >
                     <span>Configurar Permisos</span>
                     <ChevronRight className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         </section>
@@ -955,21 +974,21 @@ export function RbacView({ initialData }: RbacViewProps) {
 
             {/* Selector de Rol Activo para la Matriz */}
             <div className="flex items-center gap-2">
-              <label htmlFor="matrix-role-selector" className="text-xs font-semibold text-[var(--dsn-text-secondary)]">
+              <Label htmlFor="matrix-role-selector" className="text-xs font-semibold text-[var(--dsn-text-secondary)]">
                 Auditar Rol:
-              </label>
-              <select
+              </Label>
+              <Select
                 id="matrix-role-selector"
                 value={selectedRoleKey}
                 onChange={(e) => setSelectedRoleKey(e.target.value)}
-                className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                className="min-h-[34px] w-auto px-3 py-1.5 text-xs font-semibold"
               >
                 {data.roles.map((r) => (
                   <option key={r.key} value={r.key}>
                     {r.name} ({r.scope})
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
 
@@ -1081,295 +1100,227 @@ export function RbacView({ initialData }: RbacViewProps) {
       {/* ─────────────────────────────────────────────────────────────
           MODAL 1: REGISTRAR O EDITAR USUARIO (Title Case en Labels)
          ───────────────────────────────────────────────────────────── */}
-      {userModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-user-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
-        >
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3">
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <h3 id="modal-user-title" className="text-base font-bold text-[var(--dsn-text)]">
-                  {userForm.id ? "Editar Usuario" : "Registrar Nuevo Usuario"}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setUserModalOpen(false)}
-                className="text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                aria-label="Cerrar modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
+      <Dialog open={userModalOpen} onOpenChange={setUserModalOpen}>
+        <DialogContent className="max-w-lg rounded-2xl p-6 shadow-2xl">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-[var(--dsn-text)]">
+              <Users className="h-5 w-5 text-[var(--dsn-accent)]" />
+              <span>{userForm.id ? "Editar Usuario" : "Registrar Nuevo Usuario"}</span>
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para crear o actualizar un usuario y su rol en el plano de control.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveUser} className="mt-4 space-y-4">
+            <div>
+              <Label htmlFor="user-email" className="mb-1 block text-xs font-semibold">
+                Correo Electrónico Corporativo
+              </Label>
+              <Input
+                id="user-email"
+                type="email"
+                required
+                disabled={Boolean(userForm.id)}
+                placeholder="ej. usuario@empresa.com"
+                value={userForm.email}
+                onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+              />
             </div>
 
-            <form onSubmit={handleSaveUser} className="mt-4 space-y-4">
+            <div>
+              <Label htmlFor="user-name" className="mb-1 block text-xs font-semibold">
+                Nombre Completo Del Usuario
+              </Label>
+              <Input
+                id="user-name"
+                type="text"
+                required
+                placeholder="ej. Carlos Mendoza"
+                value={userForm.displayName}
+                onChange={(e) => setUserForm({ ...userForm, displayName: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label
-                  htmlFor="user-email"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                >
-                  Correo Electrónico Corporativo
-                </label>
-                <input
-                  id="user-email"
-                  type="email"
+                <Label htmlFor="user-role" className="mb-1 block text-xs font-semibold">
+                  Rol Asignado
+                </Label>
+                <Select
+                  id="user-role"
                   required
-                  disabled={Boolean(userForm.id)}
-                  placeholder="ej. usuario@empresa.com"
-                  value={userForm.email}
-                  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden disabled:opacity-60"
-                />
+                  value={userForm.role}
+                  onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+                >
+                  {data.roles.map((r) => (
+                    <option key={r.key} value={r.key}>
+                      {r.name} ({r.scope})
+                    </option>
+                  ))}
+                </Select>
               </div>
 
               <div>
-                <label
-                  htmlFor="user-name"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
+                <Label htmlFor="user-status" className="mb-1 block text-xs font-semibold">
+                  Estado Operativo Del Usuario
+                </Label>
+                <Select
+                  id="user-status"
+                  value={userForm.status}
+                  onChange={(e) =>
+                    setUserForm({ ...userForm, status: e.target.value as "active" | "disabled" })
+                  }
                 >
-                  Nombre Completo Del Usuario
-                </label>
-                <input
-                  id="user-name"
-                  type="text"
-                  required
-                  placeholder="ej. Carlos Mendoza"
-                  value={userForm.displayName}
-                  onChange={(e) => setUserForm({ ...userForm, displayName: e.target.value })}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                />
+                  <option value="active">Activo</option>
+                  <option value="disabled">Suspendido</option>
+                </Select>
               </div>
+            </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="user-role"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Rol Asignado
-                  </label>
-                  <select
-                    id="user-role"
-                    required
-                    value={userForm.role}
-                    onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  >
-                    {data.roles.map((r) => (
-                      <option key={r.key} value={r.key}>
-                        {r.name} ({r.scope})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="user-status"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Estado Operativo Del Usuario
-                  </label>
-                  <select
-                    id="user-status"
-                    value={userForm.status}
-                    onChange={(e) =>
-                      setUserForm({ ...userForm, status: e.target.value as "active" | "disabled" })
-                    }
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  >
-                    <option value="active">Activo</option>
-                    <option value="disabled">Suspendido</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 border-t border-[var(--dsn-border)] pt-4">
-                <button
-                  type="button"
-                  onClick={() => setUserModalOpen(false)}
-                  className="inline-flex min-h-[44px] items-center rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] active:scale-95 disabled:opacity-50"
-                >
-                  {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  <span>Guardar Usuario</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <DialogFooter className="border-t border-[var(--dsn-border)] pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setUserModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                loading={loading}
+                className="text-xs"
+              >
+                <span>Guardar Usuario</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* ─────────────────────────────────────────────────────────────
           MODAL 2: CREAR / EDITAR ROL (Title Case en Labels)
          ───────────────────────────────────────────────────────────── */}
-      {roleModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-role-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
-        >
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3">
-              <div className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <h3 id="modal-role-title" className="text-base font-bold text-[var(--dsn-text)]">
-                  {roleForm.id ? "Editar Rol" : "Crear Rol Personalizado"}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setRoleModalOpen(false)}
-                className="text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                aria-label="Cerrar modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <Dialog open={roleModalOpen} onOpenChange={setRoleModalOpen}>
+        <DialogContent className="max-w-lg rounded-2xl p-6 shadow-2xl">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-[var(--dsn-text)]">
+              <Shield className="h-5 w-5 text-[var(--dsn-accent)]" />
+              <span>{roleForm.id ? "Editar Rol" : "Crear Rol Personalizado"}</span>
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para definir un rol personalizado y su ámbito de aplicación.
+            </DialogDescription>
+          </DialogHeader>
 
-            <form onSubmit={handleSaveRole} className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="role-key"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Clave Identificadora Del Rol
-                  </label>
-                  <input
-                    id="role-key"
-                    type="text"
-                    required
-                    disabled={Boolean(roleForm.id)}
-                    placeholder="ej. platform_auditor"
-                    value={roleForm.key}
-                    onChange={(e) => setRoleForm({ ...roleForm, key: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden disabled:opacity-60"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="role-name"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Nombre Descriptivo del Rol
-                  </label>
-                  <input
-                    id="role-name"
-                    type="text"
-                    required
-                    placeholder="ej. Auditor de Cumplimiento"
-                    value={roleForm.name}
-                    onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  />
-                </div>
-              </div>
-
+          <form onSubmit={handleSaveRole} className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label
-                  htmlFor="role-scope"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                >
-                  Ámbito De Aplicación Del Rol
-                </label>
-                <select
-                  id="role-scope"
-                  value={roleForm.scope}
-                  onChange={(e) =>
-                    setRoleForm({
-                      ...roleForm,
-                      scope: e.target.value as "platform" | "tenant" | "community",
-                    })
-                  }
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                >
-                  <option value="platform">Plataforma (Plano De Control)</option>
-                  <option value="tenant">Inquilino (Espacio De Trabajo)</option>
-                  <option value="community">Comunidad</option>
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="role-description"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                >
-                  Descripción Operativa Del Rol
-                </label>
-                <textarea
-                  id="role-description"
-                  rows={3}
+                <Label htmlFor="role-key" className="mb-1 block text-xs font-semibold">
+                  Clave Identificadora Del Rol
+                </Label>
+                <Input
+                  id="role-key"
+                  type="text"
                   required
-                  placeholder="Detalla las responsabilidades y alcance de este rol..."
-                  value={roleForm.description}
-                  onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden leading-relaxed"
+                  disabled={Boolean(roleForm.id)}
+                  placeholder="ej. platform_auditor"
+                  value={roleForm.key}
+                  onChange={(e) => setRoleForm({ ...roleForm, key: e.target.value })}
+                  className="font-mono"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 border-t border-[var(--dsn-border)] pt-4">
-                <button
-                  type="button"
-                  onClick={() => setRoleModalOpen(false)}
-                  className="inline-flex min-h-[44px] items-center rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] active:scale-95 disabled:opacity-50"
-                >
-                  {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  <span>Guardar Rol</span>
-                </button>
+              <div>
+                <Label htmlFor="role-name" className="mb-1 block text-xs font-semibold">
+                  Nombre Descriptivo del Rol
+                </Label>
+                <Input
+                  id="role-name"
+                  type="text"
+                  required
+                  placeholder="ej. Auditor de Cumplimiento"
+                  value={roleForm.name}
+                  onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })}
+                />
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+
+            <div>
+              <Label htmlFor="role-scope" className="mb-1 block text-xs font-semibold">
+                Ámbito De Aplicación Del Rol
+              </Label>
+              <Select
+                id="role-scope"
+                value={roleForm.scope}
+                onChange={(e) =>
+                  setRoleForm({
+                    ...roleForm,
+                    scope: e.target.value as "platform" | "tenant" | "community",
+                  })
+                }
+              >
+                <option value="platform">Plataforma (Plano De Control)</option>
+                <option value="tenant">Inquilino (Espacio De Trabajo)</option>
+                <option value="community">Comunidad</option>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="role-description" className="mb-1 block text-xs font-semibold">
+                Descripción Operativa Del Rol
+              </Label>
+              <Textarea
+                id="role-description"
+                rows={3}
+                required
+                placeholder="Detalla las responsabilidades y alcance de este rol..."
+                value={roleForm.description}
+                onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
+                className="text-xs leading-relaxed"
+              />
+            </div>
+
+            <DialogFooter className="border-t border-[var(--dsn-border)] pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRoleModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                loading={loading}
+                className="text-xs"
+              >
+                <span>Guardar Rol</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* ─────────────────────────────────────────────────────────────
           MODAL 3: FICHA DETALLADA DE IDENTIDAD DE USUARIO
          ───────────────────────────────────────────────────────────── */}
-      {detailUser && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-detail-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
-        >
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3">
-              <div className="flex items-center gap-2">
-                <Eye className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <h3 id="modal-detail-title" className="text-base font-bold text-[var(--dsn-text)]">
-                  Ficha De Identidad Del Usuario
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDetailUser(null)}
-                className="text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                aria-label="Cerrar ficha"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <Dialog open={Boolean(detailUser)} onOpenChange={(open) => !open && setDetailUser(null)}>
+        <DialogContent className="max-w-lg rounded-2xl p-6 shadow-2xl">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-[var(--dsn-text)]">
+              <Eye className="h-5 w-5 text-[var(--dsn-accent)]" />
+              <span>Ficha De Identidad Del Usuario</span>
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Detalles de identidad, verificación y roles asignados del usuario seleccionado.
+            </DialogDescription>
+          </DialogHeader>
 
+          {detailUser && (
             <div className="mt-4 space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-3 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 p-4">
                 <div>
@@ -1443,19 +1394,20 @@ export function RbacView({ initialData }: RbacViewProps) {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 border-t border-[var(--dsn-border)] pt-4">
-                <button
+              <DialogFooter className="border-t border-[var(--dsn-border)] pt-4">
+                <Button
                   type="button"
+                  variant="outline"
                   onClick={() => setDetailUser(null)}
-                  className="inline-flex min-h-[44px] items-center rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                  className="text-xs"
                 >
                   Cerrar
-                </button>
-              </div>
+                </Button>
+              </DialogFooter>
             </div>
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ─────────────────────────────────────────────────────────────
           MODAL 4: CONFIRMACIÓN ACCESIBLE (Regla 4.17 · Cero diálogos nativos)

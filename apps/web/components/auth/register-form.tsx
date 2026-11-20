@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Alert, AlertDescription, Button, Checkbox, Input, Label } from "@mocter/ui";
 import type { Plan } from "@mocter/domain";
 import { clientLog } from "@/lib/logger/client";
 import { serializeError } from "@/lib/logger/serialize-error";
@@ -173,24 +174,22 @@ export function RegisterForm({ locale, selectedPlan, referralCode, t }: Register
       )}
 
       {errorMessage && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
-          {errorMessage}
-        </div>
+        <Alert variant="destructive" className="rounded-xl p-3 text-xs">
+          <AlertDescription className="text-inherit">{errorMessage}</AlertDescription>
+        </Alert>
       )}
 
       <div>
-        <label
-          htmlFor="name"
-          className="mb-1.5 block text-xs font-medium text-muted"
-        >
+        <Label htmlFor="name" className="mb-1.5 block text-xs font-medium text-muted">
           {t.nameLabel}
-        </label>
-        <input
+        </Label>
+        <Input
           id="name"
           name="name"
           type="text"
           autoComplete="name"
           required
+          error={Boolean(fieldErrors.name?.length)}
           value={name}
           onChange={(e) => {
             setName(e.target.value);
@@ -199,9 +198,7 @@ export function RegisterForm({ locale, selectedPlan, referralCode, t }: Register
             }
           }}
           placeholder={t.namePlaceholder}
-          className={`w-full rounded-xl border ${
-            fieldErrors.name?.length ? "border-red-500/70" : "border-stroke"
-          } bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1`}
+          className="min-h-[42px] rounded-xl bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60"
         />
         {fieldErrors.name?.map((err, i) => (
           <p key={i} className="mt-1 text-xs text-red-400">
@@ -211,18 +208,16 @@ export function RegisterForm({ locale, selectedPlan, referralCode, t }: Register
       </div>
 
       <div>
-        <label
-          htmlFor="email"
-          className="mb-1.5 block text-xs font-medium text-muted"
-        >
+        <Label htmlFor="email" className="mb-1.5 block text-xs font-medium text-muted">
           {t.emailLabel}
-        </label>
-        <input
+        </Label>
+        <Input
           id="email"
           name="email"
           type="email"
           autoComplete="email"
           required
+          error={Boolean(fieldErrors.email?.length)}
           value={email}
           onChange={(e) => {
             setEmail(e.target.value);
@@ -231,9 +226,7 @@ export function RegisterForm({ locale, selectedPlan, referralCode, t }: Register
             }
           }}
           placeholder={t.emailPlaceholder}
-          className={`w-full rounded-xl border ${
-            fieldErrors.email?.length ? "border-red-500/70" : "border-stroke"
-          } bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1`}
+          className="min-h-[42px] rounded-xl bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60"
         />
         {fieldErrors.email?.map((err, i) => (
           <p key={i} className="mt-1 text-xs text-red-400">
@@ -243,19 +236,17 @@ export function RegisterForm({ locale, selectedPlan, referralCode, t }: Register
       </div>
 
       <div>
-        <label
-          htmlFor="password"
-          className="mb-1.5 block text-xs font-medium text-muted"
-        >
+        <Label htmlFor="password" className="mb-1.5 block text-xs font-medium text-muted">
           {t.passwordLabel}
-        </label>
-        <input
+        </Label>
+        <Input
           id="password"
           name="password"
           type="password"
           autoComplete="new-password"
           required
           minLength={7}
+          error={Boolean(fieldErrors.password?.length)}
           value={password}
           onChange={(e) => {
             setPassword(e.target.value);
@@ -264,9 +255,7 @@ export function RegisterForm({ locale, selectedPlan, referralCode, t }: Register
             }
           }}
           placeholder={t.passwordPlaceholder}
-          className={`w-full rounded-xl border ${
-            fieldErrors.password?.length ? "border-red-500/70" : "border-stroke"
-          } bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60 transition-all focus:border-a1 focus:outline-none focus:ring-1 focus:ring-a1`}
+          className="min-h-[42px] rounded-xl bg-bg2/60 px-4 py-2.5 text-sm text-txt placeholder:text-muted/60"
         />
 
         {/* Requisitos visuales dinámicos de complejidad de contraseña (AUTH-001 T-06) */}
@@ -313,16 +302,15 @@ export function RegisterForm({ locale, selectedPlan, referralCode, t }: Register
 
       {/* Checkbox obligatorio de Tratamiento de Datos Personales (Ley 1581) */}
       <div className="flex items-start gap-2.5 pt-1">
-        <input
+        <Checkbox
           id="treatmentConsent"
           name="treatmentConsent"
-          type="checkbox"
           required
           checked={treatmentConsent}
-          onChange={(e) => setTreatmentConsent(e.target.checked)}
-          className="mt-0.5 h-4 w-4 cursor-pointer rounded border-stroke bg-bg2 text-a1 accent-a1 focus:ring-a1"
+          onCheckedChange={(checked) => setTreatmentConsent(checked === true)}
+          className="mt-0.5"
         />
-        <label htmlFor="treatmentConsent" className="cursor-pointer text-xs leading-relaxed text-muted">
+        <Label htmlFor="treatmentConsent" className="cursor-pointer text-xs font-normal leading-relaxed text-muted">
           <span>{t.termsPrefix}</span>
           <Link
             href={`/${locale}/privacidad`}
@@ -332,16 +320,18 @@ export function RegisterForm({ locale, selectedPlan, referralCode, t }: Register
             {t.termsLink}
           </Link>
           <span>{t.termsSuffix}</span>
-        </label>
+        </Label>
       </div>
 
-      <button
+      <Button
         type="submit"
-        disabled={isSubmitting}
-        className="mt-3 flex w-full cursor-pointer items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] py-3 text-sm font-semibold text-white shadow-lg shadow-a1/25 transition-all hover:opacity-95 hover:shadow-a1/40 disabled:cursor-not-allowed disabled:opacity-50"
+        variant="primary"
+        loading={isSubmitting}
+        loadingText={t.submitting}
+        className="mt-3 min-h-[44px] w-full rounded-xl bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] py-3 text-sm font-semibold text-white shadow-lg shadow-a1/25 hover:opacity-95 hover:shadow-a1/40"
       >
-        {isSubmitting ? t.submitting : t.submit}
-      </button>
+        {t.submit}
+      </Button>
     </form>
   );
 }

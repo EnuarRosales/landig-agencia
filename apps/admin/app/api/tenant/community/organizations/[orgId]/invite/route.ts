@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCommunitiesGovernanceService } from "@mocter/domain";
 import { handle } from "@/lib/errors/route";
+import { resolveAdminPublicOrigin } from "@/lib/resolve-admin-origin";
 import {
   communityProblemJson,
   domainFailureToProblem,
@@ -69,6 +70,7 @@ export const POST = handle(
       inviterUserId: session.userId,
       targetClientSlugOrEmail: parsed.data.targetClientSlugOrEmail,
       role: parsed.data.role,
+      baseUrl: resolveAdminPublicOrigin(req),
     });
 
     if (!res.ok) {
@@ -77,7 +79,10 @@ export const POST = handle(
 
     return NextResponse.json(
       { ok: true, data: res.data },
-      { status: 201, headers: { "x-request-id": requestId } },
+      {
+        status: res.data.reusedExisting ? 200 : 201,
+        headers: { "x-request-id": requestId },
+      },
     );
   },
 );

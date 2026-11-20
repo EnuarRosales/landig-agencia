@@ -77,6 +77,9 @@ export function isTenantOwnerRole(context: PortalContext): boolean {
  */
 export function domainErrorStatusForCode(code: string): number {
   const c = code.toUpperCase();
+  if (c.includes("CELL_UNAVAILABLE") || c.includes("S3_UPLOAD_FAILED") || c.includes("S3_READ_FAILED")) {
+    return 503;
+  }
   if (c.includes("NOT_FOUND")) return 404;
   if (
     c.includes("FORBIDDEN") ||
@@ -101,7 +104,13 @@ export function domainErrorStatusForCode(code: string): number {
     c.includes("SUSPENDED") ||
     c.includes("NO_PENDING_CHANGES") ||
     c.includes("CANNOT_ADOPT_OWN") ||
-    c.includes("ORIGINATOR_CANNOT")
+    c.includes("ORIGINATOR_CANNOT") ||
+    c.includes("INVALID_VIDEO_URL") ||
+    c.includes("INVALID_IMAGE_FORMAT") ||
+    c.includes("FILE_TOO_LARGE") ||
+    c.includes("POST_NOT_PUBLISHED") ||
+    c.includes("INVITATION_EXPIRED") ||
+    c.includes("INVITATION_NOT_PENDING")
   ) {
     return 422;
   }
@@ -116,6 +125,7 @@ export function domainFailureToProblem(
   requestId: string,
   code: string | undefined,
   detail: string,
+  issues?: unknown,
 ): NextResponse {
   const safeCode = code ?? "BAD_REQUEST";
   const status = domainErrorStatusForCode(safeCode);
@@ -138,6 +148,7 @@ export function domainFailureToProblem(
     detail,
     safeCode.toLowerCase().replace(/_/g, "-"),
     safeCode,
+    issues,
   );
 }
 

@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import React, { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
+import { describe, expect, it, vi, afterEach } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { PhoneE164Input, type PhoneE164ChangeMeta } from "./phone-e164-input";
 import { GeoAddressFields, type GeoAddressFieldValues } from "./geo-address-fields";
 
 describe("Componentes Geográficos y E.164 (SPEC-20)", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it("PhoneE164Input normaliza números locales al formato E.164 según país seleccionado y valida longitud", () => {
     const onChange = vi.fn<(val: string, meta: PhoneE164ChangeMeta) => void>();
 
@@ -83,5 +88,60 @@ describe("Componentes Geográficos y E.164 (SPEC-20)", () => {
     fireEvent.change(countrySelect, { target: { value: "MX" } });
     expect(screen.getByLabelText("Estado")).toBeDefined();
     expect(screen.getByLabelText("Colonia / Barrio")).toBeDefined();
+  });
+
+  it("emite HTML SSR determinista sin depender de Intl.DisplayNames y se hidrata con el catálogo completo en cliente", () => {
+    const phoneSsrHtml = renderToString(
+      <PhoneE164Input
+        id="profile-phone"
+        label="Teléfono de Contacto"
+        value=""
+        defaultCountryCode="CO"
+        locale="es"
+        onChange={() => {}}
+      />,
+    );
+
+    expect(phoneSsrHtml).toContain('value="CO"');
+    expect(phoneSsrHtml).toContain("CO (+57)");
+    expect(phoneSsrHtml).not.toContain("Azerbaiyán");
+    expect(phoneSsrHtml).not.toContain("Autoridad Nacional Palestina");
+
+    const geoSsrHtml = renderToString(
+      <GeoAddressFields
+        values={{ countryCode: "CO" }}
+        onChange={() => {}}
+        locale="es"
+      />,
+    );
+
+    expect(geoSsrHtml).toContain('value="CO"');
+    expect(geoSsrHtml).not.toContain("Azerbaiyán");
+    expect(geoSsrHtml).not.toContain("Autoridad Nacional Palestina");
+
+    render(
+      <>
+        <PhoneE164Input
+          id="profile-phone"
+          label="Teléfono de Contacto"
+          value=""
+          defaultCountryCode="CO"
+          locale="es"
+          onChange={() => {}}
+        />
+        <GeoAddressFields
+          values={{ countryCode: "CO" }}
+          onChange={() => {}}
+          locale="es"
+        />
+      </>,
+    );
+
+    const phoneCountrySelect = screen.getByLabelText("Código De País Del Teléfono") as HTMLSelectElement;
+    const geoCountrySelect = screen.getByLabelText("País") as HTMLSelectElement;
+    expect(phoneCountrySelect.options.length).toBeGreaterThan(100);
+    expect(geoCountrySelect.options.length).toBeGreaterThan(100);
+    expect(phoneCountrySelect.value).toBe("CO");
+    expect(geoCountrySelect.value).toBe("CO");
   });
 });

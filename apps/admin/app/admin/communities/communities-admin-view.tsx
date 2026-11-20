@@ -1,15 +1,19 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useSyncExternalStore } from "react";
+
+const emptySubscribe = () => () => {};
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
+  Clock,
   Globe,
   RefreshCw,
   Search,
   ShieldAlert,
   ShieldCheck,
   Store,
+  Trash2,
   UserPlus,
   Users,
   X,
@@ -19,8 +23,27 @@ import type {
   AdminLeaderAuthorizationItemDto,
   AdminOrganizationSummaryDto,
 } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  ConfirmationModal,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  EmptyState,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
-import { ConfirmationModal } from "@/components/confirmation-modal";
 
 interface CommunitiesAdminViewProps {
   initialOverview: AdminCommunitiesOverviewDto;
@@ -36,6 +59,11 @@ export function CommunitiesAdminView({
 }: CommunitiesAdminViewProps) {
   const router = useRouter();
   const dict = getAdminDictionary(locale).adminCommunities;
+  const isClientHydrated = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
 
   const [overview, setOverview] = useState<AdminCommunitiesOverviewDto>(initialOverview);
   const [activeTab, setActiveTab] = useState<"leaders" | "organizations">("leaders");
@@ -69,6 +97,17 @@ export function CommunitiesAdminView({
   const [suspendTarget, setSuspendTarget] = useState<AdminOrganizationSummaryDto | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+
+  // Parametrización SaaS de retención de publicaciones del muro (SPEC-15-D14)
+  const [retentionDaysInput, setRetentionDaysInput] = useState(
+    String(initialOverview.retentionSettings?.feedRetentionDays ?? 90),
+  );
+  const [retentionUnlimited, setRetentionUnlimited] = useState(
+    initialOverview.retentionSettings?.feedRetentionDays === null,
+  );
+  const [savingRetention, setSavingRetention] = useState(false);
+  const [purgeModalOpen, setPurgeModalOpen] = useState(false);
+  const [purgingRetention, setPurgingRetention] = useState(false);
 
   const pendingCount = useMemo(
     () => overview.authorizations.filter((a) => a.status === "pending").length,
@@ -278,35 +317,99 @@ export function CommunitiesAdminView({
     }
   }
 
+  async function handleSaveRetention(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingRetention(true);
+    setFeedback(null);
+    try {
+      const parsedDays = retentionUnlimited
+        ? null
+        : Math.min(3650, Math.max(1, Number.parseInt(retentionDaysInput || "90", 10) || 90));
+
+      const res = await fetch("/api/admin/communities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "update_retention_settings",
+          feedRetentionDays: parsedDays,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.detail || json.error || "No se pudo guardar la retención.");
+      }
+      await reloadOverview();
+      router.refresh();
+      setFeedback({ type: "ok", message: dict.retentionSavedMsg });
+    } catch (err) {
+      setFeedback({
+        type: "err",
+        message: err instanceof Error ? err.message : "Error inesperado.",
+      });
+    } finally {
+      setSavingRetention(false);
+    }
+  }
+
+  async function handleRunRetentionPurge() {
+    setPurgingRetention(true);
+    setConfirmError(null);
+    try {
+      const res = await fetch("/api/admin/communities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: "run_retention_purge" }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.detail || json.error || "No se pudo ejecutar la purga.");
+      }
+      setPurgeModalOpen(false);
+      await reloadOverview();
+      router.refresh();
+      const purgedCount = json.data?.purgedPostsCount ?? 0;
+      const freedMb = ((json.data?.releasedBytesTotal ?? 0) / (1024 * 1024)).toFixed(2);
+      setFeedback({
+        type: "ok",
+        message:
+          locale === "en"
+            ? `${dict.retentionPurgedMsg} Purged posts: ${purgedCount}, released storage: ${freedMb} MB.`
+            : `${dict.retentionPurgedMsg} Publicaciones purgadas: ${purgedCount}, almacenamiento liberado: ${freedMb} MB.`,
+      });
+    } catch (err) {
+      setConfirmError(err instanceof Error ? err.message : "Error inesperado.");
+    } finally {
+      setPurgingRetention(false);
+    }
+  }
+
   function renderAuthStatusBadge(status: AdminLeaderAuthorizationItemDto["status"]) {
     if (status === "approved") {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+        <Badge variant="success" className="gap-1">
           <CheckCircle2 className="h-3.5 w-3.5" />
-          {dict.statusApproved}
-        </span>
+          <span>{dict.statusApproved}</span>
+        </Badge>
       );
     }
     if (status === "pending") {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+        <Badge variant="warning" className="gap-1">
           <ShieldAlert className="h-3.5 w-3.5" />
-          {dict.statusPending}
-        </span>
+          <span>{dict.statusPending}</span>
+        </Badge>
       );
     }
     if (status === "rejected") {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 px-2.5 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300">
-          {dict.statusRejected}
-        </span>
+        <Badge variant="destructive" className="gap-1">
+          <span>{dict.statusRejected}</span>
+        </Badge>
       );
     }
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/15 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">
-        {dict.statusRevoked}
-      </span>
-    );
+    return <Badge variant="outline">{dict.statusRevoked}</Badge>;
   }
 
   return (
@@ -317,223 +420,300 @@ export function CommunitiesAdminView({
             <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
               {dict.pageTitle}
             </h1>
-            <span className="rounded-full bg-[var(--dsn-accent)]/10 px-2.5 py-0.5 text-xs font-medium text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/20">
-              {dict.pageBadge}
-            </span>
+            <Badge variant="accent">{dict.pageBadge}</Badge>
           </div>
           <p className="mt-1 text-xs md:text-sm text-[var(--dsn-text-secondary)]">
             {dict.pageSubtitle}
           </p>
         </div>
 
-        <button
+        <Button
           type="button"
+          variant="secondary"
           onClick={() => void reloadOverview()}
           disabled={refreshing}
-          className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors disabled:opacity-50"
+          className="min-h-[40px] text-xs"
         >
           <RefreshCw className={`h-4 w-4 text-[var(--dsn-accent)] ${refreshing ? "animate-spin" : ""}`} />
           <span>{locale === "en" ? "Refresh" : "Actualizar"}</span>
-        </button>
+        </Button>
       </header>
 
       {feedback && (
-        <div
-          className={`rounded-xl border px-4 py-3 text-xs font-medium ${
-            feedback.type === "ok"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-              : "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300"
-          }`}
-        >
-          {feedback.message}
-        </div>
+        <Alert variant={feedback.type === "ok" ? "success" : "destructive"}>
+          <AlertDescription className="text-xs font-medium">{feedback.message}</AlertDescription>
+        </Alert>
       )}
 
       {/* KPIs de gobierno */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <span>{dict.kpiTotalRequests}</span>
             <ShieldAlert className="h-4 w-4 text-amber-500" />
           </div>
           <p className="mt-2 text-2xl font-bold text-[var(--dsn-text)]">{pendingCount}</p>
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <span>{dict.kpiAuthorizedLeaders}</span>
             <ShieldCheck className="h-4 w-4 text-emerald-500" />
           </div>
           <p className="mt-2 text-2xl font-bold text-[var(--dsn-text)]">{approvedCount}</p>
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <span>{dict.kpiActiveOrgs}</span>
             <Globe className="h-4 w-4 text-[var(--dsn-accent)]" />
           </div>
           <p className="mt-2 text-2xl font-bold text-[var(--dsn-text)]">{activeOrgsCount}</p>
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4">
+        <Card className="p-4">
           <div className="flex items-center justify-between text-xs text-[var(--dsn-text-secondary)]">
             <span>{dict.kpiTotalClones}</span>
             <Users className="h-4 w-4 text-[var(--dsn-accent)]" />
           </div>
           <p className="mt-2 text-2xl font-bold text-[var(--dsn-text)]">{totalSharesCount}</p>
-        </div>
+        </Card>
       </section>
 
       {/* Habilitación directa de un comercio como Líder */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 md:p-5 space-y-4">
-        <div>
-          <h2 className="text-sm font-semibold text-[var(--dsn-text)] flex items-center gap-2">
-            <UserPlus className="h-4 w-4 text-[var(--dsn-accent)]" />
-            <span>{dict.directGrantTitle}</span>
-          </h2>
-          <p className="mt-0.5 text-xs text-[var(--dsn-text-secondary)]">
-            {dict.directGrantSubtitle}
-          </p>
-        </div>
-
-        <form onSubmit={handleDirectGrant} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-          <div className="md:col-span-4 space-y-1">
-            <label htmlFor="direct-leader-client" className="block text-xs font-medium text-[var(--dsn-text)]">
-              {dict.selectClientLabel}
-            </label>
-            <select
-              id="direct-leader-client"
-              value={directClientId}
-              onChange={(e) => setDirectClientId(e.target.value)}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-              required
-            >
-              <option value="">-- {dict.selectClientLabel} --</option>
-              {overview.tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.displayName} ({t.slug}) · {t.planName} [{t.leaderStatus}]
-                </option>
-              ))}
-            </select>
+      <Card asChild>
+        <section className="p-4 md:p-5 space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--dsn-text)] flex items-center gap-2">
+              <UserPlus className="h-4 w-4 text-[var(--dsn-accent)]" />
+              <span>{dict.directGrantTitle}</span>
+            </h2>
+            <p className="mt-0.5 text-xs text-[var(--dsn-text-secondary)]">
+              {dict.directGrantSubtitle}
+            </p>
           </div>
 
-          <div className="md:col-span-3 space-y-1">
-            <label htmlFor="direct-leader-quota" className="block text-xs font-medium text-[var(--dsn-text)]">
-              {dict.quotaLabel}
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                id="direct-leader-quota"
-                type="number"
-                min={1}
-                max={1000}
-                disabled={directUnlimited}
-                value={directMaxQuota}
-                onChange={(e) => setDirectMaxQuota(e.target.value)}
-                className="w-24 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)] disabled:opacity-50"
-              />
-              <label className="inline-flex items-center gap-1.5 text-xs text-[var(--dsn-text-secondary)] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={directUnlimited}
-                  onChange={(e) => setDirectUnlimited(e.target.checked)}
-                  className="accent-[var(--dsn-accent)]"
+          <form onSubmit={handleDirectGrant} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+            <div className="md:col-span-4 space-y-1">
+              <Label htmlFor="direct-leader-client" className="block text-xs font-medium text-[var(--dsn-text)]">
+                {dict.selectClientLabel}
+              </Label>
+              <Select
+                id="direct-leader-client"
+                value={directClientId}
+                onChange={(e) => setDirectClientId(e.target.value)}
+                className="text-xs"
+                required
+              >
+                <option value="">-- {dict.selectClientLabel} --</option>
+                {overview.tenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.displayName} ({t.slug}) · {t.planName} [{t.leaderStatus}]
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="md:col-span-3 space-y-1">
+              <Label htmlFor="direct-leader-quota" className="block text-xs font-medium text-[var(--dsn-text)]">
+                {dict.quotaLabel}
+              </Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="direct-leader-quota"
+                  type="number"
+                  min={1}
+                  max={1000}
+                  disabled={directUnlimited}
+                  value={directMaxQuota}
+                  onChange={(e) => setDirectMaxQuota(e.target.value)}
+                  className="w-24 text-xs"
                 />
-                <span>{dict.unlimitedQuotaLabel}</span>
-              </label>
+                <label className="inline-flex items-center gap-1.5 text-xs text-[var(--dsn-text-secondary)] cursor-pointer">
+                  <Checkbox
+                    checked={directUnlimited}
+                    onCheckedChange={(checked) => setDirectUnlimited(checked === true)}
+                  />
+                  <span>{dict.unlimitedQuotaLabel}</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="md:col-span-3 space-y-1">
+              <Label htmlFor="direct-leader-notes" className="block text-xs font-medium text-[var(--dsn-text)]">
+                {dict.notesLabel}
+              </Label>
+              <Input
+                id="direct-leader-notes"
+                type="text"
+                value={directNotes}
+                onChange={(e) => setDirectNotes(e.target.value)}
+                placeholder={dict.notesPlaceholder}
+                className="text-xs"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={!directClientId || savingDirect}
+                loading={savingDirect}
+                className="w-full min-h-[38px] text-xs"
+              >
+                <span>{dict.approveAction}</span>
+              </Button>
+            </div>
+          </form>
+        </section>
+      </Card>
+
+      {/* Parametrización SaaS de retención de publicaciones del muro */}
+      <Card asChild>
+        <section className="p-4 md:p-5 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--dsn-text)] flex items-center gap-2">
+                <Clock className="h-4 w-4 text-[var(--dsn-accent)]" />
+                <span>{dict.retentionTitle}</span>
+              </h2>
+              <p className="mt-0.5 text-xs text-[var(--dsn-text-secondary)]">
+                {dict.retentionSubtitle}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--dsn-text-secondary)]">
+              <Badge variant="outline">
+                {dict.retentionEligibleLabel}: {overview.retentionSettings?.eligibleToPurgeCount ?? 0}
+              </Badge>
+              <span>
+                {dict.retentionLastRunLabel}:{" "}
+                {overview.retentionSettings?.lastRetentionPurgeAt
+                  ? isClientHydrated
+                    ? new Date(overview.retentionSettings.lastRetentionPurgeAt).toLocaleString(
+                        locale === "en" ? "en-US" : "es-CO",
+                      )
+                    : `${new Date(overview.retentionSettings.lastRetentionPurgeAt).toLocaleString(
+                        locale === "en" ? "en-US" : "es-CO",
+                        { timeZone: "UTC" },
+                      )} UTC`
+                  : dict.retentionNeverRun}
+              </span>
             </div>
           </div>
 
-          <div className="md:col-span-3 space-y-1">
-            <label htmlFor="direct-leader-notes" className="block text-xs font-medium text-[var(--dsn-text)]">
-              {dict.notesLabel}
-            </label>
-            <input
-              id="direct-leader-notes"
-              type="text"
-              value={directNotes}
-              onChange={(e) => setDirectNotes(e.target.value)}
-              placeholder={dict.notesPlaceholder}
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-            />
-          </div>
+          <form onSubmit={handleSaveRetention} className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="retention-days-input" className="block text-xs font-medium text-[var(--dsn-text)]">
+                {dict.retentionDaysLabel}
+              </Label>
+              <Input
+                id="retention-days-input"
+                type="number"
+                min={1}
+                max={3650}
+                disabled={retentionUnlimited || savingRetention}
+                value={retentionDaysInput}
+                onChange={(e) => setRetentionDaysInput(e.target.value)}
+                className="w-28 text-xs"
+              />
+            </div>
 
-          <div className="md:col-span-2">
-            <button
-              type="submit"
-              disabled={!directClientId || savingDirect}
-              className="w-full inline-flex min-h-[38px] items-center justify-center rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-            >
-              {dict.approveAction}
-            </button>
-          </div>
-        </form>
-      </section>
+            <label className="inline-flex h-9 items-center gap-2 text-xs text-[var(--dsn-text-secondary)] cursor-pointer">
+              <Checkbox
+                checked={retentionUnlimited}
+                onCheckedChange={(checked) => setRetentionUnlimited(checked === true)}
+              />
+              <span>{dict.retentionUnlimitedLabel}</span>
+            </label>
+
+            <div className="flex flex-wrap items-center gap-2 ml-auto">
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={savingRetention}
+                loading={savingRetention}
+                className="min-h-[38px] text-xs"
+              >
+                <span>{dict.retentionSaveCta}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={purgingRetention || retentionUnlimited}
+                onClick={() => {
+                  setConfirmError(null);
+                  setPurgeModalOpen(true);
+                }}
+                className="min-h-[38px] text-xs"
+              >
+                <Trash2 className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                <span>{dict.retentionPurgeCta}</span>
+              </Button>
+            </div>
+          </form>
+        </section>
+      </Card>
 
       {/* Tabs + Filtros */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant={activeTab === "leaders" ? "primary" : "secondary"}
             onClick={() => setActiveTab("leaders")}
-            className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
-              activeTab === "leaders"
-                ? "bg-[var(--dsn-accent)] text-white"
-                : "border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)]"
-            }`}
+            className="text-xs"
           >
             {dict.tabRequests} ({overview.authorizations.length})
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant={activeTab === "organizations" ? "primary" : "secondary"}
             onClick={() => setActiveTab("organizations")}
-            className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
-              activeTab === "organizations"
-                ? "bg-[var(--dsn-accent)] text-white"
-                : "border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)]"
-            }`}
+            className="text-xs"
           >
             {dict.tabOrganizations} ({overview.organizations.length})
-          </button>
+          </Button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[var(--dsn-text-secondary)]" />
-            <input
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--dsn-text-secondary)]" />
+            <Input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={locale === "en" ? "Search..." : "Buscar..."}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] pl-8 pr-3 py-2 text-xs text-[var(--dsn-text)]"
+              className="bg-[var(--dsn-surface)] pl-8 text-xs"
             />
           </div>
 
           {activeTab === "leaders" && (
-            <select
+            <Select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
+              className="bg-[var(--dsn-surface)] text-xs w-auto"
             >
               <option value="all">{locale === "en" ? "All Statuses" : "Todos los Estados"}</option>
               <option value="pending">{dict.statusPending}</option>
               <option value="approved">{dict.statusApproved}</option>
               <option value="rejected">{dict.statusRejected}</option>
               <option value="revoked">{dict.statusRevoked}</option>
-            </select>
+            </Select>
           )}
         </div>
       </div>
 
       {/* Tab 1: Solicitudes y Líderes */}
       {activeTab === "leaders" && (
-        <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden">
-          {filteredAuthorizations.length === 0 ? (
-            <div className="p-10 text-center space-y-1">
-              <p className="text-sm font-semibold text-[var(--dsn-text)]">{dict.noRequestsTitle}</p>
-              <p className="text-xs text-[var(--dsn-text-secondary)]">{dict.noRequestsDesc}</p>
-            </div>
-          ) : (
+        <Card asChild>
+          <section className="overflow-hidden">
+            {filteredAuthorizations.length === 0 ? (
+              <EmptyState
+                title={dict.noRequestsTitle}
+                description={dict.noRequestsDesc}
+                className="border-0 rounded-none py-10"
+              />
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="border-b border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/60 text-[var(--dsn-text-secondary)]">
@@ -574,8 +754,10 @@ export function CommunitiesAdminView({
                       <td className="px-4 py-3">{renderAuthStatusBadge(item.status)}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex flex-wrap justify-end gap-1.5">
-                          <button
+                          <Button
                             type="button"
+                            variant="primary"
+                            size="sm"
                             onClick={() =>
                               setReviewModalTarget({
                                 clientId: item.clientId,
@@ -588,14 +770,16 @@ export function CommunitiesAdminView({
                                 reviewNotes: item.reviewNotes ?? "",
                               })
                             }
-                            className="rounded-lg bg-[var(--dsn-accent)] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:opacity-90"
+                            className="h-auto min-h-0 px-2.5 py-1.5 text-[11px]"
                           >
                             {item.status === "approved" ? dict.updateQuotaAction : dict.approveAction}
-                          </button>
+                          </Button>
 
                           {item.status === "pending" && (
-                            <button
+                            <Button
                               type="button"
+                              variant="destructive"
+                              size="sm"
                               onClick={() =>
                                 setReviewModalTarget({
                                   clientId: item.clientId,
@@ -608,23 +792,25 @@ export function CommunitiesAdminView({
                                   reviewNotes: "",
                                 })
                               }
-                              className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300"
+                              className="h-auto min-h-0 px-2.5 py-1.5 text-[11px]"
                             >
                               {dict.rejectAction}
-                            </button>
+                            </Button>
                           )}
 
                           {item.status === "approved" && (
-                            <button
+                            <Button
                               type="button"
+                              variant="outline"
+                              size="sm"
                               onClick={() => {
                                 setConfirmError(null);
                                 setRevokeTarget(item);
                               }}
-                              className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-[11px] font-semibold text-rose-600 hover:border-rose-500/40"
+                              className="h-auto min-h-0 px-2.5 py-1.5 text-[11px] text-rose-600 hover:border-rose-500/40"
                             >
                               {dict.revokeAction}
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </td>
@@ -634,201 +820,198 @@ export function CommunitiesAdminView({
               </table>
             </div>
           )}
-        </section>
+          </section>
+        </Card>
       )}
 
       {/* Tab 2: Comunidades Registradas */}
       {activeTab === "organizations" && (
-        <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden">
-          {filteredOrganizations.length === 0 ? (
-            <div className="p-10 text-center space-y-1">
-              <p className="text-sm font-semibold text-[var(--dsn-text)]">{dict.noOrgsTitle}</p>
-              <p className="text-xs text-[var(--dsn-text-secondary)]">{dict.noOrgsDesc}</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="border-b border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/60 text-[var(--dsn-text-secondary)]">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold">{dict.colCommunity}</th>
-                    <th className="px-4 py-3 font-semibold">{dict.colLeader}</th>
-                    <th className="px-4 py-3 font-semibold">{dict.colPolicy}</th>
-                    <th className="px-4 py-3 font-semibold">{dict.colMembers}</th>
-                    <th className="px-4 py-3 font-semibold">{dict.colShares}</th>
-                    <th className="px-4 py-3 font-semibold">{dict.colStatus}</th>
-                    <th className="px-4 py-3 font-semibold text-right">{dict.colActions}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--dsn-border)]">
-                  {filteredOrganizations.map((org) => (
-                    <tr key={org.id} className="hover:bg-[var(--dsn-surface-secondary)]/30">
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-[var(--dsn-text)]">{org.name}</div>
-                        <div className="text-[11px] text-[var(--dsn-text-secondary)]">
-                          /{org.slug} {org.category ? `· ${org.category}` : ""}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-[var(--dsn-text)]">{org.originatorName}</td>
-                      <td className="px-4 py-3 text-[var(--dsn-text-secondary)]">
-                        <div>{org.sharePolicy}</div>
-                        <div className="text-[11px]">{org.visibility} · mod: {org.moderationMode}</div>
-                      </td>
-                      <td className="px-4 py-3 font-medium text-[var(--dsn-text)]">{org.membersCount}</td>
-                      <td className="px-4 py-3 font-medium text-[var(--dsn-text)]">{org.sharesCount}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            org.status === "active"
-                              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                              : "bg-rose-500/15 text-rose-700 dark:text-rose-300"
-                          }`}
-                        >
-                          {org.status === "active" ? dict.statusActive : dict.statusSuspended}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {org.status === "active" ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setConfirmError(null);
-                              setSuspendTarget(org);
-                            }}
-                            className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300"
-                          >
-                            {dict.suspendOrgAction}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={confirmLoading}
-                            onClick={() => void handleToggleOrgStatus(org, "active")}
-                            className="rounded-lg bg-[var(--dsn-accent)] px-2.5 py-1.5 text-[11px] font-semibold text-white"
-                          >
-                            {dict.reactivateOrgAction}
-                          </button>
-                        )}
-                      </td>
+        <Card asChild>
+          <section className="overflow-hidden">
+            {filteredOrganizations.length === 0 ? (
+              <EmptyState
+                title={dict.noOrgsTitle}
+                description={dict.noOrgsDesc}
+                className="border-0 rounded-none py-10"
+              />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/60 text-[var(--dsn-text-secondary)]">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">{dict.colCommunity}</th>
+                      <th className="px-4 py-3 font-semibold">{dict.colLeader}</th>
+                      <th className="px-4 py-3 font-semibold">{dict.colPolicy}</th>
+                      <th className="px-4 py-3 font-semibold">{dict.colMembers}</th>
+                      <th className="px-4 py-3 font-semibold">{dict.colShares}</th>
+                      <th className="px-4 py-3 font-semibold">{dict.colStatus}</th>
+                      <th className="px-4 py-3 font-semibold text-right">{dict.colActions}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--dsn-border)]">
+                    {filteredOrganizations.map((org) => (
+                      <tr key={org.id} className="hover:bg-[var(--dsn-surface-secondary)]/30">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-[var(--dsn-text)]">{org.name}</div>
+                          <div className="text-[11px] text-[var(--dsn-text-secondary)]">
+                            /{org.slug} {org.category ? `· ${org.category}` : ""}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-[var(--dsn-text)]">{org.originatorName}</td>
+                        <td className="px-4 py-3 text-[var(--dsn-text-secondary)]">
+                          <div>{org.sharePolicy}</div>
+                          <div className="text-[11px]">{org.visibility} · mod: {org.moderationMode}</div>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-[var(--dsn-text)]">{org.membersCount}</td>
+                        <td className="px-4 py-3 font-medium text-[var(--dsn-text)]">{org.sharesCount}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant={org.status === "active" ? "success" : "destructive"}>
+                            {org.status === "active" ? dict.statusActive : dict.statusSuspended}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {org.status === "active" ? (
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                setConfirmError(null);
+                                setSuspendTarget(org);
+                              }}
+                              className="h-auto min-h-0 px-2.5 py-1.5 text-[11px]"
+                            >
+                              {dict.suspendOrgAction}
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="primary"
+                              size="sm"
+                              disabled={confirmLoading}
+                              onClick={() => void handleToggleOrgStatus(org, "active")}
+                              className="h-auto min-h-0 px-2.5 py-1.5 text-[11px]"
+                            >
+                              {dict.reactivateOrgAction}
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </Card>
       )}
 
       {/* Modal de Revisión / Cupo de Líder */}
-      {reviewModalTarget && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
-        >
-          <div className="w-full max-w-md rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-2xl space-y-4">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
+      <Dialog
+        open={Boolean(reviewModalTarget)}
+        onOpenChange={(open) => {
+          if (!open && !savingReview) setReviewModalTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-md p-5 space-y-4">
+          {reviewModalTarget && (
+            <>
+              <DialogHeader className="pr-8">
+                <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
                   {reviewModalTarget.action === "approve" ? dict.approveAction : dict.rejectAction}
-                </h3>
-                <p className="text-xs text-[var(--dsn-text-secondary)]">
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
                   {reviewModalTarget.clientName}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setReviewModalTarget(null)}
-                className="rounded-lg p-1 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+                </DialogDescription>
+              </DialogHeader>
 
-            {reviewModalTarget.proposedName && (
-              <div className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-3 text-xs space-y-1">
-                <div className="font-semibold text-[var(--dsn-text)]">
-                  {reviewModalTarget.proposedName}
-                </div>
-                {reviewModalTarget.businessModel && (
-                  <p className="text-[var(--dsn-text-secondary)]">{reviewModalTarget.businessModel}</p>
-                )}
-              </div>
-            )}
-
-            <form onSubmit={submitReviewModal} className="space-y-3">
-              {reviewModalTarget.action === "approve" && (
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-[var(--dsn-text)]">
-                    {dict.quotaLabel}
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      min={1}
-                      max={1000}
-                      disabled={reviewModalTarget.unlimited}
-                      value={reviewModalTarget.maxOwnedCommunities}
-                      onChange={(e) =>
-                        setReviewModalTarget((prev) =>
-                          prev ? { ...prev, maxOwnedCommunities: e.target.value } : null,
-                        )
-                      }
-                      className="w-28 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)] disabled:opacity-50"
-                    />
-                    <label className="inline-flex items-center gap-1.5 text-xs text-[var(--dsn-text)] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={reviewModalTarget.unlimited}
-                        onChange={(e) =>
-                          setReviewModalTarget((prev) =>
-                            prev ? { ...prev, unlimited: e.target.checked } : null,
-                          )
-                        }
-                        className="accent-[var(--dsn-accent)]"
-                      />
-                      <span>{dict.unlimitedQuotaLabel}</span>
-                    </label>
+              {reviewModalTarget.proposedName && (
+                <div className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 p-3 text-xs space-y-1">
+                  <div className="font-semibold text-[var(--dsn-text)]">
+                    {reviewModalTarget.proposedName}
                   </div>
+                  {reviewModalTarget.businessModel && (
+                    <p className="text-[var(--dsn-text-secondary)]">{reviewModalTarget.businessModel}</p>
+                  )}
                 </div>
               )}
 
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-[var(--dsn-text)]">
-                  {dict.notesLabel}
-                </label>
-                <textarea
-                  rows={3}
-                  value={reviewModalTarget.reviewNotes}
-                  onChange={(e) =>
-                    setReviewModalTarget((prev) =>
-                      prev ? { ...prev, reviewNotes: e.target.value } : null,
-                    )
-                  }
-                  placeholder={dict.notesPlaceholder}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                />
-              </div>
+              <form onSubmit={submitReviewModal} className="space-y-3">
+                {reviewModalTarget.action === "approve" && (
+                  <div className="space-y-1.5">
+                    <Label className="block text-xs font-medium text-[var(--dsn-text)]">
+                      {dict.quotaLabel}
+                    </Label>
+                    <div className="flex items-center gap-3">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={1000}
+                        disabled={reviewModalTarget.unlimited}
+                        value={reviewModalTarget.maxOwnedCommunities}
+                        onChange={(e) =>
+                          setReviewModalTarget((prev) =>
+                            prev ? { ...prev, maxOwnedCommunities: e.target.value } : null,
+                          )
+                        }
+                        className="w-28 text-xs"
+                      />
+                      <label className="inline-flex items-center gap-1.5 text-xs text-[var(--dsn-text)] cursor-pointer">
+                        <Checkbox
+                          checked={reviewModalTarget.unlimited}
+                          onCheckedChange={(checked) =>
+                            setReviewModalTarget((prev) =>
+                              prev ? { ...prev, unlimited: checked === true } : null,
+                            )
+                          }
+                        />
+                        <span>{dict.unlimitedQuotaLabel}</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setReviewModalTarget(null)}
-                  className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)]"
-                >
-                  {locale === "en" ? "Cancel" : "Cancelar"}
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingReview}
-                  className="rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {reviewModalTarget.action === "approve" ? dict.approveAction : dict.rejectAction}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                <div className="space-y-1.5">
+                  <Label className="block text-xs font-medium text-[var(--dsn-text)]">
+                    {dict.notesLabel}
+                  </Label>
+                  <Textarea
+                    rows={3}
+                    value={reviewModalTarget.reviewNotes}
+                    onChange={(e) =>
+                      setReviewModalTarget((prev) =>
+                        prev ? { ...prev, reviewNotes: e.target.value } : null,
+                      )
+                    }
+                    placeholder={dict.notesPlaceholder}
+                    className="text-xs"
+                  />
+                </div>
+
+                <DialogFooter className="pt-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setReviewModalTarget(null)}
+                    className="text-xs"
+                  >
+                    {locale === "en" ? "Cancel" : "Cancelar"}
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={savingReview}
+                    loading={savingReview}
+                    className="text-xs"
+                  >
+                    {reviewModalTarget.action === "approve" ? dict.approveAction : dict.rejectAction}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Confirmación de Revocación */}
       <ConfirmationModal
@@ -883,6 +1066,34 @@ export function CommunitiesAdminView({
         confirmText={dict.suspendOrgAction}
         cancelText={locale === "en" ? "Cancel" : "Cancelar"}
         loading={confirmLoading}
+        error={confirmError}
+      />
+
+      {/* Modal de Confirmación de Purga de Retención */}
+      <ConfirmationModal
+        isOpen={purgeModalOpen}
+        onClose={() => !purgingRetention && setPurgeModalOpen(false)}
+        onConfirm={() => void handleRunRetentionPurge()}
+        title={dict.retentionConfirmTitle}
+        subtitle={
+          retentionUnlimited
+            ? dict.retentionUnlimitedLabel
+            : `${overview.retentionSettings?.feedRetentionDays ?? retentionDaysInput} ${
+                locale === "en" ? "Days" : "Días"
+              }`
+        }
+        variant="warning"
+        details={[
+          {
+            label: dict.retentionEligibleLabel,
+            value: String(overview.retentionSettings?.eligibleToPurgeCount ?? 0),
+          },
+        ]}
+        warningTitle={dict.retentionConfirmTitle}
+        warningMessage={dict.retentionConfirmDesc}
+        confirmText={dict.retentionPurgeCta}
+        cancelText={locale === "en" ? "Cancel" : "Cancelar"}
+        loading={purgingRetention}
         error={confirmError}
       />
     </div>

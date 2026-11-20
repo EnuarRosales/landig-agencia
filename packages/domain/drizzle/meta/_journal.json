@@ -316,6 +316,20 @@
       "when": 1795050654944,
       "tag": "0044_spec16_referrals_attribution_and_redemptions",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1795141382656,
+      "tag": "0045_spec15_wall_rich_media_replies_pin_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1795144565735,
+      "tag": "0046_spec15_unique_pending_invitations",
+      "breakpoints": true
     }
   ]
 }

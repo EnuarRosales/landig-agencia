@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { Alert, AlertDescription, Button, Input, Label, Select, Textarea } from "@mocter/ui";
 
 export interface BotToneOption {
   id: string;
@@ -261,9 +262,9 @@ export function BotConfigurationView({
       </div>
 
       {saveSuccessMsg && (
-        <div className="rounded border border-emerald-500/30 bg-emerald-950/40 p-3 text-xs text-emerald-400">
-          {saveSuccessMsg}
-        </div>
+        <Alert variant="success" className="text-xs">
+          <AlertDescription className="text-inherit">{saveSuccessMsg}</AlertDescription>
+        </Alert>
       )}
 
       {/* Formulario Principal de Configuración */}
@@ -271,54 +272,54 @@ export function BotConfigurationView({
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-medium text-zinc-300">
+              <Label className="block text-xs font-medium text-zinc-300">
                 {i18n.labelName} *
-              </label>
-              <input
+              </Label>
+              <Input
                 type="text"
                 required
                 value={bot.name}
                 onChange={(e) => setBot({ ...bot, name: e.target.value })}
-                className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                className="mt-1 min-h-[38px] rounded border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-zinc-300">
+              <Label className="block text-xs font-medium text-zinc-300">
                 {i18n.labelTone} *
-              </label>
-              <select
+              </Label>
+              <Select
                 value={bot.toneId}
                 onChange={(e) => setBot({ ...bot, toneId: e.target.value })}
-                className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                className="mt-1 min-h-[38px] rounded border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500"
               >
                 {tones.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.label} ({t.code})
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-zinc-300">
+            <Label className="block text-xs font-medium text-zinc-300">
               {i18n.labelObjective} *
-            </label>
-            <input
+            </Label>
+            <Input
               type="text"
               required
               value={bot.objective}
               onChange={(e) => setBot({ ...bot, objective: e.target.value })}
-              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+              className="mt-1 min-h-[38px] rounded border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500"
             />
           </div>
 
           {/* Estrategia de Selección de Modelo */}
           <div className="pt-2 border-t border-zinc-800/80">
-            <label className="block text-xs font-medium text-zinc-300 mb-2">
+            <Label className="block text-xs font-medium text-zinc-300 mb-2">
               {i18n.labelModelSelection}
-            </label>
+            </Label>
             <div className="flex gap-4 text-xs">
               <label className="inline-flex items-center gap-2 cursor-pointer text-zinc-200">
                 <input
@@ -344,28 +345,28 @@ export function BotConfigurationView({
 
             {modelStrategy === "preset" ? (
               <div className="mt-3">
-                <label className="block text-xs font-medium text-zinc-400">
+                <Label className="block text-xs font-medium text-zinc-400">
                   {i18n.labelPreset}
-                </label>
-                <select
+                </Label>
+                <Select
                   value={bot.presetId || presets[0]?.id || ""}
                   onChange={(e) => setBot({ ...bot, presetId: e.target.value })}
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                  className="mt-1 min-h-[38px] rounded border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500"
                 >
                   {presets.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.label} - {p.modelName} ({p.recommendedFor})
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             ) : (
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-400">
+                  <Label className="block text-xs font-medium text-zinc-400">
                     {i18n.labelProvider}
-                  </label>
-                  <select
+                  </Label>
+                  <Select
                     value={bot.providerId || providers[0]?.id || ""}
                     onChange={(e) => {
                       const newPId = e.target.value;
@@ -376,30 +377,30 @@ export function BotConfigurationView({
                         modelId: firstModel?.id || null,
                       });
                     }}
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                    className="mt-1 min-h-[38px] rounded border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500"
                   >
                     {providers.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-zinc-400">
+                  <Label className="block text-xs font-medium text-zinc-400">
                     {i18n.labelModel}
-                  </label>
-                  <select
+                  </Label>
+                  <Select
                     value={bot.modelId || availableModels[0]?.id || ""}
                     onChange={(e) => setBot({ ...bot, modelId: e.target.value })}
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                    className="mt-1 min-h-[38px] rounded border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500"
                   >
                     {availableModels.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.displayName} ({m.modelId})
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               </div>
             )}
@@ -408,52 +409,52 @@ export function BotConfigurationView({
           {/* Opciones Conversacionales Avanzadas */}
           <div className="pt-2 border-t border-zinc-800/80 space-y-3">
             <div>
-              <label className="block text-xs font-medium text-zinc-300">
+              <Label className="block text-xs font-medium text-zinc-300">
                 {i18n.labelPersona}
-              </label>
-              <textarea
+              </Label>
+              <Textarea
                 rows={2}
                 value={bot.persona || ""}
                 onChange={(e) => setBot({ ...bot, persona: e.target.value || null })}
-                className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                className="mt-1 rounded border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:border-emerald-500"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-zinc-300">
+                <Label className="block text-xs font-medium text-zinc-300">
                   {i18n.labelGreeting}
-                </label>
-                <input
+                </Label>
+                <Input
                   type="text"
                   value={bot.greetingMessage || ""}
                   onChange={(e) =>
                     setBot({ ...bot, greetingMessage: e.target.value || null })
                   }
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                  className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:border-emerald-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-300">
+                <Label className="block text-xs font-medium text-zinc-300">
                   {i18n.labelFallback}
-                </label>
-                <input
+                </Label>
+                <Input
                   type="text"
                   value={bot.fallbackMessage || ""}
                   onChange={(e) =>
                     setBot({ ...bot, fallbackMessage: e.target.value || null })
                   }
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                  className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:border-emerald-500"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-zinc-300">
+              <Label className="block text-xs font-medium text-zinc-300">
                 {i18n.labelAnswerPolicy}
-              </label>
-              <select
+              </Label>
+              <Select
                 value={bot.answerPolicy}
                 onChange={(e) =>
                   setBot({
@@ -461,21 +462,23 @@ export function BotConfigurationView({
                     answerPolicy: e.target.value as "solo_conocimiento" | "libre",
                   })
                 }
-                className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 focus:border-emerald-500"
               >
                 <option value="solo_conocimiento">{i18n.policyOnlyKnowledge}</option>
                 <option value="libre">{i18n.policyFree}</option>
-              </select>
+              </Select>
             </div>
           </div>
 
           <div className="pt-3 flex justify-end">
-            <button
+            <Button
               type="submit"
-              className="rounded bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500 transition-colors"
+              variant="primary"
+              size="sm"
+              className="rounded bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
             >
               {i18n.saveBotButton}
-            </button>
+            </Button>
           </div>
         </div>
       </form>
@@ -541,50 +544,52 @@ export function BotConfigurationView({
         </div>
 
         {byokSuccessMsg && (
-          <div className="rounded border border-emerald-500/30 bg-emerald-950/40 p-3 text-xs text-emerald-400">
-            {byokSuccessMsg}
-          </div>
+          <Alert variant="success" className="text-xs">
+            <AlertDescription className="text-inherit">{byokSuccessMsg}</AlertDescription>
+          </Alert>
         )}
 
         <form onSubmit={handleSaveByok} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs font-medium text-zinc-300">
+            <Label className="block text-xs font-medium text-zinc-300">
               {i18n.labelProvider}
-            </label>
-            <select
+            </Label>
+            <Select
               value={selectedProviderForByok}
               onChange={(e) => setSelectedProviderForByok(e.target.value)}
-              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+              className="mt-1 min-h-[38px] rounded border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500"
             >
               {providers.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-zinc-300">
+            <Label className="block text-xs font-medium text-zinc-300">
               {i18n.labelApiKey}
-            </label>
-            <input
+            </Label>
+            <Input
               type="password"
               placeholder="sk-..."
               required
               value={plainApiKey}
               onChange={(e) => setPlainApiKey(e.target.value)}
-              className="mt-1 w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+              className="mt-1 min-h-[38px] rounded border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500"
             />
           </div>
 
           <div className="flex items-end">
-            <button
+            <Button
               type="submit"
-              className="w-full rounded bg-zinc-800 border border-zinc-700 px-4 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-700 transition-colors"
+              variant="secondary"
+              size="sm"
+              className="w-full rounded bg-zinc-800 border border-zinc-700 px-4 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-700"
             >
               {i18n.saveKeyButton}
-            </button>
+            </Button>
           </div>
         </form>
 

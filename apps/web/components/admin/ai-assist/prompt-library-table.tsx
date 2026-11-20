@@ -1,6 +1,15 @@
 "use client";
 
 import React, { useState } from "react";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@mocter/ui";
 
 export interface PromptLibraryItem {
   fieldKey: string;
@@ -112,13 +121,15 @@ export function PromptLibraryTable({
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => setSelectedField(f)}
-                    className="text-xs font-semibold px-3 py-1 rounded border border-border hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="h-auto min-h-[30px] px-3 py-1 text-xs font-semibold"
                   >
                     Ver Detalles
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -127,69 +138,56 @@ export function PromptLibraryTable({
       </div>
 
       {/* Details Modal */}
-      {selectedField && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in-0"
-        >
-          <div className="w-full max-w-2xl rounded-xl border border-border bg-card p-6 shadow-xl space-y-4">
-            <div className="flex items-start justify-between border-b border-border pb-3">
+      <Dialog open={Boolean(selectedField)} onOpenChange={(open) => !open && setSelectedField(null)}>
+        <DialogContent className="max-w-2xl rounded-xl p-6 shadow-xl space-y-4">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3">
+            <DialogTitle className="text-lg font-bold font-mono text-[var(--dsn-accent)]">
+              {selectedField?.fieldKey}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {selectedField?.labels.es} ({selectedField?.entity}.{selectedField?.columnName})
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedField?.activePrompt ? (
+            <div className="space-y-3 text-sm">
               <div>
-                <h3 className="text-lg font-bold font-mono text-primary">
-                  {selectedField.fieldKey}
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  {selectedField.labels.es} ({selectedField.entity}.{selectedField.columnName})
+                <p className="text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                  {t("inputHint")}
+                </p>
+                <p className="p-2.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 text-xs">
+                  {selectedField.activePrompt.inputHint}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedField(null)}
-                className="text-muted-foreground hover:text-foreground text-sm font-semibold"
-              >
-                ✕
-              </button>
-            </div>
 
-            {selectedField.activePrompt ? (
-              <div className="space-y-3 text-sm">
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1">
-                    {t("inputHint")}
-                  </p>
-                  <p className="p-2.5 rounded-lg border border-border bg-muted/20 text-xs">
-                    {selectedField.activePrompt.inputHint}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1">
-                    {t("promptContent")} (v{selectedField.activePrompt.version})
-                  </p>
-                  <pre className="p-3 rounded-lg border border-border bg-muted/30 text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
-                    {selectedField.activePrompt.masterPrompt}
-                  </pre>
-                </div>
+              <div>
+                <p className="text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                  {t("promptContent")} (v{selectedField.activePrompt.version})
+                </p>
+                <pre className="p-3 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+                  {selectedField.activePrompt.masterPrompt}
+                </pre>
               </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                No hay un prompt maestro activo configurado para este campo.
-              </p>
-            )}
-
-            <div className="flex justify-end pt-3 border-t border-border">
-              <button
-                type="button"
-                onClick={() => setSelectedField(null)}
-                className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-              >
-                Cerrar
-              </button>
             </div>
-          </div>
-        </div>
-      )}
+          ) : (
+            <p className="text-xs text-[var(--dsn-text-secondary)]">
+              No hay un prompt maestro activo configurado para este campo.
+            </p>
+          )}
+
+          <DialogFooter className="border-t border-[var(--dsn-border)] pt-3">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={() => setSelectedField(null)}
+              className="text-xs font-semibold"
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

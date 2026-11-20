@@ -386,6 +386,18 @@ export const INITIAL_AI_ASSIST_FIELDS: Array<
     createdBy: "system.seed",
     updatedBy: "system.seed",
   },
+  {
+    fieldKey: "community.wall_post",
+    entity: "feed_posts",
+    columnName: "body",
+    labels: {
+      es: "Publicación en Muro de Comunidad",
+      en: "Community Wall Post",
+    },
+    isActive: true,
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
 ];
 
 /**
@@ -1169,6 +1181,25 @@ Burbuja de beneficios lista para enviar:
 [A] ACCIÓN: Transforma el borrador del comerciante en un argumento comercial claro, empático y orientado al cierre.
 [L] LÍMITE: Máximo 500 caracteres.`,
     outputRules: { maxLength: 500, minLength: 20, format: "plain", tone: "persuasivo, claro y confiable" },
+    examples: [],
+    createdBy: "system.seed",
+    updatedBy: "system.seed",
+  },
+  {
+    fieldKey: "community.wall_post",
+    version: 1,
+    status: "active",
+    inputHint: "Redacta un anuncio comercial, lanzamiento o novedad para compartir en el muro de tu comunidad.",
+    masterPrompt: `${IDEAL_METHODOLOGY_PREAMBLE}
+
+[I] INTENCIÓN: Transformar el borrador de un comercio en una publicación clara, atractiva y accionable para el muro B2B de su comunidad en Mocter.
+[D] DELIMITACIÓN:
+- Devuelve únicamente el fragmento HTML interno usando etiquetas simples y seguras (<p>, <strong>, <em>, <h3>, <ul>, <li>, <br>) sin incluir <html>, <head>, <body>, <script> ni atributos peligrosos.
+- No inventes precios, descuentos ni stock que no estén mencionados en el borrador.
+[E] EJEMPLO: "<h3>Nuevo Ingreso Disponible</h3><p>Ya tenemos reposición de nuestra línea destacada lista para despacho inmediato.</p><ul><li><strong>Presentación:</strong> Unidades selladas de alta rotación.</li><li><strong>Disponibilidad:</strong> Activa en el catálogo compartido.</li></ul>"
+[A] ACCIÓN: Mejora la redacción, estructura visual y llamado a la acción manteniendo el idioma solicitado.
+[L] LÍMITE: Máximo 2500 caracteres.`,
+    outputRules: { maxLength: 2500, minLength: 15, format: "html", tone: "cercano, comercial y claro" },
     examples: [],
     createdBy: "system.seed",
     updatedBy: "system.seed",

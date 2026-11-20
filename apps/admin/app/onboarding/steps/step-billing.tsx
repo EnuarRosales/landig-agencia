@@ -3,6 +3,7 @@
 import React from "react";
 import { ArrowLeft, CheckCircle2, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import type { TenantOnboardingStateDto, WorkspaceBillingDto } from "@mocter/domain";
+import { Badge, Button } from "@mocter/ui";
 import { BillingCheckoutPanel } from "@/components/billing-checkout-panel";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
@@ -70,12 +71,12 @@ export function StepBilling({
                 {selectedPlan?.names?.[locale] || selectedPlan?.name || "Plan"}
               </span>
               {hasTrial && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-500">
-                  <Sparkles className="h-3 w-3" />
+                <Badge variant="success" className="text-xs font-semibold">
+                  <Sparkles className="h-3 w-3" aria-hidden="true" />
                   <span>
                     {trialDays} {dict.step2TrialBadge}
                   </span>
-                </span>
+                </Badge>
               )}
             </div>
             {hasTrial && (
@@ -84,38 +85,33 @@ export function StepBilling({
           </div>
 
           {(hasTrial || isFreePlan) && (
-            <button
+            <Button
               type="button"
-              disabled={loading}
+              variant="primary"
+              size="lg"
+              loading={loading}
+              loadingText={dict.step5ActivatingLabel}
               data-testid="step5-activate-trial-or-free-cta"
               onClick={() => onCompleteOnboarding(hasTrial ? "trial" : "free")}
-              className="inline-flex min-h-[46px] shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--dsn-accent)] px-6 py-2.5 text-sm font-bold text-[var(--dsn-accent-fg)] shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50"
+              className="min-h-[46px] shrink-0 rounded-xl px-6 font-bold"
             >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>{dict.step5ActivatingLabel}</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="h-4 w-4" />
-                  <span>{hasTrial ? dict.step5StartTrialCta : dict.step5ActivateFreeCta}</span>
-                </>
-              )}
-            </button>
+              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+              <span>{hasTrial ? dict.step5StartTrialCta : dict.step5ActivateFreeCta}</span>
+            </Button>
           )}
         </div>
 
         <div className="flex justify-start">
-          <button
+          <Button
             type="button"
+            variant="secondary"
             disabled={loading}
             onClick={onBack}
-            className="inline-flex min-h-[42px] items-center gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors"
+            className="min-h-[42px] rounded-xl bg-[var(--dsn-surface-secondary)]"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             <span>{dict.backCta}</span>
-          </button>
+          </Button>
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import React from "react";
 import { DataTable } from "@/components/data-table";
 import { getAdminDictionary } from "@/lib/i18n";
 import { fetchAdminLeads } from "@mocter/domain";
+import { Button } from "@mocter/ui";
 import { Inbox, Download } from "lucide-react";
 
 /**
@@ -48,13 +49,10 @@ export default async function AdminLeadsInboxPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95"
-        >
+        <Button type="button" variant="primary" className="min-h-[44px] text-sm">
           <Download className="h-4 w-4" />
           <span>{dict.exportCsv}</span>
-        </button>
+        </Button>
       </header>
 
       <DataTable

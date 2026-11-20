@@ -13,9 +13,19 @@ import {
   Sparkles,
   Star,
   Video,
-  X,
 } from "lucide-react";
 import type { ProductDetailDto } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { formatStorageBytes } from "@/components/catalog-quota-banner";
 import { formatMoneyCents } from "./product-ui-helpers";
@@ -73,29 +83,23 @@ export function ProductDetailModal({
         : dict.productsFilterKindService;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={dict.productsDetailModalTitle}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-3 md:p-6 backdrop-blur-xs"
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[var(--dsn-border)] px-5 py-4">
+      <DialogContent
+        aria-label={dict.productsDetailModalTitle}
+        closeAriaLabel={dict.productsCloseModal}
+        className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl p-0"
+      >
+        <DialogHeader className="flex-row items-center justify-between px-5 py-4 mb-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <Package className="h-5 w-5 shrink-0 text-[var(--dsn-accent)]" />
-            <h3 className="truncate text-base font-bold text-[var(--dsn-text)]">
-              {dict.productsDetailModalTitle}
-            </h3>
+            <Package className="h-5 w-5 shrink-0 text-[var(--dsn-accent)]" aria-hidden="true" />
+            <DialogTitle className="truncate">{dict.productsDetailModalTitle}</DialogTitle>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={dict.productsCloseModal}
-            className="rounded-lg p-1.5 text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)]"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        </DialogHeader>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
           {loading ? (
@@ -103,9 +107,9 @@ export function ProductDetailModal({
               {dict.productsLoadingDetail}
             </div>
           ) : error ? (
-            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-400">
-              {error}
-            </div>
+            <Alert variant="error" role="alert">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           ) : !product ? null : (
             <>
               {product.hasInactiveComboComponent && (
@@ -422,26 +426,18 @@ export function ProductDetailModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-[var(--dsn-border)] px-5 py-3.5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-[var(--dsn-border)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-          >
+        <DialogFooter className="mt-0 px-5 py-3.5">
+          <Button type="button" variant="outline" onClick={onClose}>
             {dict.productsCloseModal}
-          </button>
+          </Button>
           {product && (
-            <button
-              type="button"
-              onClick={() => onEdit(product)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90"
-            >
-              <Edit3 className="h-3.5 w-3.5" />
+            <Button type="button" variant="primary" onClick={() => onEdit(product)}>
+              <Edit3 className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{dict.productsActionEdit}</span>
-            </button>
+            </Button>
           )}
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

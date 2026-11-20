@@ -11,7 +11,6 @@ import {
   Edit3,
   ShieldCheck,
   Send,
-  Loader2,
   X,
   Lock,
   Eye,
@@ -20,7 +19,23 @@ import {
   Save,
 } from "lucide-react";
 import type { AdminEmailSettingsDto } from "@mocter/domain";
-import { ConfirmationModal } from "@/components/confirmation-modal";
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  Checkbox,
+  ConfirmationModal,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  Switch,
+} from "@mocter/ui";
 import { EmailRichTextEditor } from "@/components/email-rich-text-editor";
 
 type AdminEmailEventDto = AdminEmailSettingsDto["events"][number];
@@ -530,13 +545,10 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
     <div className="space-y-6">
       {/* Banner de Feedback */}
       {feedback && (
-        <div
+        <Alert
           role="status"
-          className={`flex items-center justify-between rounded-xl p-4 text-xs font-medium border ${
-            feedback.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-              : "bg-red-500/10 border-red-500/20 text-red-400"
-          }`}
+          variant={feedback.type === "success" ? "success" : "destructive"}
+          className="flex items-center justify-between text-xs font-medium"
         >
           <div className="flex items-center gap-2">
             {feedback.type === "success" ? (
@@ -544,17 +556,19 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
             ) : (
               <AlertCircle className="h-4 w-4 shrink-0" />
             )}
-            <span>{feedback.message}</span>
+            <AlertDescription className="text-inherit">{feedback.message}</AlertDescription>
           </div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => setFeedback(null)}
-            className="text-inherit opacity-70 hover:opacity-100"
+            className="h-7 w-7 text-inherit opacity-70 hover:opacity-100"
             aria-label="Cerrar aviso"
           >
             <X className="h-4 w-4" />
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
 
       {/* Selector de Pestañas Mobile First */}
@@ -631,16 +645,18 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => { setTestError(null); setTestModalOpen(true); }}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] transition-colors hover:bg-[var(--dsn-surface-secondary)]"
+                className="text-xs"
               >
                 <Send className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
                 <span>Probar Envío</span>
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="primary"
                 onClick={() => {
                   setSmtpForm({
                     id: data.provider?.id || "",
@@ -653,11 +669,11 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
                   });
                   setSmtpModalOpen(true);
                 }}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95 shadow-xs"
+                className="text-xs shadow-xs"
               >
                 <Edit3 className="h-3.5 w-3.5" />
                 <span>Configurar Servidor SMTP</span>
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -1010,25 +1026,12 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
 
                             <td className="px-4 py-3 align-top whitespace-nowrap">
                               <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  role="switch"
-                                  aria-checked={ev.isEnabled}
+                                <Switch
+                                  checked={ev.isEnabled}
                                   aria-label={`Notificación Activa para ${ev.key}`}
                                   disabled={ev.isSystem || isBusy}
-                                  onClick={() => handleRequestToggleEvent(ev)}
-                                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-[var(--dsn-accent)] disabled:opacity-50 disabled:cursor-not-allowed ${
-                                    ev.isEnabled
-                                      ? "bg-[var(--dsn-accent)] border-[var(--dsn-accent)]"
-                                      : "bg-[var(--dsn-surface-secondary)] border-[var(--dsn-border)]"
-                                  }`}
-                                >
-                                  <span
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                                      ev.isEnabled ? "translate-x-6" : "translate-x-1"
-                                    }`}
-                                  />
-                                </button>
+                                  onCheckedChange={() => handleRequestToggleEvent(ev)}
+                                />
                                 <span className="text-[11px] font-medium text-[var(--dsn-text-secondary)]">
                                   {ev.isEnabled ? "Activa" : "Desactivada"}
                                 </span>
@@ -1036,14 +1039,16 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
                             </td>
 
                             <td className="px-4 py-3 align-top text-right whitespace-nowrap">
-                              <button
+                              <Button
                                 type="button"
+                                variant="outline"
+                                size="sm"
                                 onClick={() => openEditTemplateForEvent(ev.key, "es")}
-                                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                                className="min-h-[36px] text-xs font-medium"
                               >
                                 <Edit3 className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
                                 <span>Editar Plantilla</span>
-                              </button>
+                              </Button>
                             </td>
                           </tr>
                         );
@@ -1111,17 +1116,19 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
                   Envuelve automáticamente el cuerpo específico de cada correo con este encabezado y pie institucional.
                 </p>
               </div>
-              <label className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--dsn-text)] cursor-pointer">
-                <input
-                  type="checkbox"
+              <Label
+                htmlFor="layout-inheritance-active"
+                className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold"
+              >
+                <Checkbox
+                  id="layout-inheritance-active"
                   checked={layoutForm.isEnabled}
-                  onChange={(e) =>
-                    setLayoutForm((prev) => ({ ...prev, isEnabled: e.target.checked }))
+                  onCheckedChange={(checked) =>
+                    setLayoutForm((prev) => ({ ...prev, isEnabled: checked === true }))
                   }
-                  className="h-4 w-4 rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
                 />
                 <span>{layoutForm.isEnabled ? "Activo" : "Inactivo"}</span>
-              </label>
+              </Label>
             </div>
 
             <EmailRichTextEditor
@@ -1165,18 +1172,15 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
             </div>
 
             <div className="flex justify-end border-t border-[var(--dsn-border)] pt-4">
-              <button
+              <Button
                 type="submit"
-                disabled={savingLayout}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-5 py-2 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] active:scale-95 disabled:opacity-50"
+                variant="primary"
+                loading={savingLayout}
+                className="px-5 text-xs"
               >
-                {savingLayout ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
+                {!savingLayout && <Save className="h-4 w-4" />}
                 <span>Guardar Encabezado y Pie Global</span>
-              </button>
+              </Button>
             </div>
           </form>
         </section>
@@ -1185,715 +1189,606 @@ export function NotificationsView({ initialData }: NotificationsViewProps) {
       {/* ─────────────────────────────────────────────────────────────
           MODAL 1: CONFIGURAR SERVIDOR SMTP (Title Case estricto)
          ───────────────────────────────────────────────────────────── */}
-      {smtpModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-smtp-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
-        >
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3">
-              <div className="flex items-center gap-2">
-                <Server className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <h3 id="modal-smtp-title" className="text-base font-bold text-[var(--dsn-text)]">
-                  Configurar Servidor SMTP
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSmtpModalOpen(false)}
-                className="text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                aria-label="Cerrar modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
+      <Dialog open={smtpModalOpen} onOpenChange={setSmtpModalOpen}>
+        <DialogContent className="max-w-lg rounded-2xl p-6 shadow-2xl">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-[var(--dsn-text)]">
+              <Server className="h-5 w-5 text-[var(--dsn-accent)]" />
+              <span>Configurar Servidor SMTP</span>
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario de configuración del servidor SMTP transaccional.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveSmtp} className="mt-4 space-y-4">
+            <div>
+              <Label htmlFor="smtp-name" className="mb-1 block text-xs font-semibold">
+                Nombre Identificador del Servidor
+              </Label>
+              <Input
+                id="smtp-name"
+                type="text"
+                required
+                value={smtpForm.name}
+                onChange={(e) => setSmtpForm({ ...smtpForm, name: e.target.value })}
+              />
             </div>
 
-            <form onSubmit={handleSaveSmtp} className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label
-                  htmlFor="smtp-name"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                >
-                  Nombre Identificador del Servidor
-                </label>
-                <input
-                  id="smtp-name"
+                <Label htmlFor="smtp-host" className="mb-1 block text-xs font-semibold">
+                  Dirección Host del Servidor
+                </Label>
+                <Input
+                  id="smtp-host"
                   type="text"
                   required
-                  value={smtpForm.name}
-                  onChange={(e) => setSmtpForm({ ...smtpForm, name: e.target.value })}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="smtp-host"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Dirección Host del Servidor
-                  </label>
-                  <input
-                    id="smtp-host"
-                    type="text"
-                    required
-                    value={smtpForm.host}
-                    onChange={(e) => setSmtpForm({ ...smtpForm, host: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="smtp-port"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Puerto de Conexión
-                  </label>
-                  <input
-                    id="smtp-port"
-                    type="number"
-                    required
-                    value={smtpForm.port}
-                    onChange={(e) => setSmtpForm({ ...smtpForm, port: Number(e.target.value) })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  id="smtp-secure"
-                  type="checkbox"
-                  checked={smtpForm.secure}
-                  onChange={(e) => setSmtpForm({ ...smtpForm, secure: e.target.checked })}
-                  className="h-4 w-4 rounded border-[var(--dsn-border)] text-[var(--dsn-accent)] focus:ring-[var(--dsn-accent)]"
-                />
-                <label
-                  htmlFor="smtp-secure"
-                  className="text-xs font-semibold text-[var(--dsn-text)]"
-                >
-                  Conexión Segura SSL Directa (Puerto 465)
-                </label>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="smtp-user"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                >
-                  Usuario de Autenticación
-                </label>
-                <input
-                  id="smtp-user"
-                  type="text"
-                  value={smtpForm.username}
-                  onChange={(e) => setSmtpForm({ ...smtpForm, username: e.target.value })}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                  value={smtpForm.host}
+                  onChange={(e) => setSmtpForm({ ...smtpForm, host: e.target.value })}
+                  className="font-mono"
                 />
               </div>
 
               <div>
-                <label
-                  htmlFor="smtp-password"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                >
-                  Contraseña o Secreto SMTP
-                </label>
-                <input
-                  id="smtp-password"
-                  type="password"
-                  placeholder={data.provider?.hasPassword ? "•••••••• (Sin cambios)" : "Ingresa contraseña"}
-                  value={smtpForm.password}
-                  onChange={(e) => setSmtpForm({ ...smtpForm, password: e.target.value })}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                <Label htmlFor="smtp-port" className="mb-1 block text-xs font-semibold">
+                  Puerto de Conexión
+                </Label>
+                <Input
+                  id="smtp-port"
+                  type="number"
+                  required
+                  value={smtpForm.port}
+                  onChange={(e) => setSmtpForm({ ...smtpForm, port: Number(e.target.value) })}
+                  className="font-mono"
                 />
-                <p className="mt-1 text-[10px] text-[var(--dsn-text-secondary)]">
-                  Se cifrará inmediatamente con AES-256-GCM y nunca se enviará en texto plano al navegador.
-                </p>
               </div>
+            </div>
 
-              <div className="flex items-center justify-end gap-2 border-t border-[var(--dsn-border)] pt-4">
-                <button
-                  type="button"
-                  onClick={() => setSmtpModalOpen(false)}
-                  className="inline-flex min-h-[44px] items-center rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] active:scale-95 disabled:opacity-50"
-                >
-                  {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  <span>Guardar Configuración SMTP</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <div className="flex items-center gap-2 pt-1">
+              <Checkbox
+                id="smtp-secure"
+                checked={smtpForm.secure}
+                onCheckedChange={(checked) => setSmtpForm({ ...smtpForm, secure: checked === true })}
+              />
+              <Label htmlFor="smtp-secure" className="cursor-pointer text-xs font-semibold">
+                Conexión Segura SSL Directa (Puerto 465)
+              </Label>
+            </div>
+
+            <div>
+              <Label htmlFor="smtp-user" className="mb-1 block text-xs font-semibold">
+                Usuario de Autenticación
+              </Label>
+              <Input
+                id="smtp-user"
+                type="text"
+                value={smtpForm.username}
+                onChange={(e) => setSmtpForm({ ...smtpForm, username: e.target.value })}
+                className="font-mono"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="smtp-password" className="mb-1 block text-xs font-semibold">
+                Contraseña o Secreto SMTP
+              </Label>
+              <Input
+                id="smtp-password"
+                type="password"
+                placeholder={data.provider?.hasPassword ? "•••••••• (Sin cambios)" : "Ingresa contraseña"}
+                value={smtpForm.password}
+                onChange={(e) => setSmtpForm({ ...smtpForm, password: e.target.value })}
+                className="font-mono"
+              />
+              <p className="mt-1 text-[10px] text-[var(--dsn-text-secondary)]">
+                Se cifrará inmediatamente con AES-256-GCM y nunca se enviará en texto plano al navegador.
+              </p>
+            </div>
+
+            <DialogFooter className="border-t border-[var(--dsn-border)] pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSmtpModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                loading={loading}
+                className="text-xs"
+              >
+                <span>Guardar Configuración SMTP</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* ─────────────────────────────────────────────────────────────
           MODAL 2: REGISTRAR / EDITAR DIRECCIÓN REMITENTE
          ───────────────────────────────────────────────────────────── */}
-      {senderModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-sender-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
-        >
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3">
-              <div className="flex items-center gap-2">
-                <Mail className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <h3 id="modal-sender-title" className="text-base font-bold text-[var(--dsn-text)]">
-                  {senderForm.id ? "Editar Dirección Remitente" : "Registrar Dirección Remitente"}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSenderModalOpen(false)}
-                className="text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                aria-label="Cerrar modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <Dialog open={senderModalOpen} onOpenChange={setSenderModalOpen}>
+        <DialogContent className="max-w-lg rounded-2xl p-6 shadow-2xl">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-[var(--dsn-text)]">
+              <Mail className="h-5 w-5 text-[var(--dsn-accent)]" />
+              <span>{senderForm.id ? "Editar Dirección Remitente" : "Registrar Dirección Remitente"}</span>
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para registrar o actualizar una dirección de correo remitente vinculada al SMTP.
+            </DialogDescription>
+          </DialogHeader>
 
-            <form onSubmit={handleSaveSender} className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="sender-key"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Identificador Clave
-                  </label>
-                  <input
-                    id="sender-key"
-                    type="text"
-                    required
-                    placeholder="ej. facturacion, soporte"
-                    value={senderForm.key}
-                    onChange={(e) => setSenderForm({ ...senderForm, key: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="sender-name"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Nombre Visible del Remitente
-                  </label>
-                  <input
-                    id="sender-name"
-                    type="text"
-                    required
-                    placeholder="ej. Facturación Mocter"
-                    value={senderForm.fromName}
-                    onChange={(e) => setSenderForm({ ...senderForm, fromName: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="sender-email"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Correo Electrónico Remitente
-                  </label>
-                  <input
-                    id="sender-email"
-                    type="email"
-                    required
-                    placeholder="ej. facturacion@mocter.co"
-                    value={senderForm.fromEmail}
-                    onChange={(e) => setSenderForm({ ...senderForm, fromEmail: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="sender-replyto"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Correo de Respuesta (Reply-To)
-                  </label>
-                  <input
-                    id="sender-replyto"
-                    type="email"
-                    placeholder="ej. soporte@mocter.co"
-                    value={senderForm.replyTo}
-                    onChange={(e) => setSenderForm({ ...senderForm, replyTo: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  />
-                </div>
+          <form onSubmit={handleSaveSender} className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="sender-key" className="mb-1 block text-xs font-semibold">
+                  Identificador Clave
+                </Label>
+                <Input
+                  id="sender-key"
+                  type="text"
+                  required
+                  placeholder="ej. facturacion, soporte"
+                  value={senderForm.key}
+                  onChange={(e) => setSenderForm({ ...senderForm, key: e.target.value })}
+                  className="font-mono"
+                />
               </div>
 
               <div>
-                <label
-                  htmlFor="sender-provider"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                >
-                  Servidor SMTP Vinculado
-                </label>
-                <select
-                  id="sender-provider"
+                <Label htmlFor="sender-name" className="mb-1 block text-xs font-semibold">
+                  Nombre Visible del Remitente
+                </Label>
+                <Input
+                  id="sender-name"
+                  type="text"
                   required
-                  value={senderForm.providerId}
-                  onChange={(e) => setSenderForm({ ...senderForm, providerId: e.target.value })}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                >
-                  {data.provider && (
-                    <option value={data.provider.id}>
-                      {data.provider.name} ({data.provider.host}:{data.provider.port})
-                    </option>
-                  )}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  id="sender-default"
-                  type="checkbox"
-                  checked={senderForm.isDefault}
-                  onChange={(e) => setSenderForm({ ...senderForm, isDefault: e.target.checked })}
-                  className="h-4 w-4 rounded border-[var(--dsn-border)] text-[var(--dsn-accent)] focus:ring-[var(--dsn-accent)]"
+                  placeholder="ej. Facturación Mocter"
+                  value={senderForm.fromName}
+                  onChange={(e) => setSenderForm({ ...senderForm, fromName: e.target.value })}
                 />
-                <label
-                  htmlFor="sender-default"
-                  className="text-xs font-semibold text-[var(--dsn-text)]"
-                >
-                  Establecer como Dirección Remitente Predeterminada
-                </label>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="sender-email" className="mb-1 block text-xs font-semibold">
+                  Correo Electrónico Remitente
+                </Label>
+                <Input
+                  id="sender-email"
+                  type="email"
+                  required
+                  placeholder="ej. facturacion@mocter.co"
+                  value={senderForm.fromEmail}
+                  onChange={(e) => setSenderForm({ ...senderForm, fromEmail: e.target.value })}
+                  className="font-mono"
+                />
               </div>
 
-              <div className="flex items-center justify-end gap-2 border-t border-[var(--dsn-border)] pt-4">
-                <button
-                  type="button"
-                  onClick={() => setSenderModalOpen(false)}
-                  className="inline-flex min-h-[44px] items-center rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] active:scale-95 disabled:opacity-50"
-                >
-                  {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  <span>Guardar Dirección Remitente</span>
-                </button>
+              <div>
+                <Label htmlFor="sender-replyto" className="mb-1 block text-xs font-semibold">
+                  Correo de Respuesta (Reply-To)
+                </Label>
+                <Input
+                  id="sender-replyto"
+                  type="email"
+                  placeholder="ej. soporte@mocter.co"
+                  value={senderForm.replyTo}
+                  onChange={(e) => setSenderForm({ ...senderForm, replyTo: e.target.value })}
+                  className="font-mono"
+                />
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+
+            <div>
+              <Label htmlFor="sender-provider" className="mb-1 block text-xs font-semibold">
+                Servidor SMTP Vinculado
+              </Label>
+              <Select
+                id="sender-provider"
+                required
+                value={senderForm.providerId}
+                onChange={(e) => setSenderForm({ ...senderForm, providerId: e.target.value })}
+              >
+                {data.provider && (
+                  <option value={data.provider.id}>
+                    {data.provider.name} ({data.provider.host}:{data.provider.port})
+                  </option>
+                )}
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <Checkbox
+                id="sender-default"
+                checked={senderForm.isDefault}
+                onCheckedChange={(checked) =>
+                  setSenderForm({ ...senderForm, isDefault: checked === true })
+                }
+              />
+              <Label htmlFor="sender-default" className="cursor-pointer text-xs font-semibold">
+                Establecer como Dirección Remitente Predeterminada
+              </Label>
+            </div>
+
+            <DialogFooter className="border-t border-[var(--dsn-border)] pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSenderModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                loading={loading}
+                className="text-xs"
+              >
+                <span>Guardar Dirección Remitente</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* ─────────────────────────────────────────────────────────────
           MODAL 3: CREAR / EDITAR PLANTILLA VINCULADA (REGLA OBLIGATORIA)
          ───────────────────────────────────────────────────────────── */}
-      {templateModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-template-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
-        >
-          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3">
-              <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <h3 id="modal-template-title" className="text-base font-bold text-[var(--dsn-text)]">
-                  {templateForm.translations.es.id || templateForm.translations.en.id
-                    ? "Editar Plantilla Vinculada"
-                    : "Nueva Plantilla de Correo Vinculada"}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTemplateModalOpen(false)}
-                className="text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                aria-label="Cerrar modal"
+      <Dialog open={templateModalOpen} onOpenChange={setTemplateModalOpen}>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-2xl p-6 shadow-2xl">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-[var(--dsn-text)]">
+              <FileText className="h-5 w-5 text-[var(--dsn-accent)]" />
+              <span>
+                {templateForm.translations.es.id || templateForm.translations.en.id
+                  ? "Editar Plantilla Vinculada"
+                  : "Nueva Plantilla de Correo Vinculada"}
+              </span>
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Editor bilingüe de asunto, cuerpo y remitente de plantilla de correo electrónico.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveTemplate} className="mt-4 space-y-4">
+            {templateModalError && (
+              <Alert role="alert" variant="destructive" className="flex items-center gap-2 px-3 py-2 text-xs">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <AlertDescription className="text-inherit">{templateModalError}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Cabecera compartida para la funcionalidad */}
+            <div>
+              <Label htmlFor="template-event" className="mb-1 block text-xs font-semibold">
+                Funcionalidad o Evento del Sistema (Obligatorio)
+              </Label>
+              <Select
+                id="template-event"
+                required
+                value={templateForm.eventKey}
+                onChange={(e) => {
+                  setTemplateModalError(null);
+                  setTemplatePreviewMode(false);
+                  setTemplateForm(buildBilingualFormForEvent(e.target.value, data));
+                }}
               >
-                <X className="h-5 w-5" />
-              </button>
+                {data.events.map((ev) => (
+                  <option key={ev.key} value={ev.key}>
+                    [{ev.category.toUpperCase()}] {ev.key} — {ev.description}
+                  </option>
+                ))}
+              </Select>
             </div>
 
-            <form onSubmit={handleSaveTemplate} className="mt-4 space-y-4">
-              {templateModalError && (
-                <div
-                  role="alert"
-                  className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400"
-                >
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>{templateModalError}</span>
-                </div>
-              )}
-
-              {/* Cabecera compartida para la funcionalidad */}
-              <div>
-                <label
-                  htmlFor="template-event"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                >
-                  Funcionalidad o Evento del Sistema (Obligatorio)
-                </label>
-                <select
-                  id="template-event"
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="sm:col-span-2">
+                <Label htmlFor="template-sender" className="mb-1 block text-xs font-semibold">
+                  Dirección Remitente Vinculada (Obligatorio)
+                </Label>
+                <Select
+                  id="template-sender"
                   required
-                  value={templateForm.eventKey}
-                  onChange={(e) => {
-                    setTemplateModalError(null);
-                    setTemplatePreviewMode(false);
-                    setTemplateForm(buildBilingualFormForEvent(e.target.value, data));
-                  }}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                  value={templateForm.senderId}
+                  onChange={(e) => setTemplateForm({ ...templateForm, senderId: e.target.value })}
                 >
-                  {data.events.map((ev) => (
-                    <option key={ev.key} value={ev.key}>
-                      [{ev.category.toUpperCase()}] {ev.key} — {ev.description}
+                  {data.senders.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.fromName} &lt;{s.fromEmail}&gt; ({s.key}) {s.isDefault ? "★ Predeterminada" : ""}
                     </option>
                   ))}
-                </select>
+                </Select>
+                <p className="mt-1 text-[10px] text-[var(--dsn-text-secondary)]">
+                  Compartida automáticamente entre todos los idiomas configurados para este evento.
+                </p>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div className="sm:col-span-2">
-                  <label
-                    htmlFor="template-sender"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Dirección Remitente Vinculada (Obligatorio)
-                  </label>
-                  <select
-                    id="template-sender"
-                    required
-                    value={templateForm.senderId}
-                    onChange={(e) => setTemplateForm({ ...templateForm, senderId: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  >
-                    {data.senders.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.fromName} &lt;{s.fromEmail}&gt; ({s.key}) {s.isDefault ? "★ Predeterminada" : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-[10px] text-[var(--dsn-text-secondary)]">
-                    Compartida automáticamente entre todos los idiomas configurados para este evento.
+              <div>
+                <Label htmlFor="template-status" className="mb-1 block text-xs font-semibold">
+                  Estado de Publicación
+                </Label>
+                <Select
+                  id="template-status"
+                  value={templateForm.status}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      status: e.target.value === "draft" ? "draft" : "published",
+                    })
+                  }
+                >
+                  <option value="published">Publicada</option>
+                  <option value="draft">Borrador</option>
+                </Select>
+              </div>
+            </div>
+
+            {/* Bloque Bilingüe en una Misma Vista (Español / Inglés) */}
+            <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/20 p-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--dsn-border)] pb-3">
+                <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Idiomas de la Plantilla">
+                  {(["es", "en"] as const).map((loc) => {
+                    const draft = templateForm.translations[loc];
+                    const hasSubj = draft.subject.trim().length > 0;
+                    const hasBody = !isEditorContentEmpty(draft.bodyHtml);
+                    const statusBadge =
+                      hasSubj && hasBody
+                        ? "Listo"
+                        : hasSubj || hasBody
+                          ? "Incompleto"
+                          : "Pendiente";
+                    const badgeTone =
+                      hasSubj && hasBody
+                        ? "bg-emerald-500/15 text-emerald-400"
+                        : hasSubj || hasBody
+                          ? "bg-amber-500/15 text-amber-400"
+                          : "bg-slate-500/15 text-[var(--dsn-text-secondary)]";
+                    const isActive = templateModalLocale === loc;
+
+                    return (
+                      <button
+                        key={loc}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => {
+                          setTemplateModalLocale(loc);
+                          setTemplateModalError(null);
+                        }}
+                        className={`inline-flex min-h-[38px] items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${
+                          isActive
+                            ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)]"
+                            : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
+                        }`}
+                      >
+                        <span>{loc === "es" ? "Español (ES)" : "Inglés (EN)"}</span>
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-mono ${badgeTone}`}>
+                          {statusBadge}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTemplatePreviewMode((prev) => !prev)}
+                  className="h-8 px-2.5 text-[11px] font-semibold"
+                >
+                  <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                  <span>{templatePreviewMode ? "Volver al Editor" : "Vista Previa Completa"}</span>
+                </Button>
+              </div>
+
+              <div>
+                <Label htmlFor={`template-subject-${templateModalLocale}`} className="mb-1 block text-xs font-semibold">
+                  Asunto del Correo Electrónico ({templateModalLocale === "es" ? "Español" : "Inglés"})
+                </Label>
+                <Input
+                  id={`template-subject-${templateModalLocale}`}
+                  type="text"
+                  placeholder={
+                    templateModalLocale === "es"
+                      ? "ej. Bienvenido a Mocter · Tu espacio está listo"
+                      : "e.g. Welcome to Mocter · Your workspace is ready"
+                  }
+                  value={templateForm.translations[templateModalLocale].subject}
+                  onChange={(e) =>
+                    setTemplateForm((prev) => ({
+                      ...prev,
+                      translations: {
+                        ...prev.translations,
+                        [templateModalLocale]: {
+                          ...prev.translations[templateModalLocale],
+                          subject: e.target.value,
+                        },
+                      },
+                    }))
+                  }
+                  className="bg-[var(--dsn-surface)]"
+                />
+              </div>
+
+              <div className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)]/70 px-3 py-2 text-[11px] text-[var(--dsn-text-secondary)] flex items-center gap-2">
+                <LayoutTemplate className="h-4 w-4 text-[var(--dsn-accent)] shrink-0" />
+                <span>
+                  Este idioma define únicamente el asunto y el cuerpo específico; al previsualizar o enviar hereda el Encabezado y Pie Global ({templateModalLocale.toUpperCase()}).
+                </span>
+              </div>
+
+              {templatePreviewMode ? (
+                <div className="rounded-lg border border-[var(--dsn-border)] bg-slate-100 p-4 text-sm text-slate-900 space-y-2 min-h-[200px] overflow-x-auto">
+                  <p className="text-xs font-semibold text-slate-600 border-b border-slate-200 pb-2">
+                    Asunto ({templateModalLocale.toUpperCase()}):{" "}
+                    {templateForm.translations[templateModalLocale].subject || "(Sin asunto)"}
                   </p>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="template-status"
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Estado de Publicación
-                  </label>
-                  <select
-                    id="template-status"
-                    value={templateForm.status}
-                    onChange={(e) =>
-                      setTemplateForm({
-                        ...templateForm,
-                        status: e.target.value === "draft" ? "draft" : "published",
-                      })
-                    }
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  >
-                    <option value="published">Publicada</option>
-                    <option value="draft">Borrador</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Bloque Bilingüe en una Misma Vista (Español / Inglés) */}
-              <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/20 p-4 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--dsn-border)] pb-3">
-                  <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Idiomas de la Plantilla">
-                    {(["es", "en"] as const).map((loc) => {
-                      const draft = templateForm.translations[loc];
-                      const hasSubj = draft.subject.trim().length > 0;
-                      const hasBody = !isEditorContentEmpty(draft.bodyHtml);
-                      const statusBadge =
-                        hasSubj && hasBody
-                          ? "Listo"
-                          : hasSubj || hasBody
-                            ? "Incompleto"
-                            : "Pendiente";
-                      const badgeTone =
-                        hasSubj && hasBody
-                          ? "bg-emerald-500/15 text-emerald-400"
-                          : hasSubj || hasBody
-                            ? "bg-amber-500/15 text-amber-400"
-                            : "bg-slate-500/15 text-[var(--dsn-text-secondary)]";
-                      const isActive = templateModalLocale === loc;
-
-                      return (
-                        <button
-                          key={loc}
-                          type="button"
-                          role="tab"
-                          aria-selected={isActive}
-                          onClick={() => {
-                            setTemplateModalLocale(loc);
-                            setTemplateModalError(null);
-                          }}
-                          className={`inline-flex min-h-[38px] items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${
-                            isActive
-                              ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)]"
-                              : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                          }`}
-                        >
-                          <span>{loc === "es" ? "Español (ES)" : "Inglés (EN)"}</span>
-                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-mono ${badgeTone}`}>
-                            {statusBadge}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setTemplatePreviewMode((prev) => !prev)}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)]"
-                  >
-                    <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
-                    <span>{templatePreviewMode ? "Volver al Editor" : "Vista Previa Completa"}</span>
-                  </button>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor={`template-subject-${templateModalLocale}`}
-                    className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                  >
-                    Asunto del Correo Electrónico ({templateModalLocale === "es" ? "Español" : "Inglés"})
-                  </label>
-                  <input
-                    id={`template-subject-${templateModalLocale}`}
-                    type="text"
-                    placeholder={
-                      templateModalLocale === "es"
-                        ? "ej. Bienvenido a Mocter · Tu espacio está listo"
-                        : "e.g. Welcome to Mocter · Your workspace is ready"
-                    }
-                    value={templateForm.translations[templateModalLocale].subject}
-                    onChange={(e) =>
-                      setTemplateForm((prev) => ({
-                        ...prev,
-                        translations: {
-                          ...prev.translations,
-                          [templateModalLocale]: {
-                            ...prev.translations[templateModalLocale],
-                            subject: e.target.value,
-                          },
-                        },
-                      }))
-                    }
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                  />
-                </div>
-
-                <div className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)]/70 px-3 py-2 text-[11px] text-[var(--dsn-text-secondary)] flex items-center gap-2">
-                  <LayoutTemplate className="h-4 w-4 text-[var(--dsn-accent)] shrink-0" />
-                  <span>
-                    Este idioma define únicamente el asunto y el cuerpo específico; al previsualizar o enviar hereda el Encabezado y Pie Global ({templateModalLocale.toUpperCase()}).
-                  </span>
-                </div>
-
-                {templatePreviewMode ? (
-                  <div className="rounded-lg border border-[var(--dsn-border)] bg-slate-100 p-4 text-sm text-slate-900 space-y-2 min-h-[200px] overflow-x-auto">
-                    <p className="text-xs font-semibold text-slate-600 border-b border-slate-200 pb-2">
-                      Asunto ({templateModalLocale.toUpperCase()}):{" "}
-                      {templateForm.translations[templateModalLocale].subject || "(Sin asunto)"}
-                    </p>
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: renderSafeTemplatePreviewHtml(
-                          templateForm.translations[templateModalLocale].bodyHtml,
-                          selectedEvent?.variablesSchema || [],
-                          data.layoutConfigs?.find((l) => l.locale === templateModalLocale) ||
-                            data.layoutConfigs?.find((l) => l.locale === "es") ||
-                            null,
-                        ),
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <EmailRichTextEditor
-                    key={`${templateForm.eventKey}-${templateModalLocale}`}
-                    id={`template-body-${templateModalLocale}`}
-                    label="Cuerpo Específico de la Plantilla"
-                    fieldKey="email.template_body"
-                    value={templateForm.translations[templateModalLocale].bodyHtml}
-                    onChange={(html) =>
-                      setTemplateForm((prev) => ({
-                        ...prev,
-                        translations: {
-                          ...prev.translations,
-                          [templateModalLocale]: {
-                            ...prev.translations[templateModalLocale],
-                            bodyHtml: html,
-                          },
-                        },
-                      }))
-                    }
-                    locale={templateModalLocale}
-                    availableVariables={selectedEvent?.variablesSchema || []}
-                    context={{
-                      eventKey: templateForm.eventKey,
-                      subject: templateForm.translations[templateModalLocale].subject,
-                      variablesSchema: selectedEvent?.variablesSchema || [],
+                  <div
+                    dangerouslySetInnerHTML={{
+                      __html: renderSafeTemplatePreviewHtml(
+                        templateForm.translations[templateModalLocale].bodyHtml,
+                        selectedEvent?.variablesSchema || [],
+                        data.layoutConfigs?.find((l) => l.locale === templateModalLocale) ||
+                          data.layoutConfigs?.find((l) => l.locale === "es") ||
+                          null,
+                      ),
                     }}
                   />
-                )}
-              </div>
+                </div>
+              ) : (
+                <EmailRichTextEditor
+                  key={`${templateForm.eventKey}-${templateModalLocale}`}
+                  id={`template-body-${templateModalLocale}`}
+                  label="Cuerpo Específico de la Plantilla"
+                  fieldKey="email.template_body"
+                  value={templateForm.translations[templateModalLocale].bodyHtml}
+                  onChange={(html) =>
+                    setTemplateForm((prev) => ({
+                      ...prev,
+                      translations: {
+                        ...prev.translations,
+                        [templateModalLocale]: {
+                          ...prev.translations[templateModalLocale],
+                          bodyHtml: html,
+                        },
+                      },
+                    }))
+                  }
+                  locale={templateModalLocale}
+                  availableVariables={selectedEvent?.variablesSchema || []}
+                  context={{
+                    eventKey: templateForm.eventKey,
+                    subject: templateForm.translations[templateModalLocale].subject,
+                    variablesSchema: selectedEvent?.variablesSchema || [],
+                  }}
+                />
+              )}
+            </div>
 
-              <div className="flex items-center justify-end gap-2 border-t border-[var(--dsn-border)] pt-4">
-                <button
-                  type="button"
-                  onClick={() => setTemplateModalOpen(false)}
-                  className="inline-flex min-h-[44px] items-center rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] active:scale-95 disabled:opacity-50"
-                >
-                  {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  <span>Guardar Plantilla Vinculada</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <DialogFooter className="border-t border-[var(--dsn-border)] pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setTemplateModalOpen(false)}
+                className="text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                loading={loading}
+                className="text-xs"
+              >
+                <span>Guardar Plantilla Vinculada</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* ─────────────────────────────────────────────────────────────
           MODAL 4: PROBAR CONEXIÓN / ENVÍO
          ───────────────────────────────────────────────────────────── */}
-      {testModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-test-title"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
-        >
-          <div className="w-full max-w-md rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3">
-              <div className="flex items-center gap-2">
-                <Send className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <h3 id="modal-test-title" className="text-base font-bold text-[var(--dsn-text)]">
-                  Probar Pasarela SMTP
-                </h3>
-              </div>
-              <button
+      <Dialog open={testModalOpen} onOpenChange={setTestModalOpen}>
+        <DialogContent className="max-w-md rounded-2xl p-6 shadow-2xl">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-[var(--dsn-text)]">
+              <Send className="h-5 w-5 text-[var(--dsn-accent)]" />
+              <span>Probar Pasarela SMTP</span>
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Envía un correo electrónico de diagnóstico para validar la pasarela SMTP activa.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-4 text-xs">
+            <div>
+              <Label htmlFor="test-recipient" className="mb-1 block text-xs font-semibold">
+                Correo Electrónico Destinatario
+              </Label>
+              <Input
+                id="test-recipient"
+                type="email"
+                value={testForm.recipient}
+                onChange={(e) => setTestForm({ recipient: e.target.value })}
+                className="font-mono"
+              />
+            </div>
+
+            <div className="rounded-lg bg-[var(--dsn-surface-secondary)]/50 p-3 space-y-1">
+              <p className="font-semibold text-[var(--dsn-text)]">Parámetros de prueba:</p>
+              <p className="text-[var(--dsn-text-secondary)] font-mono">
+                Servidor: {data.provider?.host}:{data.provider?.port}
+              </p>
+              <p className="text-[var(--dsn-text-secondary)] font-mono">
+                Remitente: {data.senders[0]?.fromEmail || "no-reply@mocter.co"}
+              </p>
+            </div>
+
+            {testError && (
+              <Alert variant="destructive" className="mb-2 text-xs">
+                <AlertDescription className="text-inherit">{testError}</AlertDescription>
+              </Alert>
+            )}
+
+            <DialogFooter className="border-t border-[var(--dsn-border)] pt-4">
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => setTestModalOpen(false)}
-                className="text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                aria-label="Cerrar modal"
+                className="text-xs"
               >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-4 text-xs">
-              <div>
-                <label
-                  htmlFor="test-recipient"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1"
-                >
-                  Correo Electrónico Destinatario
-                </label>
-                <input
-                  id="test-recipient"
-                  type="email"
-                  value={testForm.recipient}
-                  onChange={(e) => setTestForm({ recipient: e.target.value })}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
-                />
-              </div>
-
-              <div className="rounded-lg bg-[var(--dsn-surface-secondary)]/50 p-3 space-y-1">
-                <p className="font-semibold text-[var(--dsn-text)]">Parámetros de prueba:</p>
-                <p className="text-[var(--dsn-text-secondary)] font-mono">
-                  Servidor: {data.provider?.host}:{data.provider?.port}
-                </p>
-                <p className="text-[var(--dsn-text-secondary)] font-mono">
-                  Remitente: {data.senders[0]?.fromEmail || "no-reply@mocter.co"}
-                </p>
-              </div>
-
-              {testError && (
-                <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-3 text-red-400 text-xs mb-2">
-                  {testError}
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 border-t border-[var(--dsn-border)] pt-4">
-                <button
-                  type="button"
-                  onClick={() => setTestModalOpen(false)}
-                  className="inline-flex min-h-[44px] items-center rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                >
-                  Cerrar
-                </button>
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={async () => {
-                    setLoading(true);
-                    setFeedback(null);
-                    setTestError(null);
-                    try {
-                      const res = await fetch("/api/admin/notifications/test-send", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ to: testForm.recipient }),
-                      });
-                      const json = await res.json();
-                      if (!res.ok || !json.ok) {
-                        throw new Error(json.detail || json.error || "Falló el envío de prueba");
-                      }
-                      setFeedback({
-                        type: "success",
-                        message: `Correo de prueba enviado a ${testForm.recipient} (id: ${json.messageId}).`,
-                      });
-                      setTestModalOpen(false);
-                    } catch (e) {
-                      const msg = e instanceof Error ? e.message : String(e);
-                      setTestError(msg);
-                    } finally {
-                      setLoading(false);
+                Cerrar
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                loading={loading}
+                onClick={async () => {
+                  setLoading(true);
+                  setFeedback(null);
+                  setTestError(null);
+                  try {
+                    const res = await fetch("/api/admin/notifications/test-send", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ to: testForm.recipient }),
+                    });
+                    const json = await res.json();
+                    if (!res.ok || !json.ok) {
+                      throw new Error(json.detail || json.error || "Falló el envío de prueba");
                     }
-                  }}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)] active:scale-95 shadow-xs disabled:opacity-50"
-                >
-                  <Send className="h-3.5 w-3.5" />
-                  <span>Enviar Correo de Prueba</span>
-                </button>
-              </div>
-            </div>
+                    setFeedback({
+                      type: "success",
+                      message: `Correo de prueba enviado a ${testForm.recipient} (id: ${json.messageId}).`,
+                    });
+                    setTestModalOpen(false);
+                  } catch (e) {
+                    const msg = e instanceof Error ? e.message : String(e);
+                    setTestError(msg);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="text-xs shadow-xs"
+              >
+                <Send className="h-3.5 w-3.5" />
+                <span>Enviar Correo de Prueba</span>
+              </Button>
+            </DialogFooter>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
       {/* Modal de Confirmación para Desactivar Eventos Críticos / Obligatorios (Regla 4.17) */}
       <ConfirmationModal
         isOpen={Boolean(pendingDisableEvent)}

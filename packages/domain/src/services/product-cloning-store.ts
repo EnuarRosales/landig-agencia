@@ -63,6 +63,116 @@ export type ShareModerationStatus = "approved" | "pending_review" | "rejected";
 export type ShareStatus = "active" | "archived";
 export type IncludeMediaMode = "all_compatible" | "cover_only" | "none";
 
+export type PlanQuotaDimension =
+  | "products"
+  | "storage_bytes"
+  | "images_per_product"
+  | "videos_per_product"
+  | "audios_per_product"
+  | "pdfs_per_product";
+
+export interface PlanQuotaViolationDto {
+  dimension: PlanQuotaDimension;
+  currentUsed: number;
+  requiredDelta: number;
+  projectedTotal: number;
+  limitValue: number;
+}
+
+export interface AdoptionPlanEligibilityDto {
+  allowed: boolean;
+  includeMediaMode: IncludeMediaMode;
+  violations: PlanQuotaViolationDto[];
+  summary: {
+    productsUsed: number;
+    productsNeeded: number;
+    productsLimit: number | null;
+    storageUsedBytes: number;
+    storageNeededBytes: number;
+    storageLimitBytes: number | null;
+  };
+}
+
+/**
+ * Selecciona los ítems multimedia del snapshot aplicables al modo elegido (`SPEC-15-D10`).
+ */
+export function selectMediaCandidatesForMode(
+  mediaList: ShareSnapshotMediaItem[],
+  includeMediaMode: IncludeMediaMode,
+): ShareSnapshotMediaItem[] {
+  if (includeMediaMode === "none" || mediaList.length === 0) {
+    return [];
+  }
+  if (includeMediaMode === "cover_only") {
+    return mediaList
+      .filter((m) => m.mediaKind === "image")
+      .sort((a, b) => (a.isCover === b.isCover ? a.sortOrder - b.sortOrder : a.isCover ? -1 : 1))
+      .slice(0, 1);
+  }
+  return [...mediaList].sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function formatBytesLabel(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/**
+ * Construye un mensaje legible explicando qué variables exactas del plan impiden incorporar el producto (`RN-SPEC-15-04`).
+ */
+export function formatPlanQuotaViolationsMessage(
+  violations: PlanQuotaViolationDto[],
+  locale: "es" | "en" = "es",
+): string {
+  if (violations.length === 0) {
+    return locale === "en"
+      ? "Your plan quota prevents adding this product."
+      : "Tu plan actual impide incorporar este producto en el catálogo.";
+  }
+
+  const lines = violations.map((v) => {
+    if (v.dimension === "products") {
+      return locale === "en"
+        ? `Catalog Products (products): using ${v.currentUsed} of ${v.limitValue}, requires +${v.requiredDelta}.`
+        : `Límite de Productos en Catálogo (products): usas ${v.currentUsed} de ${v.limitValue} permitido(s), requiere +${v.requiredDelta}.`;
+    }
+    if (v.dimension === "storage_bytes") {
+      return locale === "en"
+        ? `Storage Space (storage_bytes): using ${formatBytesLabel(v.currentUsed)} of ${formatBytesLabel(v.limitValue)}, requires +${formatBytesLabel(v.requiredDelta)}.`
+        : `Almacenamiento Disponible (storage_bytes): usas ${formatBytesLabel(v.currentUsed)} de ${formatBytesLabel(v.limitValue)}, requiere +${formatBytesLabel(v.requiredDelta)}.`;
+    }
+
+    const kindMapEs: Record<string, string> = {
+      images_per_product: "Imágenes por Producto",
+      videos_per_product: "Videos por Producto",
+      audios_per_product: "Audios por Producto",
+      pdfs_per_product: "PDFs por Producto",
+    };
+    const kindMapEn: Record<string, string> = {
+      images_per_product: "Images per Product",
+      videos_per_product: "Videos per Product",
+      audios_per_product: "Audios per Product",
+      pdfs_per_product: "PDFs per Product",
+    };
+
+    const label =
+      locale === "en"
+        ? kindMapEn[v.dimension] ?? v.dimension
+        : kindMapEs[v.dimension] ?? v.dimension;
+
+    return locale === "en"
+      ? `${label} (${v.dimension}): product includes ${v.requiredDelta}, your plan allows max ${v.limitValue}.`
+      : `${label} (${v.dimension}): el producto incluye ${v.requiredDelta} y tu plan permite máximo ${v.limitValue}.`;
+  });
+
+  const prefix =
+    locale === "en"
+      ? "Plan capacity exceeded:"
+      : "No es posible clonar porque supera la capacidad de tu plan:";
+  return `${prefix} ${lines.join(" ")}`;
+}
+
 export interface ShareSnapshotMediaItem {
   mediaId: string;
   storageKey: string;
@@ -558,6 +668,11 @@ export interface ISpec15ProductCloningStore {
     coverImageUrl: string | null;
     mediaHashes: string[];
   } | null>;
+  evaluateAdoptionPlanEligibility?(input: {
+    adopterClientId: string;
+    snapshot: ProductSnapshot;
+    includeMediaMode: IncludeMediaMode;
+  }): Promise<AdoptionPlanEligibilityDto>;
   adoptSnapshotToTenantCell(input: {
     adopterClientId: string;
     createdByUserId: string;
@@ -1432,13 +1547,7 @@ export class DrizzleSpec15ProductCloningStore implements ISpec15ProductCloningSt
       return { copiedCount: 0, addedStorageBytes: 0, skipped: [] };
     }
 
-    const candidates =
-      params.includeMediaMode === "cover_only"
-        ? params.mediaList
-            .filter((m) => m.mediaKind === "image")
-            .sort((a, b) => (a.isCover === b.isCover ? a.sortOrder - b.sortOrder : a.isCover ? -1 : 1))
-            .slice(0, 1)
-        : [...params.mediaList].sort((a, b) => a.sortOrder - b.sortOrder);
+    const candidates = selectMediaCandidatesForMode(params.mediaList, params.includeMediaMode);
 
     const db = getDb();
     const poolId = `tenant:${params.adopterClientId}`;
@@ -1618,31 +1727,23 @@ export class DrizzleSpec15ProductCloningStore implements ISpec15ProductCloningSt
     };
   }
 
-  async adoptSnapshotToTenantCell(input: {
+  /**
+   * Evalúa TODAS las capacidades del plan del inquilino adoptante antes de clonar un producto (`RN-SPEC-15-04`).
+   */
+  async evaluateAdoptionPlanEligibility(input: {
     adopterClientId: string;
-    createdByUserId: string;
-    shareId: string;
-    shareVersion: number;
     snapshot: ProductSnapshot;
-    customSalePriceCents: number;
-    customCostPriceCents: number;
-    initialStock: number | null;
-    initialStatus: "active" | "draft";
     includeMediaMode: IncludeMediaMode;
-    retainLink: boolean;
-    autoSyncAttributes: SafeAutoSyncAttribute[];
-  }): Promise<AdoptShareResultDto> {
+  }): Promise<AdoptionPlanEligibilityDto> {
     const resolvedLimits = await this.capabilityGate.getResolvedLimits(input.adopterClientId);
-    const cellId = await cellDatabasePoolManager.resolveCellIdForClient(input.adopterClientId);
 
     const isCombo =
       input.snapshot.compositionType === "combo" &&
       Array.isArray(input.snapshot.comboComponents) &&
       input.snapshot.comboComponents.length > 0;
-    const componentsCount = isCombo ? input.snapshot.comboComponents!.length : 0;
-    const neededProducts = 1 + componentsCount;
+    const components = isCombo ? (input.snapshot.comboComponents ?? []) : [];
+    const productsNeeded = 1 + components.length;
 
-    // Verificar cuota de productos + uso actual en la celda del adoptante antes de crear registros
     const { currentProductsCount, currentStorageUsedBytes } = await withTenantCellTransaction(
       input.adopterClientId,
       async (tx) => {
@@ -1672,16 +1773,152 @@ export class DrizzleSpec15ProductCloningStore implements ISpec15ProductCloningSt
       },
     );
 
-    const productsLimit = resolvedLimits.products;
-    if (
-      productsLimit.mode === "LIMITED" &&
-      productsLimit.value !== null &&
-      currentProductsCount + neededProducts > productsLimit.value
-    ) {
-      throw new Error(
-        `PRODUCT_QUOTA_EXCEEDED:${currentProductsCount}:${neededProducts}:${productsLimit.value}`,
-      );
+    const violations: PlanQuotaViolationDto[] = [];
+
+    const productsLimit =
+      resolvedLimits.products.mode === "LIMITED" ? resolvedLimits.products.value : null;
+    if (productsLimit !== null && currentProductsCount + productsNeeded > productsLimit) {
+      violations.push({
+        dimension: "products",
+        currentUsed: currentProductsCount,
+        requiredDelta: productsNeeded,
+        projectedTotal: currentProductsCount + productsNeeded,
+        limitValue: productsLimit,
+      });
     }
+
+    const mediaBuckets = [
+      selectMediaCandidatesForMode(input.snapshot.media ?? [], input.includeMediaMode),
+      ...components.map((c) =>
+        selectMediaCandidatesForMode(c.media ?? [], input.includeMediaMode),
+      ),
+    ];
+
+    let maxImages = 0;
+    let maxVideos = 0;
+    let maxAudios = 0;
+    let maxPdfs = 0;
+    let storageNeededBytes = 0;
+
+    for (const bucket of mediaBuckets) {
+      let imgs = 0;
+      let vids = 0;
+      let auds = 0;
+      let pdfs = 0;
+      for (const m of bucket) {
+        if (m.mediaKind === "image") imgs += 1;
+        else if (m.mediaKind === "video") vids += 1;
+        else if (m.mediaKind === "audio") auds += 1;
+        else if (m.mediaKind === "pdf") pdfs += 1;
+        if (m.storageType === "internal") {
+          storageNeededBytes += Math.max(0, Number(m.sizeBytes ?? 0));
+        }
+      }
+      if (imgs > maxImages) maxImages = imgs;
+      if (vids > maxVideos) maxVideos = vids;
+      if (auds > maxAudios) maxAudios = auds;
+      if (pdfs > maxPdfs) maxPdfs = pdfs;
+    }
+
+    const perProductChecks: Array<{
+      dimension: "images_per_product" | "videos_per_product" | "audios_per_product" | "pdfs_per_product";
+      required: number;
+      limit: { mode: "LIMITED" | "UNLIMITED"; value: number | null };
+    }> = [
+      { dimension: "images_per_product", required: maxImages, limit: resolvedLimits.images_per_product },
+      { dimension: "videos_per_product", required: maxVideos, limit: resolvedLimits.videos_per_product },
+      { dimension: "audios_per_product", required: maxAudios, limit: resolvedLimits.audios_per_product },
+      { dimension: "pdfs_per_product", required: maxPdfs, limit: resolvedLimits.pdfs_per_product },
+    ];
+
+    for (const chk of perProductChecks) {
+      if (
+        chk.required > 0 &&
+        chk.limit.mode === "LIMITED" &&
+        chk.limit.value !== null &&
+        chk.required > chk.limit.value
+      ) {
+        violations.push({
+          dimension: chk.dimension,
+          currentUsed: 0,
+          requiredDelta: chk.required,
+          projectedTotal: chk.required,
+          limitValue: chk.limit.value,
+        });
+      }
+    }
+
+    const storageLimitBytes =
+      resolvedLimits.storage_bytes.mode === "LIMITED" ? resolvedLimits.storage_bytes.value : null;
+    if (
+      storageNeededBytes > 0 &&
+      storageLimitBytes !== null &&
+      currentStorageUsedBytes + storageNeededBytes > storageLimitBytes
+    ) {
+      violations.push({
+        dimension: "storage_bytes",
+        currentUsed: currentStorageUsedBytes,
+        requiredDelta: storageNeededBytes,
+        projectedTotal: currentStorageUsedBytes + storageNeededBytes,
+        limitValue: storageLimitBytes,
+      });
+    }
+
+    return {
+      allowed: violations.length === 0,
+      includeMediaMode: input.includeMediaMode,
+      violations,
+      summary: {
+        productsUsed: currentProductsCount,
+        productsNeeded,
+        productsLimit,
+        storageUsedBytes: currentStorageUsedBytes,
+        storageNeededBytes,
+        storageLimitBytes,
+      },
+    };
+  }
+
+  async adoptSnapshotToTenantCell(input: {
+    adopterClientId: string;
+    createdByUserId: string;
+    shareId: string;
+    shareVersion: number;
+    snapshot: ProductSnapshot;
+    customSalePriceCents: number;
+    customCostPriceCents: number;
+    initialStock: number | null;
+    initialStatus: "active" | "draft";
+    includeMediaMode: IncludeMediaMode;
+    retainLink: boolean;
+    autoSyncAttributes: SafeAutoSyncAttribute[];
+  }): Promise<AdoptShareResultDto> {
+    const resolvedLimits = await this.capabilityGate.getResolvedLimits(input.adopterClientId);
+    const cellId = await cellDatabasePoolManager.resolveCellIdForClient(input.adopterClientId);
+
+    const eligibility = await this.evaluateAdoptionPlanEligibility({
+      adopterClientId: input.adopterClientId,
+      snapshot: input.snapshot,
+      includeMediaMode: input.includeMediaMode,
+    });
+
+    if (!eligibility.allowed) {
+      const productViolation = eligibility.violations.find((v) => v.dimension === "products");
+      if (productViolation && eligibility.violations.length === 1) {
+        throw new Error(
+          `PRODUCT_QUOTA_EXCEEDED:${productViolation.currentUsed}:${productViolation.requiredDelta}:${productViolation.limitValue}`,
+        );
+      }
+      throw new Error(`PLAN_QUOTA_EXCEEDED:${JSON.stringify(eligibility.violations)}`);
+    }
+
+    const isCombo =
+      input.snapshot.compositionType === "combo" &&
+      Array.isArray(input.snapshot.comboComponents) &&
+      input.snapshot.comboComponents.length > 0;
+    const neededProducts = eligibility.summary.productsNeeded;
+    const currentProductsCount = eligibility.summary.productsUsed;
+    const currentStorageUsedBytes = eligibility.summary.storageUsedBytes;
 
     const parentProductId = randomUUID();
     const createdComponentIds: Array<{

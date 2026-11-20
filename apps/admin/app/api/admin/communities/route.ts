@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { appLogger, getCommunitiesGovernanceService } from "@mocter/domain";
+import {
+  appLogger,
+  getCommunitiesGovernanceService,
+  getCommunityFeedService,
+} from "@mocter/domain";
 import { requirePlatformAdmin } from "@/lib/billing-route-auth";
 import { handle } from "@/lib/errors/route";
 
@@ -46,6 +50,13 @@ const adminCommunityActionSchema = z.discriminatedUnion("action", [
     action: z.literal("set_org_status"),
     organizationId: z.string().uuid("Identificador de comunidad inválido."),
     status: z.enum(["active", "suspended"]),
+  }),
+  z.object({
+    action: z.literal("update_retention_settings"),
+    feedRetentionDays: z.number().int().min(1).max(3650).nullable(),
+  }),
+  z.object({
+    action: z.literal("run_retention_purge"),
   }),
 ]);
 
@@ -114,6 +125,47 @@ export const POST = handle(async (req: NextRequest): Promise<NextResponse> => {
       requestId,
       clientId: parsed.data.clientId,
       decision: parsed.data.decision,
+      actorUserId: context.user.id,
+    });
+
+    return NextResponse.json(
+      { ok: true, data: res.data },
+      { status: 200, headers: { "x-request-id": requestId } },
+    );
+  }
+
+  if (parsed.data.action === "update_retention_settings") {
+    const res = await getCommunityFeedService().updateRetentionSettings({
+      feedRetentionDays: parsed.data.feedRetentionDays,
+      actorUserId: context.user.id,
+    });
+    if (!res.ok) {
+      return adminProblemJson(req, requestId, 400, "Operation Failed", res.error, res.code);
+    }
+
+    appLogger.info("[API /api/admin/communities] Retención de muro actualizada", {
+      requestId,
+      feedRetentionDays: parsed.data.feedRetentionDays,
+      actorUserId: context.user.id,
+    });
+
+    return NextResponse.json(
+      { ok: true, data: res.data },
+      { status: 200, headers: { "x-request-id": requestId } },
+    );
+  }
+
+  if (parsed.data.action === "run_retention_purge") {
+    const res = await getCommunityFeedService().purgeExpiredPosts({
+      actorUserId: context.user.id,
+    });
+    if (!res.ok) {
+      return adminProblemJson(req, requestId, 500, "Operation Failed", res.error, res.code);
+    }
+
+    appLogger.info("[API /api/admin/communities] Purga de retención ejecutada", {
+      requestId,
+      ...res.data,
       actorUserId: context.user.id,
     });
 

@@ -24,6 +24,23 @@ import type {
   TeamMemberProfileDto,
   WorkspaceTeamMemberDto,
 } from "@mocter/domain";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
 import { ConfirmationModal } from "@/components/confirmation-modal";
@@ -330,30 +347,24 @@ export function TeamView({
 
   const tabButtons = (
     <div className="flex items-center gap-2">
-      <button
+      <Button
         type="button"
+        size="sm"
+        variant={activeTab === "members" ? "primary" : "outline"}
         onClick={() => setActiveTab("members")}
-        className={`min-h-[40px] rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
-          activeTab === "members"
-            ? "bg-[var(--dsn-accent)] text-white"
-            : "border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-        }`}
       >
         {w.teamTabMembers} ({data.pagination.total})
-      </button>
+      </Button>
 
       {isOwner && (
-        <button
+        <Button
           type="button"
+          size="sm"
+          variant={activeTab === "invitations" ? "primary" : "outline"}
           onClick={() => setActiveTab("invitations")}
-          className={`min-h-[40px] rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
-            activeTab === "invitations"
-              ? "bg-[var(--dsn-accent)] text-white"
-              : "border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-          }`}
         >
           {w.teamTabInvitations} ({data.invitations.length})
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -647,46 +658,46 @@ export function TeamView({
   return (
     <div className="w-full space-y-6 p-4 md:px-8 md:py-6">
       {/* Cabecera */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--dsn-border)] pb-5">
+      <header className="flex flex-col justify-between gap-4 border-b border-[var(--dsn-border)] pb-5 sm:flex-row sm:items-center">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
+            <h1 className="text-xl font-bold tracking-tight text-[var(--dsn-text)] md:text-2xl">
               {w.teamTitle}
             </h1>
-            <span className="rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-xs font-mono font-medium text-[var(--dsn-accent)] border border-cyan-500/20">
+            <Badge variant="accent" className="font-mono text-xs font-medium">
               {w.teamBadge}
-            </span>
+            </Badge>
           </div>
-          <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">
+          <p className="mt-1 text-xs text-[var(--dsn-text-secondary)] md:text-sm">
             {w.teamSubtitle}
           </p>
         </div>
 
         {isOwner && (
-          <button
+          <Button
             type="button"
             onClick={openInviteModal}
             disabled={isTeamQuotaFull}
-            className="inline-flex items-center justify-center gap-2 min-h-[44px] rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs md:text-sm font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+            className="min-h-[44px] md:text-sm"
           >
             <UserPlus className="h-4 w-4" />
             <span>{w.teamInviteCta}</span>
-          </button>
+          </Button>
         )}
       </header>
 
       {/* Banner de Cuotas del Plan */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 flex items-center justify-between gap-4">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card className="flex items-center justify-between gap-4 p-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-[var(--dsn-accent)]">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 text-[var(--dsn-accent)]">
               <Users className="h-5 w-5" />
             </div>
             <div>
               <p className="text-xs font-medium text-[var(--dsn-text-secondary)]">
                 {w.teamQuotaLabel}
               </p>
-              <p className="text-sm md:text-base font-bold text-[var(--dsn-text)] font-mono">
+              <p className="font-mono text-sm font-bold text-[var(--dsn-text)] md:text-base">
                 {userQuota.mode === "UNLIMITED"
                   ? `${userQuota.totalConsumed} (${w.teamQuotaUnlimited})`
                   : `${userQuota.totalConsumed} ${w.teamQuotaOf} ${userQuota.limit ?? 0} ${w.teamQuotaAvailable}`}
@@ -694,64 +705,61 @@ export function TeamView({
             </div>
           </div>
           {isTeamQuotaFull && isOwner && (
-            <Link
-              href="/workspace/billing"
-              className="shrink-0 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs font-semibold text-[var(--dsn-accent)] hover:opacity-90"
-            >
-              {w.teamUpgradePlanCta}
-            </Link>
+            <Button asChild variant="secondary" size="sm" className="shrink-0 text-[var(--dsn-accent)]">
+              <Link href="/workspace/billing">{w.teamUpgradePlanCta}</Link>
+            </Button>
           )}
-        </div>
+        </Card>
 
-        <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 flex items-center justify-between gap-4">
+        <Card className="flex items-center justify-between gap-4 p-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-purple-500/20 bg-purple-500/10 text-purple-400">
               <MessageSquare className="h-5 w-5" />
             </div>
             <div>
               <p className="text-xs font-medium text-[var(--dsn-text-secondary)]">
                 {w.teamChatwootQuotaLabel}
               </p>
-              <p className="text-sm md:text-base font-bold text-[var(--dsn-text)] font-mono">
+              <p className="font-mono text-sm font-bold text-[var(--dsn-text)] md:text-base">
                 {cwQuota.mode === "UNLIMITED"
                   ? `${cwQuota.totalConsumed} (${w.teamQuotaUnlimited})`
                   : `${cwQuota.totalConsumed} ${w.teamQuotaOf} ${cwQuota.limit ?? 0} ${w.teamQuotaAvailable}`}
               </p>
             </div>
           </div>
-        </div>
+        </Card>
       </section>
 
       {isTeamQuotaFull && isOwner && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-300">
+        <Alert
+          variant="warning"
+          className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"
+        >
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span>{w.teamQuotaFullNotice}</span>
+            <AlertDescription>{w.teamQuotaFullNotice}</AlertDescription>
           </div>
           <Link
             href="/workspace/billing"
-            className="font-semibold underline underline-offset-2 text-amber-200 shrink-0"
+            className="shrink-0 font-semibold text-amber-200 underline underline-offset-2"
           >
             {w.teamUpgradePlanCta}
           </Link>
-        </div>
+        </Alert>
       )}
 
       {!isOwner && (
-        <div className="flex items-center gap-2 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-4 py-3 text-xs text-[var(--dsn-text-secondary)]">
+        <Alert className="border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 text-[var(--dsn-text-secondary)]">
           <Shield className="h-4 w-4 shrink-0 text-[var(--dsn-accent)]" />
-          <span>{w.teamReadOnlyBanner}</span>
-        </div>
+          <AlertDescription>{w.teamReadOnlyBanner}</AlertDescription>
+        </Alert>
       )}
 
       {feedback && (
-        <div
+        <Alert
           role="status"
-          className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs ${
-            feedback.type === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-              : "border-rose-500/30 bg-rose-500/10 text-rose-400"
-          }`}
+          variant={feedback.type === "success" ? "success" : "error"}
+          className="flex items-center justify-between gap-3"
         >
           <div className="flex items-center gap-2">
             {feedback.type === "success" ? (
@@ -759,17 +767,19 @@ export function TeamView({
             ) : (
               <AlertTriangle className="h-4 w-4 shrink-0" />
             )}
-            <span>{feedback.message}</span>
+            <AlertDescription>{feedback.message}</AlertDescription>
           </div>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => setFeedback(null)}
-            className="p-1 rounded hover:bg-black/10"
+            className="h-6 w-6 rounded hover:bg-black/10"
             aria-label="Cerrar"
           >
             <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
 
       {/* Tablas Estandarizadas de Miembros e Invitaciones */}
@@ -821,7 +831,7 @@ export function TeamView({
           toolbarLeft={tabButtons}
           filterSlot={
             isOwner ? (
-              <select
+              <Select
                 value={statusFilter}
                 onChange={(e) => {
                   const nextSt = e.target.value as "all" | "active" | "suspended";
@@ -830,12 +840,12 @@ export function TeamView({
                   void fetchTeam({ nextStatus: nextSt, nextPage: 1 });
                 }}
                 aria-label={w.teamColStatus}
-                className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-1.5 text-xs text-[var(--dsn-text)]"
+                className="w-auto min-h-[40px] text-xs"
               >
                 <option value="all">{w.teamFilterAll}</option>
                 <option value="active">{w.teamFilterActive}</option>
                 <option value="suspended">{w.teamFilterSuspended}</option>
-              </select>
+              </Select>
             ) : null
           }
           emptyState={{
@@ -983,213 +993,189 @@ export function TeamView({
       )}
 
       {/* Modal de Invitación */}
-      {inviteOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
+      <Dialog
+        open={inviteOpen}
+        onOpenChange={(open) => {
+          if (!open && !formSubmitting) setInviteOpen(false);
+        }}
+      >
+        <DialogContent
+          className="w-full max-w-md rounded-xl p-6"
+          closeAriaLabel="Cerrar"
           aria-labelledby="invite-modal-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          disableEscapeKeyDown={formSubmitting}
+          disableInteractOutside={formSubmitting}
         >
-          <div className="w-full max-w-md rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl space-y-4">
-            <div className="flex items-start justify-between gap-3 border-b border-[var(--dsn-border)] pb-3">
-              <div>
-                <h2
-                  id="invite-modal-title"
-                  className="text-base font-bold text-[var(--dsn-text)]"
-                >
-                  {w.teamInviteModalTitle}
-                </h2>
-                <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
-                  {w.teamInviteModalSubtitle}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setInviteOpen(false)}
-                className="p-1.5 rounded-lg text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                aria-label="Cerrar"
-              >
-                <X className="h-4 w-4" />
-              </button>
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3 pr-8">
+            <DialogTitle id="invite-modal-title" className="text-base font-bold text-[var(--dsn-text)]">
+              {w.teamInviteModalTitle}
+            </DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs text-[var(--dsn-text-secondary)]">
+              {w.teamInviteModalSubtitle}
+            </DialogDescription>
+          </DialogHeader>
+
+          {formError && (
+            <Alert variant="error">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleInviteSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="team-invite-email" className="block text-xs font-medium">
+                {w.teamFieldEmail}
+              </Label>
+              <Input
+                id="team-invite-email"
+                type="email"
+                required
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                className="min-h-[44px]"
+              />
             </div>
 
-            {formError && (
-              <div className="flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="team-invite-name" className="block text-xs font-medium">
+                {w.teamFieldDisplayName}
+              </Label>
+              <Input
+                id="team-invite-name"
+                type="text"
+                maxLength={160}
+                value={inviteName}
+                onChange={(e) => setInviteName(e.target.value)}
+                className="min-h-[44px]"
+              />
+            </div>
 
-            <form onSubmit={handleInviteSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="team-invite-email"
-                  className="block text-xs font-medium text-[var(--dsn-text)]"
-                >
-                  {w.teamFieldEmail}
-                </label>
-                <input
-                  id="team-invite-email"
-                  type="email"
-                  required
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)]"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="team-invite-name"
-                  className="block text-xs font-medium text-[var(--dsn-text)]"
-                >
-                  {w.teamFieldDisplayName}
-                </label>
-                <input
-                  id="team-invite-name"
-                  type="text"
-                  maxLength={160}
-                  value={inviteName}
-                  onChange={(e) => setInviteName(e.target.value)}
-                  className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)]"
-                />
-              </div>
-
-              <label className="flex items-start gap-2.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)]/40 p-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={inviteChatwoot}
-                  onChange={(e) => setInviteChatwoot(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 accent-[var(--dsn-accent)]"
-                />
-                <span className="text-xs">
-                  <span className="font-medium text-[var(--dsn-text)] block">
-                    {w.teamFieldChatwootAccess}
-                  </span>
-                  <span className="text-[var(--dsn-text-secondary)]">
-                    {w.teamFieldChatwootHint}
-                  </span>
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)]/40 p-3">
+              <Checkbox
+                checked={inviteChatwoot}
+                onCheckedChange={(checked) => setInviteChatwoot(checked === true)}
+                className="mt-0.5"
+              />
+              <span className="text-xs">
+                <span className="block font-medium text-[var(--dsn-text)]">
+                  {w.teamFieldChatwootAccess}
                 </span>
-              </label>
+                <span className="text-[var(--dsn-text-secondary)]">
+                  {w.teamFieldChatwootHint}
+                </span>
+              </span>
+            </label>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-[var(--dsn-border)]">
-                <button
-                  type="button"
-                  disabled={formSubmitting}
-                  onClick={() => setInviteOpen(false)}
-                  className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-medium text-[var(--dsn-text)]"
-                >
-                  {w.teamCancelCta}
-                </button>
-                <button
-                  type="submit"
-                  disabled={formSubmitting}
-                  className="min-h-[40px] rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {formSubmitting ? w.teamSendingInviteCta : w.teamSendInviteCta}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <DialogFooter className="border-t border-[var(--dsn-border)] pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={formSubmitting}
+                onClick={() => setInviteOpen(false)}
+              >
+                {w.teamCancelCta}
+              </Button>
+              <Button
+                type="submit"
+                disabled={formSubmitting}
+                loading={formSubmitting}
+                loadingText={w.teamSendingInviteCta}
+              >
+                {w.teamSendInviteCta}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Edición de Colaborador */}
-      {editingMember && (
-        <div
-          role="dialog"
-          aria-modal="true"
+      <Dialog
+        open={Boolean(editingMember)}
+        onOpenChange={(open) => {
+          if (!open && !formSubmitting) setEditingMember(null);
+        }}
+      >
+        <DialogContent
+          className="w-full max-w-md rounded-xl p-6"
+          closeAriaLabel="Cerrar"
           aria-labelledby="edit-member-modal-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          disableEscapeKeyDown={formSubmitting}
+          disableInteractOutside={formSubmitting}
         >
-          <div className="w-full max-w-md rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-2xl space-y-4">
-            <div className="flex items-start justify-between gap-3 border-b border-[var(--dsn-border)] pb-3">
-              <div>
-                <h2
-                  id="edit-member-modal-title"
-                  className="text-base font-bold text-[var(--dsn-text)]"
-                >
-                  {w.teamEditModalTitle}
-                </h2>
-                <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
-                  {w.teamEditModalSubtitle}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingMember(null)}
-                className="p-1.5 rounded-lg text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-                aria-label="Cerrar"
-              >
-                <X className="h-4 w-4" />
-              </button>
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3 pr-8">
+            <DialogTitle
+              id="edit-member-modal-title"
+              className="text-base font-bold text-[var(--dsn-text)]"
+            >
+              {w.teamEditModalTitle}
+            </DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs text-[var(--dsn-text-secondary)]">
+              {w.teamEditModalSubtitle}
+            </DialogDescription>
+          </DialogHeader>
+
+          {formError && (
+            <Alert variant="error">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <AlertDescription>{formError}</AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="team-edit-name" className="block text-xs font-medium">
+                {w.teamFieldDisplayName}
+              </Label>
+              <Input
+                id="team-edit-name"
+                type="text"
+                required
+                minLength={2}
+                maxLength={160}
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="min-h-[44px]"
+              />
             </div>
 
-            {formError && (
-              <div className="flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-400">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span>{formError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleEditSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="team-edit-name"
-                  className="block text-xs font-medium text-[var(--dsn-text)]"
-                >
-                  {w.teamFieldDisplayName}
-                </label>
-                <input
-                  id="team-edit-name"
-                  type="text"
-                  required
-                  minLength={2}
-                  maxLength={160}
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm text-[var(--dsn-text)]"
-                />
-              </div>
-
-              <label className="flex items-start gap-2.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)]/40 p-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={editChatwoot}
-                  onChange={(e) => setEditChatwoot(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 accent-[var(--dsn-accent)]"
-                />
-                <span className="text-xs">
-                  <span className="font-medium text-[var(--dsn-text)] block">
-                    {w.teamFieldChatwootAccess}
-                  </span>
-                  <span className="text-[var(--dsn-text-secondary)]">
-                    {w.teamFieldChatwootHint}
-                  </span>
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)]/40 p-3">
+              <Checkbox
+                checked={editChatwoot}
+                onCheckedChange={(checked) => setEditChatwoot(checked === true)}
+                className="mt-0.5"
+              />
+              <span className="text-xs">
+                <span className="block font-medium text-[var(--dsn-text)]">
+                  {w.teamFieldChatwootAccess}
                 </span>
-              </label>
+                <span className="text-[var(--dsn-text-secondary)]">
+                  {w.teamFieldChatwootHint}
+                </span>
+              </span>
+            </label>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-[var(--dsn-border)]">
-                <button
-                  type="button"
-                  disabled={formSubmitting}
-                  onClick={() => setEditingMember(null)}
-                  className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 text-xs font-medium text-[var(--dsn-text)]"
-                >
-                  {w.teamCancelCta}
-                </button>
-                <button
-                  type="submit"
-                  disabled={formSubmitting}
-                  className="min-h-[40px] rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {formSubmitting ? w.teamSavingMemberCta : w.teamSaveMemberCta}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <DialogFooter className="border-t border-[var(--dsn-border)] pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={formSubmitting}
+                onClick={() => setEditingMember(null)}
+              >
+                {w.teamCancelCta}
+              </Button>
+              <Button
+                type="submit"
+                disabled={formSubmitting}
+                loading={formSubmitting}
+                loadingText={w.teamSavingMemberCta}
+              >
+                {w.teamSaveMemberCta}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Confirmación Accesible `--dsn-*` */}
       {confirmModalConfig && (

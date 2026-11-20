@@ -34,7 +34,7 @@ export const viewport: Viewport = {
  */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="es" suppressHydrationWarning>
+    <html lang="es" className="dark" suppressHydrationWarning>
       <body className="min-h-dvh bg-[var(--dsn-background)] text-[var(--dsn-text)] antialiased transition-colors duration-150">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
           <PortalShellRouter>{children}</PortalShellRouter>

@@ -41,16 +41,16 @@ export default async function WorkspaceProfilePage() {
     if (context && context.activeClient?.id) {
       readOnly = !isTenantProfileWriterRole(context.role, context.effectiveRoles);
 
-      const [profileRes, channelsRes] = await Promise.all([
+      const [profileOutcome, channelsOutcome] = await Promise.allSettled([
         tenantProfileService.getTenantProfile(context.activeClient.id),
         tenantPaymentChannelsService.listChannels(context.activeClient.id),
       ]);
 
-      if (profileRes.ok) {
-        initialProfile = profileRes.data;
+      if (profileOutcome.status === "fulfilled" && profileOutcome.value.ok) {
+        initialProfile = profileOutcome.value.data;
       }
-      if (channelsRes.ok) {
-        initialChannels = channelsRes.data;
+      if (channelsOutcome.status === "fulfilled" && channelsOutcome.value.ok) {
+        initialChannels = channelsOutcome.value.data;
       }
     }
   }

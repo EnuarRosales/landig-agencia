@@ -13,6 +13,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
+import { Badge } from "@mocter/ui";
 
 export interface CatalogQuotaItem {
   mode: "LIMITED" | "UNLIMITED";
@@ -175,18 +176,12 @@ export function CatalogQuotaBanner({
 
         {(isProductsExhausted || isProductsNearLimit) && (
           <div className="flex items-center gap-2">
-            <span
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
-                isProductsExhausted
-                  ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
-                  : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-              }`}
-            >
-              <AlertTriangle className="h-3 w-3" />
+            <Badge variant={isProductsExhausted ? "error" : "warning"}>
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
               <span>
                 {isProductsExhausted ? dict.catalogQuotaExhausted : dict.catalogQuotaNearLimit}
               </span>
-            </span>
+            </Badge>
             {upgradeHref && (
               <Link
                 href={upgradeHref}

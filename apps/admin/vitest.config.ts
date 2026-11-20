@@ -14,6 +14,7 @@ export default defineConfig({
       ["**/*.test.tsx", "jsdom"],
       ["**/*.test.ts", "node"],
     ],
+    setupFiles: ["./vitest.setup.ts"],
   },
   resolve: {
     alias: {

@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Info,
 } from "lucide-react";
+import { Alert, AlertDescription, Button, Input, Label, Textarea } from "@mocter/ui";
 
 export interface EmailAiEnhanceResult {
   ok: boolean;
@@ -212,39 +213,42 @@ export function EmailRichTextEditor({
     <div className="space-y-2 w-full">
       {/* Cabecera del Editor + Botón Mejorar con AI */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <label htmlFor={id} className="text-xs font-semibold text-[var(--dsn-text)]">
+        <Label htmlFor={id} required={required} className="font-semibold">
           {label}
-          {required && <span className="ml-1 text-rose-500">*</span>}
-        </label>
+        </Label>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <Button
             type="button"
+            variant="ai"
+            size="sm"
             disabled={disabled || aiLoading}
             onClick={() => void handleRequestAiEnhance()}
-            className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-[var(--dsn-accent)]/40 bg-[var(--dsn-accent)]/12 px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-accent)] transition-colors hover:bg-[var(--dsn-accent)]/20 disabled:opacity-50"
+            className="text-[11px]"
           >
-            <Sparkles className={`h-3.5 w-3.5 ${aiLoading ? "animate-pulse" : ""}`} />
+            <Sparkles className={`h-3.5 w-3.5 ${aiLoading ? "animate-pulse" : ""}`} aria-hidden="true" />
             <span>{aiLoading ? "Mejorando..." : "Mejorar con AI"}</span>
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={() => setSourceMode((prev) => !prev)}
-            className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-2.5 py-1 text-[11px] font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)]"
+            className="text-[11px] bg-[var(--dsn-surface-secondary)]"
           >
             {sourceMode ? (
               <>
-                <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" aria-hidden="true" />
                 <span>Editor Visual</span>
               </>
             ) : (
               <>
-                <Code2 className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
+                <Code2 className="h-3.5 w-3.5 text-[var(--dsn-accent)]" aria-hidden="true" />
                 <span>Código HTML</span>
               </>
             )}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -382,33 +386,25 @@ export function EmailRichTextEditor({
       {/* Popover inline para insertar URL sin window.prompt */}
       {linkPopoverOpen && !sourceMode && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-2">
-          <input
+          <Input
             type="url"
             value={linkUrl}
             onChange={(e) => setLinkUrl(e.target.value)}
             placeholder="https://mocter.co/... o {{product_admin_url}}"
-            className="flex-1 min-w-[200px] rounded border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-2.5 py-1 text-xs font-mono text-[var(--dsn-text)]"
+            className="min-h-[34px] flex-1 min-w-[200px] bg-[var(--dsn-surface-secondary)] px-2.5 py-1 text-xs font-mono"
           />
-          <button
-            type="button"
-            onClick={handleApplyLink}
-            className="rounded bg-[var(--dsn-accent)] px-3 py-1 text-xs font-semibold text-white"
-          >
+          <Button type="button" size="sm" variant="primary" onClick={handleApplyLink}>
             Aplicar Enlace
-          </button>
-          <button
-            type="button"
-            onClick={() => setLinkPopoverOpen(false)}
-            className="rounded border border-[var(--dsn-border)] px-2.5 py-1 text-xs text-[var(--dsn-text-secondary)]"
-          >
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => setLinkPopoverOpen(false)}>
             Cancelar
-          </button>
+          </Button>
         </div>
       )}
 
       {/* Área Editable (Visual WYSIWYG o HTML Crudo) */}
       {sourceMode ? (
-        <textarea
+        <Textarea
           ref={textareaRef}
           id={id}
           rows={8}
@@ -417,7 +413,7 @@ export function EmailRichTextEditor({
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-3 text-xs font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden leading-relaxed ${minHeightClass}`}
+          className={`bg-[var(--dsn-surface-secondary)] p-3 text-xs font-mono leading-relaxed ${minHeightClass}`}
         />
       ) : (
         <div
@@ -436,13 +432,10 @@ export function EmailRichTextEditor({
 
       {/* Alerta de Error AI */}
       {aiError && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400"
-        >
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>{aiError}</span>
-        </div>
+        <Alert variant="warning" role="alert" className="items-center py-2">
+          <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <AlertDescription>{aiError}</AlertDescription>
+        </Alert>
       )}
 
       {/* Caja de Revisión Humana de Sugerencia AI */}
@@ -450,36 +443,33 @@ export function EmailRichTextEditor({
         <div className="rounded-xl border border-[var(--dsn-accent)]/40 bg-[var(--dsn-surface)] p-3 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--dsn-accent)]">
-              <Sparkles className="h-3.5 w-3.5" />
+              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
               Propuesta Sugerida por AI (Revisión Requerida)
             </span>
           </div>
-          <textarea
+          <Textarea
             rows={4}
             value={aiDraftProposal}
             onChange={(e) => setAiDraftProposal(e.target.value)}
-            className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-2.5 text-xs font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+            className="bg-[var(--dsn-surface-secondary)] p-2.5 text-xs font-mono"
           />
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => {
                 setAiSuggestion(null);
                 setAiDraftProposal("");
               }}
-              className="inline-flex min-h-[34px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] px-3 py-1 text-xs font-semibold text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)]"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Descartar</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleAcceptAiSuggestion}
-              className="inline-flex min-h-[34px] items-center gap-1 rounded-lg bg-[var(--dsn-accent)] px-3 py-1 text-xs font-semibold text-white hover:bg-[var(--dsn-accent-hover)]"
-            >
-              <Check className="h-3.5 w-3.5" />
+            </Button>
+            <Button type="button" variant="primary" size="sm" onClick={handleAcceptAiSuggestion}>
+              <Check className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Aceptar Sugerencia</span>
-            </button>
+            </Button>
           </div>
         </div>
       )}

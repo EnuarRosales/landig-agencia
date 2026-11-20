@@ -18,9 +18,12 @@ const createPostSchema = z.object({
   organizationId: z.string().uuid("Identificador de comunidad inválido."),
   body: z
     .string()
-    .trim()
-    .min(2, "Escribe un mensaje para compartir en el muro.")
-    .max(4000, "La publicación excede el límite de 4000 caracteres."),
+    .max(24000, "La publicación excede el límite permitido.")
+    .optional()
+    .default(""),
+  bodyFormat: z.enum(["plain", "html"]).optional().default("plain"),
+  mediaId: z.string().uuid("Identificador de imagen inválido.").nullable().optional(),
+  videoUrl: z.string().trim().max(500).nullable().optional(),
 });
 
 /**
@@ -82,6 +85,9 @@ export const POST = handle(async (req: NextRequest): Promise<NextResponse> => {
     authorClientId: session.clientId,
     authorUserId: session.userId,
     body: parsed.data.body,
+    bodyFormat: parsed.data.bodyFormat,
+    mediaId: parsed.data.mediaId ?? null,
+    videoUrl: parsed.data.videoUrl ?? null,
   });
 
   if (!res.ok) {

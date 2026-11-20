@@ -7,6 +7,7 @@ import type {
   TenantBotDefaultMessages,
   TenantBusinessHours,
 } from "@mocter/domain";
+import { Button, Card, Checkbox, Input, Label } from "@mocter/ui";
 import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
 import { ConfirmationModal } from "@/components/confirmation-modal";
 import type { getAdminDictionary } from "@/lib/i18n";
@@ -144,7 +145,7 @@ export function BotMessagesTab({
   return (
     <div className="space-y-6">
       {/* Mensajes Predeterminados */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 md:p-6 shadow-xs space-y-5">
+      <Card className="space-y-5 p-5 shadow-xs md:p-6">
         <div className="flex flex-col justify-between gap-3 border-b border-[var(--dsn-border)] pb-3 sm:flex-row sm:items-center">
           <div className="flex items-start gap-2.5">
             <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-[var(--dsn-accent)]" />
@@ -158,14 +159,16 @@ export function BotMessagesTab({
             </div>
           </div>
           {!readOnly && (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setConfirmResetOpen(true)}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)] transition-colors"
+              className="shrink-0"
             >
               <RotateCcw className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
               <span>{dict.botResetDefaultsCta}</span>
-            </button>
+            </Button>
           )}
         </div>
 
@@ -180,7 +183,7 @@ export function BotMessagesTab({
             return (
               <div
                 key={item.key}
-                className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/15 p-4 space-y-3"
+                className="space-y-3 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/15 p-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs font-bold text-[var(--dsn-text)]">{item.label}</span>
@@ -194,14 +197,12 @@ export function BotMessagesTab({
                           ? "Disabled"
                           : "Inactivo"}
                     </span>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       disabled={readOnly}
                       checked={entry.enabled}
-                      onChange={(e) =>
-                        updateMessage(item.key, { enabled: e.target.checked })
+                      onCheckedChange={(checked) =>
+                        updateMessage(item.key, { enabled: checked === true })
                       }
-                      className="h-4 w-4 accent-[var(--dsn-accent)]"
                     />
                   </label>
                 </div>
@@ -220,25 +221,27 @@ export function BotMessagesTab({
 
                 <div className="flex flex-wrap items-center gap-1.5">
                   {vars.map((token) => (
-                    <button
+                    <Button
                       key={token}
                       type="button"
+                      variant="outline"
+                      size="sm"
                       disabled={readOnly}
                       onClick={() => appendPlaceholder(item.key, token)}
-                      className="rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-0.5 text-[11px] font-mono text-[var(--dsn-accent)] hover:border-[var(--dsn-accent)] disabled:opacity-50"
+                      className="h-auto min-h-0 rounded-md px-2 py-0.5 font-mono text-[11px] text-[var(--dsn-accent)] hover:border-[var(--dsn-accent)]"
                     >
                       + {token}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
             );
           })}
         </div>
-      </section>
+      </Card>
 
       {/* Horarios de Atención */}
-      <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 md:p-6 shadow-xs space-y-4">
+      <Card className="space-y-4 p-5 shadow-xs md:p-6">
         <div className="flex flex-col justify-between gap-3 border-b border-[var(--dsn-border)] pb-3 sm:flex-row sm:items-center">
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-[var(--dsn-accent)]" />
@@ -248,17 +251,15 @@ export function BotMessagesTab({
           </div>
 
           <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[var(--dsn-text)]">
-            <input
-              type="checkbox"
+            <Checkbox
               disabled={readOnly}
               checked={businessHours.enabled}
-              onChange={(e) =>
+              onCheckedChange={(checked) =>
                 onBusinessHoursChange({
                   ...businessHours,
-                  enabled: e.target.checked,
+                  enabled: checked === true,
                 })
               }
-              className="h-4 w-4 accent-[var(--dsn-accent)]"
             />
             <span>{dict.botBusinessHoursEnabledLabel}</span>
           </label>
@@ -266,13 +267,10 @@ export function BotMessagesTab({
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label
-              htmlFor="bot-bh-timezone"
-              className="mb-1.5 block text-xs font-semibold text-[var(--dsn-text)]"
-            >
+            <Label htmlFor="bot-bh-timezone" className="mb-1.5 block text-xs font-semibold">
               {dict.botBusinessHoursTimezoneLabel}
-            </label>
-            <input
+            </Label>
+            <Input
               id="bot-bh-timezone"
               type="text"
               disabled={readOnly}
@@ -284,7 +282,7 @@ export function BotMessagesTab({
                 })
               }
               placeholder="America/Bogota"
-              className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none disabled:opacity-60"
+              className="font-mono"
             />
           </div>
           <div className="flex items-end">
@@ -303,32 +301,31 @@ export function BotMessagesTab({
             return (
               <div
                 key={day}
-                className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/15 p-3 space-y-2"
+                className="space-y-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/15 p-3"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-[var(--dsn-text)]">{dayName}</span>
                   <label className="inline-flex cursor-pointer items-center gap-1 text-[11px] text-[var(--dsn-text-secondary)]">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       disabled={readOnly}
                       checked={!slot.closed}
-                      onChange={(e) =>
+                      onCheckedChange={(checked) =>
                         onBusinessHoursChange({
                           ...businessHours,
                           schedule: {
                             ...businessHours.schedule,
-                            [day]: { ...slot, closed: !e.target.checked },
+                            [day]: { ...slot, closed: checked !== true },
                           },
                         })
                       }
-                      className="h-3.5 w-3.5 accent-[var(--dsn-accent)]"
+                      className="h-3.5 w-3.5"
                     />
                     <span>{locale === "en" ? "Open" : "Abierto"}</span>
                   </label>
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  <input
+                  <Input
                     type="time"
                     disabled={readOnly || slot.closed}
                     value={slot.open}
@@ -341,10 +338,10 @@ export function BotMessagesTab({
                         },
                       })
                     }
-                    className="w-full rounded border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-1.5 py-1 text-xs text-[var(--dsn-text)] disabled:opacity-40"
+                    className="h-7 px-1.5 py-1 text-xs"
                   />
                   <span className="text-xs text-[var(--dsn-text-secondary)]">-</span>
-                  <input
+                  <Input
                     type="time"
                     disabled={readOnly || slot.closed}
                     value={slot.close}
@@ -357,14 +354,14 @@ export function BotMessagesTab({
                         },
                       })
                     }
-                    className="w-full rounded border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-1.5 py-1 text-xs text-[var(--dsn-text)] disabled:opacity-40"
+                    className="h-7 px-1.5 py-1 text-xs"
                   />
                 </div>
               </div>
             );
           })}
         </div>
-      </section>
+      </Card>
 
       <ConfirmationModal
         isOpen={confirmResetOpen}

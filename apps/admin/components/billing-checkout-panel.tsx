@@ -14,6 +14,7 @@ import {
   Upload,
 } from "lucide-react";
 import type { CheckoutSessionResponse, WorkspaceBillingDto } from "@mocter/domain";
+import { Alert, AlertDescription, Badge, Button, Checkbox, Input, Label } from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 export type BillingPlanOption = NonNullable<WorkspaceBillingDto["availablePlans"]>[number];
@@ -285,44 +286,35 @@ export function BillingCheckoutPanel({
           aria-label={dict.billingCycleLabel}
           className="inline-flex rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-1 self-start sm:self-auto"
         >
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant={cycle === "monthly" ? "primary" : "ghost"}
             onClick={() => {
               setCycle("monthly");
               setCheckoutSession(null);
             }}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-              cycle === "monthly"
-                ? "bg-[var(--dsn-accent)] text-white shadow-xs"
-                : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
           >
             {dict.billingCycleMonthly}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
+            variant={cycle === "annual" ? "primary" : "ghost"}
             onClick={() => {
               setCycle("annual");
               setCheckoutSession(null);
             }}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-              cycle === "annual"
-                ? "bg-[var(--dsn-accent)] text-white shadow-xs"
-                : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
           >
             {dict.billingCycleAnnual}
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Estado de Verificación Manual Bre-B en Curso */}
       {pendingReport && (
-        <div
-          data-testid="breb-pending-banner"
-          className="rounded-xl border border-amber-500/35 bg-amber-500/10 p-4 flex items-start gap-3"
-        >
-          <Clock className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+        <Alert variant="warning" data-testid="breb-pending-banner" className="p-4">
+          <Clock className="h-5 w-5 shrink-0 mt-0.5" aria-hidden="true" />
           <div className="space-y-1 text-xs">
             <p className="font-bold text-amber-500">{dict.billingPendingBannerTitle}</p>
             <p className="text-[var(--dsn-text)]">{dict.billingPendingBannerDesc}</p>
@@ -331,16 +323,13 @@ export function BillingCheckoutPanel({
               {pendingReport.paymentReference ? ` · Ref: ${pendingReport.paymentReference}` : ""}
             </p>
           </div>
-        </div>
+        </Alert>
       )}
 
       {/* Alerta de Rechazo Previo */}
       {!pendingReport && latestRejectedBreBReport && (
-        <div
-          data-testid="breb-rejected-banner"
-          className="rounded-xl border border-rose-500/35 bg-rose-500/10 p-4 flex items-start gap-3"
-        >
-          <ShieldAlert className="h-5 w-5 text-rose-500 shrink-0 mt-0.5" />
+        <Alert variant="error" data-testid="breb-rejected-banner" className="p-4">
+          <ShieldAlert className="h-5 w-5 shrink-0 mt-0.5" aria-hidden="true" />
           <div className="space-y-1 text-xs">
             <p className="font-bold text-rose-500">{dict.billingRejectedBannerTitle}</p>
             {latestRejectedBreBReport.rejectionReason && (
@@ -348,7 +337,7 @@ export function BillingCheckoutPanel({
             )}
             <p className="text-[var(--dsn-text-secondary)]">{dict.billingRejectedBannerHint}</p>
           </div>
-        </div>
+        </Alert>
       )}
 
       {!isOwner && (
@@ -358,21 +347,15 @@ export function BillingCheckoutPanel({
       )}
 
       {errorMsg && (
-        <div
-          role="alert"
-          className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-400"
-        >
-          {errorMsg}
-        </div>
+        <Alert variant="error" role="alert">
+          <AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
       )}
 
       {successMsg && (
-        <div
-          role="status"
-          className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-400"
-        >
-          {successMsg}
-        </div>
+        <Alert variant="success" role="status">
+          <AlertDescription>{successMsg}</AlertDescription>
+        </Alert>
       )}
 
       {/* Planes Disponibles */}
@@ -406,9 +389,9 @@ export function BillingCheckoutPanel({
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-bold text-[var(--dsn-text)]">{plan.name}</span>
                     {isCurrent && (
-                      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-500">
+                      <Badge variant="success" className="text-[10px]">
                         {dict.billingCurrentPlanTag}
-                      </span>
+                      </Badge>
                     )}
                   </div>
                   {plan.description && (
@@ -447,16 +430,15 @@ export function BillingCheckoutPanel({
               htmlFor="apply-referral-credits-toggle"
               className="flex items-start gap-2.5 cursor-pointer text-xs"
             >
-              <input
+              <Checkbox
                 id="apply-referral-credits-toggle"
-                type="checkbox"
                 checked={applyReferralCredits}
                 disabled={!isOwner}
-                onChange={(e) => {
-                  setApplyReferralCredits(e.target.checked);
+                onCheckedChange={(checked) => {
+                  setApplyReferralCredits(checked === true);
                   setCheckoutSession(null);
                 }}
-                className="mt-0.5 h-4 w-4 rounded border-[var(--dsn-border)] accent-[var(--dsn-accent)]"
+                className="mt-0.5"
               />
               <span>
                 <span className="block font-bold text-[var(--dsn-text)]">
@@ -569,21 +551,20 @@ export function BillingCheckoutPanel({
 
           {(isCoveredFullyByCredits || availableChannels.length > 0) && !checkoutSession && (
             <div className="flex justify-end">
-              <button
+              <Button
                 type="button"
-                disabled={!isOwner || checkoutLoading || (!isCoveredFullyByCredits && !selectedChannel)}
+                variant="primary"
+                size="lg"
+                disabled={!isOwner || (!isCoveredFullyByCredits && !selectedChannel)}
+                loading={checkoutLoading}
+                loadingText={dict.billingGeneratingOrder}
                 onClick={handleCreateCheckout}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-[var(--dsn-accent)] px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+                className="rounded-xl font-bold"
               >
-                {checkoutLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                <span>
-                  {checkoutLoading
-                    ? dict.billingGeneratingOrder
-                    : isCoveredFullyByCredits
-                      ? dict.billingPayWithCreditsCta
-                      : dict.billingProceedPayment}
-                </span>
-              </button>
+                {isCoveredFullyByCredits
+                  ? dict.billingPayWithCreditsCta
+                  : dict.billingProceedPayment}
+              </Button>
             </div>
           )}
         </div>
@@ -674,14 +655,16 @@ export function BillingCheckoutPanel({
                     {checkoutSession.keyValue}
                   </span>
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => handleCopyBreBKey(checkoutSession.keyValue)}
-                  className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] hover:border-[var(--dsn-accent)]"
+                  className="min-h-[38px] bg-[var(--dsn-surface-secondary)]"
                 >
-                  <Copy className="h-3.5 w-3.5" />
+                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>{copiedKey ? dict.billingBreBKeyCopied : dict.billingBreBCopyKey}</span>
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -692,39 +675,34 @@ export function BillingCheckoutPanel({
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label
-                  htmlFor="breb-transfer-reference"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-                >
+                <Label htmlFor="breb-transfer-reference" className="mb-1.5 font-semibold">
                   {dict.billingBreBReferenceLabel}
-                </label>
-                <input
+                </Label>
+                <Input
                   id="breb-transfer-reference"
                   type="text"
                   value={paymentReference}
                   onChange={(e) => setPaymentReference(e.target.value)}
                   placeholder="Ej. 00192837"
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-hidden"
+                  className="bg-[var(--dsn-surface)] text-xs"
                 />
               </div>
 
               <div>
-                <label
-                  htmlFor="breb-voucher-file"
-                  className="block text-xs font-semibold text-[var(--dsn-text)] mb-1.5"
-                >
+                <Label htmlFor="breb-voucher-file" className="mb-1.5 font-semibold">
                   {dict.billingBreBVoucherLabel}
-                </label>
-                <button
+                </Label>
+                <Button
                   type="button"
+                  variant="outline"
                   onClick={() => voucherInputRef.current?.click()}
-                  className="flex w-full cursor-pointer items-center justify-between rounded-lg border border-dashed border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text-secondary)] hover:border-[var(--dsn-accent)]"
+                  className="w-full justify-between border-dashed bg-[var(--dsn-surface)] font-normal text-[var(--dsn-text-secondary)] hover:border-[var(--dsn-accent)]"
                 >
                   <span className="truncate">
                     {voucherFile ? voucherFile.name : "PNG, JPG, WEBP o PDF"}
                   </span>
-                  <FileUp className="h-4 w-4 shrink-0 text-[var(--dsn-accent)]" />
-                </button>
+                  <FileUp className="h-4 w-4 shrink-0 text-[var(--dsn-accent)]" aria-hidden="true" />
+                </Button>
                 <input
                   ref={voucherInputRef}
                   id="breb-voucher-file"
@@ -737,20 +715,16 @@ export function BillingCheckoutPanel({
             </div>
 
             <div className="flex justify-end">
-              <button
+              <Button
                 type="submit"
-                disabled={!voucherFile || reportLoading}
-                className="inline-flex min-h-[42px] items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white hover:bg-emerald-500 transition-colors disabled:opacity-50"
+                disabled={!voucherFile}
+                loading={reportLoading}
+                loadingText={dict.billingBreBSubmitting}
+                className="min-h-[42px] rounded-xl bg-emerald-600 px-5 font-bold hover:bg-emerald-500"
               >
-                {reportLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4" />
-                )}
-                <span>
-                  {reportLoading ? dict.billingBreBSubmitting : dict.billingBreBSubmitCta}
-                </span>
-              </button>
+                <Upload className="h-4 w-4" aria-hidden="true" />
+                <span>{dict.billingBreBSubmitCta}</span>
+              </Button>
             </div>
           </form>
         </div>

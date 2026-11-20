@@ -5,11 +5,13 @@ import { clients } from "../db/schemas/admin/clients";
 import { plans } from "../db/schemas/admin/plans";
 import { ok, err, type Result } from "../types/result";
 import { appLogger } from "../utils/logger";
-import { env } from "../utils/env";
 import {
   type TransactionalNotificationsAndLeadsService,
 } from "./notifications-and-leads.service";
-import { getNotificationDispatcherService } from "./notification-dispatcher.service";
+import {
+  buildAdminPortalUrl,
+  getNotificationDispatcherService,
+} from "./notification-dispatcher.service";
 
 const MS_PER_DAY = 86_400_000;
 
@@ -153,11 +155,7 @@ export class BillingRemindersService {
   }): Promise<Result<BillingRemindersDispatchSummary>> {
     try {
       const now = options?.referenceDate ?? new Date();
-      const baseOrigin = (options?.billingBaseUrl ?? env.NEXT_PUBLIC_APP_URL ?? "").replace(
-        /\/+$/,
-        "",
-      );
-      const billingUrl = baseOrigin ? `${baseOrigin}/workspace/billing` : "/workspace/billing";
+      const billingUrl = buildAdminPortalUrl("/workspace/billing", options?.billingBaseUrl);
 
       const candidates = await this.repository.listCandidateSubscriptions();
       let d5SentCount = 0;

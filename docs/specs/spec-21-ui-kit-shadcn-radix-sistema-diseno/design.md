@@ -16,17 +16,17 @@ flowchart TD
 
     subgraph ADMIN_APP["apps/admin (@mocter/admin)"]
         AdminCSS["app/globals.css<br/>@import '@mocter/ui/styles/tokens.css'<br/>@source '../../../packages/ui/src'"]
-        AdminReexports["Re-exports de Compatibilidad<br/>components/confirmation-modal.tsx<br/>components/ui/workspace-data-table.tsx<br/>components/ui/form-save-bar.tsx"]
+        AdminReexports["Re-exports y Adaptadores Compatibles<br/>components/confirmation-modal.tsx<br/>components/ui/workspace-data-table.tsx<br/>components/ui/form-save-bar.tsx<br/>lib/use-unsaved-changes-guard.ts"]
         AdminDomainUI["Componentes de Dominio / Shells<br/>AdminShell, TenantWorkspaceShell, UserProfileModal,<br/>PhoneE164Input, GeoAddressFields, AiEnhanceTextarea"]
         Catalog["/design-system<br/>Catálogo Vivo Interactivo + Editor WCAG 2.2 AA"]
-        WorkspaceViews["Vistas Inquilino<br/>/workspace/* (15 módulos) + /onboarding (5 pasos)"]
-        SaasViews["Vistas Plano de Control SaaS<br/>/admin/* (10 módulos) + /login"]
+        WorkspaceViews["Vistas Inquilino<br/>/workspace/* (16 módulos) + /onboarding (5 pasos)"]
+        SaasViews["Vistas Plano de Control SaaS<br/>/admin/* (13 módulos) + /invite/*"]
     end
 
     subgraph WEB_APP["apps/web (@mocter/web)"]
         WebCSS["app/globals.css<br/>@import '@mocter/ui/styles/tokens.css'<br/>@source '../../../packages/ui/src'"]
-        WebAuth["Vistas Auth<br/>/[locale]/(auth)/* (login, register, setup-owner, password)"]
-        WebViews["Vistas Interactivas y Paneles<br/>components/admin/*, sections/demo-form, pricing-section"]
+        WebAuth["Vistas Auth<br/>/[locale]/(auth)/* (components/auth/*)"]
+        WebViews["Vistas Interactivas y Paneles<br/>components/admin/*, demo-form, phone-e164-input, cookie-preferences, theme-toggle"]
     end
 
     Tokens --> AdminCSS
@@ -58,6 +58,8 @@ packages/ui/
     ├── styles/
     │   └── tokens.css              # 3 capas DSN-001 (--primitive-*, --dsn-*, --brand-*) + @theme Tailwind v4
     ├── lib/
+    │   ├── i18n.ts                 # Diccionario mínimo es/en para compuestos (@mocter/ui)
+    │   ├── use-unsaved-changes-guard.ts # Guardia de cambios sin guardar compartido
     │   └── utils.ts                # cn(...inputs: ClassValue[])
     └── components/
         ├── alert.tsx               # <Alert />, <AlertTitle />, <AlertDescription />
@@ -97,12 +99,12 @@ packages/ui/
      - `--dsn-surface-secondary: #18181b`
      - `--dsn-sidebar: rgba(12, 12, 14, 0.72)`
      - `--dsn-text: #ededef`
-     - `--dsn-text-secondary: #a1a1aa`
-     - `--dsn-text-tertiary: #71717a`
+     - `--dsn-text-secondary: #8d8d93`
+     - `--dsn-text-tertiary: #5c5c63`
      - `--dsn-border: rgba(255, 255, 255, 0.09)`
      - `--dsn-border-subtle: rgba(255, 255, 255, 0.05)`
      - `--dsn-input-bg: #0c121a`
-     - `--dsn-input-border: rgba(79, 209, 255, 0.16)`
+     - `--dsn-input-border: rgba(79, 209, 255, 0.12)`
      - `--dsn-accent: #22d3ee`
      - `--dsn-accent-hover: #67e8f9`
      - `--dsn-accent-fg: #ffffff`
@@ -120,8 +122,8 @@ packages/ui/
      - `--dsn-surface-secondary: #f4f4f5`
      - `--dsn-sidebar: rgba(250, 250, 250, 0.85)`
      - `--dsn-text: #09090b`
-     - `--dsn-text-secondary: #52525b`
-     - `--dsn-text-tertiary: #71717a`
+     - `--dsn-text-secondary: #71717a`
+     - `--dsn-text-tertiary: #a1a1aa`
      - `--dsn-border: rgba(0, 0, 0, 0.08)`
      - `--dsn-border-subtle: rgba(0, 0, 0, 0.04)`
      - `--dsn-input-bg: #ffffff`
@@ -137,8 +139,9 @@ packages/ui/
      - `--dsn-warning: #a16207`
      - `--dsn-error: #dc2626`
      - `--dsn-code-bg: #f4f4f5`
-3. **Capa 3 — Marca (`--brand-*`) y Mapeo `@theme inline` en Tailwind v4:**
+3. **Capa 3 — Marca (`--brand-*`), `@variant dark` y Mapeo `@theme inline` en Tailwind v4:**
    - `--color-dsn-background: var(--dsn-background)`, `--color-dsn-surface: var(--dsn-surface)`, `--color-dsn-surface-secondary: var(--dsn-surface-secondary)`, `--color-dsn-text: var(--dsn-text)`, `--color-dsn-text-secondary: var(--dsn-text-secondary)`, `--color-dsn-border: var(--dsn-border)`, `--color-dsn-accent: var(--dsn-accent)`, `--color-dsn-accent-hover: var(--dsn-accent-hover)`, `--color-dsn-success: var(--dsn-success)`, `--color-dsn-warning: var(--dsn-warning)`, `--color-dsn-error: var(--dsn-error)`.
+   - Los alias `--color-surface` / `--bg` propios de la landing pública permanecen en `apps/web/app/globals.css` sin ser sobrescritos por `@theme inline`.
 
 ---
 
@@ -190,7 +193,7 @@ packages/ui/
    - En stage `deps`: `COPY packages/ui/package.json packages/ui/package.json`.
    - En stage `build`: `COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules`.
 4. **`docker-compose.yml`:**
-   - Se añade `- ui-node-modules:/app/packages/ui/node_modules` en `web-portal.volumes` y `admin-portal.volumes`, y `ui-node-modules:` en la sección raíz `volumes:`.
+   - Se añade `- ui-node-modules:/app/packages/ui/node_modules` en `web-portal.volumes`, `- admin-ui-node-modules:/app/packages/ui/node_modules` en `admin-portal.volumes`, y ambos (`ui-node-modules:` y `admin-ui-node-modules:`) en la sección raíz `volumes:` para mantener aislamiento entre servicios.
 
 ---
 
@@ -198,8 +201,8 @@ packages/ui/
 
 | Lote | Alcance | Regla de Compatibilidad con Tests Existentes |
 | --- | --- | --- |
-| **Lote 1** | Fundación `packages/ui`, `tokens.css`, 17 primitivas atómicas, tests de `@mocter/ui`, configuración de `next.config.ts`, `Dockerfile` y `docker-compose.yml` | Pruebas unitarias propias en `packages/ui` validando roles ARIA, variantes y eventos. |
-| **Lote 2** | Compuestos promovidos (`ConfirmationModal`, `WorkspaceDataTable`, `FormSaveBar` con re-exports en `apps/admin`), componentes compartidos (`DataTable`, `AdminShell`, `TenantWorkspaceShell`, `UserProfileModal`, `AiEnhanceTextarea`, `PhoneE164Input`, `GeoAddressFields`, `BillingCheckoutPanel`, `CatalogQuotaBanner`) y catálogo vivo `/design-system` | Re-exports 1:1 en `apps/admin/components/...` preservan todas las firmas de props y `data-testid` / roles consultados por los tests actuales. |
-| **Lote 3** | Vistas de `/workspace/*` (Tablero, Productos + modales, Contactos + modales, Pedidos + diálogos, Bot, Promociones, Comunidades + 5 tabs, Equipo, Referidos, Notificaciones, Perfil, Marca Blanca, Facturación, AI, Informes) y `/onboarding` (5 pasos) | Conservación exacta de etiquetas i18n, `aria-label`, `data-testid`, `placeholder` y semántica `<select>` (`<Select />`) / `role="dialog"` (`<Dialog />`). |
-| **Lote 4** | Vistas de `/admin/*` (Dashboard, Tenants, Plans, Cells, Billing, AI, Notifications, Communities, Conversations, Audit, Login) y vistas de `apps/web` (`/[locale]/(auth)/*`, `components/admin/*`, `demo-form`, `pricing-section`) | Ejecución de `vitest` por módulo tras cada grupo migrado para garantizar cero roturas. |
+| **Lote 1** | Fundación `packages/ui`, `tokens.css`, 17 primitivas atómicas, tests de `@mocter/ui`, actualización de `apps/web/lib/design-tokens.test.ts`, configuración de `next.config.ts`, `Dockerfile` y `docker-compose.yml` | Pruebas unitarias propias en `packages/ui` validando roles ARIA, variantes y eventos. |
+| **Lote 2** | Compuestos promovidos (`ConfirmationModal`, `WorkspaceDataTable`, `FormSaveBar` + `useUnsavedChangesGuard` con re-exports/adaptador en `apps/admin`), componentes compartidos (`DataTable`, `AdminShell`, `TenantWorkspaceShell`, `UserProfileModal`, `AiEnhanceTextarea`, `PhoneE164Input`, `GeoAddressFields`, `BillingCheckoutPanel`, `CatalogQuotaBanner`, `EmailRichTextEditor`, `ThemeToggle`) y catálogo vivo `/design-system` | Re-exports y adaptadores en `apps/admin/components/...` preservan todas las firmas de props, mocks de `next/navigation` y `data-testid` / roles consultados por los tests actuales. |
+| **Lote 3** | Vistas de `/workspace/*` (Tablero, Productos + modales, Contactos + modales, Pedidos + modales, Conversaciones, Bot, Promociones, Comunidades + 5 tabs, Equipo, Referidos, Notificaciones, Perfil, Marca Blanca, Facturación, AI, Informes) y `/onboarding` (`tenant-onboarding-wizard` + 5 pasos en `steps/`) | Conservación exacta de etiquetas i18n, `aria-label`, `data-testid`, `placeholder` y semántica `<select>` (`<Select />`) / `role="dialog"` (`<Dialog />`). |
+| **Lote 4** | Vistas de `/admin/*` (Dashboard, Leads, Orders, Tenants, Plans, Cells, Billing, AI, Notifications, Communities, Conversations, Referrals, Reports, Users, Settings Branding) + `/invite/*` y vistas de `apps/web` (`components/auth/*`, `components/admin/*`, `demo-form`, `phone-e164-input`, `cookie-preferences`, `theme-toggle`) | Ejecución de `vitest` por módulo tras cada grupo migrado para garantizar cero roturas. |
 | **Lote 5** | Test de auditoría estática (`apps/admin/lib/ui-kit-audit.test.ts`), verificación integral (`pnpm lint`, `pnpm test`, `pnpm build`) y protocolo `AGENTS.md §4.18` (reinicio de contenedores Docker y healthcheck HTTP 200) | Certificación automatizada de adopción de `@mocter/ui` y salud de los contenedores. |

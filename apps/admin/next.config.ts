@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  transpilePackages: ["@mocter/ui"],
   allowedDevOrigins: [
     "localhost",
     "127.0.0.1",

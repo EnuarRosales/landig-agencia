@@ -281,12 +281,12 @@ export class AiAssistService {
     }
 
     let field = await this.repository.getFieldByKey(input.fieldKey);
-    if (!field && input.fieldKey.startsWith("email.")) {
+    if (!field && (input.fieldKey.startsWith("email.") || input.fieldKey.startsWith("community."))) {
       try {
         await seedAiAssistCatalog();
         field = await this.repository.getFieldByKey(input.fieldKey);
       } catch (seedErr) {
-        appLogger.warn("[AiAssistService] No se pudo sembrar automáticamente campo email.*", {
+        appLogger.warn("[AiAssistService] No se pudo sembrar automáticamente campo asistido", {
           fieldKey: input.fieldKey,
           error: seedErr instanceof Error ? seedErr.message : String(seedErr),
         });

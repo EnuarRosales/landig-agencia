@@ -1,4 +1,5 @@
 import React from "react";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { AdminCommunitiesOverviewDto } from "@mocter/domain";
@@ -45,7 +46,19 @@ describe("SPEC-15 · CommunitiesAdminView (/admin/communities)", () => {
           leaderStatus: "pending",
         },
       ],
+      retentionSettings: {
+        feedRetentionDays: 30,
+        lastRetentionPurgeAt: "2026-11-20T02:49:40.000Z",
+        lastRetentionPurgedCount: 2,
+        eligibleToPurgeCount: 0,
+      },
     };
+
+    // SSR determinístico en UTC sin depender de la zona horaria del servidor/navegador
+    const ssrHtml = renderToString(
+      <CommunitiesAdminView initialOverview={overview} locale="es" />,
+    );
+    expect(ssrHtml).toContain("UTC");
 
     const { container } = render(
       <CommunitiesAdminView initialOverview={overview} locale="es" />,

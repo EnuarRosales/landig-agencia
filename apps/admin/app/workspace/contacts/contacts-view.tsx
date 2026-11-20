@@ -12,8 +12,23 @@ import {
   Star,
   Trash2,
   Users,
-  X,
 } from "lucide-react";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Checkbox,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { workspaceFetch } from "@/lib/workspace-client";
 import { ConfirmationModal } from "@/components/confirmation-modal";
@@ -292,23 +307,15 @@ export function ContactsView({
 
     if (win.status === "active") {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400">
+        <Badge variant="success">
           {w.crmWhatsappActiveBadge} · {formatClientWhatsappRemaining(win.remainingSeconds)}
-        </span>
+        </Badge>
       );
     }
     if (win.status === "expired") {
-      return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-400">
-          {w.crmWhatsappExpiredBadge}
-        </span>
-      );
+      return <Badge variant="warning">{w.crmWhatsappExpiredBadge}</Badge>;
     }
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--dsn-text-secondary)]">
-        {w.crmWhatsappNoneBadge}
-      </span>
-    );
+    return <Badge variant="outline">{w.crmWhatsappNoneBadge}</Badge>;
   };
 
   return (
@@ -320,15 +327,15 @@ export function ContactsView({
             <h1 className="text-xl font-bold tracking-tight text-[var(--dsn-text)] md:text-2xl">
               {w.crmTitle}
             </h1>
-            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 font-mono text-xs font-medium text-emerald-400">
+            <Badge variant="success" className="font-mono text-xs font-medium">
               {w.crmBadge}
-            </span>
-            <span className="rounded-full border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-2.5 py-0.5 font-mono text-xs text-[var(--dsn-text-secondary)]">
+            </Badge>
+            <Badge variant="outline" className="font-mono text-xs font-normal">
               {w.crmQuotaLabel}: {listData.quota.used} /{" "}
               {listData.quota.mode === "LIMITED" && listData.quota.limit !== null
                 ? listData.quota.limit
                 : w.crmQuotaUnlimited}
-            </span>
+            </Badge>
           </div>
           <p className="mt-1 text-xs text-[var(--dsn-text-secondary)] md:text-sm">
             {w.crmSubtitle}
@@ -345,17 +352,16 @@ export function ContactsView({
             <ExternalLink className="h-3 w-3 opacity-70" />
           </Link>
 
-          <button
+          <Button
             type="button"
             onClick={() => {
               resetCreateForm();
               setCreateOpen(true);
             }}
-            className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-opacity hover:opacity-90"
           >
             <Plus className="h-4 w-4" />
             <span>{w.crmNewContactCta}</span>
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -423,7 +429,7 @@ export function ContactsView({
         onRetry={() => void fetchContacts()}
         filterSlot={
           <div className="flex flex-wrap items-center gap-2">
-            <select
+            <Select
               aria-label={w.crmFilterAllStages}
               value={stageFilter}
               onChange={(e) => {
@@ -432,7 +438,7 @@ export function ContactsView({
                 setPage(1);
                 void fetchContacts({ nextPage: 1, nextStage: next });
               }}
-              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
+              className="w-auto min-h-[40px] text-xs"
             >
               <option value="all">{w.crmFilterAllStages}</option>
               {CRM_STAGES.map((st) => (
@@ -440,9 +446,9 @@ export function ContactsView({
                   {formatStageLabel(st, locale)}
                 </option>
               ))}
-            </select>
+            </Select>
 
-            <select
+            <Select
               aria-label={w.crmFilterAllSources}
               value={sourceFilter}
               onChange={(e) => {
@@ -451,7 +457,7 @@ export function ContactsView({
                 setPage(1);
                 void fetchContacts({ nextPage: 1, nextSource: next });
               }}
-              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
+              className="w-auto min-h-[40px] text-xs"
             >
               <option value="all">{w.crmFilterAllSources}</option>
               {CRM_SOURCES.map((src) => (
@@ -459,9 +465,9 @@ export function ContactsView({
                   {formatSourceLabel(src, locale)}
                 </option>
               ))}
-            </select>
+            </Select>
 
-            <select
+            <Select
               aria-label={w.crmFilterAllWindows}
               value={windowFilter}
               onChange={(e) => {
@@ -470,15 +476,15 @@ export function ContactsView({
                 setPage(1);
                 void fetchContacts({ nextPage: 1, nextWindow: next });
               }}
-              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
+              className="w-auto min-h-[40px] text-xs"
             >
               <option value="all">{w.crmFilterAllWindows}</option>
               <option value="active">{w.crmFilterWindowActive}</option>
               <option value="expired">{w.crmFilterWindowExpired}</option>
               <option value="none">{w.crmFilterWindowNone}</option>
-            </select>
+            </Select>
 
-            <select
+            <Select
               aria-label={w.crmFilterAllRatings}
               value={minRatingFilter}
               onChange={(e) => {
@@ -487,7 +493,7 @@ export function ContactsView({
                 setPage(1);
                 void fetchContacts({ nextPage: 1, nextMinRating: next });
               }}
-              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 px-3 text-xs text-[var(--dsn-text)]"
+              className="w-auto min-h-[40px] text-xs"
             >
               <option value="">{w.crmFilterAllRatings}</option>
               {[5, 4, 3, 2, 1].map((stars) => (
@@ -495,9 +501,9 @@ export function ContactsView({
                   {w.crmFilterRatingMinPrefix} {stars} {w.crmFilterRatingStarsUnit}
                 </option>
               ))}
-            </select>
+            </Select>
 
-            <select
+            <Select
               aria-label={w.crmSortWhatsappPriority}
               value={sortBy}
               onChange={(e) => {
@@ -505,27 +511,28 @@ export function ContactsView({
                 setSortBy(next);
                 void fetchContacts({ nextSortBy: next });
               }}
-              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 text-xs text-[var(--dsn-text)]"
+              className="w-auto min-h-[40px] text-xs"
             >
               <option value="whatsapp_priority">{w.crmSortWhatsappPriority}</option>
               <option value="last_inbound">{w.crmSortLastSeen}</option>
               <option value="rating">{w.crmSortRating}</option>
               <option value="created_at">{w.crmSortCreatedAt}</option>
               <option value="full_name">{w.crmSortFullName}</option>
-            </select>
+            </Select>
 
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={() => {
                 const nextDir = sortDir === "desc" ? "asc" : "desc";
                 setSortDir(nextDir);
                 void fetchContacts({ nextSortDir: nextDir });
               }}
-              className="inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              className="text-xs font-medium"
             >
               <ArrowDownUp className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
               <span>{sortDir === "desc" ? "DESC" : "ASC"}</span>
-            </button>
+            </Button>
           </div>
         }
         emptyState={{
@@ -545,16 +552,12 @@ export function ContactsView({
                   <p className="text-xs text-[var(--dsn-text-secondary)]">{c.companyName}</p>
                 )}
               </div>
-              <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-400">
-                {formatStageLabel(c.stage, locale)}
-              </span>
+              <Badge variant="accent">{formatStageLabel(c.stage, locale)}</Badge>
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
               {renderWindowBadge(c)}
-              <span className="rounded-full border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2 py-0.5 text-[11px] text-[var(--dsn-text-secondary)]">
-                {formatSourceLabel(c.source, locale)}
-              </span>
+              <Badge variant="outline">{formatSourceLabel(c.source, locale)}</Badge>
             </div>
 
             <div className="space-y-1 text-xs text-[var(--dsn-text-secondary)]">
@@ -572,22 +575,26 @@ export function ContactsView({
                 {c.currentRatingStars ? `★ ${c.currentRatingStars}/5` : "—"}
               </span>
               <div className="flex items-center gap-2">
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setSelectedContactId(c.id)}
-                  className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1 text-xs font-semibold text-[var(--dsn-text)]"
+                  className="min-h-[36px]"
                 >
                   <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
                   <span>{w.crmViewDetailCta}</span>
-                </button>
+                </Button>
                 {canDelete && (
-                  <button
+                  <Button
                     type="button"
+                    variant="destructive"
+                    size="sm"
                     onClick={() => setDeleteTarget(c)}
-                    className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-xs font-semibold text-rose-400"
+                    className="min-h-[36px] px-2.5"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
@@ -616,9 +623,7 @@ export function ContactsView({
               header: w.crmColChannelSource,
               renderCell: (c) => (
                 <div>
-                  <span className="inline-block rounded-full border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-2 py-0.5 text-[11px] font-medium text-[var(--dsn-text)]">
-                    {formatSourceLabel(c.source, locale)}
-                  </span>
+                  <Badge variant="outline">{formatSourceLabel(c.source, locale)}</Badge>
                   {c.preferredChannel && (
                     <p className="mt-1 text-[11px] text-[var(--dsn-text-secondary)]">
                       {w.crmPreferredLabel}: {formatChannelLabel(c.preferredChannel, locale)}
@@ -637,9 +642,7 @@ export function ContactsView({
               key: "stage",
               header: w.crmColStage,
               renderCell: (c) => (
-                <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-400">
-                  {formatStageLabel(c.stage, locale)}
-                </span>
+                <Badge variant="accent">{formatStageLabel(c.stage, locale)}</Badge>
               ),
             },
             {
@@ -682,26 +685,30 @@ export function ContactsView({
               align: "right",
               renderCell: (c) => (
                 <div className="inline-flex items-center justify-end gap-1.5">
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => setSelectedContactId(c.id)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                    className="h-8 min-h-0 px-2.5 text-[11px]"
                   >
                     <Eye className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
                     <span>{w.crmViewDetailCta}</span>
-                  </button>
+                  </Button>
                   {canDelete && (
-                    <button
+                    <Button
                       type="button"
+                      variant="destructive"
+                      size="icon"
                       aria-label={`${w.crmDeleteContactCta} ${c.fullName}`}
                       onClick={() => {
                         setDeleteError(null);
                         setDeleteTarget(c);
                       }}
-                      className="inline-flex items-center rounded-lg border border-rose-500/30 bg-rose-500/10 p-1.5 text-rose-400 hover:bg-rose-500/20"
+                      className="h-8 w-8 min-h-0"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    </Button>
                   )}
                 </div>
               ),
@@ -711,282 +718,251 @@ export function ContactsView({
       />
 
       {/* Modal de Creación Multi-Fuente */}
-      {createOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent
+          className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-0 overflow-hidden p-0"
+          closeAriaLabel={w.crmCancelCta}
           aria-label={w.crmCreateModalTitle}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
         >
-          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] px-6 py-4">
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
-                  {w.crmCreateModalTitle}
-                </h3>
-              </div>
-              <button
-                type="button"
-                aria-label={w.crmCancelCta}
-                onClick={() => setCreateOpen(false)}
-                className="text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+          <DialogHeader className="flex-row items-center gap-2 space-y-0 border-b border-[var(--dsn-border)] px-6 py-4 pr-12">
+            <Users className="h-5 w-5 text-[var(--dsn-accent)]" />
+            <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
+              {w.crmCreateModalTitle}
+            </DialogTitle>
+          </DialogHeader>
 
-            <form onSubmit={handleCreateContact} className="flex-1 space-y-4 overflow-y-auto p-6">
-              {formError && (
-                <div className="flex items-center gap-2 rounded-lg border border-rose-500/20 bg-rose-500/10 p-2.5 text-xs text-rose-400">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>{formError}</span>
-                </div>
-              )}
+          <form onSubmit={handleCreateContact} className="flex-1 space-y-4 overflow-y-auto p-6">
+            {formError && (
+              <Alert variant="error">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <AlertDescription>{formError}</AlertDescription>
+              </Alert>
+            )}
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                    {w.crmFieldFullName} *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Ej. Juan Pérez"
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)]"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                    {w.crmFieldCompanyName}
-                  </label>
-                  <input
-                    type="text"
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)]"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                    {w.crmFieldSource}
-                  </label>
-                  <select
-                    value={source}
-                    onChange={(e) => setSource(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)]"
-                  >
-                    {CRM_SOURCES.map((src) => (
-                      <option key={src} value={src}>
-                        {formatSourceLabel(src, locale)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                    {w.crmFieldPreferredChannel}
-                  </label>
-                  <select
-                    value={preferredChannel}
-                    onChange={(e) => setPreferredChannel(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)]"
-                  >
-                    {CRM_CHANNELS.map((ch) => (
-                      <option key={ch} value={ch}>
-                        {formatChannelLabel(ch, locale)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <PhoneE164Input
-                    id="create-contact-phone-mobile"
-                    label={w.crmFieldPhoneMobile}
-                    value={phoneMobile}
-                    defaultCountryCode={addrCountryCode}
-                    locale={locale}
-                    onChange={(next) => setPhoneMobile(next)}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                    {w.crmFieldEmail}
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="juan@ejemplo.com"
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)]"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <PhoneE164Input
-                    id="create-contact-phone-secondary"
-                    label={w.crmFieldPhoneSecondary}
-                    value={phoneSecondary}
-                    defaultCountryCode={addrCountryCode}
-                    locale={locale}
-                    onChange={(next) => setPhoneSecondary(next)}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                    {w.crmFieldStage}
-                  </label>
-                  <select
-                    value={stage}
-                    onChange={(e) => setStage(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)]"
-                  >
-                    {CRM_STAGES.map((st) => (
-                      <option key={st} value={st}>
-                        {formatStageLabel(st, locale)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                    {w.crmFieldDocumentType}
-                  </label>
-                  <select
-                    value={documentType}
-                    onChange={(e) => setDocumentType(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)]"
-                  >
-                    <option value="">—</option>
-                    {CRM_DOCUMENT_TYPES.map((dt) => (
-                      <option key={dt} value={dt}>
-                        {dt}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                    {w.crmFieldDocumentNumber}
-                  </label>
-                  <input
-                    type="text"
-                    value={documentNumber}
-                    onChange={(e) => setDocumentNumber(e.target.value)}
-                    placeholder="10203040"
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 font-mono text-xs text-[var(--dsn-text)]"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                    {w.crmFieldBirthDate}
-                  </label>
-                  <input
-                    type="date"
-                    value={birthDate}
-                    onChange={(e) => setBirthDate(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 font-mono text-xs text-[var(--dsn-text)]"
-                  />
-                </div>
-              </div>
-
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                  {w.crmFieldNotes}
-                </label>
-                <textarea
-                  rows={2}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/50 px-3 py-2 text-xs text-[var(--dsn-text)]"
+                <Label className="mb-1 block text-xs font-semibold">{w.crmFieldFullName} *</Label>
+                <Input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Ej. Juan Pérez"
+                  className="text-xs"
                 />
               </div>
+              <div>
+                <Label className="mb-1 block text-xs font-semibold">{w.crmFieldCompanyName}</Label>
+                <Input
+                  type="text"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs font-semibold">{w.crmFieldSource}</Label>
+                <Select
+                  value={source}
+                  onChange={(e) => setSource(e.target.value)}
+                  className="text-xs"
+                >
+                  {CRM_SOURCES.map((src) => (
+                    <option key={src} value={src}>
+                      {formatSourceLabel(src, locale)}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs font-semibold">
+                  {w.crmFieldPreferredChannel}
+                </Label>
+                <Select
+                  value={preferredChannel}
+                  onChange={(e) => setPreferredChannel(e.target.value)}
+                  className="text-xs"
+                >
+                  {CRM_CHANNELS.map((ch) => (
+                    <option key={ch} value={ch}>
+                      {formatChannelLabel(ch, locale)}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="md:col-span-2">
+                <PhoneE164Input
+                  id="create-contact-phone-mobile"
+                  label={w.crmFieldPhoneMobile}
+                  value={phoneMobile}
+                  defaultCountryCode={addrCountryCode}
+                  locale={locale}
+                  onChange={(next) => setPhoneMobile(next)}
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs font-semibold">{w.crmFieldEmail}</Label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="juan@ejemplo.com"
+                  className="text-xs"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <PhoneE164Input
+                  id="create-contact-phone-secondary"
+                  label={w.crmFieldPhoneSecondary}
+                  value={phoneSecondary}
+                  defaultCountryCode={addrCountryCode}
+                  locale={locale}
+                  onChange={(next) => setPhoneSecondary(next)}
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs font-semibold">{w.crmFieldStage}</Label>
+                <Select
+                  value={stage}
+                  onChange={(e) => setStage(e.target.value)}
+                  className="text-xs"
+                >
+                  {CRM_STAGES.map((st) => (
+                    <option key={st} value={st}>
+                      {formatStageLabel(st, locale)}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs font-semibold">
+                  {w.crmFieldDocumentType}
+                </Label>
+                <Select
+                  value={documentType}
+                  onChange={(e) => setDocumentType(e.target.value)}
+                  className="text-xs"
+                >
+                  <option value="">—</option>
+                  {CRM_DOCUMENT_TYPES.map((dt) => (
+                    <option key={dt} value={dt}>
+                      {dt}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs font-semibold">
+                  {w.crmFieldDocumentNumber}
+                </Label>
+                <Input
+                  type="text"
+                  value={documentNumber}
+                  onChange={(e) => setDocumentNumber(e.target.value)}
+                  placeholder="10203040"
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div>
+                <Label className="mb-1 block text-xs font-semibold">{w.crmFieldBirthDate}</Label>
+                <Input
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  className="font-mono text-xs"
+                />
+              </div>
+            </div>
 
-              <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/20 p-3 space-y-3">
-                <label className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--dsn-text)]">
-                  <input
-                    type="checkbox"
-                    checked={includeInitialAddress}
-                    onChange={(e) => setIncludeInitialAddress(e.target.checked)}
-                  />
-                  <span>{w.crmIncludeInitialAddress}</span>
-                </label>
+            <div>
+              <Label className="mb-1 block text-xs font-semibold">{w.crmFieldNotes}</Label>
+              <Textarea
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="text-xs"
+              />
+            </div>
 
-                {includeInitialAddress && (
-                  <div className="space-y-3">
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]">
-                        {w.crmAddressLabel} *
-                      </label>
-                      <input
-                        type="text"
-                        required={includeInitialAddress}
-                        value={addrLabel}
-                        onChange={(e) => setAddrLabel(e.target.value)}
-                        className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)]"
-                      />
-                    </div>
-                    <GeoAddressFields
-                      idPrefix="create-contact-addr"
-                      locale={locale}
-                      requiredFields={{
-                        country: includeInitialAddress,
-                        city: includeInitialAddress,
-                        addressLine: includeInitialAddress,
-                      }}
-                      values={{
-                        countryCode: addrCountryCode,
-                        country: addrCountry,
-                        subdivisionCode: addrSubdivisionCode,
-                        state: addrState,
-                        city: addrCity,
-                        neighborhood: addrNeighborhood,
-                        addressLine: addrLine,
-                        addressComplement: addrComplement,
-                        postalCode: addrPostalCode,
-                      }}
-                      onChange={(patch) => {
-                        if (patch.countryCode !== undefined)
-                          setAddrCountryCode(patch.countryCode);
-                        if (patch.country !== undefined) setAddrCountry(patch.country);
-                        if (patch.subdivisionCode !== undefined)
-                          setAddrSubdivisionCode(patch.subdivisionCode);
-                        if (patch.state !== undefined) setAddrState(patch.state);
-                        if (patch.city !== undefined) setAddrCity(patch.city);
-                        if (patch.neighborhood !== undefined)
-                          setAddrNeighborhood(patch.neighborhood);
-                        if (patch.addressLine !== undefined) setAddrLine(patch.addressLine);
-                        if (patch.addressComplement !== undefined)
-                          setAddrComplement(patch.addressComplement);
-                        if (patch.postalCode !== undefined)
-                          setAddrPostalCode(patch.postalCode);
-                      }}
+            <div className="space-y-3 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/20 p-3">
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--dsn-text)]">
+                <Checkbox
+                  checked={includeInitialAddress}
+                  onCheckedChange={(checked) => setIncludeInitialAddress(checked === true)}
+                />
+                <span>{w.crmIncludeInitialAddress}</span>
+              </label>
+
+              {includeInitialAddress && (
+                <div className="space-y-3">
+                  <div>
+                    <Label className="mb-1 block text-xs font-semibold">
+                      {w.crmAddressLabel} *
+                    </Label>
+                    <Input
+                      type="text"
+                      required={includeInitialAddress}
+                      value={addrLabel}
+                      onChange={(e) => setAddrLabel(e.target.value)}
+                      className="text-xs"
                     />
                   </div>
-                )}
-              </div>
+                  <GeoAddressFields
+                    idPrefix="create-contact-addr"
+                    locale={locale}
+                    requiredFields={{
+                      country: includeInitialAddress,
+                      city: includeInitialAddress,
+                      addressLine: includeInitialAddress,
+                    }}
+                    values={{
+                      countryCode: addrCountryCode,
+                      country: addrCountry,
+                      subdivisionCode: addrSubdivisionCode,
+                      state: addrState,
+                      city: addrCity,
+                      neighborhood: addrNeighborhood,
+                      addressLine: addrLine,
+                      addressComplement: addrComplement,
+                      postalCode: addrPostalCode,
+                    }}
+                    onChange={(patch) => {
+                      if (patch.countryCode !== undefined)
+                        setAddrCountryCode(patch.countryCode);
+                      if (patch.country !== undefined) setAddrCountry(patch.country);
+                      if (patch.subdivisionCode !== undefined)
+                        setAddrSubdivisionCode(patch.subdivisionCode);
+                      if (patch.state !== undefined) setAddrState(patch.state);
+                      if (patch.city !== undefined) setAddrCity(patch.city);
+                      if (patch.neighborhood !== undefined)
+                        setAddrNeighborhood(patch.neighborhood);
+                      if (patch.addressLine !== undefined) setAddrLine(patch.addressLine);
+                      if (patch.addressComplement !== undefined)
+                        setAddrComplement(patch.addressComplement);
+                      if (patch.postalCode !== undefined)
+                        setAddrPostalCode(patch.postalCode);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
 
-              <div className="flex items-center justify-end gap-2 border-t border-[var(--dsn-border)] pt-3">
-                <button
-                  type="button"
-                  onClick={() => setCreateOpen(false)}
-                  className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                >
-                  {w.crmCancelCta}
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {saving ? w.crmSavingCta : w.crmSaveCta}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <DialogFooter className="border-t border-[var(--dsn-border)] pt-3">
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+                {w.crmCancelCta}
+              </Button>
+              <Button
+                type="submit"
+                disabled={saving}
+                loading={saving}
+                loadingText={w.crmSavingCta}
+              >
+                {w.crmSaveCta}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Ficha Detallada 4 Pestañas */}
       <ContactDetailModal

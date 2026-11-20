@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AlertCircle } from "lucide-react";
 import type { TenantOnboardingStateDto, WorkspaceBillingDto } from "@mocter/domain";
+import { Alert, AlertDescription, Button } from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { StepBusiness } from "./steps/step-business";
 import { StepPlan } from "./steps/step-plan";
@@ -508,9 +509,11 @@ export function TenantOnboardingWizard({
               const isCurrent = step === num;
               const isDone = step > num;
               return (
-                <button
+                <Button
                   key={num}
                   type="button"
+                  size="sm"
+                  variant={isCurrent ? "primary" : "outline"}
                   aria-current={isCurrent ? "step" : undefined}
                   disabled={num > step || loading}
                   onClick={() => {
@@ -519,17 +522,17 @@ export function TenantOnboardingWizard({
                       setStep(num);
                     }
                   }}
-                  className={`flex items-center justify-center sm:justify-start gap-2 rounded-xl border px-2 py-2 text-xs font-semibold transition-colors ${
+                  className={`justify-center sm:justify-start rounded-xl px-2 py-2 ${
                     isCurrent
-                      ? "border-[var(--dsn-accent)] bg-[var(--dsn-accent)] text-[var(--dsn-accent-fg)] shadow-xs"
+                      ? ""
                       : isDone
                         ? "border-[var(--dsn-accent)]/40 bg-[var(--dsn-accent)]/10 text-[var(--dsn-text)]"
-                        : "border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] opacity-70"
+                        : "bg-[var(--dsn-surface)] text-[var(--dsn-text-secondary)] opacity-70"
                   }`}
                 >
                   <span className="font-mono">{num}</span>
                   <span className="hidden md:inline truncate">{dict.stepTitles[num]}</span>
-                </button>
+                </Button>
               );
             })}
           </nav>
@@ -537,13 +540,10 @@ export function TenantOnboardingWizard({
 
         {/* Alerta De Error */}
         {error && (
-          <div
-            role="alert"
-            className="flex items-start gap-2.5 rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-xs sm:text-sm text-rose-500"
-          >
-            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-            <span>{error}</span>
-          </div>
+          <Alert variant="error" role="alert" className="p-4 text-xs sm:text-sm">
+            <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" aria-hidden="true" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
 
         {/* Renderizado Modular De Pasos 1..5 */}

@@ -259,8 +259,7 @@ export function isTenantVisibleNotificationEvent(eventKey: string): boolean {
  * Implementación Drizzle/PostgreSQL del repositorio de notificaciones (`SPEC-14`).
  */
 export class DrizzleNotificationDispatcherRepository
-  implements INotificationDispatcherRepository
-{
+  implements INotificationDispatcherRepository {
   async getEventMetadata(eventKey: string): Promise<NotificationEventMetadata | null> {
     const db = getDb();
     const normalized = eventKey.trim().toLowerCase();
@@ -513,9 +512,9 @@ export class DrizzleNotificationDispatcherRepository
     const offset = (options.page - 1) * options.limit;
     const condition = options.unreadOnly
       ? and(
-          eq(tenantInAppNotifications.clientId, clientId),
-          isNull(tenantInAppNotifications.readAt),
-        )
+        eq(tenantInAppNotifications.clientId, clientId),
+        isNull(tenantInAppNotifications.readAt),
+      )
       : eq(tenantInAppNotifications.clientId, clientId);
 
     const [rows, totalRows, unreadCount] = await Promise.all([
@@ -654,9 +653,9 @@ export class DrizzleNotificationDispatcherRepository
  * notificaciones in-app sin bloquear ni fallar transacciones operativas de negocio.
  */
 export class NotificationDispatcherService {
-  constructor(
+  constructor (
     private readonly repository: INotificationDispatcherRepository = new DrizzleNotificationDispatcherRepository(),
-  ) {}
+  ) { }
 
   /**
    * Escapa entidades HTML en todas las variables de una plantilla (`RN-SPEC-14-04`).
@@ -887,23 +886,23 @@ export class NotificationDispatcherService {
     const prefByEvent = new Map(storedPrefs.map((p) => [p.eventKey.toLowerCase(), p]));
     const preferences: TenantNotificationPreferenceDto[] = canManagePreferences
       ? allEvents
-          .filter((ev) => isTenantVisibleNotificationEvent(ev.key))
-          .map((ev) => {
-            const pref = prefByEvent.get(ev.key.toLowerCase());
-            return {
-              eventKey: ev.key,
-              category: ev.category,
-              description: ev.description,
-              tenantConfigurable: ev.tenantConfigurable,
-              isEnabledByPlatform: ev.isEnabled,
-              emailEnabled: ev.tenantConfigurable ? (pref?.emailEnabled ?? true) : true,
-              inAppEnabled: pref?.inAppEnabled ?? true,
-              customRecipientEmail: ev.tenantConfigurable
-                ? (pref?.customRecipientEmail ?? null)
-                : null,
-              updatedAt: pref?.updatedAt ? pref.updatedAt.toISOString() : null,
-            };
-          })
+        .filter((ev) => isTenantVisibleNotificationEvent(ev.key))
+        .map((ev) => {
+          const pref = prefByEvent.get(ev.key.toLowerCase());
+          return {
+            eventKey: ev.key,
+            category: ev.category,
+            description: ev.description,
+            tenantConfigurable: ev.tenantConfigurable,
+            isEnabledByPlatform: ev.isEnabled,
+            emailEnabled: ev.tenantConfigurable ? (pref?.emailEnabled ?? true) : true,
+            inAppEnabled: pref?.inAppEnabled ?? true,
+            customRecipientEmail: ev.tenantConfigurable
+              ? (pref?.customRecipientEmail ?? null)
+              : null,
+            updatedAt: pref?.updatedAt ? pref.updatedAt.toISOString() : null,
+          };
+        })
       : [];
 
     return {
@@ -1045,9 +1044,30 @@ export function getNotificationDispatcherService(): NotificationDispatcherServic
 }
 
 /**
+ * Construye una URL pública absoluta hacia el portal de administración/workspace (`apps/admin`)
+ * para enlaces incluidos en notificaciones por correo electrónico (`AGENTS.md §4.16`).
+ *
+ * Prioriza `baseUrlOverride` (por ejemplo, el origen derivado del request HTTP), luego
+ * `env.NEXT_PUBLIC_ADMIN_URL`, luego `env.NEXT_PUBLIC_APP_URL`, y en producción usa
+ * el dominio canónico de administración si no hubiera variables cargadas.
+ *
+ * @param path - Ruta relativa dentro del portal admin (ej. `"/workspace/community"`).
+ * @param baseUrlOverride - Origen público opcional derivado del request HTTP actual.
+ */
+export function buildAdminPortalUrl(path: string, baseUrlOverride?: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const rawBase =
+    baseUrlOverride?.trim() ||
+    env.NEXT_PUBLIC_ADMIN_URL?.trim() ||
+    env.NEXT_PUBLIC_APP_URL?.trim() ||
+    (env.NODE_ENV === "production" ? "https://admin.mocter.co" : "");
+  const cleanBase = rawBase.replace(/\/+$/, "");
+  return cleanBase ? `${cleanBase}${normalizedPath}` : normalizedPath;
+}
+
+/**
  * Construye la URL absoluta o relativa de revisión administrativa para comprobantes Bre-B.
  */
-export function buildAdminBreBReviewUrl(): string {
-  const baseOrigin = (env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
-  return baseOrigin ? `${baseOrigin}/admin/billing` : "/admin/billing";
+export function buildAdminBreBReviewUrl(baseUrlOverride?: string): string {
+  return buildAdminPortalUrl("/admin/billing", baseUrlOverride);
 }

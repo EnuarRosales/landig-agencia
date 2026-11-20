@@ -2,7 +2,21 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Store, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { Plus, Store, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+} from "@mocter/ui";
 import { PhoneE164Input } from "@/components/phone-e164-input";
 
 interface CreateTenantFormProps {
@@ -97,199 +111,195 @@ export function CreateTenantForm({ availablePlans, availableCells, onSuccess }: 
 
   return (
     <>
-      <button
+      <Button
         type="button"
+        variant="primary"
         onClick={() => setIsOpen(true)}
-        className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95"
+        className="min-h-[44px] text-sm"
       >
         <Plus className="h-4 w-4" />
         <span>Alta Manual De Inquilino</span>
-      </button>
+      </Button>
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3">
-              <div className="flex items-center gap-2">
-                <Store className="h-5 w-5 text-[var(--dsn-accent)]" />
-                <h2 className="text-base font-bold text-[var(--dsn-text)]">
-                  Alta Manual De Inquilino y Comercio
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="text-xs text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-              >
-                ✕
-              </button>
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-6">
+          <DialogHeader className="border-b border-[var(--dsn-border)] pb-3 pr-8">
+            <div className="flex items-center gap-2">
+              <Store className="h-5 w-5 text-[var(--dsn-accent)]" />
+              <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
+                Alta Manual De Inquilino y Comercio
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
+              Registra una nueva cuenta de inquilino asignándole identidad de dueño, plan inicial y enrutamiento a una célula PostgreSQL.
+            </DialogDescription>
+          </DialogHeader>
+
+          {error && (
+            <Alert variant="destructive" className="mt-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-xs">{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {success && (
+            <Alert variant="success" className="mt-4">
+              <CheckCircle2 className="h-4 w-4" />
+              <AlertDescription className="text-xs">
+                Inquilino y comercio registrados con éxito en el Router Global.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+            {/* Nombre comercial */}
+            <div>
+              <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                Nombre Del Comercio
+              </Label>
+              <Input
+                type="text"
+                required
+                value={formData.displayName}
+                onChange={(e) => handleNameChange(e.target.value)}
+                placeholder="ej. Zapatería Andina SAS"
+                className="bg-[var(--dsn-background)] text-xs"
+              />
             </div>
 
-            <p className="text-xs text-[var(--dsn-text-secondary)] mt-2">
-              Registra una nueva cuenta de inquilino asignándole identidad de dueño, plan inicial y enrutamiento a una célula PostgreSQL.
-            </p>
-
-            {error && (
-              <div className="mt-4 flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-xs text-rose-400">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {success && (
-              <div className="mt-4 flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 text-xs text-emerald-400">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span>Inquilino y comercio registrados con éxito en el Router Global.</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-              {/* Nombre comercial */}
-              <div>
-                <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                  Nombre Del Comercio
-                </label>
-                <input
+            {/* Slug único */}
+            <div>
+              <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                Slug Del Identificador
+              </Label>
+              <div className="flex items-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-1">
+                <span className="text-xs text-[var(--dsn-text-secondary)] select-none mr-1">mocter.co/</span>
+                <Input
                   type="text"
                   required
-                  value={formData.displayName}
-                  onChange={(e) => handleNameChange(e.target.value)}
-                  placeholder="ej. Zapatería Andina SAS"
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                  value={formData.slug}
+                  onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })}
+                  placeholder="zapateria-andina"
+                  className="border-0 bg-transparent px-0 py-0 min-h-[30px] h-auto text-xs font-mono focus-visible:ring-0"
                 />
               </div>
+            </div>
 
-              {/* Slug único */}
+            {/* Correo y Nombre del propietario */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                  Slug Del Identificador
-                </label>
-                <div className="flex items-center rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2">
-                  <span className="text-xs text-[var(--dsn-text-secondary)] select-none mr-1">mocter.co/</span>
-                  <input
-                    type="text"
-                    required
-                    value={formData.slug}
-                    onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })}
-                    placeholder="zapateria-andina"
-                    className="w-full bg-transparent text-xs text-[var(--dsn-text)] outline-none font-mono"
-                  />
-                </div>
+                <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                  Correo Del Propietario
+                </Label>
+                <Input
+                  type="email"
+                  required
+                  value={formData.ownerEmail}
+                  onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
+                  placeholder="gerencia@zapateria.com"
+                  className="bg-[var(--dsn-background)] text-xs"
+                />
               </div>
-
-              {/* Correo y Nombre del propietario */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                    Correo Del Propietario
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={formData.ownerEmail}
-                    onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
-                    placeholder="gerencia@zapateria.com"
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                    Nombre Del Propietario
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.ownerDisplayName}
-                    onChange={(e) => setFormData({ ...formData, ownerDisplayName: e.target.value })}
-                    placeholder="ej. Carlos Gómez"
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                  />
-                </div>
+              <div>
+                <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                  Nombre Del Propietario
+                </Label>
+                <Input
+                  type="text"
+                  value={formData.ownerDisplayName}
+                  onChange={(e) => setFormData({ ...formData, ownerDisplayName: e.target.value })}
+                  placeholder="ej. Carlos Gómez"
+                  className="bg-[var(--dsn-background)] text-xs"
+                />
               </div>
+            </div>
 
-              {/* Plan y Célula */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                    Plan Inicial
-                  </label>
-                  <select
-                    value={formData.planId}
-                    onChange={(e) => setFormData({ ...formData, planId: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                  >
-                    {availablePlans.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                    Célula De Datos Asignada
-                  </label>
-                  <select
-                    value={formData.cellId}
-                    onChange={(e) => setFormData({ ...formData, cellId: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                  >
-                    {availableCells.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.code} ({c.currentClients}/{c.maxClients})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Teléfono opcional e idioma */}
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <PhoneE164Input
-                    id="admin-create-tenant-phone"
-                    label="Teléfono de Contacto"
-                    value={formData.phone}
-                    locale={formData.locale === "en" ? "en" : "es"}
-                    onChange={(nextVal) => setFormData({ ...formData, phone: nextVal })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                    Idioma Del Comercio
-                  </label>
-                  <select
-                    value={formData.locale}
-                    onChange={(e) => setFormData({ ...formData, locale: e.target.value })}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                  >
-                    <option value="es">Español (es)</option>
-                    <option value="en">English (en)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Botones de acción */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--dsn-border)]">
-                <button
-                  type="button"
-                  onClick={() => setIsOpen(false)}
-                  className="min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-transparent px-4 py-2 text-sm font-medium text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface-secondary)] hover:text-[var(--dsn-text)] transition-colors"
+            {/* Plan y Célula */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                  Plan Inicial
+                </Label>
+                <Select
+                  value={formData.planId}
+                  onChange={(e) => setFormData({ ...formData, planId: e.target.value })}
+                  className="bg-[var(--dsn-background)] text-xs"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95 disabled:opacity-50"
-                >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                  <span>Guardar Inquilino</span>
-                </button>
+                  {availablePlans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.code})
+                    </option>
+                  ))}
+                </Select>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+              <div>
+                <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                  Célula De Datos Asignada
+                </Label>
+                <Select
+                  value={formData.cellId}
+                  onChange={(e) => setFormData({ ...formData, cellId: e.target.value })}
+                  className="bg-[var(--dsn-background)] text-xs"
+                >
+                  {availableCells.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.code} ({c.currentClients}/{c.maxClients})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+
+            {/* Teléfono opcional e idioma */}
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <PhoneE164Input
+                  id="admin-create-tenant-phone"
+                  label="Teléfono de Contacto"
+                  value={formData.phone}
+                  locale={formData.locale === "en" ? "en" : "es"}
+                  onChange={(nextVal) => setFormData({ ...formData, phone: nextVal })}
+                />
+              </div>
+              <div>
+                <Label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                  Idioma Del Comercio
+                </Label>
+                <Select
+                  value={formData.locale}
+                  onChange={(e) => setFormData({ ...formData, locale: e.target.value })}
+                  className="bg-[var(--dsn-background)] text-xs"
+                >
+                  <option value="es">Español (es)</option>
+                  <option value="en">English (en)</option>
+                </Select>
+              </div>
+            </div>
+
+            {/* Botones de acción */}
+            <DialogFooter className="pt-3 border-t border-[var(--dsn-border)]">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setIsOpen(false)}
+                className="min-h-[44px] text-sm"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={loading}
+                loading={loading}
+                className="min-h-[44px] text-sm"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Guardar Inquilino</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

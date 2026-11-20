@@ -16,6 +16,15 @@ import {
   Trash2,
 } from "lucide-react";
 import type { AdminAiModelDto, AdminAiProviderDto } from "@mocter/domain";
+import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  Input,
+  Label,
+  Select,
+} from "@mocter/ui";
 
 /**
  * Columnas ordenables del catálogo de modelos LLM en la consola SaaS.
@@ -223,154 +232,156 @@ export function ModelsCatalogSection({
   }
 
   return (
-    <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden shadow-xs">
-      <div className="px-5 py-4 border-b border-[var(--dsn-border)] flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-[var(--dsn-text)]">
-            Catálogo De Modelos LLM y Spread Comercial
-          </h2>
-          <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
-            Márgenes de ganancia sobre inferencia Mocter (30% default), modelo por defecto del proveedor y parámetros de respuesta.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onOpenCreateModel}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Agregar Modelo</span>
-        </button>
-      </div>
-
-      {/* Barra de filtros y búsqueda Mobile First */}
-      <div className="px-5 py-3.5 border-b border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 space-y-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <Card asChild>
+      <section className="overflow-hidden">
+        <div className="px-5 py-4 border-b border-[var(--dsn-border)] flex flex-wrap items-center justify-between gap-3">
           <div>
-            <label
-              htmlFor="modelsCatalogSearchInput"
-              className="block text-[11px] font-medium text-[var(--dsn-text-secondary)] mb-1"
-            >
-              Buscar Modelo
-            </label>
-            <div className="relative">
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--dsn-text-secondary)]"
-                aria-hidden="true"
-              />
-              <input
-                id="modelsCatalogSearchInput"
-                type="search"
-                value={searchQuery}
+            <h2 className="text-sm font-semibold text-[var(--dsn-text)]">
+              Catálogo De Modelos LLM y Spread Comercial
+            </h2>
+            <p className="text-xs text-[var(--dsn-text-secondary)] mt-0.5">
+              Márgenes de ganancia sobre inferencia Mocter (30% default), modelo por defecto del proveedor y parámetros de respuesta.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={onOpenCreateModel}
+            className="min-h-[44px] text-xs"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Agregar Modelo</span>
+          </Button>
+        </div>
+
+        {/* Barra de filtros y búsqueda Mobile First */}
+        <div className="px-5 py-3.5 border-b border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/40 space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <Label
+                htmlFor="modelsCatalogSearchInput"
+                className="block text-[11px] font-medium text-[var(--dsn-text-secondary)] mb-1"
+              >
+                Buscar Modelo
+              </Label>
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--dsn-text-secondary)]"
+                  aria-hidden="true"
+                />
+                <Input
+                  id="modelsCatalogSearchInput"
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Nombre o ID técnico del modelo..."
+                  className="min-h-[44px] bg-[var(--dsn-surface)] pl-9 text-xs"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label
+                htmlFor="modelsCatalogProviderFilter"
+                className="block text-[11px] font-medium text-[var(--dsn-text-secondary)] mb-1"
+              >
+                Filtrar Por Proveedor
+              </Label>
+              <Select
+                id="modelsCatalogProviderFilter"
+                value={providerFilter}
                 onChange={(e) => {
-                  setSearchQuery(e.target.value);
+                  setProviderFilter(e.target.value);
                   setPage(1);
                 }}
-                placeholder="Nombre o ID técnico del modelo..."
-                className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] pl-9 pr-3 py-2 text-xs text-[var(--dsn-text)] placeholder:text-[var(--dsn-text-secondary)]/70 focus:border-[var(--dsn-accent)] focus:outline-none"
-              />
+                className="min-h-[44px] bg-[var(--dsn-surface)] text-xs"
+              >
+                <option value="all">Todos Los Proveedores</option>
+                {providerOptions.map((prov) => (
+                  <option key={prov.code} value={prov.code}>
+                    {prov.name} ({prov.code})
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div>
+              <Label
+                htmlFor="modelsCatalogStatusFilter"
+                className="block text-[11px] font-medium text-[var(--dsn-text-secondary)] mb-1"
+              >
+                Filtrar Por Estado
+              </Label>
+              <Select
+                id="modelsCatalogStatusFilter"
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value as "all" | "active" | "inactive");
+                  setPage(1);
+                }}
+                className="min-h-[44px] bg-[var(--dsn-surface)] text-xs"
+              >
+                <option value="all">Todos Los Estados</option>
+                <option value="active">Activos</option>
+                <option value="inactive">Inactivos</option>
+              </Select>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-2">
+              <label
+                htmlFor="modelsCatalogOnlyDefaults"
+                className="inline-flex min-h-[44px] flex-1 cursor-pointer items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+              >
+                <Checkbox
+                  id="modelsCatalogOnlyDefaults"
+                  checked={onlyDefaults}
+                  onCheckedChange={(checked) => {
+                    setOnlyDefaults(checked === true);
+                    setPage(1);
+                  }}
+                />
+                <span>Solo Por Defecto</span>
+              </label>
+
+              {hasActiveFilters && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleResetFilters}
+                  className="min-h-[44px] text-xs font-medium"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Limpiar Filtros</span>
+                </Button>
+              )}
             </div>
           </div>
+        </div>
 
-          <div>
-            <label
-              htmlFor="modelsCatalogProviderFilter"
-              className="block text-[11px] font-medium text-[var(--dsn-text-secondary)] mb-1"
-            >
-              Filtrar Por Proveedor
-            </label>
-            <select
-              id="modelsCatalogProviderFilter"
-              value={providerFilter}
-              onChange={(e) => {
-                setProviderFilter(e.target.value);
-                setPage(1);
-              }}
-              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-            >
-              <option value="all">Todos Los Proveedores</option>
-              {providerOptions.map((prov) => (
-                <option key={prov.code} value={prov.code}>
-                  {prov.name} ({prov.code})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label
-              htmlFor="modelsCatalogStatusFilter"
-              className="block text-[11px] font-medium text-[var(--dsn-text-secondary)] mb-1"
-            >
-              Filtrar Por Estado
-            </label>
-            <select
-              id="modelsCatalogStatusFilter"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as "all" | "active" | "inactive");
-                setPage(1);
-              }}
-              className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-            >
-              <option value="all">Todos Los Estados</option>
-              <option value="active">Activos</option>
-              <option value="inactive">Inactivos</option>
-            </select>
-          </div>
-
-          <div className="flex flex-wrap items-end gap-2">
-            <label
-              htmlFor="modelsCatalogOnlyDefaults"
-              className="inline-flex min-h-[44px] flex-1 cursor-pointer items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-            >
-              <input
-                id="modelsCatalogOnlyDefaults"
-                type="checkbox"
-                checked={onlyDefaults}
-                onChange={(e) => {
-                  setOnlyDefaults(e.target.checked);
-                  setPage(1);
-                }}
-                className="h-4 w-4 rounded border-[var(--dsn-border)] accent-[var(--dsn-accent)]"
-              />
-              <span>Solo Por Defecto</span>
-            </label>
-
+        {/* Tabla en escritorio / tarjetas apiladas en móvil sobre un único DOM */}
+        {totalFiltered === 0 ? (
+          <div role="status" className="px-6 py-10 text-center space-y-3">
+            <p className="text-xs font-medium text-[var(--dsn-text)]">
+              {models.length === 0
+                ? "No hay modelos registrados en el catálogo."
+                : "No se encontraron modelos con los filtros seleccionados."}
+            </p>
             {hasActiveFilters && (
-              <button
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={handleResetFilters}
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                className="min-h-[40px] text-xs font-medium"
               >
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>Limpiar Filtros</span>
-              </button>
+              </Button>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Tabla en escritorio / tarjetas apiladas en móvil sobre un único DOM */}
-      {totalFiltered === 0 ? (
-        <div role="status" className="px-6 py-10 text-center space-y-3">
-          <p className="text-xs font-medium text-[var(--dsn-text)]">
-            {models.length === 0
-              ? "No hay modelos registrados en el catálogo."
-              : "No se encontraron modelos con los filtros seleccionados."}
-          </p>
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={handleResetFilters}
-              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] px-3 py-1.5 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-            >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Limpiar Filtros</span>
-            </button>
-          )}
-        </div>
-      ) : (
+        ) : (
         <div className="md:overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="hidden md:table-header-group bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)] border-b border-[var(--dsn-border)]">
@@ -453,10 +464,10 @@ export function ModelsCatalogSection({
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="font-medium text-[var(--dsn-text)]">{m.displayName}</span>
                       {m.isDefault && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-semibold text-indigo-400 border border-indigo-500/30">
+                        <Badge variant="accent" className="gap-1 text-[10px]">
                           <Star className="h-2.5 w-2.5" aria-hidden="true" />
                           <span>Por Defecto</span>
-                        </span>
+                        </Badge>
                       )}
                     </div>
                     <div className="text-[11px] text-[var(--dsn-text-secondary)] font-mono">{m.modelId}</div>
@@ -511,45 +522,51 @@ export function ModelsCatalogSection({
                       Estado
                     </span>
                     {m.isActive ? (
-                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+                      <Badge variant="success" className="text-[11px]">
                         Activo
-                      </span>
+                      </Badge>
                     ) : (
-                      <span className="rounded-full bg-zinc-500/10 px-2 py-0.5 text-[11px] font-medium text-zinc-400">
+                      <Badge variant="outline" className="text-[11px]">
                         Inactivo
-                      </span>
+                      </Badge>
                     )}
                   </td>
 
                   <td className="pt-2 border-t border-[var(--dsn-border)] md:border-0 md:pt-3 md:py-3 md:px-4">
                     <div className="flex flex-wrap items-center justify-end gap-1.5">
                       {!m.isDefault && m.isActive && (
-                        <button
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           disabled={loading}
                           onClick={() => onQuickSetDefault(m)}
-                          className="inline-flex min-h-[36px] md:min-h-0 items-center gap-1 rounded border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-[11px] text-indigo-400 hover:bg-indigo-500/20 disabled:opacity-50"
+                          className="min-h-[36px] md:min-h-0 h-auto border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-[11px] text-indigo-400 hover:bg-indigo-500/20"
                         >
                           <Star className="h-3 w-3" aria-hidden="true" />
                           <span>Por Defecto</span>
-                        </button>
+                        </Button>
                       )}
-                      <button
+                      <Button
                         type="button"
+                        variant="secondary"
+                        size="sm"
                         onClick={() => onOpenEditModel(m)}
-                        className="inline-flex min-h-[36px] md:min-h-0 items-center gap-1 rounded border border-[var(--dsn-border)] px-2 py-1 text-[11px] text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                        className="min-h-[36px] md:min-h-0 h-auto px-2 py-1 text-[11px]"
                       >
                         <Edit2 className="h-3 w-3" aria-hidden="true" />
                         <span>Configurar</span>
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        variant="destructive"
+                        size="sm"
                         onClick={() => onRequestDeleteModel(m)}
-                        className="inline-flex min-h-[36px] md:min-h-0 items-center gap-1 rounded border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-400 hover:bg-rose-500/20"
+                        className="min-h-[36px] md:min-h-0 h-auto px-2 py-1 text-[11px]"
                       >
                         <Trash2 className="h-3 w-3" aria-hidden="true" />
                         <span>Eliminar</span>
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -571,51 +588,56 @@ export function ModelsCatalogSection({
 
         <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
           <div className="flex items-center gap-2">
-            <label htmlFor="modelsCatalogPageSize" className="text-xs text-[var(--dsn-text-secondary)]">
+            <Label htmlFor="modelsCatalogPageSize" className="text-xs text-[var(--dsn-text-secondary)]">
               Filas Por Página
-            </label>
-            <select
+            </Label>
+            <Select
               id="modelsCatalogPageSize"
               value={pageSize}
               onChange={(e) => {
                 setPageSize(Number(e.target.value));
                 setPage(1);
               }}
-              className="min-h-[40px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+              className="min-h-[40px] w-auto bg-[var(--dsn-surface)] px-2.5 py-1 text-xs"
             >
               {PAGE_SIZE_OPTIONS.map((size) => (
                 <option key={size} value={size}>
                   {size}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               disabled={safePage <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] disabled:opacity-40"
+              className="min-h-[40px] text-xs font-medium"
             >
               <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
               <span>Anterior</span>
-            </button>
+            </Button>
             <span className="font-mono tabular-nums text-[var(--dsn-text)] px-1">
               Página {safePage} de {totalPages}
             </span>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               disabled={safePage >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="inline-flex min-h-[40px] items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] disabled:opacity-40"
+              className="min-h-[40px] text-xs font-medium"
             >
               <span>Siguiente</span>
               <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
+            </Button>
           </div>
         </div>
       </div>
-    </section>
+      </section>
+    </Card>
   );
 }

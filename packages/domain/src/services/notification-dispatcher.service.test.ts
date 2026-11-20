@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildAdminPortalUrl,
   NotificationDispatcherService,
   type INotificationDispatcherRepository,
   type NotificationEventMetadata,
@@ -484,5 +485,22 @@ describe("SPEC-14 · NotificationDispatcherService", () => {
       },
     });
     expect(unknownVarErr.ok).toBe(false);
+  });
+
+  it("buildAdminPortalUrl prioriza baseUrlOverride y NEXT_PUBLIC_ADMIN_URL sin generar rutas relativas rotas", () => {
+    vi.stubEnv("NEXT_PUBLIC_ADMIN_URL", "https://admin.mocter.co/");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://mocter.co");
+
+    expect(buildAdminPortalUrl("/workspace/community")).toBe(
+      "https://admin.mocter.co/workspace/community",
+    );
+    expect(buildAdminPortalUrl("workspace/community")).toBe(
+      "https://admin.mocter.co/workspace/community",
+    );
+    expect(buildAdminPortalUrl("/workspace/community", "http://localhost:3003/")).toBe(
+      "http://localhost:3003/workspace/community",
+    );
+
+    vi.unstubAllEnvs();
   });
 });

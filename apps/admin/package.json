@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@mocter/domain": "workspace:*",
+    "@mocter/ui": "workspace:*",
     "@t3-oss/env-nextjs": "^0.13.11",
     "@tailwindcss/postcss": "^4.1.0",
     "drizzle-orm": "^0.44.0",

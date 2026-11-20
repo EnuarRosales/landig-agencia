@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Lock, Eye, EyeOff, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Lock, Eye, EyeOff, CheckCircle2, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription, Button, Input, Label } from "@mocter/ui";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
 
 interface SetupPasswordCardProps {
@@ -170,80 +171,70 @@ export function SetupPasswordCard({ locale, token }: SetupPasswordCardProps) {
       </div>
 
       {error && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
+        <Alert variant="destructive" className="mb-4 flex items-center gap-2 rounded-xl p-3 text-xs">
           <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>{error}</span>
-        </div>
+          <AlertDescription className="text-inherit">{error}</AlertDescription>
+        </Alert>
       )}
 
       {/* Opción B: Formulario de Contraseña */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label
-            htmlFor="password"
-            className="block text-xs font-semibold text-txt mb-1.5"
-          >
+          <Label htmlFor="password" className="mb-1.5 block text-xs font-semibold text-txt">
             {isEs ? "Nueva Contraseña" : "New Password"}
-          </label>
-          <div className="relative">
-            <input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••••••"
-              className="w-full rounded-xl border border-stroke bg-bg2/60 px-3.5 py-2.5 text-xs font-mono text-txt placeholder:text-muted/50 focus:border-a1 focus:outline-hidden"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-txt"
-              aria-label={showPassword ? "Ocultar" : "Mostrar"}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
+          </Label>
+          <Input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••••••"
+            rightIcon={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowPassword(!showPassword)}
+                className="h-7 w-7 text-muted hover:text-txt"
+                aria-label={showPassword ? "Ocultar" : "Mostrar"}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            }
+            className="min-h-[42px] rounded-xl bg-bg2/60 px-3.5 py-2.5 pr-10 font-mono text-xs text-txt placeholder:text-muted/50"
+          />
           <p className="mt-1 text-[11px] text-muted">
             {isEs ? "Mínimo 8 caracteres." : "At least 8 characters."}
           </p>
         </div>
 
         <div>
-          <label
-            htmlFor="confirm-password"
-            className="block text-xs font-semibold text-txt mb-1.5"
-          >
+          <Label htmlFor="confirm-password" className="mb-1.5 block text-xs font-semibold text-txt">
             {isEs ? "Confirmar Contraseña" : "Confirm Password"}
-          </label>
-          <input
+          </Label>
+          <Input
             id="confirm-password"
             type={showPassword ? "text" : "password"}
             required
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="••••••••••••"
-            className="w-full rounded-xl border border-stroke bg-bg2/60 px-3.5 py-2.5 text-xs font-mono text-txt placeholder:text-muted/50 focus:border-a1 focus:outline-hidden"
+            className="min-h-[42px] rounded-xl bg-bg2/60 px-3.5 py-2.5 font-mono text-xs text-txt placeholder:text-muted/50"
           />
         </div>
 
-        <button
+        <Button
           type="submit"
+          variant="primary"
+          loading={loading}
+          loadingText={isEs ? "Guardando Contraseña..." : "Saving Password..."}
           disabled={loading || !token}
-          className="mt-2 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] py-3 text-sm font-semibold text-white shadow-lg shadow-a1/25 transition-all hover:opacity-95 hover:shadow-a1/40 disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-2 min-h-[44px] w-full gap-2 rounded-xl bg-[linear-gradient(135deg,var(--color-a1),var(--color-a2))] py-3 text-sm font-semibold text-white shadow-lg shadow-a1/25 hover:opacity-95 hover:shadow-a1/40"
         >
-          {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin text-white" />
-              <span>{isEs ? "Guardando Contraseña..." : "Saving Password..."}</span>
-            </>
-          ) : (
-            <>
-              <Lock className="h-4 w-4 text-white" />
-              <span>{isEs ? "Guardar Contraseña Y Activar Cuenta" : "Save Password & Activate Account"}</span>
-            </>
-          )}
-        </button>
+          <Lock className="h-4 w-4 text-white" />
+          <span>{isEs ? "Guardar Contraseña Y Activar Cuenta" : "Save Password & Activate Account"}</span>
+        </Button>
       </form>
     </div>
   );

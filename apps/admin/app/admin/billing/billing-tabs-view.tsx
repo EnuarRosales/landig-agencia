@@ -23,6 +23,7 @@ import type {
   PaymentGatewayPublicView,
   ManualPaymentReportDetail,
 } from "@mocter/domain";
+import { Badge, Button, Card, EmptyState } from "@mocter/ui";
 import { PlanModalDialog } from "../plans/plan-modal-dialog";
 import { PlanDeleteModal } from "../plans/plan-delete-modal";
 import { SubscriptionsTable } from "./subscriptions-table";
@@ -77,9 +78,9 @@ export function BillingTabsView({
             <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
               Facturación Y Planes SaaS
             </h1>
-            <span className="rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-xs font-mono font-medium text-[var(--dsn-accent)] flex items-center gap-1 border border-cyan-500/20">
+            <Badge variant="accent" className="font-mono">
               Platform Owner
-            </span>
+            </Badge>
           </div>
           <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">
             Gobernanza comercial integral, gestión de suscripciones, comprobantes contables y pasarelas duales (Wompi y Stripe).
@@ -87,110 +88,111 @@ export function BillingTabsView({
         </div>
 
         {activeTab === "plans" && (
-          <button
+          <Button
             type="button"
+            variant="primary"
             onClick={() => setIsCreateOpen(true)}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-[var(--dsn-accent-hover)] active:scale-95"
+            className="min-h-[44px] text-xs"
           >
             <Plus className="h-4 w-4" />
             <span>Crear Plan Comercial / VIP</span>
-          </button>
+          </Button>
         )}
       </header>
 
       {/* Selector de Pestañas HUD */}
       <div className="flex flex-wrap gap-2 border-b border-[var(--dsn-border)] pb-2">
-        <button
+        <Button
           type="button"
+          variant={activeTab === "subscriptions" ? "outline" : "ghost"}
           onClick={() => handleTabChange("subscriptions")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
+          className={`rounded-xl px-4 py-2.5 text-xs ${
             activeTab === "subscriptions"
-              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-              : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border-[var(--dsn-accent)]/30"
+              : ""
           }`}
         >
           <Users className="h-4 w-4" />
           <span>Suscripciones De Inquilinos</span>
-          <span
-            className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-mono ${
-              activeTab === "subscriptions"
-                ? "bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] font-bold"
-                : "bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]"
-            }`}
+          <Badge
+            variant={activeTab === "subscriptions" ? "accent" : "outline"}
+            className="ml-1 font-mono text-[10px]"
           >
             {overview.subscriptions.length}
-          </span>
-        </button>
+          </Badge>
+        </Button>
 
-        <button
+        <Button
           type="button"
+          variant={activeTab === "plans" ? "outline" : "ghost"}
           onClick={() => handleTabChange("plans")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
+          className={`rounded-xl px-4 py-2.5 text-xs ${
             activeTab === "plans"
-              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-              : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border-[var(--dsn-accent)]/30"
+              : ""
           }`}
         >
           <Layers className="h-4 w-4" />
           <span>Catálogo De Planes</span>
-          <span
-            className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-mono ${
-              activeTab === "plans"
-                ? "bg-[var(--dsn-accent)]/20 text-[var(--dsn-accent)] font-bold"
-                : "bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]"
-            }`}
+          <Badge
+            variant={activeTab === "plans" ? "accent" : "outline"}
+            className="ml-1 font-mono text-[10px]"
           >
             {plansList.length}
-          </span>
-        </button>
+          </Badge>
+        </Button>
 
-        <button
+        <Button
           type="button"
+          variant={activeTab === "receipts" ? "outline" : "ghost"}
           onClick={() => handleTabChange("receipts")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
+          className={`rounded-xl px-4 py-2.5 text-xs ${
             activeTab === "receipts"
-              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-              : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border-[var(--dsn-accent)]/30"
+              : ""
           }`}
         >
           <FileText className="h-4 w-4" />
           <span>Comprobantes E Invoices</span>
-        </button>
+        </Button>
 
-        <button
+        <Button
           type="button"
+          variant={activeTab === "manual_reports" ? "outline" : "ghost"}
           onClick={() => handleTabChange("manual_reports")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
+          className={`rounded-xl px-4 py-2.5 text-xs ${
             activeTab === "manual_reports"
-              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-              : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border-[var(--dsn-accent)]/30"
+              : ""
           }`}
         >
           <FileText className="h-4 w-4" />
           <span>Pagos Bre-B Por Verificar</span>
-          <span
-            className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-mono ${
+          <Badge
+            variant={
               manualReports.filter((r) => r.status === "pending_review").length > 0
-                ? "bg-amber-500/20 text-amber-300 font-bold"
-                : "bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)]"
-            }`}
+                ? "warning"
+                : "outline"
+            }
+            className="ml-1 font-mono text-[10px]"
           >
             {manualReports.filter((r) => r.status === "pending_review").length}
-          </span>
-        </button>
+          </Badge>
+        </Button>
 
-        <button
+        <Button
           type="button"
+          variant={activeTab === "gateways" ? "outline" : "ghost"}
           onClick={() => handleTabChange("gateways")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all ${
+          className={`rounded-xl px-4 py-2.5 text-xs ${
             activeTab === "gateways"
-              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-              : "text-[var(--dsn-text-secondary)] hover:bg-[var(--dsn-surface)] hover:text-[var(--dsn-text)]"
+              ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border-[var(--dsn-accent)]/30"
+              : ""
           }`}
         >
           <CreditCard className="h-4 w-4" />
           <span>Canales De Pago</span>
-        </button>
+        </Button>
       </div>
 
       {/* Contenido de cada Pestaña */}
@@ -205,52 +207,52 @@ export function BillingTabsView({
         <div className="space-y-6">
           {/* Métricas rápidas de planes */}
           <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-xs">
+            <Card className="p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-[var(--dsn-text-secondary)]">Planes Públicos En Landing</span>
                 <Eye className="h-4 w-4 text-emerald-400" />
               </div>
               <p className="mt-2 text-2xl font-bold text-[var(--dsn-text)] font-mono">{publicCount}</p>
               <p className="text-[11px] text-[var(--dsn-text-secondary)] mt-0.5">Visibles en la landing page</p>
-            </div>
+            </Card>
 
-            <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-xs">
+            <Card className="p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-[var(--dsn-text-secondary)]">Planes Privados / VIP</span>
                 <Lock className="h-4 w-4 text-purple-400" />
               </div>
               <p className="mt-2 text-2xl font-bold text-purple-400 font-mono">{privateCount}</p>
               <p className="text-[11px] text-[var(--dsn-text-secondary)] mt-0.5">Asignables por slug en onboarding</p>
-            </div>
+            </Card>
 
-            <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 shadow-xs">
+            <Card className="p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-[var(--dsn-text-secondary)]">Pasarelas Vinculadas</span>
                 <CreditCard className="h-4 w-4 text-[var(--dsn-accent)]" />
               </div>
               <p className="mt-2 text-2xl font-bold text-[var(--dsn-accent)] font-mono">Wompi + Stripe</p>
               <p className="text-[11px] text-[var(--dsn-text-secondary)] mt-0.5">Facturación dual en COP y USD</p>
-            </div>
+            </Card>
           </section>
 
           {/* Tabla de Catálogo de Planes */}
-          <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] overflow-hidden shadow-xs">
-            <div className="px-5 py-4 border-b border-[var(--dsn-border)] flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-[var(--dsn-text)]">Inventario De Planes Comerciales</h2>
-              <span className="text-xs text-[var(--dsn-text-secondary)] font-mono">
-                {plansList.length} {plansList.length === 1 ? "plan" : "planes"}
-              </span>
-            </div>
-
-            {plansList.length === 0 ? (
-              <div className="p-12 text-center">
-                <Layers className="h-10 w-10 text-[var(--dsn-text-secondary)]/50 mx-auto mb-3" />
-                <h3 className="text-sm font-semibold text-[var(--dsn-text)]">No hay planes configurados</h3>
-                <p className="text-xs text-[var(--dsn-text-secondary)] mt-1 max-w-sm mx-auto">
-                  Registra los planes iniciales para permitir a los inquilinos suscribirse durante el onboarding o la landing page.
-                </p>
+          <Card asChild>
+            <section className="overflow-hidden">
+              <div className="px-5 py-4 border-b border-[var(--dsn-border)] flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-[var(--dsn-text)]">Inventario De Planes Comerciales</h2>
+                <span className="text-xs text-[var(--dsn-text-secondary)] font-mono">
+                  {plansList.length} {plansList.length === 1 ? "plan" : "planes"}
+                </span>
               </div>
-            ) : (
+
+              {plansList.length === 0 ? (
+                <EmptyState
+                  icon={<Layers className="h-10 w-10 text-[var(--dsn-text-secondary)]/50" />}
+                  title="No hay planes configurados"
+                  description="Registra los planes iniciales para permitir a los inquilinos suscribirse durante el onboarding o la landing page."
+                  className="border-0 rounded-none py-12"
+                />
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-[var(--dsn-surface-secondary)] text-[var(--dsn-text-secondary)] border-b border-[var(--dsn-border)]">
@@ -355,24 +357,28 @@ export function BillingTabsView({
                           </td>
                           <td className="py-3.5 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              <button
+                              <Button
                                 type="button"
+                                variant="secondary"
+                                size="sm"
                                 onClick={() => setEditingPlan(p)}
-                                className="inline-flex items-center gap-1 rounded border border-[var(--dsn-border)] px-2.5 py-1 text-[11px] font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors min-h-[32px]"
+                                className="min-h-[32px] h-auto px-2.5 py-1 text-[11px]"
                                 title="Editar plan comercial"
                               >
                                 <Edit2 className="h-3 w-3 text-[var(--dsn-accent)]" />
                                 <span>Editar</span>
-                              </button>
-                              <button
+                              </Button>
+                              <Button
                                 type="button"
+                                variant="destructive"
+                                size="sm"
                                 onClick={() => setDeletingPlan(p)}
-                                className="inline-flex items-center gap-1 rounded border border-rose-500/20 bg-rose-500/5 px-2.5 py-1 text-[11px] font-medium text-rose-400 hover:bg-rose-500/15 transition-colors min-h-[32px]"
+                                className="min-h-[32px] h-auto px-2.5 py-1 text-[11px]"
                                 title="Eliminar o retirar plan"
                               >
                                 <Trash2 className="h-3 w-3" />
                                 <span>Eliminar</span>
-                              </button>
+                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -382,7 +388,8 @@ export function BillingTabsView({
                 </table>
               </div>
             )}
-          </section>
+            </section>
+          </Card>
         </div>
       )}
 

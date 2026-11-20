@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Plus, ShieldAlert, Tag, Trash2 } from "lucide-react";
 import type { UnifiedTenantBotConfigDto } from "@mocter/domain";
+import { Badge, Button, Card, Checkbox, Input, Label, Select } from "@mocter/ui";
 import { AiEnhanceTextarea } from "@/components/ai-enhance-textarea";
 import {
   buildRecommendedClassifierPromptTemplate,
@@ -151,7 +152,7 @@ export function BotClassifierTab({
   }
 
   return (
-    <section className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 md:p-6 shadow-xs space-y-5">
+    <Card className="space-y-5 p-5 shadow-xs md:p-6">
       <div className="flex flex-col justify-between gap-3 border-b border-[var(--dsn-border)] pb-3 sm:flex-row sm:items-center">
         <div>
           <h2 className="text-sm font-bold text-[var(--dsn-text)]">
@@ -166,14 +167,16 @@ export function BotClassifierTab({
           </p>
         </div>
         {!readOnly && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={handleCompileClassifierTemplate}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] transition-colors hover:border-[var(--dsn-accent)]"
+            className="shrink-0"
           >
             <Tag className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
             <span>{isEs ? "Compilar Prompt Clasificador" : "Compile Classifier Prompt"}</span>
-          </button>
+          </Button>
         )}
       </div>
 
@@ -196,10 +199,10 @@ export function BotClassifierTab({
                   />
                   <div>
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <code className="rounded bg-[var(--dsn-surface-secondary)] px-1.5 py-0.5 text-[11px] font-mono font-semibold text-[var(--dsn-text)]">
+                      <code className="rounded bg-[var(--dsn-surface-secondary)] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[var(--dsn-text)]">
                         {label.title}
                       </code>
-                      <span className="text-[10px] font-mono text-[var(--dsn-text-secondary)]">
+                      <span className="font-mono text-[10px] text-[var(--dsn-text-secondary)]">
                         {label.color}
                       </span>
                     </div>
@@ -209,13 +212,15 @@ export function BotClassifierTab({
                   </div>
                 </div>
                 {!isSystemClassifierLabel(label.title) && !readOnly && (
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => handleRemoveCustomLabel(label.title)}
-                    className="rounded p-1 text-rose-400 hover:bg-rose-500/10"
+                    className="h-7 w-7 text-rose-400 hover:bg-rose-500/10"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 )}
               </div>
             ))}
@@ -239,7 +244,7 @@ export function BotClassifierTab({
                       className="h-3.5 w-3.5 shrink-0"
                       style={{ color: label.color }}
                     />
-                    <code className="rounded bg-[var(--dsn-surface-secondary)] px-1.5 py-0.5 text-[11px] font-mono font-semibold text-[var(--dsn-text)]">
+                    <code className="rounded bg-[var(--dsn-surface-secondary)] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[var(--dsn-text)]">
                       {label.title}
                     </code>
                     {label.sideEffects
@@ -248,12 +253,9 @@ export function BotClassifierTab({
                           .map((s) => s.trim())
                           .filter(Boolean)
                           .map((eff) => (
-                            <span
-                              key={eff}
-                              className="rounded-full bg-[var(--dsn-accent)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--dsn-accent)]"
-                            >
+                            <Badge key={eff} variant="accent" className="px-2 py-0.5 text-[10px]">
                               {eff}
-                            </span>
+                            </Badge>
                           ))
                       : null}
                   </div>
@@ -262,13 +264,15 @@ export function BotClassifierTab({
                   </p>
                 </div>
                 {!isSystemClassifierLabel(label.title) && !readOnly && (
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => handleRemoveCustomLabel(label.title)}
-                    className="rounded p-1 text-rose-400 hover:bg-rose-500/10"
+                    className="h-7 w-7 text-rose-400 hover:bg-rose-500/10"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 )}
               </div>
             ))}
@@ -284,69 +288,57 @@ export function BotClassifierTab({
           </h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
-              <label
-                htmlFor="custom-label-title"
-                className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]"
-              >
+              <Label htmlFor="custom-label-title" className="mb-1 block text-xs font-semibold">
                 {isEs ? "Slug o Identificador" : "Label Slug"}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="custom-label-title"
                 type="text"
                 value={newLabelTitle}
                 onChange={(e) => setNewLabelTitle(e.target.value)}
                 placeholder="cliente-mayorista"
-                className="w-full rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)]"
+                className="h-8 px-2.5 py-1.5 text-xs"
               />
             </div>
 
             <div>
-              <label
-                htmlFor="custom-label-category"
-                className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]"
-              >
+              <Label htmlFor="custom-label-category" className="mb-1 block text-xs font-semibold">
                 {isEs ? "Categoría de Etiqueta" : "Label Category"}
-              </label>
-              <select
+              </Label>
+              <Select
                 id="custom-label-category"
                 value={newLabelCategory}
                 onChange={(e) =>
                   setNewLabelCategory(e.target.value as "functional" | "operational")
                 }
-                className="w-full rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)]"
+                className="h-8 px-2.5 py-1.5 text-xs"
               >
                 <option value="functional">{isEs ? "Funcional" : "Functional"}</option>
                 <option value="operational">{isEs ? "Operativa" : "Operational"}</option>
-              </select>
+              </Select>
             </div>
 
             <div>
-              <label
-                htmlFor="custom-label-color"
-                className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]"
-              >
+              <Label htmlFor="custom-label-color" className="mb-1 block text-xs font-semibold">
                 {isEs ? "Color Hexadecimal" : "Hex Color"}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="custom-label-color"
                 type="text"
                 value={newLabelColor}
                 onChange={(e) => setNewLabelColor(e.target.value)}
                 placeholder="#06B6D4"
-                className="w-full rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs font-mono text-[var(--dsn-text)]"
+                className="h-8 px-2.5 py-1.5 font-mono text-xs"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
             <div className="sm:col-span-2">
-              <label
-                htmlFor="custom-label-criterion"
-                className="mb-1 block text-xs font-semibold text-[var(--dsn-text)]"
-              >
+              <Label htmlFor="custom-label-criterion" className="mb-1 block text-xs font-semibold">
                 {isEs ? "Regla de Activación" : "Activation Rule"}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="custom-label-criterion"
                 type="text"
                 value={newLabelCriterion}
@@ -356,18 +348,19 @@ export function BotClassifierTab({
                     ? "Solicita cotización por volumen o precios mayoristas."
                     : "Requests wholesale pricing or bulk quote."
                 }
-                className="w-full rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1.5 text-xs text-[var(--dsn-text)]"
+                className="h-8 px-2.5 py-1.5 text-xs"
               />
             </div>
             <div className="flex justify-end">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={handleAddCustomLabel}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] transition-colors hover:border-[var(--dsn-accent)]"
               >
                 <Plus className="h-3.5 w-3.5 text-[var(--dsn-accent)]" />
                 <span>{isEs ? "Agregar Etiqueta" : "Add Label"}</span>
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -377,26 +370,23 @@ export function BotClassifierTab({
                 {isEs ? "Efectos Automáticos:" : "Automatic Side Effects:"}
               </span>
               <label className="inline-flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={newLabelHandoff}
-                  onChange={(e) => setNewLabelHandoff(e.target.checked)}
+                  onCheckedChange={(checked) => setNewLabelHandoff(checked === true)}
                 />
                 <span>{isEs ? "Dirigir a Asesor" : "Human Handoff"}</span>
               </label>
               <label className="inline-flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={newLabelPauseBot}
-                  onChange={(e) => setNewLabelPauseBot(e.target.checked)}
+                  onCheckedChange={(checked) => setNewLabelPauseBot(checked === true)}
                 />
                 <span>{isEs ? "Pausar Bot" : "Pause Bot"}</span>
               </label>
               <label className="inline-flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={newLabelSendEmail}
-                  onChange={(e) => setNewLabelSendEmail(e.target.checked)}
+                  onCheckedChange={(checked) => setNewLabelSendEmail(checked === true)}
                 />
                 <span>{isEs ? "Notificar por Correo" : "Send Email"}</span>
               </label>
@@ -416,6 +406,6 @@ export function BotClassifierTab({
         onChange={onClassifierPromptChange}
         context={promptContext}
       />
-    </section>
+    </Card>
   );
 }

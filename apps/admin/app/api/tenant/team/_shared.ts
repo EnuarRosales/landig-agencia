@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { type PortalContext } from "@mocter/domain";
-import { env } from "@/env";
+export { resolveAdminPublicOrigin } from "@/lib/resolve-admin-origin";
 
 export const PROBLEM_CONTENT_TYPE = "application/problem+json";
 
@@ -162,22 +162,6 @@ export function mapTeamDomainErrorToResponse(
         code,
       );
   }
-}
-
-/**
- * Resuelve la URL base pública del portal de administración sin puertos acoplados (`AGENTS.md §4.16`).
- */
-export function resolveAdminPublicOrigin(req: NextRequest): string {
-  const forwardedHost = req.headers.get("x-forwarded-host")?.trim();
-  const host = forwardedHost || req.headers.get("host")?.trim();
-  const proto =
-    req.headers.get("x-forwarded-proto")?.trim() ||
-    (env.NODE_ENV === "production" ? "https" : req.nextUrl.protocol.replace(":", ""));
-
-  if (host) {
-    return `${proto}://${host}`.replace(/\/+$/, "");
-  }
-  return env.NEXT_PUBLIC_ADMIN_URL.replace(/\/+$/, "");
 }
 
 export const uuidParamSchema = z.string().uuid("El identificador debe ser un UUID válido.");

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { DataTable } from "@/components/data-table";
 import { getAdminDictionary } from "@/lib/i18n";
 import { fetchAdminSubscriptionsOverview } from "@mocter/domain";
+import { Button, Card } from "@mocter/ui";
 import {
   CreditCard,
   Download,
@@ -135,21 +136,17 @@ export default async function AdminOrdersPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Link
-            href="/admin/plans"
-            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)] transition-colors"
-          >
-            <Layers className="h-4 w-4 text-[var(--dsn-accent)]" />
-            <span>Configurar Planes</span>
-          </Link>
+          <Button asChild variant="secondary" className="min-h-[44px] text-xs">
+            <Link href="/admin/plans">
+              <Layers className="h-4 w-4 text-[var(--dsn-accent)]" />
+              <span>Configurar Planes</span>
+            </Link>
+          </Button>
 
-          <button
-            type="button"
-            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg bg-[var(--dsn-accent)] px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[var(--dsn-accent-hover)] transition-colors active:scale-95"
-          >
+          <Button type="button" variant="primary" className="min-h-[44px] text-xs">
             <Download className="h-4 w-4" />
             <span>{dict.exportCsv}</span>
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -159,19 +156,18 @@ export default async function AdminOrdersPage() {
         className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
       >
         {subscriptionKpis.map((kpi) => (
-          <article
-            key={kpi.label}
-            className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-3 text-center"
-          >
-            <p className="text-[11px] font-medium text-[var(--dsn-text-secondary)]">
-              {kpi.label}
-            </p>
-            <p
-              className={`kpi-value mt-1 font-mono text-xl font-bold tabular-nums ${kpi.color}`}
-            >
-              {kpi.value}
-            </p>
-          </article>
+          <Card asChild key={kpi.label}>
+            <article className="rounded-lg p-3 text-center">
+              <p className="text-[11px] font-medium text-[var(--dsn-text-secondary)]">
+                {kpi.label}
+              </p>
+              <p
+                className={`kpi-value mt-1 font-mono text-xl font-bold tabular-nums ${kpi.color}`}
+              >
+                {kpi.value}
+              </p>
+            </article>
+          </Card>
         ))}
       </section>
 

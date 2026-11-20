@@ -48,9 +48,10 @@ Actualmente existe una brecha arquitectónica verificable entre lo aprobado en [
 - Se incluye el descriptor canónico `components.json` (`style: "base-nova"`, variables CSS mapeadas a `--dsn-*`) en `packages/ui/components.json` para trazabilidad y compatibilidad con el ecosistema `shadcn/ui`.
 
 ### D-02 · Centralización de Tokens CSS en `@mocter/ui/styles/tokens.css` y Acento Cian Canónico (`DSN-001 §3.1`)
-- Se centraliza la definición de las 3 capas de tokens de `DSN-001` (`--primitive-*`, `--dsn-*` claro/oscuro y `--brand-*`) junto con el bloque `@theme` de Tailwind CSS v4 en `packages/ui/src/styles/tokens.css` (exportado como `@mocter/ui/styles/tokens.css`).
+- Se centraliza la definición de las 3 capas de tokens de `DSN-001` (`--primitive-*`, `--dsn-*` claro/oscuro y `--brand-*`) junto con `@variant dark` y el bloque `@theme inline` de Tailwind CSS v4 (exponiendo utilidades `--color-dsn-*` sin colisionar con `--color-surface: var(--card)` propio de la landing pública en `apps/web`) en `packages/ui/src/styles/tokens.css` (exportado como `@mocter/ui/styles/tokens.css`).
+- Se conservan exactamente los valores hexadecimales canónicos de `DSN-001 §3.1` (`--dsn-text-secondary: #8d8d93` y `--dsn-text-tertiary: #5c5c63` en oscuro; `#71717a` y `#a1a1aa` en claro; `--dsn-input-border: rgba(79, 209, 255, 0.12)` en oscuro), y se actualiza `apps/web/lib/design-tokens.test.ts` para inspeccionar tanto `packages/ui/src/styles/tokens.css` como `apps/web/app/globals.css`.
 - Tanto `apps/admin/app/globals.css` como `apps/web/app/globals.css` importan `@mocter/ui/styles/tokens.css`, eliminando la divergencia entre portales y unificando el acento cian canónico de `DSN-001` (`#22d3ee` en tema oscuro / `#0891b2` en tema claro) con sus tokens derivados (`--dsn-accent-hover`, `--dsn-accent-subtle`, `--dsn-accent-glow`, `--dsn-accent-fg`, `--dsn-input-bg`, `--dsn-input-border`, `--dsn-border-subtle`, `--dsn-text-tertiary`, `--dsn-code-bg`).
-- Se mantienen todas las variables `--dsn-*` en `:root`, `.dark` y `.light` para compatibilidad 100% con el contrato de marca blanca en runtime (`TenantWorkspaceShell`, `/workspace/branding` y `/design-system`).
+- Se mantienen todas las variables `--dsn-*` en `:root`, `.dark` y `.light` (asegurando `className="dark"` como fallback SSR en `apps/admin/app/layout.tsx`) para compatibilidad 100% con el contrato de marca blanca en runtime (`TenantWorkspaceShell`, `/workspace/branding` y `/design-system`).
 
 ### D-03 · Catálogo de 17 Primitivas Atómicas (`DSN-001 RF-07`) + Promoción de 3 Componentes Compuestos Transversales a `@mocter/ui`
 1. **Primitivas Atómicas y de Interacción (`packages/ui/src/components/`):**
@@ -70,17 +71,17 @@ Actualmente existe una brecha arquitectónica verificable entre lo aprobado en [
    - `EmptyState` (contenedor estandarizado con icono, título, descripción y slot de acción principal).
    - `Alert` (variantes `info`, `success`, `warning`, `error` / `destructive` para banners contextuales de vista y modal).
    - `Card` (`Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter` con hairline `--dsn-border` y `--dsn-surface`).
-2. **Promoción de Componentes Compuestos Transversales a `@mocter/ui` con Re-exports Compatibles:**
-   - `ConfirmationModal`, `WorkspaceDataTable` y `FormSaveBar` se promueven a `packages/ui/src/components/` refactorizados internamente sobre `Dialog`, `Button`, `Input`, `Select`, `Badge`, `Alert` y `EmptyState`.
-   - Los archivos existentes en `apps/admin/components/confirmation-modal.tsx`, `apps/admin/components/ui/workspace-data-table.tsx` y `apps/admin/components/ui/form-save-bar.tsx` se mantienen como **re-exports directos** desde `@mocter/ui` para no romper ningún `import` ni test existente.
+2. **Promoción de Componentes Compuestos Transversales a `@mocter/ui` con Re-exports y Adaptadores Compatibles:**
+   - `ConfirmationModal`, `WorkspaceDataTable`, `FormSaveBar` y el hook `useUnsavedChangesGuard` (`requestGuardedNavigation`) se promueven a `packages/ui/src/` refactorizados internamente sobre `Dialog`, `Button`, `Input`, `Select`, `Badge`, `Alert` y `EmptyState`, usando un diccionario mínimo interno `es`/`en` (extensible vía prop `labels`) y callback `onNavigate` para mantener `@mocter/ui` desacoplado de Next.js y `@/lib/i18n`.
+   - `apps/admin/components/confirmation-modal.tsx`, `apps/admin/components/ui/workspace-data-table.tsx` y `apps/admin/lib/use-unsaved-changes-guard.ts` se mantienen como **re-exports directos 1:1** desde `@mocter/ui`; `apps/admin/components/ui/form-save-bar.tsx` se mantiene como **wrapper mínimo** que inyecta `useRouter().push` sobre el `FormSaveBar` de `@mocter/ui` para preservar el 100% de compatibilidad con los imports y tests existentes.
    - Los componentes con dependencia de servicios o catálogos de dominio (`PhoneE164Input`, `GeoAddressFields`, `AiEnhanceTextarea`, `DataTable`, `AdminShell`, `TenantWorkspaceShell`, `UserProfileModal`) permanecen en `apps/admin/components/` pero se refactorizan internamente para consumir las primitivas de `@mocter/ui`.
 
 ### D-04 · Estrategia de Migración Total Exhaustiva en Lotes Secuenciales
 La especificación abarca la migración completa de todas las vistas del monorepo en lotes secuenciales verificables:
-1. **Lote 1:** Fundación de `packages/ui` (`@mocter/ui`), hoja `tokens.css`, utilidades `cn()`, 17 primitivas atómicas, tests unitarios de `@mocter/ui`, configuración de `Dockerfile` y `docker-compose.yml`.
-2. **Lote 2:** Refactorización de componentes compuestos (`ConfirmationModal`, `WorkspaceDataTable`, `DataTable`, `FormSaveBar`), componentes de dominio/shells (`AdminShell`, `TenantWorkspaceShell`, `UserProfileModal`, `AiEnhanceTextarea`, `PhoneE164Input`, `GeoAddressFields`, `BillingCheckoutPanel`, `CatalogQuotaBanner`) y renovación integral del catálogo vivo `/design-system`.
-3. **Lote 3:** Migración exhaustiva de las vistas del Backoffice del Inquilino (`/workspace/*` — 15 módulos y sus modales) y del asistente `/onboarding` (5 pasos).
-4. **Lote 4:** Migración exhaustiva de las vistas del Plano de Control SaaS (`/admin/*` — 10 módulos) y de las vistas interactivas y de autenticación en `apps/web` (`/[locale]/(auth)/*`, componentes admin/landing en `apps/web/components/*`).
+1. **Lote 1:** Fundación de `packages/ui` (`@mocter/ui`), hoja `tokens.css`, utilidades `cn()`, 17 primitivas atómicas, tests unitarios de `@mocter/ui`, actualización de `apps/web/lib/design-tokens.test.ts`, configuración de `Dockerfile` y `docker-compose.yml`.
+2. **Lote 2:** Refactorización de componentes compuestos (`ConfirmationModal`, `WorkspaceDataTable`, `DataTable`, `FormSaveBar`), componentes de dominio/shells (`AdminShell`, `TenantWorkspaceShell`, `UserProfileModal`, `AiEnhanceTextarea`, `PhoneE164Input`, `GeoAddressFields`, `BillingCheckoutPanel`, `CatalogQuotaBanner`, `EmailRichTextEditor`, `ThemeToggle`) y renovación integral del catálogo vivo `/design-system`.
+3. **Lote 3:** Migración exhaustiva de las vistas del Backoffice del Inquilino (`/workspace/*` — 16 módulos incluyendo `conversations` y sus modales) y del asistente `/onboarding` (`tenant-onboarding-wizard` + 5 pasos en `steps/`).
+4. **Lote 4:** Migración exhaustiva de las vistas del Plano de Control SaaS (`/admin/*` — los 13 módulos incluyendo `leads`, `orders`, `referrals`, `reports`, `users` y `/invite/*`) y de las vistas interactivas, de administración y autenticación en `apps/web` (`components/auth/*`, `components/admin/*`, `demo-form`, `phone-e164-input`, `cookie-preferences`, `theme-toggle`, preservando el diseño marketing de `components/sections/*`).
 5. **Lote 5:** Test automatizado de auditoría arquitectónica (`ui-kit-audit.test.ts`), suite completa de pruebas en todo el monorepo, build de producción y protocolo `AGENTS.md §4.18` en contenedores Docker vivos.
 
 ### D-05 · Diseño Dual de `<Select />` en `@mocter/ui` (Mobile First + Compatibilidad con Tests `fireEvent.change`)
@@ -91,7 +92,7 @@ La especificación abarca la migración completa de todas las vistas del monorep
 ### D-06 · Autorización Explícita de Infraestructura Docker (`Dockerfile` y `docker-compose.yml` conforme a `R-07`)
 - Con autorización explícita del usuario en `/grill-me` (cumpliendo `R-07` de `.agents/AGENTS.md`):
   - En `Dockerfile`: se incorpora `COPY packages/ui/package.json packages/ui/package.json` en la etapa `deps` y `COPY --from=deps /app/packages/ui/node_modules ./packages/ui/node_modules` en la etapa `build`.
-  - En `docker-compose.yml`: se declara el volumen nombrado `ui-node-modules:/app/packages/ui/node_modules` en `web-portal`, `admin-portal` y la sección raíz `volumes:`, evitando que `pnpm install` dentro del contenedor Linux escriba enlaces simbólicos incompatibles sobre el bind mount NTFS de Windows.
+  - En `docker-compose.yml`: siguiendo el patrón de aislamiento por servicio del archivo, se declaran volúmenes nombrados separados (`ui-node-modules:/app/packages/ui/node_modules` en `web-portal` y `admin-ui-node-modules:/app/packages/ui/node_modules` en `admin-portal`, ambos en la sección raíz `volumes:`), evitando colisiones de escritura concurrente durante `pnpm install` y protegiendo el bind mount NTFS de Windows.
 
 ---
 
@@ -103,8 +104,8 @@ La especificación abarca la migración completa de todas las vistas del monorep
 - **RF-01.3:** Configurar `"radix-ui": "^1.4.0"`, `"class-variance-authority": "^0.7.1"`, `"clsx": "^2.1.1"`, `"tailwind-merge": "^3.0.2"` y `"lucide-react": "^1.66.0"` en `packages/ui/package.json`.
 
 ### RF-02 · Hoja Unificada de Tokens (`@mocter/ui/styles/tokens.css`)
-- **RF-02.1:** Definir en `packages/ui/src/styles/tokens.css` las tres capas completas de `DSN-001 §3.1` (Primitivos `--primitive-*`, Semánticos `--dsn-*` en `:root`/`.dark` y `.light`, y Marca `--brand-*`) más el bloque `@theme` de Tailwind v4 para habilitar utilidades semánticas (`bg-dsn-surface`, `text-dsn-text`, `border-dsn-border`, `bg-dsn-accent`, `rounded-dsn-md`, etc.).
-- **RF-02.2:** Importar `@mocter/ui/styles/tokens.css` y declarar `@source "../../../packages/ui/src/**/*.{ts,tsx}";` en `apps/admin/app/globals.css` y `apps/web/app/globals.css`.
+- **RF-02.1:** Definir en `packages/ui/src/styles/tokens.css` las tres capas completas de `DSN-001 §3.1` (Primitivos `--primitive-*`, Semánticos `--dsn-*` en `:root`/`.dark` y `.light` con los valores exactos de `DSN-001 §3.1`, y Marca `--brand-*`) más `@variant dark` y el bloque `@theme inline` de Tailwind v4 para habilitar utilidades semánticas (`bg-dsn-surface`, `text-dsn-text`, `border-dsn-border`, `bg-dsn-accent`, `rounded-dsn-md`, etc.) sin colisionar con `--color-surface` de `apps/web`.
+- **RF-02.2:** Importar `@mocter/ui/styles/tokens.css` y declarar `@source "../../../packages/ui/src/**/*.{ts,tsx}";` en `apps/admin/app/globals.css` y `apps/web/app/globals.css`, actualizando `apps/web/lib/design-tokens.test.ts` para inspeccionar `packages/ui/src/styles/tokens.css` junto con `apps/web/app/globals.css`.
 
 ### RF-03 · Catálogo de Primitivas y Compuestos en `@mocter/ui`
 - **RF-03.1:** Implementar y exportar con documentación TSDoc en español (`AGENTS.md §4.4`) los componentes: `Button`, `buttonVariants`, `Input`, `Textarea`, `Label`, `FormField`, `Select`, `NativeSelect`, `CustomSelect` (y subcomponentes Radix), `Checkbox`, `Switch`, `Badge`, `badgeVariants`, `Dialog` (`Dialog`, `DialogTrigger`, `DialogPortal`, `DialogOverlay`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, `DialogFooter`, `DialogClose`), `Sheet` (`Sheet`, `SheetTrigger`, `SheetContent`, `SheetHeader`, `SheetTitle`, `SheetDescription`, `SheetFooter`, `SheetClose`), `Tabs` (`Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`), `Tooltip` (`TooltipProvider`, `Tooltip`, `TooltipTrigger`, `TooltipContent`), `DropdownMenu` (`DropdownMenu`, `DropdownMenuTrigger`, `DropdownMenuContent`, `DropdownMenuItem`, `DropdownMenuSeparator`, `DropdownMenuLabel`), `Skeleton`, `EmptyState`, `Alert`, `Card` (`Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter`).
@@ -116,9 +117,9 @@ La especificación abarca la migración completa de todas las vistas del monorep
 ### RF-05 · Migración Total Exhaustiva de Vistas (`apps/admin` y `apps/web`)
 - **RF-05.1:** Reemplazar los elementos nativos manuales (`<button>`, `<input>`, `<textarea>`, `<select>`, `<label>`, `<div role="dialog">`, badges y alertas manuales) por los componentes de `@mocter/ui` en:
   - Componentes compartidos y shells de `apps/admin/components/*`.
-  - Todas las vistas y modales de `/workspace/*` y `/onboarding/*` en `apps/admin`.
-  - Todas las vistas y formularios de `/admin/*` y `/login` en `apps/admin`.
-  - Todas las vistas de autenticación (`/[locale]/(auth)/*`) y vistas interactivas/administrativas en `apps/web`.
+  - Todas las vistas y modales de `/workspace/*`, `/onboarding/*` e `/invite/*` en `apps/admin`.
+  - Todas las vistas y formularios de `/admin/*` en `apps/admin`.
+  - Todas las vistas de autenticación (`components/auth/*` para `/[locale]/(auth)/*`), paneles administrativos (`components/admin/*`) y controles interactivos (`demo-form`, `phone-e164-input`, `cookie-preferences`, `theme-toggle`) en `apps/web` (preservando el diseño marketing de `components/sections/*`).
 - **RF-05.2:** Preservar el 100% de los contratos semánticos, atributos `aria-*`, `data-testid`, textos i18n (`es`/`en`), validaciones y comportamiento esperado por las suites de pruebas unitarias e integración existentes.
 
 ### RF-06 · Auditoría Arquitectónica Automatizada

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { Button, EmptyState, Input } from "@mocter/ui";
 
 export interface DataTableColumn<Row> {
   key: keyof Row & string;
@@ -19,13 +20,7 @@ export interface DataTableProps<Row extends Record<string, unknown>> {
 }
 
 /**
- * Tabla de datos estándar (`DataTable`) del sistema de diseño `DSN-001` (`T-05`).
- *
- * Incluye:
- * - Paginación, filtro por columna y ordenamiento ascendente/descendente.
- * - Header pegajoso (`sticky top-0`) y selector de densidad (`compact`, `normal`, `comfortable`).
- * - Degradación Mobile First a tarjetas (`md:hidden`) en pantallas móviles (390px) sin exigir scroll horizontal,
- *   y vista tabular de columnas (`hidden md:block`) en escritorio.
+ * Tabla de datos estándar (`DataTable`) del sistema de diseño `DSN-001` sobre primitivas de `@mocter/ui`.
  */
 export function DataTable<Row extends Record<string, unknown>>({
   columns,
@@ -38,9 +33,7 @@ export function DataTable<Row extends Record<string, unknown>>({
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [page, setPage] = useState(1);
-  const [density, setDensity] = useState<"compact" | "normal" | "comfortable">(
-    initialDensity,
-  );
+  const [density, setDensity] = useState<"compact" | "normal" | "comfortable">(initialDensity);
 
   const filteredAndSorted = useMemo(() => {
     const filtered = rows.filter((row) =>
@@ -88,7 +81,7 @@ export function DataTable<Row extends Record<string, unknown>>({
           {columns
             .filter((c) => c.filterable)
             .map((col) => (
-              <input
+              <Input
                 key={col.key}
                 type="search"
                 aria-label={col.header}
@@ -98,38 +91,32 @@ export function DataTable<Row extends Record<string, unknown>>({
                   setFilters((prev) => ({ ...prev, [col.key]: e.target.value }));
                   setPage(1);
                 }}
-                className="min-h-[44px] rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-sm text-[var(--dsn-text)]"
+                className="min-h-[44px] w-auto bg-[var(--dsn-surface)] text-sm"
               />
             ))}
         </div>
         <div className="flex items-center gap-1" role="group" aria-label="Density">
           {(["compact", "normal", "comfortable"] as const).map((d) => (
-            <button
+            <Button
               key={d}
               type="button"
+              size="sm"
+              variant={density === d ? "primary" : "outline"}
               onClick={() => setDensity(d)}
-              className={`min-h-[44px] rounded px-2.5 py-1 text-xs font-medium ${
-                density === d
-                  ? "bg-[var(--dsn-accent)] text-white"
-                  : "border border-[var(--dsn-border)] text-[var(--dsn-text-secondary)]"
-              }`}
+              className="min-h-[44px]"
             >
               {d}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
 
       {pageRows.length === 0 ? (
-        <div
-          role="status"
-          className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 text-center text-sm text-[var(--dsn-text-secondary)]"
-        >
-          {emptyMessage}
+        <div role="status">
+          <EmptyState title={emptyMessage} />
         </div>
       ) : (
         <>
-          {/* Vista Mobile First (390px): degradación a tarjetas apiladas sin scroll horizontal */}
           <div className="grid grid-cols-1 gap-3 md:hidden" data-testid="mobile-cards-view">
             {pageRows.map((row, idx) => (
               <article
@@ -156,7 +143,6 @@ export function DataTable<Row extends Record<string, unknown>>({
             ))}
           </div>
 
-          {/* Vista Escritorio: tabla con header pegajoso */}
           <div
             className="hidden overflow-x-auto rounded-lg border border-[var(--dsn-border)] md:block"
             data-testid="desktop-table-view"
@@ -170,7 +156,7 @@ export function DataTable<Row extends Record<string, unknown>>({
                         <button
                           type="button"
                           onClick={() => toggleSort(col.key)}
-                          className="inline-flex items-center gap-1 font-semibold hover:text-[var(--dsn-text)]"
+                          className="inline-flex items-center gap-1 font-semibold hover:text-[var(--dsn-text)] cursor-pointer"
                         >
                           <span>{col.header}</span>
                           {sortKey === col.key ? (
@@ -210,25 +196,26 @@ export function DataTable<Row extends Record<string, unknown>>({
           {page} / {totalPages}
         </span>
         <div className="flex gap-2">
-          <button
+          <Button
             type="button"
+            variant="outline"
             disabled={page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="min-h-[44px] rounded border border-[var(--dsn-border)] px-3 py-1 disabled:opacity-40"
+            className="min-h-[44px]"
           >
             ←
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="outline"
             disabled={page >= totalPages}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            className="min-h-[44px] rounded border border-[var(--dsn-border)] px-3 py-1 disabled:opacity-40"
+            className="min-h-[44px]"
           >
             →
-          </button>
+          </Button>
         </div>
       </div>
     </div>
   );
 }
-

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import {
   Award,
+  Ban,
   Check,
   Copy,
   Globe,
@@ -10,20 +11,33 @@ import {
   LogOut,
   Mail,
   RefreshCw,
+  Send,
   Settings,
   UserMinus,
   UserPlus,
   Users,
-  X,
   XCircle,
 } from "lucide-react";
 import type {
+  CommunityInvitationDto,
   TenantCommunitiesOverviewDto,
   TenantCommunityDetailDto,
 } from "@mocter/domain";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 import { ConfirmationModal } from "@/components/confirmation-modal";
-import { readApiError } from "./_types";
+import { formatCommunityDate, readApiError } from "./_types";
 
 interface CommunityNetworkTabProps {
   overview: TenantCommunitiesOverviewDto;
@@ -66,13 +80,18 @@ export function CommunityNetworkTab({
   } | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
 
-  // Confirmaciones destructivas
+  // Confirmaciones destructivas y acciones sobre invitaciones enviadas
   const [leaveTarget, setLeaveTarget] = useState<TenantCommunityDetailDto | null>(null);
   const [removeTarget, setRemoveTarget] = useState<{
     org: TenantCommunityDetailDto;
     clientId: string;
     displayName: string;
   } | null>(null);
+  const [cancelInviteTarget, setCancelInviteTarget] = useState<{
+    orgName: string;
+    invitation: CommunityInvitationDto;
+  } | null>(null);
+  const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
 
@@ -183,14 +202,61 @@ export function CommunityNetworkTab({
         onErrorToast(await readApiError(res, "No se pudo enviar la invitación."));
         return;
       }
+      const json = await res.json().catch(() => null);
       setInviteForms((prev) => ({
         ...prev,
         [orgId]: { target: "", role: prev[orgId]?.role ?? "member" },
       }));
       await onDataMutated();
-      onSuccessToast(locale === "en" ? "Invitation sent." : "Invitación enviada correctamente.");
+      onSuccessToast(json?.data?.reusedExisting ? dict.inviteReusedToast : dict.inviteSentToast);
     } catch {
       onErrorToast(dict.networkErrorSendInvite);
+    }
+  }
+
+  async function handleResendInvite(invitationId: string) {
+    setResendingInviteId(invitationId);
+    try {
+      const res = await fetch(`/api/tenant/community/invitations/${invitationId}/resend`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        onErrorToast(await readApiError(res, dict.networkErrorSendInvite));
+        return;
+      }
+      await onDataMutated();
+      onSuccessToast(dict.inviteResentToast);
+    } catch {
+      onErrorToast(dict.networkErrorSendInvite);
+    } finally {
+      setResendingInviteId(null);
+    }
+  }
+
+  async function handleConfirmCancelInvite() {
+    if (!cancelInviteTarget) return;
+    setConfirmBusy(true);
+    setConfirmError(null);
+    try {
+      const res = await fetch(
+        `/api/tenant/community/invitations/${cancelInviteTarget.invitation.id}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+      if (!res.ok) {
+        setConfirmError(await readApiError(res, dict.networkErrorGeneric));
+        return;
+      }
+      setCancelInviteTarget(null);
+      await onDataMutated();
+      onSuccessToast(dict.inviteCancelledToast);
+    } catch {
+      setConfirmError(dict.networkErrorGeneric);
+    } finally {
+      setConfirmBusy(false);
     }
   }
 
@@ -361,20 +427,22 @@ export function CommunityNetworkTab({
               <span>{dict.joinByCodeTitle}</span>
             </h3>
             <div className="flex gap-2">
-              <input
+              <Input
                 type="text"
                 value={inviteCodeInput}
                 onChange={(e) => setInviteCodeInput(e.target.value)}
                 placeholder={dict.joinByCodePlaceholder}
-                className="flex-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-xs text-[var(--dsn-text)]"
+                className="flex-1 text-xs"
               />
-              <button
+              <Button
                 type="submit"
+                size="sm"
                 disabled={joiningCode || !inviteCodeInput.trim()}
-                className="rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 shrink-0"
+                loading={joiningCode}
+                className="shrink-0"
               >
                 {dict.joinByCodeCta}
-              </button>
+              </Button>
             </div>
           </form>
         )}
@@ -664,6 +732,87 @@ export function CommunityNetworkTab({
                     </div>
                   )}
 
+                  {/* Registro de invitaciones enviadas (solo originator, RN-SPEC-15-13) */}
+                  {isOwner && isOriginator && org.invitations.length > 0 && (
+                    <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)]/30 p-3 space-y-2">
+                      <span className="text-xs font-semibold text-[var(--dsn-text-secondary)] block">
+                        {dict.sentInvitationsTitle} ({org.invitations.length})
+                      </span>
+                      <div className="space-y-1.5">
+                        {org.invitations.map((inv) => {
+                          const statusLabel =
+                            inv.status === "accepted"
+                              ? dict.inviteStatusAccepted
+                              : inv.status === "rejected"
+                                ? dict.inviteStatusRejected
+                                : inv.status === "revoked"
+                                  ? dict.inviteStatusRevoked
+                                  : inv.status === "expired"
+                                    ? dict.inviteStatusExpired
+                                    : dict.inviteStatusPending;
+                          const statusClass =
+                            inv.status === "accepted"
+                              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                              : inv.status === "rejected" || inv.status === "revoked"
+                                ? "bg-rose-500/15 text-rose-700 dark:text-rose-300"
+                                : inv.status === "expired"
+                                  ? "bg-slate-500/15 text-[var(--dsn-text-secondary)]"
+                                  : "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+
+                          return (
+                            <div
+                              key={inv.id}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs"
+                            >
+                              <div className="min-w-0 space-y-0.5">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="font-semibold text-[var(--dsn-text)] truncate">
+                                    {inv.targetClientName
+                                      ? `${inv.targetClientName} (${inv.email})`
+                                      : inv.email}
+                                  </span>
+                                  <span className="rounded-full bg-[var(--dsn-surface-secondary)] px-2 py-0.5 text-[10px] font-medium text-[var(--dsn-text-secondary)]">
+                                    {inv.role === "co_leader" ? dict.roleCoLeader : dict.roleMember}
+                                  </span>
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusClass}`}>
+                                    {statusLabel}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-[var(--dsn-text-secondary)]">
+                                  {dict.inviteExpiresLabel}: {formatCommunityDate(inv.expiresAt, locale)}
+                                </p>
+                              </div>
+
+                              {inv.status === "pending" && (
+                                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    disabled={resendingInviteId === inv.id}
+                                    onClick={() => void handleResendInvite(inv.id)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1 text-[11px] font-medium text-[var(--dsn-text)] disabled:opacity-50"
+                                  >
+                                    <Send className="h-3 w-3 text-[var(--dsn-accent)]" />
+                                    <span>{dict.resendInviteCta}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setCancelInviteTarget({ orgName: org.name, invitation: inv })
+                                    }
+                                    className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold text-rose-700 dark:text-rose-300"
+                                  >
+                                    <Ban className="h-3 w-3" />
+                                    <span>{dict.cancelInviteCta}</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Directorio de Miembros */}
                   <div className="space-y-2">
                     <span className="text-xs font-semibold text-[var(--dsn-text-secondary)] block">
@@ -782,141 +931,134 @@ export function CommunityNetworkTab({
       </section>
 
       {/* Modal de Ajustes de Comunidad (cierra automáticamente al guardar) */}
-      {settingsModalOrg && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+      <Dialog
+        open={Boolean(settingsModalOrg)}
+        onOpenChange={(open) => {
+          if (!open && !savingSettings) setSettingsModalOrg(null);
+        }}
+      >
+        <DialogContent
+          className="w-full max-w-lg p-5"
+          closeAriaLabel={locale === "en" ? "Cancel" : "Cancelar"}
+          disableEscapeKeyDown={savingSettings}
+          disableInteractOutside={savingSettings}
         >
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[var(--dsn-text)]">
-                {dict.saveSettingsCta}
-              </h3>
-              <button
-                type="button"
-                onClick={() => !savingSettings && setSettingsModalOrg(null)}
-                className="rounded-lg p-1 text-[var(--dsn-text-secondary)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveOrgSettings} className="space-y-3 text-xs">
-              <div className="space-y-1">
-                <label className="block font-medium text-[var(--dsn-text)]">
-                  {dict.communityNameLabel}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={settingsModalOrg.name}
-                  onChange={(e) =>
-                    setSettingsModalOrg((prev) => (prev ? { ...prev, name: e.target.value } : null))
-                  }
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block font-medium text-[var(--dsn-text)]">
-                  {dict.communityDescLabel}
-                </label>
-                <textarea
-                  rows={2}
-                  value={settingsModalOrg.description}
-                  onChange={(e) =>
-                    setSettingsModalOrg((prev) =>
-                      prev ? { ...prev, description: e.target.value } : null,
-                    )
-                  }
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block font-medium text-[var(--dsn-text)]">
-                    {dict.communityVisibilityLabel}
-                  </label>
-                  <select
-                    value={settingsModalOrg.visibility}
-                    onChange={(e) =>
-                      setSettingsModalOrg((prev) =>
-                        prev
-                          ? { ...prev, visibility: e.target.value as "private_invite" | "request_to_join" }
-                          : null,
-                      )
-                    }
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
-                  >
-                    <option value="private_invite">{dict.visibilityPrivate}</option>
-                    <option value="request_to_join">{dict.visibilityDiscoverable}</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block font-medium text-[var(--dsn-text)]">
-                    {dict.communitySharePolicyLabel}
-                  </label>
-                  <select
-                    value={settingsModalOrg.sharePolicy}
-                    onChange={(e) =>
-                      setSettingsModalOrg((prev) =>
-                        prev
-                          ? { ...prev, sharePolicy: e.target.value as "leaders_only" | "collaborative" }
-                          : null,
-                      )
-                    }
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
-                  >
-                    <option value="leaders_only">{dict.sharePolicyLeaders}</option>
-                    <option value="collaborative">{dict.sharePolicyCollaborative}</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block font-medium text-[var(--dsn-text)]">
-                  {dict.communityModerationLabel}
-                </label>
-                <select
-                  value={settingsModalOrg.moderationMode}
-                  onChange={(e) =>
-                    setSettingsModalOrg((prev) =>
-                      prev
-                        ? { ...prev, moderationMode: e.target.value as "pre" | "post" | "none" }
-                        : null,
-                    )
-                  }
-                  className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-[var(--dsn-text)]"
-                >
-                  <option value="pre">{dict.moderationPre}</option>
-                  <option value="post">{dict.moderationPost}</option>
-                  <option value="none">{dict.moderationNone}</option>
-                </select>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setSettingsModalOrg(null)}
-                  className="rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-4 py-2 font-semibold text-[var(--dsn-text)]"
-                >
-                  {locale === "en" ? "Cancel" : "Cancelar"}
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingSettings}
-                  className="rounded-lg bg-[var(--dsn-accent)] px-4 py-2 font-semibold text-white"
-                >
+          {settingsModalOrg && (
+            <>
+              <DialogHeader className="pr-8">
+                <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
                   {dict.saveSettingsCta}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                </DialogTitle>
+              </DialogHeader>
+
+              <form onSubmit={handleSaveOrgSettings} className="space-y-3 text-xs">
+                <div className="space-y-1">
+                  <Label className="block font-medium">{dict.communityNameLabel}</Label>
+                  <Input
+                    type="text"
+                    required
+                    value={settingsModalOrg.name}
+                    onChange={(e) =>
+                      setSettingsModalOrg((prev) => (prev ? { ...prev, name: e.target.value } : null))
+                    }
+                    className="text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="block font-medium">{dict.communityDescLabel}</Label>
+                  <Textarea
+                    rows={2}
+                    value={settingsModalOrg.description}
+                    onChange={(e) =>
+                      setSettingsModalOrg((prev) =>
+                        prev ? { ...prev, description: e.target.value } : null,
+                      )
+                    }
+                    className="text-xs"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="block font-medium">{dict.communityVisibilityLabel}</Label>
+                    <Select
+                      value={settingsModalOrg.visibility}
+                      onChange={(e) =>
+                        setSettingsModalOrg((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                visibility: e.target.value as "private_invite" | "request_to_join",
+                              }
+                            : null,
+                        )
+                      }
+                      className="text-xs"
+                    >
+                      <option value="private_invite">{dict.visibilityPrivate}</option>
+                      <option value="request_to_join">{dict.visibilityDiscoverable}</option>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="block font-medium">{dict.communitySharePolicyLabel}</Label>
+                    <Select
+                      value={settingsModalOrg.sharePolicy}
+                      onChange={(e) =>
+                        setSettingsModalOrg((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                sharePolicy: e.target.value as "leaders_only" | "collaborative",
+                              }
+                            : null,
+                        )
+                      }
+                      className="text-xs"
+                    >
+                      <option value="leaders_only">{dict.sharePolicyLeaders}</option>
+                      <option value="collaborative">{dict.sharePolicyCollaborative}</option>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="block font-medium">{dict.communityModerationLabel}</Label>
+                  <Select
+                    value={settingsModalOrg.moderationMode}
+                    onChange={(e) =>
+                      setSettingsModalOrg((prev) =>
+                        prev
+                          ? { ...prev, moderationMode: e.target.value as "pre" | "post" | "none" }
+                          : null,
+                      )
+                    }
+                    className="text-xs"
+                  >
+                    <option value="pre">{dict.moderationPre}</option>
+                    <option value="post">{dict.moderationPost}</option>
+                    <option value="none">{dict.moderationNone}</option>
+                  </Select>
+                </div>
+
+                <DialogFooter className="pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setSettingsModalOrg(null)}
+                  >
+                    {locale === "en" ? "Cancel" : "Cancelar"}
+                  </Button>
+                  <Button type="submit" disabled={savingSettings} loading={savingSettings}>
+                    {dict.saveSettingsCta}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Modal Confirmación Salir de Comunidad */}
       <ConfirmationModal
@@ -961,6 +1103,39 @@ export function CommunityNetworkTab({
         warningTitle={dict.confirmRemoveMemberTitle}
         warningMessage={dict.confirmRemoveMemberDesc}
         confirmText={dict.removeMemberCta}
+        cancelText={locale === "en" ? "Cancel" : "Cancelar"}
+        loading={confirmBusy}
+        error={confirmError}
+      />
+
+      {/* Modal Confirmación Cancelar Invitación Enviada */}
+      <ConfirmationModal
+        isOpen={Boolean(cancelInviteTarget)}
+        onClose={() => {
+          if (!confirmBusy) {
+            setCancelInviteTarget(null);
+            setConfirmError(null);
+          }
+        }}
+        onConfirm={() => void handleConfirmCancelInvite()}
+        title={dict.confirmCancelInviteTitle}
+        subtitle={
+          cancelInviteTarget
+            ? cancelInviteTarget.invitation.targetClientName || cancelInviteTarget.invitation.email
+            : ""
+        }
+        variant="warning"
+        details={
+          cancelInviteTarget
+            ? [
+                { label: dict.communityLabel, value: cancelInviteTarget.orgName },
+                { label: dict.inviteExpiresLabel, value: formatCommunityDate(cancelInviteTarget.invitation.expiresAt, locale) },
+              ]
+            : []
+        }
+        warningTitle={dict.confirmCancelInviteTitle}
+        warningMessage={dict.confirmCancelInviteDesc}
+        confirmText={dict.cancelInviteCta}
         cancelText={locale === "en" ? "Cancel" : "Cancelar"}
         loading={confirmBusy}
         error={confirmError}

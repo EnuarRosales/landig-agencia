@@ -13,6 +13,7 @@ import {
   RotateCw,
   ShieldAlert,
 } from "lucide-react";
+import { Alert, AlertDescription, Badge, Button, Card } from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 const IFRAME_LOAD_TIMEOUT_MS = 12_000;
@@ -266,16 +267,13 @@ export function WorkspaceConversationsView({
           </p>
 
           {retryFeedback && (
-            <div
+            <Alert
               role="status"
-              className={`mt-4 rounded-lg border px-3 py-2 text-xs ${
-                retryFeedback.kind === "success"
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                  : "border-rose-500/30 bg-rose-500/10 text-rose-300"
-              }`}
+              variant={retryFeedback.kind === "success" ? "success" : "error"}
+              className="mt-4 text-left"
             >
-              {retryFeedback.message}
-            </div>
+              <AlertDescription>{retryFeedback.message}</AlertDescription>
+            </Alert>
           )}
 
           {requestId && state.status === "failed" && (
@@ -286,11 +284,10 @@ export function WorkspaceConversationsView({
 
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">
             {canOwnerRetry && (
-              <button
+              <Button
                 type="button"
                 onClick={handleRetryProvisioning}
                 disabled={retryingProvision}
-                className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 <RotateCw className={`h-4 w-4 ${retryingProvision ? "animate-spin" : ""}`} />
                 <span>
@@ -298,18 +295,18 @@ export function WorkspaceConversationsView({
                     ? dict.conversationsRetryingProvisionCta
                     : dict.conversationsRetryProvisionCta}
                 </span>
-              </button>
+              </Button>
             )}
 
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={handleRefreshPageState}
               disabled={retryingProvision}
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--dsn-text)] transition-colors hover:border-[var(--dsn-accent)] disabled:opacity-50"
             >
               <RotateCw className="h-4 w-4 text-[var(--dsn-accent)]" />
               <span>{dict.conversationsRefreshStatusCta}</span>
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -329,20 +326,18 @@ export function WorkspaceConversationsView({
           <h1 className="text-base font-bold text-[var(--dsn-text)]">
             {dict.conversationsTitle}
           </h1>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400">
+          <Badge variant="success" className="gap-1.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
             <span>{dict.conversationsConnectedStatus}</span>
-          </span>
+          </Badge>
         </div>
 
-        <button
-          type="button"
-          onClick={handleReloadIframe}
-          className="inline-flex min-h-[36px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-1.5 text-xs font-semibold text-[var(--dsn-text)] transition-colors hover:border-[var(--dsn-accent)]"
-        >
-          <RotateCw className={`h-3.5 w-3.5 text-[var(--dsn-accent)] ${!iframeLoaded && !loadTimedOut ? "animate-spin" : ""}`} />
+        <Button type="button" variant="outline" size="sm" onClick={handleReloadIframe}>
+          <RotateCw
+            className={`h-3.5 w-3.5 text-[var(--dsn-accent)] ${!iframeLoaded && !loadTimedOut ? "animate-spin" : ""}`}
+          />
           <span>{dict.conversationsReloadCta}</span>
-        </button>
+        </Button>
       </header>
 
       <div className="relative flex-1 w-full overflow-hidden rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)]">
@@ -363,7 +358,7 @@ export function WorkspaceConversationsView({
             data-testid="conversations-timeout-overlay"
             className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--dsn-surface)]/95 p-4 backdrop-blur-xs"
           >
-            <div className="max-w-md rounded-2xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 text-center shadow-sm">
+            <Card className="max-w-md p-6 text-center shadow-sm">
               <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-400">
                 <AlertTriangle className="h-5 w-5" />
               </div>
@@ -379,16 +374,12 @@ export function WorkspaceConversationsView({
                 </p>
               )}
               <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={handleReloadIframe}
-                  className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs transition-opacity hover:opacity-90"
-                >
+                <Button type="button" onClick={handleReloadIframe}>
                   <RotateCw className="h-4 w-4" />
                   <span>{dict.conversationsRetryConnectionCta}</span>
-                </button>
+                </Button>
               </div>
-            </div>
+            </Card>
           </div>
         )}
 

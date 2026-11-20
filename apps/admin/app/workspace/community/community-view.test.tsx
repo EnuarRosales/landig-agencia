@@ -192,4 +192,102 @@ describe("SPEC-15 · CommunityView (/workspace/community)", () => {
     ).toBeTruthy();
     expect(screen.queryByText("Clonar a Mi Catálogo")).toBeNull();
   });
+
+  it("T-13 · muestra alerta explícita con la variable de cuota excedida y cierra el modal automáticamente al clonar con éxito", async () => {
+    const baseFeedFetch = globalThis.fetch as ReturnType<typeof vi.fn>;
+    const previousImpl = baseFeedFetch.getMockImplementation();
+
+    let blockByMedia = true;
+    globalThis.fetch = vi.fn().mockImplementation((input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/adopt") && (!init?.method || init.method === "GET")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ok: true,
+              data: {
+                allowed: !blockByMedia,
+                includeMediaMode: blockByMedia ? "all_compatible" : "none",
+                violations: blockByMedia
+                  ? [
+                      {
+                        dimension: "images_per_product",
+                        currentUsed: 0,
+                        requiredDelta: 3,
+                        projectedTotal: 3,
+                        limitValue: 1,
+                      },
+                    ]
+                  : [],
+                summary: {
+                  productsUsed: 0,
+                  productsNeeded: 1,
+                  productsLimit: 1,
+                  storageUsedBytes: 0,
+                  storageNeededBytes: blockByMedia ? 250000 : 0,
+                  storageLimitBytes: 104857600,
+                },
+              },
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes("/adopt") && init?.method === "POST") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ok: true,
+              data: {
+                adoptionId: "adopt-1",
+                cloneProductId: "clone-1",
+                cloneCellId: "cell-01",
+                createdProductsCount: 1,
+                copiedMediaCount: 0,
+                skippedMedia: [],
+                version: 1,
+              },
+            }),
+            { status: 201 },
+          ),
+        );
+      }
+      return previousImpl ? previousImpl(input, init) : Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    }) as typeof fetch;
+
+    render(
+      <CommunityView
+        initialOverview={sampleOverview}
+        capabilityEnabled={true}
+        isOwner={true}
+        locale="es"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Chaqueta Impermeable")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText("Clonar a Mi Catálogo"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Límite de Plan Alcanzado")).toBeTruthy();
+      expect(screen.getByText(/Imágenes por Producto \(images_per_product\)/)).toBeTruthy();
+    });
+
+    // Cambiar a Sin Archivos Multimedia libera el bloqueo y permite clonar + cerrar modal automáticamente
+    blockByMedia = false;
+    const mediaSelect = screen.getByDisplayValue("Toda la Multimedia Compatible");
+    fireEvent.change(mediaSelect, { target: { value: "none" } });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Límite de Plan Alcanzado")).toBeNull();
+    });
+
+    fireEvent.click(screen.getByText("Clonar Producto Ahora"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Clonar Producto a Tu Catálogo")).toBeNull();
+    });
+  });
 });

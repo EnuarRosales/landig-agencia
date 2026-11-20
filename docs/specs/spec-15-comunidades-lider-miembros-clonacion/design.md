@@ -132,16 +132,48 @@ export interface ProductSnapshot {
     - `community.product_version_published` (nueva versión de producto clonado, configurable por inquilino).
   - Expone estos eventos en `TENANT_COMPETENCE_EVENT_KEYS` y `CANONICAL_EMAIL_EVENTS`.
 
+### 2.5 Muro Social Enriquecido, Respuestas, Fijación y Retención (`SPEC-15-D11`..`D14`)
+
+1. **`admin.feed_posts` (extensión):**
+   - `body_format`: `varchar(16)` `NOT NULL` default `'plain'` (`'plain' | 'html'`).
+   - `media_id`: `uuid` nullable FK → `admin.media_catalog.id` (`ON DELETE SET NULL`).
+   - `video_embed_url`: `text` nullable (URL normalizada `https://www.youtube.com/embed/...` o `https://player.vimeo.com/video/...`).
+   - `is_pinned`: `boolean` `NOT NULL` default `false`.
+   - `pinned_at`: `timestamptz` nullable.
+   - `pinned_by_user_id`: `uuid` nullable FK → `admin.users.id` (`ON DELETE SET NULL`).
+   - Índice único parcial `feed_posts_one_pinned_per_org_unique` sobre `(organization_id) WHERE is_pinned = true`.
+2. **`admin.feed_post_replies` [Nueva tabla]:**
+   - `id`: `uuid` PK (`uuidv7()`).
+   - `post_id`: `uuid` `NOT NULL` FK → `admin.feed_posts.id` (`ON DELETE CASCADE`).
+   - `organization_id`: `uuid` `NOT NULL` FK → `admin.organizations.id` (`ON DELETE CASCADE`).
+   - `author_client_id`: `uuid` `NOT NULL` FK → `admin.clients.id` (`ON DELETE RESTRICT`).
+   - `author_user_id`: `uuid` `NOT NULL` FK → `admin.users.id` (`ON DELETE RESTRICT`).
+   - `body`: `text` `NOT NULL` (texto + emojis Unicode, máx. 1500 caracteres).
+   - `...auditColumns()`.
+   - Índice `feed_post_replies_post_created_idx` sobre `(post_id, created_at)`.
+3. **`admin.community_platform_settings` [Nueva tabla singleton]:**
+   - `id`: `varchar(32)` PK default `'default'`.
+   - `feed_retention_days`: `integer` nullable default `90` (`NULL` = sin expiración; `>= 1` = días de vigencia).
+   - `last_retention_purge_at`: `timestamptz` nullable.
+   - `last_retention_purged_count`: `integer` `NOT NULL` default `0`.
+   - `updated_at`: `timestamptz` `NOT NULL` default `now()`.
+   - `updated_by_user_id`: `uuid` nullable FK → `admin.users.id` (`ON DELETE SET NULL`).
+   - Seed inicial `'default'` con `feed_retention_days = 90` en migración `0045_spec15_wall_rich_media_replies_pin_retention.sql`.
+4. **Flujo S3 + Cuota `storage_bytes` (`SPEC-03`):**
+   - Al cargar imagen (`POST /api/tenant/community/posts/media`): valida `JPEG`/`PNG`/`WebP` por magic bytes (máx. 5 MB), verifica cuota `storage_bytes` en la celda del inquilino (`withTenantCellTransaction`), sube a SeaweedFS bajo `tenants/${clientId}/community-posts/${uuid}.${ext}`, inserta en `admin.media_catalog` (`storagePoolId = "tenant:${clientId}"`), inserta `cell_client_media` e incrementa `cell_client_usage` (`dimension = 'storage_bytes'`).
+   - Al eliminar publicación (manual o por retención): borra el post (`feed_post_replies` y `feed_moderation_events` caen por `ON DELETE CASCADE`), decrementa `cell_client_usage.used_value` para `media_id` en la celda del autor y elimina el objeto en SeaweedFS + `admin.media_catalog` si quedó sin referencias.
+
 ---
 
 ## 3. Servicios de Dominio (`packages/domain/src/services/`)
 
 1. **`communities-governance.service.ts` (`DrizzleCommunitiesGovernanceRepository`):**
    - `getLeaderStatus(clientId)`, `requestLeaderAuthorization(...)`, `reviewLeaderAuthorization(...)` (para `/admin/communities`).
-   - `listOrganizationsOverview(clientId)` (mis comunidades lideradas, mis membresías, invitaciones pendientes, solicitudes enviadas y directorio público `visibility = 'request_to_join'`).
+   - `listOrganizationsOverview(clientId)` (mis comunidades lideradas con registro `invitations[]` y `targetClientName` normalizando `expired` al vencer, mis membresías, invitaciones pendientes vigentes del receptor, solicitudes enviadas y directorio público `visibility = 'request_to_join'`).
    - `createOrganization(...)` (verifica autorización de líder y cupo `maxOwnedCommunities`, genera `slug` e `inviteCode` únicos).
    - `updateOrganizationSettings(...)` (solo `originator`: nombre, descripción, categoría, visibilidad, `sharePolicy`, `requireShareApproval`, `moderationMode`, regenerar `inviteCode`).
-   - `inviteTenant(...)` (acepta correo electrónico o slug de comercio existente, genera token + notificación `SPEC-14`) y `joinByInviteCode(...)` (unirse con código o enlace).
+   - `inviteTenant(...)` (acepta correo electrónico o slug de comercio existente; expira invitaciones vencidas previas; si ya existe una invitación `pending` vigente `expiresAt > now` para la misma comunidad/destinatario mantiene la vigente con `reusedExisting: true` sin duplicar; si no existe, crea invitación + notificación `SPEC-14`). Índices únicos parciales SQL en `admin.organization_invitations` (`WHERE status = 'pending'`) en migración `0046`.
+   - `revokeInvitation(...)` (solo `originator`: marca `status = 'revoked'` en invitaciones pendientes) y `resendInvitationNotification(...)` (solo `originator`: valida vigencia/estado y reenvía notificación `community.invited` con `idempotencyKey` propia de reenvío).
    - `respondInvitation(...)`, `requestJoin(...)`, `decideJoinRequest(...)` (estrictamente solo `originator`), `promoteMemberToCoLeader(...)`, `acceptPromotion(...)`, `removeOrSuspendMember(...)`, `leaveOrganization(...)`.
 2. **`product-cloning.service.ts` (`DrizzleProductCloningRepository`):**
    - `listLeaderCandidateProducts(clientId, orgId)`: lista productos propios (`sourceShareId IS NULL`) del comercio con indicador de si ya están compartidos en `orgId` y si tienen cambios pendientes respecto al snapshot vigente (`hasPendingChanges`, `pendingChangedAttributes`).
@@ -150,10 +182,15 @@ export interface ProductSnapshot {
    - `moderateShare(...)`: aprueba/rechaza productos propuestos en modo colaborativo (`originator` o `co_leader`).
    - `getCommunityFeedCatalog(...)`: feed paginado, filtrable y ordenable (`SPEC-17`) con estado de adopción del comercio viewer (`alreadyAdopted`, `adoptionId`, `adoptedVersion`, `hasUpdateAvailable`), métricas de margen sugerido y vista previa del Kit Comercial AI.
    - `computeAdoptionDiff(adoptionId, clientId)`: calcula diff campo a campo entre `adoptedVersion` y `currentVersion` (con changelogs intermedios).
-   - `adoptProduct(...)`: valida `CANNOT_ADOPT_OWN_SHARE`, `PRODUCT_QUOTA_EXCEEDED` (contando componentes nuevos para combos), clona atómicamente en `pg-cell-XX` del miembro, copia medios compatibles en SeaweedFS respetando cuotas (`SPEC-03`), registra `product_adoptions` y `clone_sync_policies` (`autoSync = false` por defecto).
+   - `checkAdoptionEligibility(shareId, adopterClientId, includeMediaMode)` + `adoptProduct(...)`: valida `CANNOT_ADOPT_OWN_SHARE` y evalúa **todas** las dimensiones del plan (`products`, `storage_bytes`, `images_per_product`, `videos_per_product`, `audios_per_product`, `pdfs_per_product`) acorde al `includeMediaMode` elegido. Si supera algún límite, retorna fallo `422` con `violations[]` explícitos indicando exactamente qué variable impide incorporar el producto al catálogo sin crear registros parciales; si cumple, clona atómicamente en `pg-cell-XX`, copia medios bajo `tenants/{adopterClientId}/...` en SeaweedFS, registra `product_adoptions` y `clone_sync_policies` (`autoSync = false`).
    - `syncAdoptedProduct(...)`, `updateSyncPolicies(...)`, `unlinkAdoption(...)` (desvincula conservando el producto y su historia en catálogo).
 3. **`community-feed.service.ts` (`DrizzleCommunityFeedRepository`):**
-   - Muro de novedades (`createPost`, `moderatePost`, `listFeedPosts` incluyendo `pending_review` visibles para moderadores) y gestión de `client_sharing_profiles` (`getSharingProfile`, `upsertSharingProfile`).
+   - Muro de novedades (`createPost` con `bodyFormat = 'html' | 'plain'`, sanitización estricta `sanitizeCommunityPostHtml` con auto-enlazado de URLs crudas, `resolveSafeVideoEmbedUrl`, `mediaId`, `updatePost` exclusivo del autor con ajuste de imagen/cuota y re-validación de moderación `pre`, `moderatePost`, `listFeedPosts` / `getTenantWallPosts` ordenando `is_pinned DESC, COALESCE(published_at, created_at) DESC`).
+   - Medios del muro (`uploadWallPostImage`, `releaseWallMediaIfUnattached`, `getAuthorizedWallMediaBinary`) conectados a `S3StorageService` y cuota `storage_bytes` en celda del autor.
+   - Fijación y borrado (`pinPost` / `unpinPost` exclusivos para moderadores reemplanzando atómicamente cualquier pin previo en la organización; `deletePost` por el autor liberando respuestas y cuota S3).
+   - Respuestas (`createReply` para `tenant_owner` y `tenant_agent` miembros activos, con soporte Unicode/emojis).
+   - Retención SaaS (`getRetentionSettings`, `updateRetentionSettings`, `purgeExpiredPosts` con liberación idempotente de medios y `storage_bytes`).
+   - Gestión de `client_sharing_profiles` (`getSharingProfile`, `upsertSharingProfile`).
 4. **`community-leadership-metrics.service.ts` (`DrizzleLeadershipMetricsRepository` + `CellDatabasePoolManager`):**
    - `getCommunityAttributedMetrics(orgId, requestingClientId, userRole, periodType)`: calcula exclusivamente adopciones activas, clones desactualizados vs al día, unidades vendidas y revenue en `cell_order_items` + `cell_orders` de las celdas adoptantes filtrando por `product_id IN cloneProductIdsOfOrg`.
 5. **Integración con Planes (`admin-dashboard.service.ts` + `PlanModalDialog.tsx`):**
@@ -169,26 +206,29 @@ export interface ProductSnapshot {
 - `GET / POST /api/tenant/community/organizations`: Listar mis comunidades + directorio público (`request_to_join`) / Crear comunidad (si líder autorizado).
 - `PATCH /api/tenant/community/organizations/[orgId]`: Editar configuración de comunidad (`originator`).
 - `POST /api/tenant/community/organizations/join-by-code`: Unirse con `inviteCode`.
-- `POST /api/tenant/community/organizations/[orgId]/invite`: Invitar comercio por email o slug (opcionalmente como `member` o `co_leader`).
+- `POST /api/tenant/community/organizations/[orgId]/invite`: Invitar comercio por email o slug (opcionalmente como `member` o `co_leader`), manteniendo vigente cualquier invitación pendiente no caducada.
+- `POST /api/tenant/community/invitations/[id]/resend`: Reenviar notificación (`community.invited`) de una invitación pendiente vigente (`originator`).
+- `DELETE /api/tenant/community/invitations/[id]`: Cancelar/revocar (`revoked`) una invitación pendiente (`originator`).
 - `POST /api/tenant/community/organizations/[orgId]/request-join`: Solicitar ingreso desde el directorio.
 - `POST /api/tenant/community/invitations/[id]/respond`: Aceptar / rechazar invitación.
 - `POST /api/tenant/community/requests/[id]/review`: Aprobar / rechazar solicitud de ingreso (`originator`).
 - `POST /api/tenant/community/organizations/[orgId]/members/[clientId]/promote`: Promover a `co_leader` (`originator`) y `POST /api/tenant/community/promotions/[id]/respond` para aceptación del promovido.
 - `POST /api/tenant/community/organizations/[orgId]/leave`: Desvinculación voluntaria conservando clones.
 - `GET / PUT /api/tenant/community/sharing-profile`: Consultar y actualizar perfil de privacidad del comercio.
-- `GET / POST /api/tenant/community/posts` y `POST /api/tenant/community/posts/[id]/moderate`: Muro de novedades y moderación.
+- `GET / POST /api/tenant/community/posts`, `PATCH / DELETE /api/tenant/community/posts/[id]`, `POST /api/tenant/community/posts/[id]/moderate`, `POST / DELETE /api/tenant/community/posts/[id]/pin` y `POST /api/tenant/community/posts/[id]/replies`: Muro de novedades enriquecido, edición por autor, fijación única, eliminación y respuestas con emojis.
+- `POST /api/tenant/community/posts/media`, `DELETE /api/tenant/community/posts/media/[mediaId]` y `GET /api/tenant/community/posts/media/[mediaId]`: Carga autenticada con cuota `storage_bytes`, limpieza si se descarta borrador y entrega segura desde SeaweedFS a miembros activos de la comunidad.
 - `GET /api/tenant/community/feed`: Catálogo compartido paginado, filtrable y ordenable (`SPEC-17`).
 - `GET / POST /api/tenant/community/shares`: Candidatos propios + historial publicado / Publicar producto simple o combo.
 - `POST /api/tenant/community/shares/[shareId]/version` y `POST .../moderate`: Publicar nueva versión `vN+1` / Moderar share colaborativo.
-- `POST /api/tenant/community/shares/[shareId]/adopt`: Clonar producto simple o combo hacia la celda del miembro.
+- `GET / POST /api/tenant/community/shares/[shareId]/adopt`: Pre-validar elegibilidad contra límites del plan del adoptante (`products`, `storage_bytes`, multimedia por producto) / Clonar producto simple o combo hacia la celda del miembro devolviendo `422` con detalle explícito por variable ante cualquier exceso de cupo.
 - `GET /api/tenant/community/adoptions`: Listado paginado de clones del comercio con indicadores de actualización.
 - `GET /api/tenant/community/adoptions/[adoptionId]/diff`: Diff detallado `adoptedVersion → currentVersion`.
 - `POST /api/tenant/community/adoptions/[adoptionId]/sync`, `PATCH .../policies`, `DELETE .../link`: Sincronizar atributos seleccionados, actualizar políticas auto-sync o desvincular.
 - `GET /api/tenant/community/leadership-metrics`: Métricas con atribución estricta para `originator` / `co_leader`.
 
 ### 4.2 Consola Plataforma (`/api/admin/communities/**`)
-- `GET /api/admin/communities`: Solicitudes de líder pendientes/históricas, listado de comercios con cupo de líder y directorio completo de comunidades SaaS.
-- `POST /api/admin/communities`: Aprobar/rechazar solicitud, otorgar/modificar/revocar autorización directa de líder a un `clientId`, o suspender/reactivar una comunidad.
+- `GET /api/admin/communities`: Solicitudes de líder pendientes/históricas, listado de comercios con cupo de líder, directorio completo de comunidades SaaS y configuración vigente de retención (`feedRetentionDays`, última purga).
+- `POST /api/admin/communities`: Aprobar/rechazar solicitud, otorgar/modificar/revocar autorización directa de líder a un `clientId`, suspender/reactivar una comunidad, actualizar `feedRetentionDays` (`update_retention_settings`) o disparar la purga de publicaciones expiradas (`run_retention_purge`).
 
 ---
 
@@ -198,8 +238,8 @@ export interface ProductSnapshot {
   - Contenedor raíz `w-full space-y-6 p-4 md:px-8 md:py-6`, header canónico (`--dsn-accent` y `--dsn-surface`), 100% i18n `es`/`en`, Title Case sin `uppercase`, Mobile First sin códigos de spec visibles:
   1. **Catálogo Compartido (Explorar y Clonar):** Filtros por comunidad, categoría, búsqueda, ordenamiento; tarjetas/tabla con miniatura, badge «Ya Clonado» / «Combo», costo mayorista, precio sugerido, stock referencial, vista previa del **Kit Comercial AI** (Prompt Maestro + atributos + multimedia + componentes) y **Modal de Clonación Rápida** con simulador de margen en tiempo real, stock inicial y selector de medios compatibles con su plan.
   2. **Mis Productos Clonados:** Tabla estándar con estado de versión (`Sincronizado v1`, `Actualización Disponible v2`, `Desvinculado`), botón **«Revisar Cambios»** (abre modal de **Diff Visual campo a campo** + changelog para aplicar selectivamente sin riesgo sobre precio/stock), configuración de auto-sync por atributo y desvinculación vía `ConfirmationModal`.
-  3. **Muro De Novedades:** Feed colaborativo de lanzamientos/tips por comunidad, cola de moderación visible para `originator` y `co_leader`, y panel de **Privacidad En Comunidad**.
-  4. **Mis Comunidades Y Directorio:** Comunidades activas, invitación rápida por correo/slug y botón de copiar enlace/código de invitación, directorio descubrible para solicitar ingreso, gestión de miembros y promociones a co-líder.
+  3. **Muro De Novedades:** Compositor visual WYSIWYG limpio (negrita, cursiva, subrayado, título, listas, alineaciones izq/centro/der, enlaces con texto opcional o URL cruda auto-enlazada preservando la selección, video YouTube/Vimeo, «Mejorar con AI» y carga de 1 imagen destacada en contenedor proporcionado `object-contain` con visor lightbox), badge y orden prioritario para publicación fijada (con acción fijar/desfijar para `originator`/`co_leader`), botones de editar y eliminar publicación (`ConfirmationModal`) para el autor, hilo de respuestas con texto y selector de emojis, cola de moderación visible para `originator` y `co_leader`, y panel de **Privacidad En Comunidad**.
+  4. **Mis Comunidades Y Directorio:** Comunidades activas, invitación rápida por correo/slug y botón de copiar enlace/código de invitación, registro de **Invitaciones Enviadas** del líder (`originator`) con estado (`Pendiente`/`Aceptada`/`Rechazada`/`Cancelada`/`Expirada`), fechas y acciones para **Reenviar Notificación** o **Cancelar Invitación** (`ConfirmationModal`), directorio descubrible para solicitar ingreso, gestión de miembros y promociones a co-líder.
   5. **Liderazgo Y Radar De Impacto:** Estado de autorización de Líder (o CTA «Solicitar Crear Comunidad»), creación/configuración de comunidad, selector de productos propios con detector **«Cambios Pendientes Por Publicar»** y tablero de métricas atribuidas (adopciones activas, unidades vendidas, revenue atribuido, top productos y top adoptantes).
 - **`/workspace/products`:** Badge sutil «Importado De Comunidad» (y aviso si hay nueva versión disponible en `/workspace/community`) + deshabilitación informativa de re-compartición en cadena.
-- **`/admin/communities` y `/admin/plans`:** Gestión de solicitudes/cuotas de Líder y toggle «Comunidad De Comercios» en el editor de planes.
+- **`/admin/communities` y `/admin/plans`:** Gestión de solicitudes/cuotas de Líder, configuración de retención de publicaciones del muro + botón de purga manual, y toggle «Comunidad De Comercios» en el editor de planes.

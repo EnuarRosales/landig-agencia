@@ -1,28 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Sun, Moon } from "lucide-react";
+import { Button } from "@mocter/ui";
+
+const emptySubscribe = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 export function ThemeToggle() {
   const t = useTranslations("nav");
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(emptySubscribe, getClientSnapshot, getServerSnapshot);
 
   const isDark = resolvedTheme === "dark";
 
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
+      size="icon"
       onClick={() => setTheme(isDark ? "light" : "dark")}
       aria-label={t("themeToggle")}
       title={t("themeToggle")}
-      className="group relative grid h-10 w-10 cursor-pointer place-items-center rounded-full border border-stroke bg-surface/90 shadow-sm transition-all duration-300 hover:scale-105 hover:border-a1 hover:shadow-[0_0_16px_rgba(47,107,255,0.3)] active:scale-95"
+      className="group relative h-10 w-10 min-h-[40px] rounded-full border-stroke bg-surface/90 shadow-sm hover:scale-105 hover:border-a1 hover:shadow-[0_0_16px_rgba(47,107,255,0.3)]"
     >
       {!mounted ? (
         <span className="h-5 w-5 opacity-0" aria-hidden="true" />
@@ -31,6 +34,6 @@ export function ThemeToggle() {
       ) : (
         <Moon className="h-5 w-5 text-txt transition-transform duration-300 group-hover:-rotate-12" />
       )}
-    </button>
+    </Button>
   );
 }

@@ -16,7 +16,16 @@ import {
   Search,
 } from "lucide-react";
 import type { AdminBrandingSettingsDto } from "@mocter/domain";
-import { ConfirmationModal } from "@/components/confirmation-modal";
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Card,
+  ConfirmationModal,
+  Input,
+  Label,
+} from "@mocter/ui";
 
 interface AdminBrandingViewProps {
   initialData: AdminBrandingSettingsDto;
@@ -196,9 +205,7 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
             <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
               Identidad De Marca Y Marca Blanca
             </h1>
-            <span className="rounded bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] px-2 py-0.5 text-xs font-semibold">
-              Gobernanza Corporativa
-            </span>
+            <Badge variant="accent">Gobernanza Corporativa</Badge>
           </div>
           <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-1">
             Personalice la identidad institucional de la SaaS y supervise la configuración de marca blanca de los inquilinos.
@@ -206,50 +213,39 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
         </div>
 
         {/* Pestañas de Navegación */}
-        <div className="inline-flex rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-1">
-          <button
+        <div className="inline-flex rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] p-1 gap-1">
+          <Button
             type="button"
+            variant={activeTab === "platform" ? "ai" : "ghost"}
+            size="sm"
             onClick={() => setActiveTab("platform")}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
-              activeTab === "platform"
-                ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-                : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
+            className="text-xs"
           >
             <Paintbrush className="h-3.5 w-3.5" />
             <span>Marca De La Plataforma</span>
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant={activeTab === "tenants" ? "ai" : "ghost"}
+            size="sm"
             onClick={() => setActiveTab("tenants")}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
-              activeTab === "tenants"
-                ? "bg-[var(--dsn-accent)]/15 text-[var(--dsn-accent)] border border-[var(--dsn-accent)]/30"
-                : "text-[var(--dsn-text-secondary)] hover:text-[var(--dsn-text)]"
-            }`}
+            className="text-xs"
           >
             <Store className="h-3.5 w-3.5" />
             <span>Inquilinos Y Comercios ({tenants.length})</span>
-          </button>
+          </Button>
         </div>
       </div>
 
       {statusMessage && (
-        <div
-          role="alert"
-          className={`flex items-center gap-3 rounded-lg border p-4 text-sm ${
-            statusMessage.type === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-              : "border-red-500/30 bg-red-500/10 text-red-400"
-          }`}
-        >
+        <Alert variant={statusMessage.type === "success" ? "success" : "destructive"} role="alert">
           {statusMessage.type === "success" ? (
-            <CheckCircle2 className="h-5 w-5 shrink-0" />
+            <CheckCircle2 className="h-5 w-5" />
           ) : (
-            <AlertTriangle className="h-5 w-5 shrink-0" />
+            <AlertTriangle className="h-5 w-5" />
           )}
-          <span>{statusMessage.text}</span>
-        </div>
+          <AlertDescription className="text-sm">{statusMessage.text}</AlertDescription>
+        </Alert>
       )}
 
       {/* ─────────────────────────────────────────────────────────────
@@ -259,220 +255,221 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Formulario de Configuración */}
           <div className="lg:col-span-7">
-            <form onSubmit={handleSavePlatform} className="space-y-5 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 md:p-6 shadow-xs">
-              <div className="flex items-center gap-2 border-b border-[var(--dsn-border)] pb-3">
-                <Sliders className="h-4 w-4 text-[var(--dsn-accent)]" />
-                <h2 className="text-sm font-bold text-[var(--dsn-text)]">
-                  Parámetros De Identidad Institucional
-                </h2>
-              </div>
-
-              {/* Atributos Generales */}
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="brandName" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
-                    Nombre De Marca Institucional
-                  </label>
-                  <input
-                    id="brandName"
-                    type="text"
-                    required
-                    value={brandName}
-                    onChange={(e) => setBrandName(e.target.value)}
-                    className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                    placeholder="Ej. Mocter"
-                  />
+            <Card asChild>
+              <form onSubmit={handleSavePlatform} className="space-y-5 p-5 md:p-6">
+                <div className="flex items-center gap-2 border-b border-[var(--dsn-border)] pb-3">
+                  <Sliders className="h-4 w-4 text-[var(--dsn-accent)]" />
+                  <h2 className="text-sm font-bold text-[var(--dsn-text)]">
+                    Parámetros De Identidad Institucional
+                  </h2>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Atributos Generales */}
+                <div className="space-y-4">
                   <div>
-                    <label htmlFor="logoUrl" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
-                      URL Del Logotipo Oficial
-                    </label>
-                    <input
-                      id="logoUrl"
-                      type="url"
-                      value={logoUrl}
-                      onChange={(e) => setLogoUrl(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                      placeholder="https://ejemplo.com/logo.png"
-                    />
-                    <span className="text-[10px] text-[var(--dsn-text-secondary)]">Dejar en blanco para usar el imagotipo vectorial nativo.</span>
-                  </div>
-
-                  <div>
-                    <label htmlFor="faviconUrl" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
-                      URL Del Favicon
-                    </label>
-                    <input
-                      id="faviconUrl"
-                      type="url"
-                      value={faviconUrl}
-                      onChange={(e) => setFaviconUrl(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                      placeholder="https://ejemplo.com/favicon.ico"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="customDomain" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
-                      Dominio Principal De Plataforma
-                    </label>
-                    <div className="relative">
-                      <Globe className="absolute left-3 top-2.5 h-4 w-4 text-[var(--dsn-text-secondary)]" />
-                      <input
-                        id="customDomain"
-                        type="text"
-                        value={customDomain}
-                        onChange={(e) => setCustomDomain(e.target.value)}
-                        className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] pl-9 pr-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                        placeholder="mocter.co"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="customFont" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
-                      Tipografía Y Familias Tipográficas
-                    </label>
-                    <input
-                      id="customFont"
+                    <Label htmlFor="brandName" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                      Nombre De Marca Institucional
+                    </Label>
+                    <Input
+                      id="brandName"
                       type="text"
-                      value={customFont}
-                      onChange={(e) => setCustomFont(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                      placeholder="Chakra Petch, Inter, sans-serif"
+                      required
+                      value={brandName}
+                      onChange={(e) => setBrandName(e.target.value)}
+                      className="text-sm"
+                      placeholder="Ej. Mocter"
                     />
                   </div>
-                </div>
-              </div>
 
-              {/* Paleta de Colores */}
-              <div className="border-t border-[var(--dsn-border)] pt-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold tracking-wider text-[var(--dsn-text-secondary)]">
-                    Paleta de Colores Corporativa
-                  </h3>
-                  <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-semibold border ${
-                    isAccessible
-                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                      : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                  }`}>
-                    {isAccessible ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
-                    <span>Ratio Contraste: {contrastRatio}:1 {isAccessible ? "(Accesible)" : "(Débil)"}</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="primaryColor" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
-                      Color Primario De Marca
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        id="primaryColorPicker"
-                        value={primaryColor}
-                        onChange={(e) => setPrimaryColor(e.target.value)}
-                        className="h-9 w-10 cursor-pointer rounded border border-[var(--dsn-border)] bg-transparent p-0.5"
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="logoUrl" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                        URL Del Logotipo Oficial
+                      </Label>
+                      <Input
+                        id="logoUrl"
+                        type="url"
+                        value={logoUrl}
+                        onChange={(e) => setLogoUrl(e.target.value)}
+                        className="text-sm"
+                        placeholder="https://ejemplo.com/logo.png"
                       />
-                      <input
-                        id="primaryColor"
-                        type="text"
-                        value={primaryColor}
-                        onChange={(e) => setPrimaryColor(e.target.value)}
-                        className="flex-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                      <span className="text-[10px] text-[var(--dsn-text-secondary)]">Dejar en blanco para usar el imagotipo vectorial nativo.</span>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="faviconUrl" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                        URL Del Favicon
+                      </Label>
+                      <Input
+                        id="faviconUrl"
+                        type="url"
+                        value={faviconUrl}
+                        onChange={(e) => setFaviconUrl(e.target.value)}
+                        className="text-sm"
+                        placeholder="https://ejemplo.com/favicon.ico"
                       />
                     </div>
                   </div>
 
-                  <div>
-                    <label htmlFor="primaryForeground" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
-                      Color De Texto Sobre Primario
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        id="primaryForegroundPicker"
-                        value={primaryForeground}
-                        onChange={(e) => setPrimaryForeground(e.target.value)}
-                        className="h-9 w-10 cursor-pointer rounded border border-[var(--dsn-border)] bg-transparent p-0.5"
-                      />
-                      <input
-                        id="primaryForeground"
-                        type="text"
-                        value={primaryForeground}
-                        onChange={(e) => setPrimaryForeground(e.target.value)}
-                        className="flex-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                      />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="customDomain" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                        Dominio Principal De Plataforma
+                      </Label>
+                      <div className="relative">
+                        <Globe className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--dsn-text-secondary)]" />
+                        <Input
+                          id="customDomain"
+                          type="text"
+                          value={customDomain}
+                          onChange={(e) => setCustomDomain(e.target.value)}
+                          className="pl-9 text-sm"
+                          placeholder="mocter.co"
+                        />
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <label htmlFor="accentColor" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
-                      Color De Acento Complementario
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        id="accentColorPicker"
-                        value={accentColor}
-                        onChange={(e) => setAccentColor(e.target.value)}
-                        className="h-9 w-10 cursor-pointer rounded border border-[var(--dsn-border)] bg-transparent p-0.5"
-                      />
-                      <input
-                        id="accentColor"
+                    <div>
+                      <Label htmlFor="customFont" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                        Tipografía Y Familias Tipográficas
+                      </Label>
+                      <Input
+                        id="customFont"
                         type="text"
-                        value={accentColor}
-                        onChange={(e) => setAccentColor(e.target.value)}
-                        className="flex-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="accentForeground" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
-                      Color De Texto Sobre Acento
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        id="accentForegroundPicker"
-                        value={accentForeground}
-                        onChange={(e) => setAccentForeground(e.target.value)}
-                        className="h-9 w-10 cursor-pointer rounded border border-[var(--dsn-border)] bg-transparent p-0.5"
-                      />
-                      <input
-                        id="accentForeground"
-                        type="text"
-                        value={accentForeground}
-                        onChange={(e) => setAccentForeground(e.target.value)}
-                        className="flex-1 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3 py-2 text-sm font-mono text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                        value={customFont}
+                        onChange={(e) => setCustomFont(e.target.value)}
+                        className="text-sm"
+                        placeholder="Chakra Petch, Inter, sans-serif"
                       />
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Botón de Guardado */}
-              <div className="border-t border-[var(--dsn-border)] pt-4 flex items-center justify-end">
-                <button
-                  type="submit"
-                  disabled={saving || !isAccessible}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-5 py-2.5 text-sm font-semibold text-white shadow-xs hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
-                >
-                  <Save className="h-4 w-4" />
-                  <span>{saving ? "Guardando Identidad..." : "Guardar Identidad Institucional"}</span>
-                </button>
-              </div>
-            </form>
+                {/* Paleta de Colores */}
+                <div className="border-t border-[var(--dsn-border)] pt-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold tracking-wider text-[var(--dsn-text-secondary)]">
+                      Paleta de Colores Corporativa
+                    </h3>
+                    <Badge variant={isAccessible ? "success" : "warning"} className="gap-1.5 text-[11px]">
+                      {isAccessible ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                      <span>Ratio Contraste: {contrastRatio}:1 {isAccessible ? "(Accesible)" : "(Débil)"}</span>
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="primaryColor" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                        Color Primario De Marca
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          id="primaryColorPicker"
+                          value={primaryColor}
+                          onChange={(e) => setPrimaryColor(e.target.value)}
+                          className="h-9 w-10 cursor-pointer rounded border border-[var(--dsn-border)] bg-transparent p-0.5"
+                        />
+                        <Input
+                          id="primaryColor"
+                          type="text"
+                          value={primaryColor}
+                          onChange={(e) => setPrimaryColor(e.target.value)}
+                          className="flex-1 text-sm font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="primaryForeground" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                        Color De Texto Sobre Primario
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          id="primaryForegroundPicker"
+                          value={primaryForeground}
+                          onChange={(e) => setPrimaryForeground(e.target.value)}
+                          className="h-9 w-10 cursor-pointer rounded border border-[var(--dsn-border)] bg-transparent p-0.5"
+                        />
+                        <Input
+                          id="primaryForeground"
+                          type="text"
+                          value={primaryForeground}
+                          onChange={(e) => setPrimaryForeground(e.target.value)}
+                          className="flex-1 text-sm font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="accentColor" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                        Color De Acento Complementario
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          id="accentColorPicker"
+                          value={accentColor}
+                          onChange={(e) => setAccentColor(e.target.value)}
+                          className="h-9 w-10 cursor-pointer rounded border border-[var(--dsn-border)] bg-transparent p-0.5"
+                        />
+                        <Input
+                          id="accentColor"
+                          type="text"
+                          value={accentColor}
+                          onChange={(e) => setAccentColor(e.target.value)}
+                          className="flex-1 text-sm font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="accentForeground" className="block text-xs font-semibold text-[var(--dsn-text-secondary)] mb-1">
+                        Color De Texto Sobre Acento
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          id="accentForegroundPicker"
+                          value={accentForeground}
+                          onChange={(e) => setAccentForeground(e.target.value)}
+                          className="h-9 w-10 cursor-pointer rounded border border-[var(--dsn-border)] bg-transparent p-0.5"
+                        />
+                        <Input
+                          id="accentForeground"
+                          type="text"
+                          value={accentForeground}
+                          onChange={(e) => setAccentForeground(e.target.value)}
+                          className="flex-1 text-sm font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Botón de Guardado */}
+                <div className="border-t border-[var(--dsn-border)] pt-4 flex items-center justify-end">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={saving || !isAccessible}
+                    loading={saving}
+                    loadingText="Guardando Identidad..."
+                    className="min-h-[44px] text-sm"
+                  >
+                    <Save className="h-4 w-4" />
+                    <span>Guardar Identidad Institucional</span>
+                  </Button>
+                </div>
+              </form>
+            </Card>
           </div>
 
           {/* Previsualización en Vivo */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-xs">
+            <Card className="p-5">
               <div className="flex items-center justify-between border-b border-[var(--dsn-border)] pb-3 mb-4">
                 <div className="flex items-center gap-2">
                   <Eye className="h-4 w-4 text-[var(--dsn-accent)]" />
@@ -515,19 +512,22 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
                 <div className="space-y-2">
                   <span className="text-[11px] font-semibold text-[var(--dsn-text-secondary)]">Componentes De Acción</span>
                   <div className="flex flex-wrap gap-2">
-                    <button
+                    <Button
                       type="button"
-                      className="px-3 py-1.5 rounded-md text-xs font-semibold shadow-xs transition-opacity hover:opacity-90"
+                      size="sm"
+                      className="h-auto min-h-0 px-3 py-1.5 text-xs"
                       style={{ backgroundColor: primaryColor, color: primaryForeground }}
                     >
                       Botón Primario
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
-                      className="px-3 py-1.5 rounded-md text-xs font-semibold border border-[var(--dsn-border)] bg-[var(--dsn-surface)] text-[var(--dsn-text)]"
+                      variant="secondary"
+                      size="sm"
+                      className="h-auto min-h-0 px-3 py-1.5 text-xs"
                     >
                       Botón Secundario
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
@@ -556,10 +556,10 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
                   <span className="font-mono text-[var(--dsn-accent)]">https://{customDomain}</span>
                 </div>
               </div>
-            </div>
+            </Card>
 
             {/* Tarjeta Informativa de Estándares Accesibles */}
-            <div className="rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-4 text-xs text-[var(--dsn-text-secondary)] space-y-2">
+            <Card className="p-4 text-xs text-[var(--dsn-text-secondary)] space-y-2">
               <div className="flex items-center gap-1.5 font-bold text-[var(--dsn-text)]">
                 <Sparkles className="h-4 w-4 text-amber-400" />
                 <span>Norma De Accesibilidad WCAG 2.2 AA</span>
@@ -567,7 +567,7 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
               <p>
                 La plataforma exige una relación de contraste mínima de <strong>4.5:1</strong> entre el texto y el color de fondo para garantizar la legibilidad universal en todos los dispositivos y modos de color.
               </p>
-            </div>
+            </Card>
           </div>
         </div>
       )}
@@ -576,7 +576,7 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
           2. PESTAÑA: GOBERNANZA DE MARCA BLANCA DE INQUILINOS
          ───────────────────────────────────────────────────────────── */}
       {activeTab === "tenants" && (
-        <div className="space-y-4 rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-5 shadow-xs">
+        <Card className="space-y-4 p-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[var(--dsn-border)] pb-4">
             <div>
               <h2 className="text-sm font-bold text-[var(--dsn-text)]">
@@ -588,13 +588,13 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
             </div>
 
             <div className="relative min-w-[240px]">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[var(--dsn-text-secondary)]" />
-              <input
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--dsn-text-secondary)]" />
+              <Input
                 type="text"
                 value={searchTenant}
                 onChange={(e) => setSearchTenant(e.target.value)}
                 placeholder="Buscar por nombre o slug..."
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] pl-9 pr-3 py-1.5 text-xs text-[var(--dsn-text)] focus:border-[var(--dsn-accent)] focus:outline-none"
+                className="pl-9 text-xs"
               />
             </div>
           </div>
@@ -644,14 +644,14 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
                       </td>
                       <td className="px-4 py-3">
                         {tenant.hasCustomBranding ? (
-                          <span className="inline-flex items-center gap-1 rounded bg-purple-500/10 text-purple-400 px-2 py-0.5 text-[10px] font-semibold border border-purple-500/20">
+                          <Badge variant="purple" className="gap-1 text-[10px]">
                             <Sparkles className="h-3 w-3" />
                             <span>Marca Personalizada</span>
-                          </span>
+                          </Badge>
                         ) : (
-                          <span className="inline-flex items-center rounded bg-zinc-500/10 text-zinc-400 px-2 py-0.5 text-[10px] font-semibold border border-zinc-500/20">
+                          <Badge variant="outline" className="text-[10px]">
                             Estándar Mocter
-                          </span>
+                          </Badge>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -677,14 +677,16 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {tenant.hasCustomBranding ? (
-                          <button
+                          <Button
                             type="button"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => handleOpenResetModal(tenant)}
-                            className="inline-flex items-center gap-1 rounded-md border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-2.5 py-1 text-[11px] font-semibold text-amber-400 hover:bg-amber-500/10 transition-colors"
+                            className="h-auto min-h-0 px-2.5 py-1 text-[11px] text-amber-400 hover:bg-amber-500/10"
                           >
                             <RotateCcw className="h-3 w-3" />
                             <span>Restaurar Valores Predeterminados</span>
-                          </button>
+                          </Button>
                         ) : (
                           <span className="text-[10px] text-zinc-500">Sin modificaciones</span>
                         )}
@@ -695,7 +697,7 @@ export function AdminBrandingView({ initialData }: AdminBrandingViewProps) {
               </table>
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {/* Modal de Confirmación de Restauración de Marca (Regla 4.17) */}

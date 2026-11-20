@@ -1,6 +1,22 @@
 "use client";
 
 import React, { useState } from "react";
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  ConfirmationModal,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from "@mocter/ui";
 import { PhoneE164Input } from "@/components/phone-e164-input";
 
 export interface CrmContactItem {
@@ -333,23 +349,23 @@ export function ContactsDashboard({
       {/* Toolbar & Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1 max-w-md">
-          <input
+          <Input
             type="text"
             placeholder={i18n.searchPlaceholder}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-md border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="min-h-[38px] rounded-md border-zinc-800 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 focus:border-emerald-500"
           />
         </div>
         <div className="flex items-center gap-2">
-          <label htmlFor="stage-filter-select" className="text-xs text-zinc-400 font-medium">
+          <Label htmlFor="stage-filter-select" className="text-xs font-medium text-zinc-400">
             {i18n.labelStage}:
-          </label>
-          <select
+          </Label>
+          <Select
             id="stage-filter-select"
             value={selectedStage}
             onChange={(e) => setSelectedStage(e.target.value)}
-            className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
+            className="min-h-[38px] w-auto rounded-md border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500"
           >
             <option value="all">{i18n.filterAllStages}</option>
             <option value="new">{i18n.stageNew}</option>
@@ -357,7 +373,7 @@ export function ContactsDashboard({
             <option value="qualified">{i18n.stageQualified}</option>
             <option value="customer">{i18n.stageCustomer}</option>
             <option value="discarded">{i18n.stageDiscarded}</option>
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -464,179 +480,195 @@ export function ContactsDashboard({
       </div>
 
       {/* Modal: Alta Manual (Title Case en Labels) */}
-      {isNewModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
-            <h2 className="text-lg font-bold text-white font-mono">{i18n.modalNewTitle}</h2>
-            {formError && (
-              <p className="mt-2 text-xs text-red-400 bg-red-950/50 p-2 rounded border border-red-900/50 font-mono">
-                {formError}
-              </p>
-            )}
-            <form onSubmit={handleCreateSubmit} className="mt-4 space-y-3 font-mono text-sm">
+      <Dialog open={isNewModalOpen} onOpenChange={setIsNewModalOpen}>
+        <DialogContent className="max-w-lg rounded-xl border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-mono text-lg font-bold text-white">
+              {i18n.modalNewTitle}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario para registrar manualmente un prospecto o contacto.
+            </DialogDescription>
+          </DialogHeader>
+          {formError && (
+            <Alert variant="destructive" className="mt-2 font-mono text-xs">
+              <AlertDescription className="text-inherit">{formError}</AlertDescription>
+            </Alert>
+          )}
+          <form onSubmit={handleCreateSubmit} className="mt-4 space-y-3 font-mono text-sm">
+            <div>
+              <Label className="block text-xs font-medium text-zinc-300">
+                {i18n.labelFullName} *
+              </Label>
+              <Input
+                type="text"
+                required
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <PhoneE164Input
+                id="crm-create-phone"
+                name="phoneMobile"
+                label={i18n.labelPhoneMobile || defaultTranslations.labelPhoneMobile}
+                required={false}
+                defaultCountryCode="CO"
+                initialValue={newPhone}
+                onValidChange={(val) => setNewPhone(val)}
+              />
               <div>
-                <label className="block text-xs font-medium text-zinc-300">
-                  {i18n.labelFullName} *
-                </label>
-                <input
+                <Label className="block text-xs font-medium text-zinc-300">
+                  {i18n.labelEmail}
+                </Label>
+                <Input
+                  type="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="block text-xs font-medium text-zinc-300">
+                  {i18n.labelDocumentType}
+                </Label>
+                <Select
+                  value={newDocType}
+                  onChange={(e) =>
+                    setNewDocType(
+                      e.target.value as "CC" | "NIT" | "CE" | "PASSPORT" | "other",
+                    )
+                  }
+                  className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500"
+                >
+                  <option value="CC">Cédula De Ciudadanía</option>
+                  <option value="NIT">NIT</option>
+                  <option value="CE">Cédula De Extranjería</option>
+                  <option value="PASSPORT">Pasaporte</option>
+                  <option value="other">Otro</option>
+                </Select>
+              </div>
+              <div>
+                <Label className="block text-xs font-medium text-zinc-300">
+                  {i18n.labelDocumentNumber}
+                </Label>
+                <Input
                   type="text"
-                  required
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                  value={newDocNumber}
+                  onChange={(e) => setNewDocNumber(e.target.value)}
+                  className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500"
                 />
               </div>
+            </div>
 
-              <div className="space-y-3">
-                <PhoneE164Input
-                  id="crm-create-phone"
-                  name="phoneMobile"
-                  label={i18n.labelPhoneMobile || defaultTranslations.labelPhoneMobile}
-                  required={false}
-                  defaultCountryCode="CO"
-                  initialValue={newPhone}
-                  onValidChange={(val) => setNewPhone(val)}
-                />
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300">
-                    {i18n.labelEmail}
-                  </label>
-                  <input
-                    type="email"
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300">
-                    {i18n.labelDocumentType}
-                  </label>
-                  <select
-                    value={newDocType}
-                    onChange={(e) =>
-                      setNewDocType(
-                        e.target.value as "CC" | "NIT" | "CE" | "PASSPORT" | "other",
-                      )
-                    }
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
-                  >
-                    <option value="CC">Cédula De Ciudadanía</option>
-                    <option value="NIT">NIT</option>
-                    <option value="CE">Cédula De Extranjería</option>
-                    <option value="PASSPORT">Pasaporte</option>
-                    <option value="other">Otro</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300">
-                    {i18n.labelDocumentNumber}
-                  </label>
-                  <input
-                    type="text"
-                    value={newDocNumber}
-                    onChange={(e) => setNewDocNumber(e.target.value)}
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300">
-                    {i18n.labelStage}
-                  </label>
-                  <select
-                    value={newStage}
-                    onChange={(e) =>
-                      setNewStage(
-                        e.target.value as
-                          | "new"
-                          | "in_conversation"
-                          | "qualified"
-                          | "customer"
-                          | "discarded",
-                      )
-                    }
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
-                  >
-                    <option value="new">{i18n.stageNew}</option>
-                    <option value="in_conversation">{i18n.stageInConversation}</option>
-                    <option value="qualified">{i18n.stageQualified}</option>
-                    <option value="customer">{i18n.stageCustomer}</option>
-                    <option value="discarded">{i18n.stageDiscarded}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300">
-                    {i18n.labelSource}
-                  </label>
-                  <select
-                    value={newSource}
-                    onChange={(e) => setNewSource(e.target.value)}
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
-                  >
-                    <option value="manual">Alta Manual</option>
-                    <option value="whatsapp">WhatsApp</option>
-                    <option value="web">Formulario Web</option>
-                    <option value="referral">Referido</option>
-                  </select>
-                </div>
-              </div>
-
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-zinc-300">
-                  {i18n.labelNotes}
-                </label>
-                <textarea
-                  rows={2}
-                  value={newNotes}
-                  onChange={(e) => setNewNotes(e.target.value)}
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
-                />
+                <Label className="block text-xs font-medium text-zinc-300">
+                  {i18n.labelStage}
+                </Label>
+                <Select
+                  value={newStage}
+                  onChange={(e) =>
+                    setNewStage(
+                      e.target.value as
+                        | "new"
+                        | "in_conversation"
+                        | "qualified"
+                        | "customer"
+                        | "discarded",
+                    )
+                  }
+                  className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500"
+                >
+                  <option value="new">{i18n.stageNew}</option>
+                  <option value="in_conversation">{i18n.stageInConversation}</option>
+                  <option value="qualified">{i18n.stageQualified}</option>
+                  <option value="customer">{i18n.stageCustomer}</option>
+                  <option value="discarded">{i18n.stageDiscarded}</option>
+                </Select>
               </div>
+              <div>
+                <Label className="block text-xs font-medium text-zinc-300">
+                  {i18n.labelSource}
+                </Label>
+                <Select
+                  value={newSource}
+                  onChange={(e) => setNewSource(e.target.value)}
+                  className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500"
+                >
+                  <option value="manual">Alta Manual</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="web">Formulario Web</option>
+                  <option value="referral">Referido</option>
+                </Select>
+              </div>
+            </div>
 
-              <div className="mt-5 flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsNewModalOpen(false)}
-                  className="rounded px-4 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
-                >
-                  {i18n.cancelButton}
-                </button>
-                <button
-                  type="submit"
-                  className="rounded bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
-                >
-                  {i18n.saveButton}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <div>
+              <Label className="block text-xs font-medium text-zinc-300">
+                {i18n.labelNotes}
+              </Label>
+              <Textarea
+                rows={2}
+                value={newNotes}
+                onChange={(e) => setNewNotes(e.target.value)}
+                className="mt-1 rounded border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500"
+              />
+            </div>
+
+            <DialogFooter className="mt-5 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsNewModalOpen(false)}
+                className="text-xs text-zinc-300 hover:bg-zinc-800"
+              >
+                {i18n.cancelButton}
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                className="bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-500"
+              >
+                {i18n.saveButton}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal: Edición de Prospecto */}
-      {editingContact && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
-            <h2 className="text-lg font-bold text-white font-mono">{i18n.modalEditTitle}</h2>
+      <Dialog open={Boolean(editingContact)} onOpenChange={(open) => !open && setEditingContact(null)}>
+        <DialogContent className="max-w-lg rounded-xl border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-mono text-lg font-bold text-white">
+              {i18n.modalEditTitle}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Formulario de edición de datos y etapa del contacto seleccionado.
+            </DialogDescription>
+          </DialogHeader>
+          {editingContact && (
             <form onSubmit={handleUpdateSubmit} className="mt-4 space-y-3 font-mono text-sm">
               <div>
-                <label className="block text-xs font-medium text-zinc-300">
+                <Label className="block text-xs font-medium text-zinc-300">
                   {i18n.labelFullName} *
-                </label>
-                <input
+                </Label>
+                <Input
                   type="text"
                   required
                   value={editingContact.fullName}
                   onChange={(e) =>
                     setEditingContact({ ...editingContact, fullName: e.target.value })
                   }
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                  className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500"
                 />
               </div>
 
@@ -656,25 +688,25 @@ export function ContactsDashboard({
                   }
                 />
                 <div>
-                  <label className="block text-xs font-medium text-zinc-300">
+                  <Label className="block text-xs font-medium text-zinc-300">
                     {i18n.labelEmail}
-                  </label>
-                  <input
+                  </Label>
+                  <Input
                     type="email"
                     value={editingContact.email || ""}
                     onChange={(e) =>
                       setEditingContact({ ...editingContact, email: e.target.value || null })
                     }
-                    className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                    className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-300">
+                <Label className="block text-xs font-medium text-zinc-300">
                   {i18n.labelStage}
-                </label>
-                <select
+                </Label>
+                <Select
                   value={editingContact.stage}
                   onChange={(e) =>
                     setEditingContact({
@@ -682,162 +714,168 @@ export function ContactsDashboard({
                       stage: e.target.value as CrmContactItem["stage"],
                     })
                   }
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                  className="mt-1 min-h-[36px] rounded border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500"
                 >
                   <option value="new">{i18n.stageNew}</option>
                   <option value="in_conversation">{i18n.stageInConversation}</option>
                   <option value="qualified">{i18n.stageQualified}</option>
                   <option value="customer">{i18n.stageCustomer}</option>
                   <option value="discarded">{i18n.stageDiscarded}</option>
-                </select>
+                </Select>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-300">
+                <Label className="block text-xs font-medium text-zinc-300">
                   {i18n.labelNotes}
-                </label>
-                <textarea
+                </Label>
+                <Textarea
                   rows={2}
                   value={editingContact.notes || ""}
                   onChange={(e) =>
                     setEditingContact({ ...editingContact, notes: e.target.value || null })
                   }
-                  className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
+                  className="mt-1 rounded border-zinc-700 bg-zinc-950 px-3 py-1.5 text-zinc-100 focus:border-emerald-500"
                 />
               </div>
 
-              <div className="mt-5 flex justify-end gap-3 pt-2">
-                <button
+              <DialogFooter className="mt-5 pt-2">
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setEditingContact(null)}
-                  className="rounded px-4 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+                  className="text-xs text-zinc-300 hover:bg-zinc-800"
                 >
                   {i18n.cancelButton}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  className="rounded bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+                  variant="primary"
+                  size="sm"
+                  className="bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-500"
                 >
                   {i18n.saveButton}
-                </button>
-              </div>
+                </Button>
+              </DialogFooter>
             </form>
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Modal: Gestión de Consentimientos Habeas Data */}
-      {consentModalContact && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
-            <h2 className="text-lg font-bold text-white font-mono">{i18n.modalConsentTitle}</h2>
-            <p className="text-xs text-zinc-400 mt-1 font-mono">
-              Titular: <span className="text-white font-semibold">{consentModalContact.fullName}</span> (Versión política: {consentModalContact.policyVersion})
-            </p>
+      <Dialog
+        open={Boolean(consentModalContact)}
+        onOpenChange={(open) => !open && setConsentModalContact(null)}
+      >
+        <DialogContent className="max-w-lg rounded-xl border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-mono text-lg font-bold text-white">
+              {i18n.modalConsentTitle}
+            </DialogTitle>
+            <DialogDescription className="font-mono text-xs text-zinc-400">
+              Titular: <span className="text-white font-semibold">{consentModalContact?.fullName}</span> (Versión política: {consentModalContact?.policyVersion})
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="mt-4 space-y-3 font-mono text-xs">
-              <div className="rounded border border-zinc-800 bg-zinc-950 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-zinc-200">Tratamiento De Datos (data_treatment)</span>
-                  <span
-                    className={`rounded px-2 py-0.5 ${
-                      consentModalContact.consentStatus === "granted"
-                        ? "bg-emerald-500/20 text-emerald-400"
-                        : "bg-zinc-800 text-zinc-400"
-                    }`}
-                  >
-                    {consentModalContact.consentStatus}
-                  </span>
+          {consentModalContact && (
+            <>
+              <div className="mt-4 space-y-3 font-mono text-xs">
+                <div className="rounded border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-zinc-200">Tratamiento De Datos (data_treatment)</span>
+                    <span
+                      className={`rounded px-2 py-0.5 ${
+                        consentModalContact.consentStatus === "granted"
+                          ? "bg-emerald-500/20 text-emerald-400"
+                          : "bg-zinc-800 text-zinc-400"
+                      }`}
+                    >
+                      {consentModalContact.consentStatus}
+                    </span>
+                  </div>
+                  <p className="text-zinc-500 text-[11px] mt-1">
+                    Incluye Chatwoot como encargado del tratamiento.
+                  </p>
                 </div>
-                <p className="text-zinc-500 text-[11px] mt-1">
-                  Incluye Chatwoot como encargado del tratamiento.
-                </p>
-              </div>
 
-              <div className="rounded border border-zinc-800 bg-zinc-950 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-zinc-200">Comunicaciones Comerciales (commercial_comms)</span>
-                  <span
-                    className={`rounded px-2 py-0.5 ${
-                      consentModalContact.hasCommercialConsent
-                        ? "bg-emerald-500/20 text-emerald-400"
-                        : "bg-red-500/20 text-red-400"
-                    }`}
-                  >
-                    {consentModalContact.hasCommercialConsent ? "Otorgado" : "No Otorgado"}
-                  </span>
+                <div className="rounded border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-zinc-200">Comunicaciones Comerciales (commercial_comms)</span>
+                    <span
+                      className={`rounded px-2 py-0.5 ${
+                        consentModalContact.hasCommercialConsent
+                          ? "bg-emerald-500/20 text-emerald-400"
+                          : "bg-red-500/20 text-red-400"
+                      }`}
+                    >
+                      {consentModalContact.hasCommercialConsent ? "Otorgado" : "No Otorgado"}
+                    </span>
+                  </div>
+                  <p className="text-zinc-500 text-[11px] mt-1">
+                    Autorización expresa requerida antes de enviar promociones o catálogos.
+                  </p>
                 </div>
-                <p className="text-zinc-500 text-[11px] mt-1">
-                  Autorización expresa requerida antes de enviar promociones o catálogos.
-                </p>
               </div>
-            </div>
 
-            <div className="mt-6 flex flex-wrap justify-between gap-2 pt-2">
-              <div className="flex gap-2">
-                {consentModalContact.consentStatus === "granted" ? (
-                  <button
-                    type="button"
-                    onClick={() => handleRevokeConsent(consentModalContact.id)}
-                    className="rounded bg-red-950/60 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-900 border border-red-800/60"
-                  >
-                    {i18n.revokeConsentButton}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleGrantConsent(consentModalContact.id, "commercial_comms")}
-                    className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
-                  >
-                    {i18n.grantConsentButton}
-                  </button>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setConsentModalContact(null)}
-                className="rounded px-4 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
-              >
-                {i18n.closeButton}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <DialogFooter className="mt-6 flex-wrap sm:justify-between gap-2 pt-2">
+                <div className="flex gap-2">
+                  {consentModalContact.consentStatus === "granted" ? (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleRevokeConsent(consentModalContact.id)}
+                      className="text-xs font-semibold"
+                    >
+                      {i18n.revokeConsentButton}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleGrantConsent(consentModalContact.id, "commercial_comms")}
+                      className="bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-500"
+                    >
+                      {i18n.grantConsentButton}
+                    </Button>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConsentModalContact(null)}
+                  className="text-xs text-zinc-300 hover:bg-zinc-800"
+                >
+                  {i18n.closeButton}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Modal: Confirmación de Supresión / Anonimización Irreversible */}
-      {anonymizeTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-md rounded-xl border border-red-900/60 bg-zinc-900 p-6 shadow-2xl">
-            <h2 className="text-lg font-bold text-red-400 font-mono">
-              {i18n.confirmAnonymizeTitle}
-            </h2>
-            <p className="text-xs text-zinc-300 mt-2 font-mono leading-relaxed">
-              {i18n.confirmAnonymizeDesc}
-            </p>
-            <p className="text-xs text-zinc-500 mt-2 font-mono">
-              Contacto: <span className="text-zinc-300">{anonymizeTarget.fullName}</span> ({anonymizeTarget.id})
-            </p>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setAnonymizeTarget(null)}
-                className="rounded px-4 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
-              >
-                {i18n.cancelButton}
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmAnonymize}
-                className="rounded bg-red-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-red-500"
-              >
-                {i18n.confirmAnonymizeAction}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmationModal
+        isOpen={Boolean(anonymizeTarget)}
+        onClose={() => setAnonymizeTarget(null)}
+        onConfirm={handleConfirmAnonymize}
+        title={i18n.confirmAnonymizeTitle ?? "Confirmar Supresión Irreversible"}
+        variant="danger"
+        confirmText={i18n.confirmAnonymizeAction ?? "Confirmar Anonimización"}
+        cancelText={i18n.cancelButton ?? "Cancelar"}
+        warningTitle="Acción Irreversible"
+        warningMessage={i18n.confirmAnonymizeDesc ?? ""}
+        details={
+          anonymizeTarget
+            ? [
+                { label: "Contacto", value: anonymizeTarget.fullName },
+                { label: "ID", value: anonymizeTarget.id, mono: true },
+              ]
+            : []
+        }
+      />
     </div>
   );
 }

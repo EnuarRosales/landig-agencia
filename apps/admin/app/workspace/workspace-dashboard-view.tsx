@@ -15,6 +15,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { WorkspaceDashboardDto } from "@mocter/domain";
+import { Badge, Button, Card } from "@mocter/ui";
 import { getAdminDictionary, type AdminLocale } from "@/lib/i18n";
 
 interface WorkspaceDashboardViewProps {
@@ -74,9 +75,7 @@ export function WorkspaceDashboardView({
                 <h1 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--dsn-text)]">
                   {tenantName}
                 </h1>
-                <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
-                  {planName}
-                </span>
+                <Badge variant="success">{planName}</Badge>
               </div>
               <p className="text-xs md:text-sm text-[var(--dsn-text-secondary)] mt-0.5 font-mono">
                 {dict.dashboardOperatingCurrency}: {currency}
@@ -85,20 +84,18 @@ export function WorkspaceDashboardView({
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              href="/workspace/products"
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity"
-            >
-              <PlusCircle className="h-4 w-4" />
-              <span>{dict.dashboardNewProductCta}</span>
-            </Link>
-            <Link
-              href="/workspace/bot"
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] px-3.5 py-2 text-xs font-medium text-[var(--dsn-text)] hover:bg-[var(--dsn-border)]/40 transition-colors"
-            >
-              <Settings className="h-4 w-4" />
-              <span>{dict.dashboardBotSettingsCta}</span>
-            </Link>
+            <Button asChild variant="primary">
+              <Link href="/workspace/products">
+                <PlusCircle className="h-4 w-4" aria-hidden="true" />
+                <span>{dict.dashboardNewProductCta}</span>
+              </Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link href="/workspace/bot">
+                <Settings className="h-4 w-4 text-[var(--dsn-accent)]" aria-hidden="true" />
+                <span>{dict.dashboardBotSettingsCta}</span>
+              </Link>
+            </Button>
           </div>
         </div>
       </header>
@@ -197,9 +194,7 @@ export function WorkspaceDashboardView({
                 </p>
               </div>
             </div>
-            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400 border border-emerald-500/20">
-              {dict.dashboardBotActive}
-            </span>
+            <Badge variant="success">{dict.dashboardBotActive}</Badge>
           </div>
 
           <div className="mt-4 space-y-3">
@@ -224,13 +219,12 @@ export function WorkspaceDashboardView({
           </div>
 
           <div className="mt-5 pt-4 border-t border-[var(--dsn-border)]">
-            <Link
-              href="/workspace/bot"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface-secondary)] py-2 text-xs font-semibold text-[var(--dsn-text)] hover:bg-[var(--dsn-border)]/40 transition-colors"
-            >
-              <span>{dict.dashboardBotConfigureCta}</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+            <Button asChild variant="secondary" className="w-full bg-[var(--dsn-surface-secondary)]">
+              <Link href="/workspace/bot">
+                <span>{dict.dashboardBotConfigureCta}</span>
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </Button>
           </div>
         </div>
 

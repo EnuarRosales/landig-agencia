@@ -8,7 +8,6 @@ import {
   Sliders,
   CheckCircle2,
   AlertCircle,
-  Loader2,
   Edit2,
   KeyRound,
   Archive,
@@ -25,7 +24,23 @@ import type {
   AdminPromptBlockDto,
   AiApiDialect,
 } from "@mocter/domain";
-import { ConfirmationModal } from "@/components/confirmation-modal";
+import {
+  Alert,
+  AlertDescription,
+  Button,
+  Checkbox,
+  ConfirmationModal,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from "@mocter/ui";
 import { ModelsCatalogSection } from "./models-catalog-section";
 
 interface AiGovernanceViewProps {
@@ -911,16 +926,17 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
       </div>
 
       {feedback && (
-        <div
-          className={`flex items-center gap-2 rounded-lg p-3 text-xs border ${
-            feedback.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-              : "bg-rose-500/10 border-rose-500/20 text-rose-400"
-          }`}
+        <Alert
+          variant={feedback.type === "success" ? "success" : "destructive"}
+          className="flex items-center gap-2 text-xs"
         >
-          {feedback.type === "success" ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
-          <span>{feedback.message}</span>
-        </div>
+          {feedback.type === "success" ? (
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+          ) : (
+            <AlertCircle className="h-4 w-4 shrink-0" />
+          )}
+          <AlertDescription className="text-inherit">{feedback.message}</AlertDescription>
+        </Alert>
       )}
 
       {/* ─────────────────────────────────────────────────────────────
@@ -939,14 +955,15 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
                   Administra proveedores soportados, dialectos HTTP, endpoints base y logotipos de marca.
                 </p>
               </div>
-              <button
+              <Button
                 type="button"
+                variant="primary"
                 onClick={openCreateProviderModal}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95"
+                className="text-xs shadow-xs"
               >
                 <Plus className="h-4 w-4" />
                 <span>Agregar Proveedor LLM</span>
-              </button>
+              </Button>
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -1045,32 +1062,32 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label htmlFor="trialProviderSelect" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    <Label htmlFor="trialProviderSelect" className="mb-1 block text-xs font-medium">
                       Proveedor LLM
-                    </label>
-                    <select
+                    </Label>
+                    <Select
                       id="trialProviderSelect"
                       value={trialProviderCode}
                       onChange={(e) => handleTrialProviderChange(e.target.value)}
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                      className="min-h-[44px] bg-[var(--dsn-surface)] text-xs"
                     >
                       {providers.map((p) => (
                         <option key={p.id} value={p.code}>
                           {p.name} ({p.code})
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div>
-                    <label htmlFor="trialModelSelect" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    <Label htmlFor="trialModelSelect" className="mb-1 block text-xs font-medium">
                       Modelo Por Defecto
-                    </label>
-                    <select
+                    </Label>
+                    <Select
                       id="trialModelSelect"
                       value={trialModelId}
                       onChange={(e) => handleTrialModelChange(e.target.value)}
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                      className="min-h-[44px] bg-[var(--dsn-surface)] text-xs"
                     >
                       {models
                         .filter((m) => m.providerCode === trialProviderCode && m.isActive)
@@ -1079,15 +1096,15 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
                             {m.displayName} ({m.modelId}){m.isDefault ? " — Por Defecto" : ""}
                           </option>
                         ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="trialApiKeyInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                  <Label htmlFor="trialApiKeyInput" className="mb-1 block text-xs font-medium">
                     Clave API Del Proveedor
-                  </label>
-                  <input
+                  </Label>
+                  <Input
                     id="trialApiKeyInput"
                     type="password"
                     autoComplete="off"
@@ -1095,7 +1112,7 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
                     value={trialApiKey}
                     onChange={(e) => setTrialApiKey(e.target.value)}
                     placeholder="sk-..."
-                    className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)] font-mono"
+                    className="min-h-[44px] bg-[var(--dsn-surface)] font-mono text-xs"
                   />
                   <p className="text-[11px] text-[var(--dsn-text-secondary)] mt-1">
                     Se cifra con AES-256-GCM antes de guardarse. Nunca se vuelve a mostrar completa ni en registros.
@@ -1104,59 +1121,59 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label htmlFor="trialKeyAliasInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    <Label htmlFor="trialKeyAliasInput" className="mb-1 block text-xs font-medium">
                       Alias De Credencial
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       id="trialKeyAliasInput"
                       type="text"
                       value={trialKeyId}
                       onChange={(e) => setTrialKeyId(e.target.value)}
                       placeholder="trial-openai"
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)] font-mono"
+                      className="min-h-[44px] bg-[var(--dsn-surface)] font-mono text-xs"
                     />
                   </div>
 
                   <div>
-                    <label htmlFor="trialTokenCapInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    <Label htmlFor="trialTokenCapInput" className="mb-1 block text-xs font-medium">
                       Tope Mensual De Tokens
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       id="trialTokenCapInput"
                       type="number"
                       min="0"
                       value={trialMonthlyTokenCap}
                       onChange={(e) => setTrialMonthlyTokenCap(e.target.value)}
                       placeholder="500000"
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)] font-mono"
+                      className="min-h-[44px] bg-[var(--dsn-surface)] font-mono text-xs"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label htmlFor="trialPriorityRoleSelect" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    <Label htmlFor="trialPriorityRoleSelect" className="mb-1 block text-xs font-medium">
                       Rol De Prioridad
-                    </label>
-                    <select
+                    </Label>
+                    <Select
                       id="trialPriorityRoleSelect"
                       value={trialPriorityRole}
                       onChange={(e) =>
                         setTrialPriorityRole(e.target.value as "primary" | "secondary" | "standby")
                       }
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                      className="min-h-[44px] bg-[var(--dsn-surface)] text-xs"
                     >
                       <option value="primary">Predeterminado (Primario)</option>
                       <option value="secondary">Respaldo (Secundario)</option>
                       <option value="standby">En Espera</option>
-                    </select>
+                    </Select>
                   </div>
 
                   <div>
-                    <label htmlFor="trialTemperatureInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    <Label htmlFor="trialTemperatureInput" className="mb-1 block text-xs font-medium">
                       Temperatura De Respuesta (0.0 – 2.0)
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       id="trialTemperatureInput"
                       type="number"
                       step="0.01"
@@ -1164,15 +1181,15 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
                       max="2"
                       value={trialTemperature}
                       onChange={(e) => setTrialTemperature(e.target.value)}
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)] font-mono"
+                      className="min-h-[44px] bg-[var(--dsn-surface)] font-mono text-xs"
                     />
                   </div>
 
                   <div>
-                    <label htmlFor="trialMaxTokensInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    <Label htmlFor="trialMaxTokensInput" className="mb-1 block text-xs font-medium">
                       Límite Máximo De Tokens
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       id="trialMaxTokensInput"
                       type="number"
                       min="64"
@@ -1180,32 +1197,30 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
                       step="1"
                       value={trialMaxTokens}
                       onChange={(e) => setTrialMaxTokens(e.target.value)}
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-surface)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)] font-mono"
+                      className="min-h-[44px] bg-[var(--dsn-surface)] font-mono text-xs"
                     />
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 pt-1">
-                  <input
+                  <Checkbox
                     id="verifyPlatformKeyCheck"
-                    type="checkbox"
                     checked={verifyBeforeSave}
-                    onChange={(e) => setVerifyBeforeSave(e.target.checked)}
-                    className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
+                    onCheckedChange={(checked) => setVerifyBeforeSave(checked === true)}
                   />
-                  <label htmlFor="verifyPlatformKeyCheck" className="text-xs font-medium text-[var(--dsn-text)]">
+                  <Label htmlFor="verifyPlatformKeyCheck" className="cursor-pointer text-xs font-medium">
                     Verificar Conectividad Antes De Activar
-                  </label>
+                  </Label>
                 </div>
 
-                <button
+                <Button
                   type="submit"
-                  disabled={loading}
-                  className="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95 disabled:opacity-50"
+                  variant="primary"
+                  loading={loading}
+                  className="w-full text-xs shadow-xs sm:w-auto"
                 >
-                  {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                   <span>Guardar Y Activar Llave De Prueba</span>
-                </button>
+                </Button>
               </form>
 
               {/* Listado de credenciales enmascaradas registradas */}
@@ -1339,512 +1354,518 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
           />
 
           {/* Modal Crear / Editar Proveedor LLM */}
-          {providerModalMode && (
-            <div
-              role="dialog"
-              aria-modal="true"
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
-            >
-              <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xl">
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
+          <Dialog
+            open={Boolean(providerModalMode)}
+            onOpenChange={(open) => {
+              if (!open) {
+                setProviderModalMode(null);
+                setEditingProvider(null);
+              }
+            }}
+          >
+            <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-xl p-6 shadow-xl">
+              <DialogHeader>
+                <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
                   {providerModalMode === "create"
                     ? "Agregar Proveedor LLM"
                     : `Editar Proveedor: ${editingProvider?.name ?? ""}`}
-                </h3>
-                <p className="text-xs text-[var(--dsn-text-secondary)] mt-1">
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
                   Define el protocolo HTTP, endpoint base y logotipo visual del proveedor.
-                </p>
+                </DialogDescription>
+              </DialogHeader>
 
-                <form onSubmit={handleSaveProvider} className="mt-4 space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label htmlFor="providerCodeInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Código De Proveedor (Slug)
-                      </label>
-                      <input
-                        id="providerCodeInput"
-                        type="text"
-                        required
-                        disabled={providerModalMode === "edit"}
-                        value={providerForm.code}
-                        onChange={(e) => setProviderForm({ ...providerForm, code: e.target.value })}
-                        placeholder="deepseek"
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)] disabled:opacity-60"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="providerNameInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Nombre Del Proveedor
-                      </label>
-                      <input
-                        id="providerNameInput"
-                        type="text"
-                        required
-                        value={providerForm.name}
-                        onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })}
-                        placeholder="DeepSeek"
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label htmlFor="providerDialectSelect" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Dialecto De Api
-                      </label>
-                      <select
-                        id="providerDialectSelect"
-                        value={providerForm.apiDialect}
-                        onChange={(e) =>
-                          setProviderForm({
-                            ...providerForm,
-                            apiDialect: e.target.value as AiApiDialect,
-                          })
-                        }
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      >
-                        <option value="openai_compatible">OpenAI Compatible</option>
-                        <option value="anthropic">Anthropic Messages</option>
-                        <option value="google_gemini">Google Gemini</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label htmlFor="providerSortOrderInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Orden De Visualización
-                      </label>
-                      <input
-                        id="providerSortOrderInput"
-                        type="number"
-                        min="0"
-                        value={providerForm.sortOrder}
-                        onChange={(e) =>
-                          setProviderForm({ ...providerForm, sortOrder: Number(e.target.value) })
-                        }
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label htmlFor="providerBaseUrlInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Url Base De Inferencia
-                      </label>
-                      <input
-                        id="providerBaseUrlInput"
-                        type="url"
-                        required
-                        value={providerForm.baseUrl}
-                        onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })}
-                        placeholder="https://api.deepseek.com"
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="providerVerifyPathInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Ruta De Verificación
-                      </label>
-                      <input
-                        id="providerVerifyPathInput"
-                        type="text"
-                        required
-                        value={providerForm.verifyPath}
-                        onChange={(e) =>
-                          setProviderForm({ ...providerForm, verifyPath: e.target.value })
-                        }
-                        placeholder="/models"
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      />
-                    </div>
-                  </div>
-
+              <form onSubmit={handleSaveProvider} className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label htmlFor="providerDocsUrlInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Url De Documentación (Opcional)
-                    </label>
-                    <input
-                      id="providerDocsUrlInput"
-                      type="url"
-                      value={providerForm.docsUrl}
-                      onChange={(e) => setProviderForm({ ...providerForm, docsUrl: e.target.value })}
-                      placeholder="https://platform.deepseek.com/api_keys"
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                    <Label htmlFor="providerCodeInput" className="mb-1 block text-xs font-medium">
+                      Código De Proveedor (Slug)
+                    </Label>
+                    <Input
+                      id="providerCodeInput"
+                      type="text"
+                      required
+                      disabled={providerModalMode === "edit"}
+                      value={providerForm.code}
+                      onChange={(e) => setProviderForm({ ...providerForm, code: e.target.value })}
+                      placeholder="deepseek"
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
                     />
                   </div>
-
                   <div>
-                    <label htmlFor="providerLogoUploadInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Logo Del Proveedor (PNG, JPG, WebP O AVIF — Máx. 2 MB)
-                    </label>
-                    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] p-3">
-                      {providerForm.logoUrl ? (
-                        <img
-                          src={providerForm.logoUrl}
-                          alt={providerForm.name || "Logo"}
-                          className="h-10 w-10 rounded-lg object-cover border border-[var(--dsn-border)]"
-                        />
-                      ) : (
-                        <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--dsn-accent)]/10 text-xs font-bold font-mono text-[var(--dsn-accent)]">
-                          {(providerForm.code || "AI").slice(0, 2).toUpperCase()}
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-[180px]">
-                        <input
-                          id="providerLogoUploadInput"
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp,image/avif"
-                          disabled={uploadingLogo}
-                          onChange={(e) => handleUploadProviderLogo(e.target.files?.[0] ?? null)}
-                          className="block w-full text-xs text-[var(--dsn-text-secondary)] file:mr-3 file:rounded-md file:border file:border-[var(--dsn-border)] file:bg-[var(--dsn-surface)] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-[var(--dsn-text)] hover:file:border-[var(--dsn-accent)]"
-                        />
-                        {uploadingLogo && (
-                          <p className="text-[11px] text-[var(--dsn-accent)] mt-1 inline-flex items-center gap-1">
-                            <Upload className="h-3 w-3 animate-pulse" />
-                            <span>Subiendo y validando imagen...</span>
-                          </p>
-                        )}
-                        {logoUploadError && (
-                          <p className="text-[11px] text-rose-400 mt-1">{logoUploadError}</p>
-                        )}
-                      </div>
-                    </div>
+                    <Label htmlFor="providerNameInput" className="mb-1 block text-xs font-medium">
+                      Nombre Del Proveedor
+                    </Label>
+                    <Input
+                      id="providerNameInput"
+                      type="text"
+                      required
+                      value={providerForm.name}
+                      onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })}
+                      placeholder="DeepSeek"
+                      className="min-h-[44px] bg-[var(--dsn-background)] text-xs"
+                    />
                   </div>
+                </div>
 
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="providerActiveCheck"
-                      type="checkbox"
-                      checked={providerForm.isActive}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="providerDialectSelect" className="mb-1 block text-xs font-medium">
+                      Dialecto De Api
+                    </Label>
+                    <Select
+                      id="providerDialectSelect"
+                      value={providerForm.apiDialect}
                       onChange={(e) =>
-                        setProviderForm({ ...providerForm, isActive: e.target.checked })
+                        setProviderForm({
+                          ...providerForm,
+                          apiDialect: e.target.value as AiApiDialect,
+                        })
                       }
-                      className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
-                    />
-                    <label htmlFor="providerActiveCheck" className="text-xs font-medium text-[var(--dsn-text)]">
-                      Proveedor Activo En La Plataforma
-                    </label>
+                      className="min-h-[44px] bg-[var(--dsn-background)] text-xs"
+                    >
+                      <option value="openai_compatible">OpenAI Compatible</option>
+                      <option value="anthropic">Anthropic Messages</option>
+                      <option value="google_gemini">Google Gemini</option>
+                    </Select>
                   </div>
 
-                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--dsn-border)]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProviderModalMode(null);
-                        setEditingProvider(null);
-                      }}
-                      className="min-h-[44px] rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={loading || uploadingLogo}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95 disabled:opacity-50"
-                    >
-                      {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      <span>
-                        {providerModalMode === "create" ? "Crear Proveedor" : "Guardar Proveedor"}
-                      </span>
-                    </button>
+                  <div>
+                    <Label htmlFor="providerSortOrderInput" className="mb-1 block text-xs font-medium">
+                      Orden De Visualización
+                    </Label>
+                    <Input
+                      id="providerSortOrderInput"
+                      type="number"
+                      min="0"
+                      value={providerForm.sortOrder}
+                      onChange={(e) =>
+                        setProviderForm({ ...providerForm, sortOrder: Number(e.target.value) })
+                      }
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
+                    />
                   </div>
-                </form>
-              </div>
-            </div>
-          )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="providerBaseUrlInput" className="mb-1 block text-xs font-medium">
+                      Url Base De Inferencia
+                    </Label>
+                    <Input
+                      id="providerBaseUrlInput"
+                      type="url"
+                      required
+                      value={providerForm.baseUrl}
+                      onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })}
+                      placeholder="https://api.deepseek.com"
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="providerVerifyPathInput" className="mb-1 block text-xs font-medium">
+                      Ruta De Verificación
+                    </Label>
+                    <Input
+                      id="providerVerifyPathInput"
+                      type="text"
+                      required
+                      value={providerForm.verifyPath}
+                      onChange={(e) =>
+                        setProviderForm({ ...providerForm, verifyPath: e.target.value })
+                      }
+                      placeholder="/models"
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="providerDocsUrlInput" className="mb-1 block text-xs font-medium">
+                    Url De Documentación (Opcional)
+                  </Label>
+                  <Input
+                    id="providerDocsUrlInput"
+                    type="url"
+                    value={providerForm.docsUrl}
+                    onChange={(e) => setProviderForm({ ...providerForm, docsUrl: e.target.value })}
+                    placeholder="https://platform.deepseek.com/api_keys"
+                    className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="providerLogoUploadInput" className="mb-1 block text-xs font-medium">
+                    Logo Del Proveedor (PNG, JPG, WebP O AVIF — Máx. 2 MB)
+                  </Label>
+                  <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] p-3">
+                    {providerForm.logoUrl ? (
+                      <img
+                        src={providerForm.logoUrl}
+                        alt={providerForm.name || "Logo"}
+                        className="h-10 w-10 rounded-lg object-cover border border-[var(--dsn-border)]"
+                      />
+                    ) : (
+                      <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--dsn-accent)]/10 text-xs font-bold font-mono text-[var(--dsn-accent)]">
+                        {(providerForm.code || "AI").slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-[180px]">
+                      <input
+                        id="providerLogoUploadInput"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/avif"
+                        disabled={uploadingLogo}
+                        onChange={(e) => handleUploadProviderLogo(e.target.files?.[0] ?? null)}
+                        className="block w-full text-xs text-[var(--dsn-text-secondary)] file:mr-3 file:rounded-md file:border file:border-[var(--dsn-border)] file:bg-[var(--dsn-surface)] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-[var(--dsn-text)] hover:file:border-[var(--dsn-accent)]"
+                      />
+                      {uploadingLogo && (
+                        <p className="text-[11px] text-[var(--dsn-accent)] mt-1 inline-flex items-center gap-1">
+                          <Upload className="h-3 w-3 animate-pulse" />
+                          <span>Subiendo y validando imagen...</span>
+                        </p>
+                      )}
+                      {logoUploadError && (
+                        <p className="text-[11px] text-rose-400 mt-1">{logoUploadError}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="providerActiveCheck"
+                    checked={providerForm.isActive}
+                    onCheckedChange={(checked) =>
+                      setProviderForm({ ...providerForm, isActive: checked === true })
+                    }
+                  />
+                  <Label htmlFor="providerActiveCheck" className="cursor-pointer text-xs font-medium">
+                    Proveedor Activo En La Plataforma
+                  </Label>
+                </div>
+
+                <DialogFooter className="border-t border-[var(--dsn-border)] pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setProviderModalMode(null);
+                      setEditingProvider(null);
+                    }}
+                    className="text-xs"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    loading={loading}
+                    disabled={loading || uploadingLogo}
+                    className="text-xs shadow-xs"
+                  >
+                    <span>
+                      {providerModalMode === "create" ? "Crear Proveedor" : "Guardar Proveedor"}
+                    </span>
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
 
           {/* Modal Crear / Editar Modelo LLM */}
-          {modelModalMode && (
-            <div
-              role="dialog"
-              aria-modal="true"
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
-            >
-              <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xl">
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
+          <Dialog
+            open={Boolean(modelModalMode)}
+            onOpenChange={(open) => {
+              if (!open) {
+                setModelModalMode(null);
+                setEditingModel(null);
+              }
+            }}
+          >
+            <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-xl p-6 shadow-xl">
+              <DialogHeader>
+                <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
                   {modelModalMode === "create"
                     ? "Agregar Modelo LLM"
                     : `Configurar Modelo: ${editingModel?.displayName ?? ""}`}
-                </h3>
-                <p className="text-xs text-[var(--dsn-text-secondary)] mt-1">
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
                   Ajusta parámetros de respuesta por defecto, contexto, costos base y margen comercial (spread).
-                </p>
+                </DialogDescription>
+              </DialogHeader>
 
-                <form onSubmit={handleSaveModel} className="mt-4 space-y-4">
-                  {modelModalMode === "create" && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label htmlFor="modelProviderSelect" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                          Proveedor LLM
-                        </label>
-                        <select
-                          id="modelProviderSelect"
-                          value={modelForm.providerId}
-                          onChange={(e) => setModelForm({ ...modelForm, providerId: e.target.value })}
-                          className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                        >
-                          {providers.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} ({p.code})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label htmlFor="modelSlugInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                          Identificador Del Modelo (Slug Api)
-                        </label>
-                        <input
-                          id="modelSlugInput"
-                          type="text"
-                          required
-                          value={modelForm.modelId}
-                          onChange={(e) => setModelForm({ ...modelForm, modelId: e.target.value })}
-                          placeholder="deepseek-chat"
-                          className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                        />
-                      </div>
+              <form onSubmit={handleSaveModel} className="mt-4 space-y-4">
+                {modelModalMode === "create" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="modelProviderSelect" className="mb-1 block text-xs font-medium">
+                        Proveedor LLM
+                      </Label>
+                      <Select
+                        id="modelProviderSelect"
+                        value={modelForm.providerId}
+                        onChange={(e) => setModelForm({ ...modelForm, providerId: e.target.value })}
+                        className="min-h-[44px] bg-[var(--dsn-background)] text-xs"
+                      >
+                        {providers.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.code})
+                          </option>
+                        ))}
+                      </Select>
                     </div>
-                  )}
 
+                    <div>
+                      <Label htmlFor="modelSlugInput" className="mb-1 block text-xs font-medium">
+                        Identificador Del Modelo (Slug Api)
+                      </Label>
+                      <Input
+                        id="modelSlugInput"
+                        type="text"
+                        required
+                        value={modelForm.modelId}
+                        onChange={(e) => setModelForm({ ...modelForm, modelId: e.target.value })}
+                        placeholder="deepseek-chat"
+                        className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <Label htmlFor="modelDisplayNameInput" className="mb-1 block text-xs font-medium">
+                    Nombre Visible Del Modelo
+                  </Label>
+                  <Input
+                    id="modelDisplayNameInput"
+                    type="text"
+                    required
+                    value={modelForm.displayName}
+                    onChange={(e) => setModelForm({ ...modelForm, displayName: e.target.value })}
+                    placeholder="DeepSeek Chat"
+                    className="min-h-[44px] bg-[var(--dsn-background)] text-xs"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label htmlFor="modelDisplayNameInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Nombre Visible Del Modelo
-                    </label>
-                    <input
-                      id="modelDisplayNameInput"
-                      type="text"
+                    <Label htmlFor="modelDefaultTempInput" className="mb-1 block text-xs font-medium">
+                      Temperatura Por Defecto (0.0 – 2.0)
+                    </Label>
+                    <Input
+                      id="modelDefaultTempInput"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="2"
                       required
-                      value={modelForm.displayName}
-                      onChange={(e) => setModelForm({ ...modelForm, displayName: e.target.value })}
-                      placeholder="DeepSeek Chat"
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                      value={modelForm.defaultTemperature}
+                      onChange={(e) =>
+                        setModelForm({ ...modelForm, defaultTemperature: e.target.value })
+                      }
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label htmlFor="modelDefaultTempInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Temperatura Por Defecto (0.0 – 2.0)
-                      </label>
-                      <input
-                        id="modelDefaultTempInput"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="2"
-                        required
-                        value={modelForm.defaultTemperature}
-                        onChange={(e) =>
-                          setModelForm({ ...modelForm, defaultTemperature: e.target.value })
-                        }
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      />
-                    </div>
+                  <div>
+                    <Label htmlFor="modelDefaultTokensInput" className="mb-1 block text-xs font-medium">
+                      Tokens Máximos Por Defecto
+                    </Label>
+                    <Input
+                      id="modelDefaultTokensInput"
+                      type="number"
+                      min="64"
+                      max="8192"
+                      step="1"
+                      required
+                      value={modelForm.defaultMaxTokens}
+                      onChange={(e) =>
+                        setModelForm({ ...modelForm, defaultMaxTokens: Number(e.target.value) })
+                      }
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
+                    />
+                  </div>
+                </div>
 
-                    <div>
-                      <label htmlFor="modelDefaultTokensInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Tokens Máximos Por Defecto
-                      </label>
-                      <input
-                        id="modelDefaultTokensInput"
-                        type="number"
-                        min="64"
-                        max="8192"
-                        step="1"
-                        required
-                        value={modelForm.defaultMaxTokens}
-                        onChange={(e) =>
-                          setModelForm({ ...modelForm, defaultMaxTokens: Number(e.target.value) })
-                        }
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      />
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="modelContextInput" className="mb-1 block text-xs font-medium">
+                      Ventana De Contexto (Tokens)
+                    </Label>
+                    <Input
+                      id="modelContextInput"
+                      type="number"
+                      min="1024"
+                      required
+                      value={modelForm.contextWindow}
+                      onChange={(e) =>
+                        setModelForm({ ...modelForm, contextWindow: Number(e.target.value) })
+                      }
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
+                    />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label htmlFor="modelContextInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Ventana De Contexto (Tokens)
-                      </label>
-                      <input
-                        id="modelContextInput"
-                        type="number"
-                        min="1024"
-                        required
-                        value={modelForm.contextWindow}
-                        onChange={(e) =>
-                          setModelForm({ ...modelForm, contextWindow: Number(e.target.value) })
-                        }
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      />
-                    </div>
+                  <div>
+                    <Label htmlFor="modelMaxOutInput" className="mb-1 block text-xs font-medium">
+                      Máximo De Tokens De Salida
+                    </Label>
+                    <Input
+                      id="modelMaxOutInput"
+                      type="number"
+                      min="64"
+                      required
+                      value={modelForm.maxOutputTokens}
+                      onChange={(e) =>
+                        setModelForm({ ...modelForm, maxOutputTokens: Number(e.target.value) })
+                      }
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
+                    />
+                  </div>
+                </div>
 
-                    <div>
-                      <label htmlFor="modelMaxOutInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Máximo De Tokens De Salida
-                      </label>
-                      <input
-                        id="modelMaxOutInput"
-                        type="number"
-                        min="64"
-                        required
-                        value={modelForm.maxOutputTokens}
-                        onChange={(e) =>
-                          setModelForm({ ...modelForm, maxOutputTokens: Number(e.target.value) })
-                        }
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      />
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <Label htmlFor="modelCostInInput" className="mb-1 block text-xs font-medium">
+                      Costo Entrada (¢/Mtok)
+                    </Label>
+                    <Input
+                      id="modelCostInInput"
+                      type="number"
+                      min="0"
+                      required
+                      value={modelForm.costInputMtokUsdCents}
+                      onChange={(e) =>
+                        setModelForm({
+                          ...modelForm,
+                          costInputMtokUsdCents: Number(e.target.value),
+                        })
+                      }
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
+                    />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label htmlFor="modelCostInInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Costo Entrada (¢/Mtok)
-                      </label>
-                      <input
-                        id="modelCostInInput"
-                        type="number"
-                        min="0"
-                        required
-                        value={modelForm.costInputMtokUsdCents}
-                        onChange={(e) =>
-                          setModelForm({
-                            ...modelForm,
-                            costInputMtokUsdCents: Number(e.target.value),
-                          })
-                        }
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="modelCostOutInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Costo Salida (¢/Mtok)
-                      </label>
-                      <input
-                        id="modelCostOutInput"
-                        type="number"
-                        min="0"
-                        required
-                        value={modelForm.costOutputMtokUsdCents}
-                        onChange={(e) =>
-                          setModelForm({
-                            ...modelForm,
-                            costOutputMtokUsdCents: Number(e.target.value),
-                          })
-                        }
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      />
-                    </div>
-
-                    <div>
-                      <label htmlFor="modelSpreadInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                        Spread Comercial (%)
-                      </label>
-                      <input
-                        id="modelSpreadInput"
-                        type="number"
-                        min="0"
-                        max="200"
-                        required
-                        value={modelForm.spreadPercent}
-                        onChange={(e) =>
-                          setModelForm({ ...modelForm, spreadPercent: Number(e.target.value) })
-                        }
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                      />
-                    </div>
+                  <div>
+                    <Label htmlFor="modelCostOutInput" className="mb-1 block text-xs font-medium">
+                      Costo Salida (¢/Mtok)
+                    </Label>
+                    <Input
+                      id="modelCostOutInput"
+                      type="number"
+                      min="0"
+                      required
+                      value={modelForm.costOutputMtokUsdCents}
+                      onChange={(e) =>
+                        setModelForm({
+                          ...modelForm,
+                          costOutputMtokUsdCents: Number(e.target.value),
+                        })
+                      }
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
+                    />
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-4 pt-1">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="modelDefaultCheck"
-                        checked={modelForm.isDefault}
-                        onChange={(e) =>
-                          setModelForm({ ...modelForm, isDefault: e.target.checked })
-                        }
-                        className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
-                      />
-                      <label htmlFor="modelDefaultCheck" className="text-xs font-medium text-[var(--dsn-text)]">
-                        Modelo Por Defecto Del Proveedor
-                      </label>
-                    </div>
+                  <div>
+                    <Label htmlFor="modelSpreadInput" className="mb-1 block text-xs font-medium">
+                      Spread Comercial (%)
+                    </Label>
+                    <Input
+                      id="modelSpreadInput"
+                      type="number"
+                      min="0"
+                      max="200"
+                      required
+                      value={modelForm.spreadPercent}
+                      onChange={(e) =>
+                        setModelForm({ ...modelForm, spreadPercent: Number(e.target.value) })
+                      }
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
+                    />
+                  </div>
+                </div>
 
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="modelActiveCheck"
-                        checked={modelForm.isActive}
-                        onChange={(e) =>
-                          setModelForm({ ...modelForm, isActive: e.target.checked })
-                        }
-                        className="rounded border-[var(--dsn-border)] text-[var(--dsn-accent)]"
-                      />
-                      <label htmlFor="modelActiveCheck" className="text-xs font-medium text-[var(--dsn-text)]">
-                        Modelo Activo Para Inferencia
-                      </label>
-                    </div>
+                <div className="flex flex-wrap items-center gap-4 pt-1">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="modelDefaultCheck"
+                      checked={modelForm.isDefault}
+                      onCheckedChange={(checked) =>
+                        setModelForm({ ...modelForm, isDefault: checked === true })
+                      }
+                    />
+                    <Label htmlFor="modelDefaultCheck" className="cursor-pointer text-xs font-medium">
+                      Modelo Por Defecto Del Proveedor
+                    </Label>
                   </div>
 
-                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--dsn-border)]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setModelModalMode(null);
-                        setEditingModel(null);
-                      }}
-                      className="min-h-[44px] rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95 disabled:opacity-50"
-                    >
-                      {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      <span>
-                        {modelModalMode === "create" ? "Crear Modelo" : "Guardar Cambios"}
-                      </span>
-                    </button>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="modelActiveCheck"
+                      checked={modelForm.isActive}
+                      onCheckedChange={(checked) =>
+                        setModelForm({ ...modelForm, isActive: checked === true })
+                      }
+                    />
+                    <Label htmlFor="modelActiveCheck" className="cursor-pointer text-xs font-medium">
+                      Modelo Activo Para Inferencia
+                    </Label>
                   </div>
-                </form>
-              </div>
-            </div>
-          )}
+                </div>
+
+                <DialogFooter className="border-t border-[var(--dsn-border)] pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setModelModalMode(null);
+                      setEditingModel(null);
+                    }}
+                    className="text-xs"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    loading={loading}
+                    className="text-xs shadow-xs"
+                  >
+                    <span>
+                      {modelModalMode === "create" ? "Crear Modelo" : "Guardar Cambios"}
+                    </span>
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
 
           {/* Modal Parámetros De Llave De Plataforma */}
-          {editingPlatformKey && (
-            <div
-              role="dialog"
-              aria-modal="true"
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
-            >
-              <div className="w-full max-w-md rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xl">
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
-                  Parámetros De Credencial: {editingPlatformKey.providerName} (••••{editingPlatformKey.apiKeyLast4})
-                </h3>
-                <p className="text-xs text-[var(--dsn-text-secondary)] mt-1">
+          <Dialog
+            open={Boolean(editingPlatformKey)}
+            onOpenChange={(open) => !open && setEditingPlatformKey(null)}
+          >
+            <DialogContent className="max-w-md rounded-xl p-6 shadow-xl">
+              <DialogHeader>
+                <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
+                  Parámetros De Credencial: {editingPlatformKey?.providerName} (••••{editingPlatformKey?.apiKeyLast4})
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
                   Ajusta el modelo por defecto, temperatura, máximo de tokens y cuota mensual de esta credencial.
-                </p>
+                </DialogDescription>
+              </DialogHeader>
 
+              {editingPlatformKey && (
                 <form onSubmit={handleSavePlatformKeySettings} className="mt-4 space-y-4">
                   <div>
-                    <label htmlFor="editKeyModelSelect" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    <Label htmlFor="editKeyModelSelect" className="mb-1 block text-xs font-medium">
                       Modelo Por Defecto
-                    </label>
-                    <select
+                    </Label>
+                    <Select
                       id="editKeyModelSelect"
                       value={keySettingsForm.modelId}
                       onChange={(e) => setKeySettingsForm({ ...keySettingsForm, modelId: e.target.value })}
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                      className="min-h-[44px] bg-[var(--dsn-background)] text-xs"
                     >
                       {models
                         .filter((m) => m.providerId === editingPlatformKey.providerId && m.isActive)
@@ -1853,15 +1874,15 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
                             {m.displayName} ({m.modelId})
                           </option>
                         ))}
-                    </select>
+                    </Select>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label htmlFor="editKeyTempInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                      <Label htmlFor="editKeyTempInput" className="mb-1 block text-xs font-medium">
                         Temperatura De Respuesta (0.0 – 2.0)
-                      </label>
-                      <input
+                      </Label>
+                      <Input
                         id="editKeyTempInput"
                         type="number"
                         step="0.01"
@@ -1872,15 +1893,15 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
                         onChange={(e) =>
                           setKeySettingsForm({ ...keySettingsForm, temperature: e.target.value })
                         }
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                        className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
                       />
                     </div>
 
                     <div>
-                      <label htmlFor="editKeyTokensInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                      <Label htmlFor="editKeyTokensInput" className="mb-1 block text-xs font-medium">
                         Límite Máximo De Tokens
-                      </label>
-                      <input
+                      </Label>
+                      <Input
                         id="editKeyTokensInput"
                         type="number"
                         min="64"
@@ -1891,16 +1912,16 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
                         onChange={(e) =>
                           setKeySettingsForm({ ...keySettingsForm, maxTokens: e.target.value })
                         }
-                        className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                        className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label htmlFor="editKeyCapInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+                    <Label htmlFor="editKeyCapInput" className="mb-1 block text-xs font-medium">
                       Tope Mensual De Tokens (Opcional)
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       id="editKeyCapInput"
                       type="number"
                       min="0"
@@ -1908,31 +1929,32 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
                       onChange={(e) =>
                         setKeySettingsForm({ ...keySettingsForm, monthlyTokenCap: e.target.value })
                       }
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs font-mono text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                      className="min-h-[44px] bg-[var(--dsn-background)] font-mono text-xs"
                     />
                   </div>
 
-                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--dsn-border)]">
-                    <button
+                  <DialogFooter className="border-t border-[var(--dsn-border)] pt-3">
+                    <Button
                       type="button"
+                      variant="outline"
                       onClick={() => setEditingPlatformKey(null)}
-                      className="min-h-[44px] rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
+                      className="text-xs"
                     >
                       Cancelar
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="submit"
-                      disabled={loading}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95 disabled:opacity-50"
+                      variant="primary"
+                      loading={loading}
+                      className="text-xs shadow-xs"
                     >
-                      {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                       <span>Guardar Parámetros</span>
-                    </button>
-                  </div>
+                    </Button>
+                  </DialogFooter>
                 </form>
-              </div>
-            </div>
-          )}
+              )}
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 
@@ -2043,125 +2065,135 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
           </section>
 
           {/* Modal de edición/versionado de prompt maestro de asistencia */}
-          {editingAssistPrompt && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-              <div className="w-full max-w-xl rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xl">
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
-                  Versionar Prompt Maestro: {editingAssistPrompt.fieldLabel}
-                </h3>
-                <p className="text-xs text-[var(--dsn-text-secondary)] mt-1">
-                  Campo <span className="font-mono">{editingAssistPrompt.fieldKey}</span> (actual v{editingAssistPrompt.version}). Al guardar se publicará una nueva versión activa inmutable.
-                </p>
+          <Dialog
+            open={Boolean(editingAssistPrompt)}
+            onOpenChange={(open) => !open && setEditingAssistPrompt(null)}
+          >
+            <DialogContent className="max-w-xl rounded-xl p-6 shadow-xl">
+              <DialogHeader>
+                <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
+                  Versionar Prompt Maestro: {editingAssistPrompt?.fieldLabel}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
+                  Campo <span className="font-mono">{editingAssistPrompt?.fieldKey}</span> (actual v{editingAssistPrompt?.version}). Al guardar se publicará una nueva versión activa inmutable.
+                </DialogDescription>
+              </DialogHeader>
 
-                <form onSubmit={handleSaveAssistPrompt} className="mt-4 space-y-4">
-                  <div>
-                    <label htmlFor="assistMasterPromptTextarea" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Instrucción Del Prompt Maestro
-                    </label>
-                    <textarea
-                      id="assistMasterPromptTextarea"
-                      required
-                      rows={5}
-                      value={assistMasterPrompt}
-                      onChange={(e) => setAssistMasterPrompt(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] p-3 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)] font-mono"
-                    />
-                  </div>
+              <form onSubmit={handleSaveAssistPrompt} className="mt-4 space-y-4">
+                <div>
+                  <Label htmlFor="assistMasterPromptTextarea" className="mb-1 block text-xs font-medium">
+                    Instrucción Del Prompt Maestro
+                  </Label>
+                  <Textarea
+                    id="assistMasterPromptTextarea"
+                    required
+                    rows={5}
+                    value={assistMasterPrompt}
+                    onChange={(e) => setAssistMasterPrompt(e.target.value)}
+                    className="bg-[var(--dsn-background)] font-mono text-xs"
+                  />
+                </div>
 
-                  <div>
-                    <label htmlFor="assistInputHintInput" className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Guía De Entrada Para El Usuario
-                    </label>
-                    <input
-                      id="assistInputHintInput"
-                      type="text"
-                      value={assistInputHint}
-                      onChange={(e) => setAssistInputHint(e.target.value)}
-                      className="w-full min-h-[44px] rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
-                    />
-                  </div>
+                <div>
+                  <Label htmlFor="assistInputHintInput" className="mb-1 block text-xs font-medium">
+                    Guía De Entrada Para El Usuario
+                  </Label>
+                  <Input
+                    id="assistInputHintInput"
+                    type="text"
+                    value={assistInputHint}
+                    onChange={(e) => setAssistInputHint(e.target.value)}
+                    className="min-h-[44px] bg-[var(--dsn-background)] text-xs"
+                  />
+                </div>
 
-                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--dsn-border)]">
-                    <button
-                      type="button"
-                      onClick={() => setEditingAssistPrompt(null)}
-                      className="min-h-[44px] rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95 disabled:opacity-50"
-                    >
-                      {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      <span>Publicar Nueva Versión</span>
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
+                <DialogFooter className="border-t border-[var(--dsn-border)] pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEditingAssistPrompt(null)}
+                    className="text-xs"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    loading={loading}
+                    className="text-xs shadow-xs"
+                  >
+                    <span>Publicar Nueva Versión</span>
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
 
           {/* Modal de edición de bloque de prompt */}
-          {editingBlock && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-              <div className="w-full max-w-xl rounded-xl border border-[var(--dsn-border)] bg-[var(--dsn-surface)] p-6 shadow-xl">
-                <h3 className="text-base font-bold text-[var(--dsn-text)]">
-                  Editar Bloque De Prompt: {editingBlock.blockKey}
-                </h3>
-                <p className="text-xs text-[var(--dsn-text-secondary)] mt-1">
+          <Dialog
+            open={Boolean(editingBlock)}
+            onOpenChange={(open) => !open && setEditingBlock(null)}
+          >
+            <DialogContent className="max-w-xl rounded-xl p-6 shadow-xl">
+              <DialogHeader>
+                <DialogTitle className="text-base font-bold text-[var(--dsn-text)]">
+                  Editar Bloque De Prompt: {editingBlock?.blockKey}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-[var(--dsn-text-secondary)]">
                   Al guardar se incrementa automáticamente la versión y se activa de forma inmutable para todos los bots.
-                </p>
+                </DialogDescription>
+              </DialogHeader>
 
-                <form onSubmit={handleSavePromptBlock} className="mt-4 space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Contenido En Español
-                    </label>
-                    <textarea
-                      required
-                      rows={4}
-                      value={blockEs}
-                      onChange={(e) => setBlockEs(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] p-3 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)] font-mono"
-                    />
-                  </div>
+              <form onSubmit={handleSavePromptBlock} className="mt-4 space-y-4">
+                <div>
+                  <Label htmlFor="blockContentEsTextarea" className="mb-1 block text-xs font-medium">
+                    Contenido En Español
+                  </Label>
+                  <Textarea
+                    id="blockContentEsTextarea"
+                    required
+                    rows={4}
+                    value={blockEs}
+                    onChange={(e) => setBlockEs(e.target.value)}
+                    className="bg-[var(--dsn-background)] font-mono text-xs"
+                  />
+                </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
-                      Contenido En Inglés (English)
-                    </label>
-                    <textarea
-                      required
-                      rows={4}
-                      value={blockEn}
-                      onChange={(e) => setBlockEn(e.target.value)}
-                      className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] p-3 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)] font-mono"
-                    />
-                  </div>
+                <div>
+                  <Label htmlFor="blockContentEnTextarea" className="mb-1 block text-xs font-medium">
+                    Contenido En Inglés (English)
+                  </Label>
+                  <Textarea
+                    id="blockContentEnTextarea"
+                    required
+                    rows={4}
+                    value={blockEn}
+                    onChange={(e) => setBlockEn(e.target.value)}
+                    className="bg-[var(--dsn-background)] font-mono text-xs"
+                  />
+                </div>
 
-                  <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--dsn-border)]">
-                    <button
-                      type="button"
-                      onClick={() => setEditingBlock(null)}
-                      className="rounded-lg border border-[var(--dsn-border)] px-4 py-2 text-xs text-[var(--dsn-text)] hover:bg-[var(--dsn-surface-secondary)]"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95 disabled:opacity-50"
-                    >
-                      {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      <span>Versionar Bloque</span>
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
+                <DialogFooter className="border-t border-[var(--dsn-border)] pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEditingBlock(null)}
+                    className="text-xs"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    loading={loading}
+                    className="text-xs shadow-xs"
+                  >
+                    <span>Versionar Bloque</span>
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 
@@ -2181,16 +2213,17 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
 
           <form onSubmit={handleSaveDefaults} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+              <Label htmlFor="defaultMaxTurnsInput" className="mb-1 block text-xs font-medium">
                 Turnos Máximos De Conversación
-              </label>
-              <input
+              </Label>
+              <Input
+                id="defaultMaxTurnsInput"
                 type="number"
                 min="1"
                 max="50"
                 value={defaultsForm.defaultMaxTurns}
                 onChange={(e) => setDefaultsForm({ ...defaultsForm, defaultMaxTurns: Number(e.target.value) })}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)] font-mono"
+                className="bg-[var(--dsn-background)] font-mono text-xs"
               />
               <p className="text-[11px] text-[var(--dsn-text-secondary)] mt-1">
                 Límite de turnos de diálogo antes de ofrecer forzosamente transferencia con un humano.
@@ -2198,29 +2231,31 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+              <Label htmlFor="defaultAnswerPolicySelect" className="mb-1 block text-xs font-medium">
                 Política De Respuesta Por Defecto
-              </label>
-              <select
+              </Label>
+              <Select
+                id="defaultAnswerPolicySelect"
                 value={defaultsForm.defaultAnswerPolicy}
                 onChange={(e) => setDefaultsForm({ ...defaultsForm, defaultAnswerPolicy: e.target.value })}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                className="bg-[var(--dsn-background)] text-xs"
               >
                 <option value="solo_conocimiento">Solo Conocimiento Verificado (Estricta contra alucinaciones)</option>
                 <option value="libre">Respuesta Libre Con Contexto Comercial</option>
-              </select>
+              </Select>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+              <Label htmlFor="defaultHandoffTriggersInput" className="mb-1 block text-xs font-medium">
                 Palabras Clave De Transferencia A Asesor Humano (Handoff)
-              </label>
-              <input
+              </Label>
+              <Input
+                id="defaultHandoffTriggersInput"
                 type="text"
                 value={defaultsForm.defaultHandoffTriggers}
                 onChange={(e) => setDefaultsForm({ ...defaultsForm, defaultHandoffTriggers: e.target.value })}
                 placeholder="asesor, humano, reclamo, queja, agente"
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)]"
+                className="bg-[var(--dsn-background)] text-xs"
               />
               <p className="text-[11px] text-[var(--dsn-text-secondary)] mt-1">
                 Separadas por comas. El bot pausa automáticamente su intervención si el cliente escribe alguna de ellas.
@@ -2228,28 +2263,29 @@ export function AiGovernanceView({ initialData }: AiGovernanceViewProps) {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-[var(--dsn-text)] mb-1">
+              <Label htmlFor="defaultMaxMessagesInput" className="mb-1 block text-xs font-medium">
                 Mensajes Máximos Permitidos Por Contacto
-              </label>
-              <input
+              </Label>
+              <Input
+                id="defaultMaxMessagesInput"
                 type="number"
                 min="10"
                 max="500"
                 value={defaultsForm.defaultMaxMessagesPerContact}
                 onChange={(e) => setDefaultsForm({ ...defaultsForm, defaultMaxMessagesPerContact: Number(e.target.value) })}
-                className="w-full rounded-lg border border-[var(--dsn-border)] bg-[var(--dsn-background)] px-3 py-2 text-xs text-[var(--dsn-text)] outline-none focus:border-[var(--dsn-accent)] font-mono"
+                className="bg-[var(--dsn-background)] font-mono text-xs"
               />
             </div>
 
             <div className="pt-3 border-t border-[var(--dsn-border)]">
-              <button
+              <Button
                 type="submit"
-                disabled={loading}
-                className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-[var(--dsn-accent)] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-[var(--dsn-accent-hover)] transition-all active:scale-95 disabled:opacity-50"
+                variant="primary"
+                loading={loading}
+                className="text-xs shadow-xs"
               >
-                {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 <span>Guardar Parámetros Globales</span>
-              </button>
+              </Button>
             </div>
           </form>
         </section>

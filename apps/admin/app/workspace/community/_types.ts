@@ -59,5 +59,6 @@ export function formatCommunityDate(iso: string | Date, locale: AdminLocale = "e
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
